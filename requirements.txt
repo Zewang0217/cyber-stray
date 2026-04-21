@@ -1,0 +1,23 @@
+# 赛博街溜子依赖
+
+# 搜索
+duckduckgo-search>=4.0.0
+
+# 异步 HTTP
+aiohttp>=3.9.0
+
+# 配置管理
+pyyaml>=6.0
+
+# 定时任务
+apscheduler>=3.10.0
+
+# 网页内容提取
+trafilatura>=1.6.0
+
+# 类型检查
+typing-extensions>=4.0.0
+
+# 测试
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
