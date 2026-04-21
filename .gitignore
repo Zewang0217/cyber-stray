@@ -1,30 +1,21 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
+# Node/Bun
+node_modules/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+*.tsbuildinfo
 
-# Virtual environments
-venv/
-ENV/
-env/
-.venv/
+# 环境变量（包含敏感信息）
+.env
+.env.local
+.env.*.local
+
+# 数据文件
+data/state.md
+data/history/*.md
+data/memory/*.md
+
+# 日志
+*.log
+logs/
 
 # IDE
 .idea/
@@ -33,27 +24,15 @@ env/
 *.swo
 *~
 
-# 配置文件 (包含敏感信息)
-config/config.yaml
-*.env
-.env.*
-
-# 数据文件
-data/
-*.db
-*.sqlite
-
-# 日志
-*.log
-logs/
-
 # 测试
-.pytest_cache/
-.coverage
-htmlcov/
+coverage/
 
 # macOS
 .DS_Store
 
 # Windows
 Thumbs.db
+
+# 保留空目录结构
+!data/history/.gitkeep
+!data/memory/.gitkeep

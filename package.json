@@ -1,0 +1,27 @@
+{
+  "name": "cyber-stray",
+  "version": "0.1.0",
+  "description": "一只会在互联网上游荡的自动化信息猎犬，有自己的小脾气和行动逻辑",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "start": "bun run src/index.ts",
+    "test": "bun test",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "agent",
+    "ai",
+    "automation"
+  ],
+  "author": "zewang",
+  "license": "MIT",
+  "dependencies": {
+    "ai": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.0.0"
+  }
+}

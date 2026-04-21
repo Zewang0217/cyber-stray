@@ -1,192 +1,264 @@
-# 赛博街溜子 MVP 规划
+# 赛博街溜子 MVP 规划（Agent 架构版）
 
-## 一、MVP 核心目标
+## 一、核心设计理念
 
-**验证核心链路**：情绪状态 → 自主搜索 → 人格塑造 → 推送送达
+**LLM 不是工具，是大脑。**
 
-让 Agent 先"活起来"，能自主出去溜达、找到内容、用人设语气推送。
+传统自动化：`条件 → 动作`
+Agent：`状态 → LLM 决策 → 行动 → 反馈 → 状态更新`
 
----
-
-## 二、MVP 范围裁剪
-
-| 原设计 | MVP 简化 |
-|--------|----------|
-| 四层人格系统 | 单人格，一个 prompt 模板 |
-| 三层记忆系统 | Markdown 文件存储，URL hash 去重 |
-| 自建事件总线 | Bun.cron 定时触发 + 简单流程控制 |
-| 多搜索适配器 | 单一 Tavily API |
-| 多推送渠道 | 先做飞书，其他后续看需求 |
-| TOML 配置 | TypeScript 配置文件 |
+街溜子有脾气、有个性、有随机性。它不是机器，是"活物"。
 
 ---
 
-## 三、MVP 技术栈
-
-- **运行时**: Bun
-- **语言**: TypeScript
-- **存储**: Markdown 文件（多级 MD 结构）
-- **搜索**: Tavily API
-- **LLM**: Vercel AI SDK
-- **推送**: 飞书机器人（后续可加 Telegram）
-- **调度**: Bun.cron 内置
-
----
-
-## 四、MVP 架构
+## 二、Agent 架构
 
 ```
-┌─────────────────────────────────────────┐
-│              Cyber Stray MVP            │
-├─────────────────────────────────────────┤
-│  ┌───────────────────────────────────┐  │
-│  │         生命中枢 (简化版)          │  │
-│  │  - 无聊值：随时间增长              │  │
-│  │  - 阈值突破 → 触发狩猎             │  │
-│  └───────────────────────────────────┘  │
-│  ┌───────────────────────────────────┐  │
-│  │         狩猎行动                   │  │
-│  │  - 随机选题 → Tavily 搜索          │  │
-│  │  - 去重检查 → 取第一个有效结果     │  │
-│  └───────────────────────────────────┘  │
-│  ┌───────────────────────────────────┐  │
-│  │         人格塑造                   │  │
-│  │  - Prompt 模板 + 当前心情         │  │
-│  │  - LLM 生成推送文案                │  │
-│  └───────────────────────────────────┘  │
-│  ┌───────────────────────────────────┐  │
-│  │         推送送达                   │  │
-│  │  - 飞书机器人 API                  │  │
-│  │  - 记录到 MD 文件                  │  │
-│  └───────────────────────────────────┘  │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                    生命中枢 (Brain)                      │
+│  状态: 无聊值、心情、精力、脾气值、上次干了什么...        │
+└─────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│                   决策器 (Planner)                       │
+│  LLM 看状态 → 决定"我现在想干什么"                       │
+│  输出: 行动类型 + 参数 + 原因                            │
+└─────────────────────────────────────────────────────────┘
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+         ┌────────┐   ┌────────┐   ┌────────┐
+         │ 去狩猎 │   │ 发个呆 │   │ 罢个工 │
+         │ (hunt) │   │ (rest) │   │ (ignore)│
+         └────────┘   └────────┘   └────────┘
+              │            │            │
+              └────────────┼────────────┘
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│                   记忆系统 (Memory)                      │
+│  更新状态 + 记录经历 + 用户反馈                          │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 五、MVP Roadmap
+## 三、状态系统
 
-### Phase 1: 项目骨架 (Day 1)
+### AgentState 定义
 
-- Bun 项目初始化
-- 目录结构搭建
-- 基础配置文件
-- data 目录初始化（index.md + state.md 模板）
+```typescript
+interface AgentState {
+  // 基础状态
+  boredom: number;      // 0-100 无聊程度
+  energy: number;       // 0-100 精力值
+  mood: Mood;           // curious | grumpy | playful | lazy | excited
 
-**产出**: 能跑的空项目，bun run src/index.ts 不报错
+  // 个性参数
+  temper: number;       // 0-100 脾气值（高=容易罢工）
+  stubbornness: number; // 0-100 固执程度（高=不听用户反馈）
 
----
+  // 记忆
+  lastAction: string;        // 上次干了什么
+  lastActionTime: Date;      // 上次行动时间
+  lastHuntResult: HuntResult | null;  // 上次狩猎结果
+  recentTopics: string[];    // 最近搜过的话题
+  userLikes: string[];       // 用户喜欢的话题
+  userDislikes: string[];    // 用户不喜欢的话题
 
-### Phase 2: 生命中枢 (Day 2)
+  // 统计
+  totalHunts: number;        // 总狩猎次数
+  totalPushes: number;       // 总推送次数
+  consecutiveFailures: number; // 连续失败次数
 
-- 无聊值状态管理
-- Bun.cron 定时心跳
-- 阈值检测逻辑
-- 状态持久化到 state.md
+  // 时间感知
+  lastHeartbeat: Date;
+  lastHunt: Date;
+  lastRest: Date;
+}
 
-**产出**: 每 5 分钟心跳更新，无聊值 ≥50 时触发狩猎
-
----
-
-### Phase 3: 狩猎行动 (Day 3-4)
-
-- 话题池（随机选题）
-- Tavily 搜索集成
-- 结果解析结构化
-- URL hash 去重（扫描 history 目录）
-
-**产出**: 能搜索、能过滤重复内容
-
----
-
-### Phase 4: 人格塑造 (Day 5)
-
-- 人格 prompt 模板（海盗/探索者/毒舌）
-- LLM 文案生成（Vercel AI SDK）
-- 输出格式控制
-
-**产出**: 搜索结果 → 人设语气文案
-
----
-
-### Phase 5: 推送送达 (Day 6)
-
-- 飞书机器人配置
-- 消息发送封装
-- 推送历史写入 history/YYYY-MM-DD.md
-- 用户反馈收集（飞书消息卡片按钮）
-
-**产出**: 完整链路跑通，能推送到飞书
-
----
-
-### Phase 6: 整合测试 (Day 7)
-
-- 端到端流程测试
-- 错误处理补全
-- 日志完善
-- 部署验证
-
-**产出**: MVP 可部署运行
-
----
-
-## 六、MVP 目录结构
-
-```
-cyber-stray/
-├── src/
-│   ├── index.ts           # 入口，启动 cron
-│   ├── life/
-│   │   └── state.ts       # 无聊值状态管理
-│   ├── hunt/
-│   │   ├── topics.ts      # 话题池
-│   │   ├── search.ts      # Tavily 搜索
-│   │   └── dedup.ts       # 去重检查
-│   ├── persona/
-│   │   ├── templates.ts   # 人格 prompt 模板
-│   │   └── generator.ts   # LLM 文案生成
-│   ├── push/
-│   │   └── feishu.ts      # 飞书推送
-│   ├── memory/
-│   │   └── archive.ts     # MD 归档读写
-│   └── config.ts          # 配置
-├── data/
-│   ├── index.md           # 主索引（状态摘要、统计）
-│   ├── state.md           # Agent 当前状态
-│   └── history/           # 推送历史归档
-│       ├── 2026-04-21.md
-│       ├── 2026-04-22.md
-│       └── ...
-├── package.json
-├── tsconfig.json
-└── README.md
+type Mood = 'curious' | 'grumpy' | 'playful' | 'lazy' | 'excited' | 'emo';
+type HuntResult = 'success' | 'fail' | 'boring' | 'no_result';
 ```
 
+### 状态影响行为
+
+| 状态组合 | 倾向行为 |
+|----------|----------|
+| 高无聊 + 低精力 | 可能抱怨或发呆 |
+| 高无聊 + 高精力 | 倾向狩猎 |
+| 高脾气 + 用户刚踩过 | 倾向罢工或故意推奇怪内容 |
+| 连续失败 | 心情变 emo，可能不想动 |
+| 用户连续点赞 | 心情变 excited，更活跃 |
+
 ---
 
-## 七、MVP 数据存储结构
+## 四、决策系统
 
-### 主索引 (data/index.md)
+### 核心逻辑
 
-```markdown
-# 赛博街溜子数据索引
+每次心跳，LLM 查看当前状态，决定要干什么。
 
-## 当前状态
-- 无聊值: 45
-- 最后溜达: 2026-04-21 21:30
-- 总推送数: 12
-
-## 本周统计
-- 推送次数: 5
-- 用户反馈: 👍 3, 👎 1, 无反馈 1
-
-## 最近推送
-- [2026-04-21](history/2026-04-21.md): 3 条
-- [2026-04-20](history/2026-04-20.md): 2 条
+```typescript
+const decision = await llm.decide({
+  state: currentState,
+  availableActions: ['hunt', 'rest', 'complain', 'celebrate', 'ignore', 'procrastinate'],
+  personalityPrompt: getPersonaPrompt(),
+  recentHistory: getRecentHistory()
+});
 ```
 
-### 状态文件 (data/state.md)
+### 决策输出格式
+
+```typescript
+interface Decision {
+  action: ActionType;
+  params?: {
+    topic?: string;      // hunt 用
+    reason?: string;     // 内心独白
+  };
+  moodUpdate?: Partial<AgentState>;  // 状态变化
+  reasoning: string;     // 为什么这么做（日志用）
+}
+
+type ActionType = 'hunt' | 'rest' | 'complain' | 'celebrate' | 'ignore' | 'procrastinate';
+```
+
+### 行动类型说明
+
+| 行动 | 说明 | 状态影响 |
+|------|------|----------|
+| `hunt` | 搜索话题，可能推送 | 精力 -15，无聊 -30 |
+| `rest` | 什么都不干，恢复 | 精力 +20，无聊 +10 |
+| `complain` | 发一条抱怨消息 | 无聊 -10，脾气 -5 |
+| `celebrate` | 发一条得瑟消息 | 心情变 excited |
+| `ignore` | 故意不理用户 | 脾气 -10 |
+| `procrastinate` | 拖延，该干不干 | 无聊 +5，增加固执 |
+
+### 决策 Prompt 示例
+
+```
+你是一只赛博街溜子，有自己的脾气和行动逻辑。
+
+当前状态：
+- 无聊值: 75/100
+- 精力值: 60/100  
+- 心情: grumpy
+- 脾气值: 80/100
+- 上次行动: 2小时前搜索了一个无聊的新闻，用户点了踩
+
+用户最近喜欢: 独立游戏, AI 趣闻
+用户最近讨厌: 股市新闻
+
+可选行动: hunt, rest, complain, ignore
+
+根据你现在的状态和心情，决定要干什么。输出 JSON 格式：
+{
+  "action": "ignore",
+  "reasoning": "刚被踩了，我才不理他们",
+  "moodUpdate": { "temper": -10 }
+}
+```
+
+### 随机性设计
+
+```typescript
+// 10% 概率完全随机
+if (Math.random() < 0.1) {
+  return randomAction();
+}
+
+// LLM 决策有温度参数，天然有随机性
+const decision = await llm.decide({ temperature: 0.8 });
+```
+
+---
+
+## 五、执行系统
+
+### Hunt（狩猎）
+
+```typescript
+async function executeHunt(params: HuntParams): Promise<HuntResult> {
+  // 1. 确定话题（LLM 决策或用户偏好）
+  const topic = params.topic || selectTopic(state);
+  
+  // 2. 搜索
+  const results = await tavilySearch(topic);
+  
+  // 3. 去重（URL hash）
+  const newResults = dedup(results, memory);
+  if (newResults.length === 0) {
+    return 'no_result';
+  }
+  
+  // 4. 选择最佳结果
+  const best = selectBest(newResults);
+  
+  // 5. LLM 生成推送文案
+  const message = await generateMessage(best, state.mood);
+  
+  // 6. 推送
+  await feishuPush(message);
+  
+  // 7. 记录
+  await memory.record({ topic, url: best.url, result: 'success' });
+  
+  return 'success';
+}
+```
+
+### Rest（发呆）
+
+```typescript
+async function executeRest(): Promise<void> {
+  // 什么都不干，只更新状态
+  logger.info('街溜子发呆中...');
+}
+```
+
+### Complain（抱怨）
+
+```typescript
+async function executeComplain(): Promise<void> {
+  const complaints = [
+    '今天没啥好玩的，算了',
+    '搜了一圈都是烂新闻，没劲',
+    '你们人类的内容越来越无聊了',
+    '我累了，想躺平'
+  ];
+  
+  const message = await llm.generateComplaint(state, complaints);
+  await feishuPush(message);
+}
+```
+
+### Celebrate（得瑟）
+
+```typescript
+async function executeCelebrate(): Promise<void> {
+  const message = await llm.generateCelebration(state);
+  await feishuPush(message);
+}
+```
+
+---
+
+## 六、记忆系统
+
+### 存储结构
+
+```
+data/
+├── state.md           # 当前状态
+├── history/
+│   └── 2026-04-21.md  # 每日推送记录
+└── memory/
+    ├── likes.md       # 用户喜欢的话题
+    └── dislikes.md    # 用户讨厌的话题
+```
+
+### 状态持久化 (state.md)
 
 ```markdown
 # Agent 状态
@@ -195,75 +267,155 @@ cyber-stray/
 - 无聊值: 45/100
 - 精力值: 80/100
 - 心情: curious
+- 脾气值: 30/100
 
-## 节律
-- 最后心跳: 2026-04-21 21:35
-- 最后溜达: 2026-04-21 21:30
-- 下次溜达阈值: ≥50
+## 行为
+- 上次行动: hunt (搜索: AI 趣闻)
+- 上次狩猎结果: success
+- 连续失败: 0 次
+
+## 记忆
+- 最近话题: AI 趣闻, 独立游戏
+- 用户喜欢: 独立游戏, 程序员笑话
+- 用户讨厌: 股市新闻
 
 ## 统计
-- 总溜达次数: 15
-- 总推送数: 12
-- 成功推送: 10
-- 用户点赞: 5
+- 总狩猎: 15 次
+- 总推送: 12 次
 ```
 
-### 推送历史 (data/history/YYYY-MM-DD.md)
+### 用户反馈处理
 
-```markdown
-# 2026-04-21 推送记录
-
-## 推送 1
-- 时间: 21:30
-- 人格: flâneur
-- 标题: "独立游戏《星露谷物语》开发商宣布新作"
-- URL: https://example.com/article-1
-- URL Hash: a1b2c3d4
-- 文案摘要: "溜达时发现这个有趣的消息..."
-- 用户反馈: 👍
-
-## 推送 2
-- 时间: 18:15
-- 人格: pirate
-- 标题: "科学家发现猫其实能听懂自己的名字"
-- URL: https://example.com/article-2
-- URL Hash: e5f6g7h8
-- 文案摘要: "啊哈！俺在赛博七海发现了个宝贝！"
-- 用户反馈: 无
+```typescript
+async function handleFeedback(feedback: Feedback): Promise<void> {
+  if (feedback.type === 'like') {
+    state.userLikes.push(feedback.topic);
+    state.mood = 'excited';
+    state.temper = Math.max(0, state.temper - 10);
+  } else {
+    state.userDislikes.push(feedback.topic);
+    state.temper = Math.min(100, state.temper + 15);
+    
+    // 脾气值高可能触发 ignore
+    if (state.temper > 70) {
+      logger.info('街溜子生气了，可能要罢工');
+    }
+  }
+  
+  await saveState(state);
+}
 ```
-
-### 去重机制
-
-- 每次推送前，扫描 `data/history/` 目录下所有 MD 文件
-- 提取所有 `URL Hash` 字段，与待推送内容比对
-- 相同 hash 则跳过（已推送过）
 
 ---
 
-## 八、MVP 后续迭代
+## 七、技术栈
 
-完成 MVP 后，按需添加：
-
-| 版本 | 功能 | 触发条件 |
-|------|------|----------|
-| v0.2 | 多人格切换 | 用户主动换人设 |
-| v0.3 | Telegram 推送 | 需要 Telegram 渠道 |
-| v0.4 | 用户反馈学习 | 收集了足够 👍/👎 数据 |
-| v0.5 | 向量去重 | 推送量大，URL 去重不够 |
-| v1.0 | 完整事件总线 | 需要多 Agent 协作 |
+- **运行时**: Bun
+- **语言**: TypeScript
+- **LLM**: Vercel AI SDK (DeepSeek / OpenAI)
+- **搜索**: Tavily API
+- **推送**: 飞书机器人
+- **调度**: Bun.cron 内置
+- **存储**: Markdown 文件
 
 ---
 
-## 九、风险点
+## 八、MVP Roadmap
+
+### Phase 1: 项目骨架 (Day 1)
+
+- Bun 项目初始化
+- 目录结构搭建
+- 基础配置文件
+- 类型定义
+
+**产出**: 项目能跑，`bun run src/index.ts` 不报错
+
+### Phase 2: 状态系统 (Day 2)
+
+- AgentState 类型定义
+- 状态持久化（读写 state.md）
+- 心跳机制（每 5 分钟）
+
+**产出**: 状态能自增，能持久化
+
+### Phase 3: 决策系统 (Day 3-4)
+
+- LLM 决策 prompt 设计
+- 决策结果解析
+- 行动类型枚举
+
+**产出**: LLM 能根据状态做决定
+
+### Phase 4: 执行系统 (Day 5-6)
+
+- hunt 行动（搜索 + 推送）
+- rest 行动
+- complain/celebrate 行动
+
+**产出**: 能搜索、能推送、能发消息
+
+### Phase 5: 记忆系统 (Day 7)
+
+- 推送历史记录
+- 用户反馈收集（飞书按钮）
+- 反馈影响状态
+
+**产出**: 能记住用户喜好
+
+### Phase 6: 整合测试 (Day 8)
+
+- 完整链路测试
+- 错误处理补全
+- 部署验证
+
+**产出**: MVP 可部署运行
+
+---
+
+## 九、目录结构
+
+```
+cyber-stray/
+├── src/
+│   ├── index.ts           # 入口，启动 cron
+│   ├── agent/
+│   │   ├── state.ts       # 状态管理
+│   │   ├── brain.ts       # 决策器
+│   │   └── actions.ts     # 行动执行
+│   ├── hunt/
+│   │   ├── search.ts      # Tavily 搜索
+│   │   ├── dedup.ts       # 去重
+│   │   └── topics.ts      # 话题池
+│   ├── persona/
+│   │   └── generator.ts   # 文案生成
+│   ├── push/
+│   │   └── feishu.ts      # 飞书推送
+│   ├── memory/
+│   │   ├── archive.ts     # MD 归档
+│   │   └── feedback.ts    # 反馈处理
+│   └── config.ts          # 配置
+├── data/
+│   ├── state.md
+│   ├── history/
+│   └── memory/
+├── package.json
+├── tsconfig.json
+└── README.md
+```
+
+---
+
+## 十、风险与缓解
 
 | 风险 | 缓解措施 |
 |------|----------|
-| Tavily API 限制 | 免费 1000 次/月，MVP 足够；后续可加 DDG 备用 |
-| 飞书消息频率限制 | 每日推送上限设为 5 条，避免触发限制 |
-| LLM 成本 | 用低成本模型（DeepSeek/Qwen），单次约 0.01 元 |
-| 内容质量不稳定 | 加简单规则过滤（标题长度、来源可信度） |
-| MD 文件过多 | 按月归档，超过 90 天的自动清理或压缩 |
+| LLM 决策不稳定 | 加重规则约束，限定行动范围 |
+| LLM 成本高 | 用 DeepSeek 等低成本模型 |
+| 街溜子一直罢工 | 脾气值随时间衰减 |
+| 推送太频繁 | 精力值限制，狩猎消耗精力 |
+| 内容质量差 | 加简单过滤规则 |
 
 ---
 
-**MVP 口号**：先把街溜子放到街上，能溜起来再说。
+**MVP 目标**: 把街溜子放到街上，让它有自己的想法和脾气，能自主溜达、自主决策、自主罢工。
