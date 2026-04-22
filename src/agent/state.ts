@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import type { AgentState, Mood } from '../types';
 import { getDataPath } from '../config';
+import { consola } from '../logger';
 
 /**
  * 默认初始状态
@@ -38,121 +39,33 @@ function createDefaultState(): AgentState {
 }
 
 /**
- * 解析 MD 文件中的状态
- * 格式见 docs/mvp-plan.md
+ * 解析 JSON 文件中的状态
  */
-function parseStateMarkdown(content: string): AgentState {
+function parseStateJson(content: string): AgentState {
   const defaultState = createDefaultState();
   
   try {
-    // 简单的键值解析
-    const lines = content.split('\n');
-    const result = { ...defaultState };
-    
-    for (const line of lines) {
-      const match = line.match(/-\s*(.+?)[:：]\s*(.+)/);
-      if (!match) continue;
-      
-      const [, key, value] = match;
-      const normalizedKey = key.trim().toLowerCase();
-      const normalizedValue = value.trim();
-      
-      // 解析数值
-      if (normalizedKey.includes('无聊')) {
-        const numMatch = normalizedValue.match(/(\d+)/);
-        if (numMatch) result.boredom = parseInt(numMatch[1], 10);
-      }
-      else if (normalizedKey.includes('精力')) {
-        const numMatch = normalizedValue.match(/(\d+)/);
-        if (numMatch) result.energy = parseInt(numMatch[1], 10);
-      }
-      else if (normalizedKey.includes('心情')) {
-        const moodMap: Record<string, Mood> = {
-          '好奇': 'curious',
-          'curious': 'curious',
-          '暴躁': 'grumpy',
-          'grumpy': 'grumpy',
-          '调皮': 'playful',
-          'playful': 'playful',
-          '懒散': 'lazy',
-          'lazy': 'lazy',
-          '兴奋': 'excited',
-          'excited': 'excited',
-          'emo': 'emo',
-        };
-        const mood = moodMap[normalizedValue.toLowerCase()];
-        if (mood) result.mood = mood;
-      }
-      else if (normalizedKey.includes('脾气')) {
-        const numMatch = normalizedValue.match(/(\d+)/);
-        if (numMatch) result.temper = parseInt(numMatch[1], 10);
-      }
-      else if (normalizedKey.includes('总狩猎')) {
-        const numMatch = normalizedValue.match(/(\d+)/);
-        if (numMatch) result.totalHunts = parseInt(numMatch[1], 10);
-      }
-      else if (normalizedKey.includes('总推送')) {
-        const numMatch = normalizedValue.match(/(\d+)/);
-        if (numMatch) result.totalPushes = parseInt(numMatch[1], 10);
-      }
-    }
-    
-    return result;
+    const parsed = JSON.parse(content) as Partial<AgentState>;
+    return { ...defaultState, ...parsed };
   } catch (error) {
-    console.error('解析状态文件失败，使用默认状态:', error);
+    consola.error('解析状态文件失败，使用默认状态:', error);
     return defaultState;
   }
 }
 
 /**
- * 将状态序列化为 Markdown
+ * 将状态序列化为 JSON
  */
-function serializeStateMarkdown(state: AgentState): string {
-  const moodNames: Record<Mood, string> = {
-    curious: '好奇',
-    grumpy: '暴躁',
-    playful: '调皮',
-    lazy: '懒散',
-    excited: '兴奋',
-    emo: 'emo',
-  };
-
-  return `# Agent 状态
-
-## 情绪
-- 无聊值: ${state.boredom}/100
-- 精力值: ${state.energy}/100
-- 心情: ${moodNames[state.mood]}
-- 脾气值: ${state.temper}/100
-
-## 行为
-- 上次行动: ${state.lastAction || '无'}
-- 上次狩猎结果: ${state.lastHuntResult || '无'}
-- 连续失败: ${state.consecutiveFailures} 次
-
-## 记忆
-- 最近话题: ${state.recentTopics.slice(-5).join(', ') || '无'}
-- 用户喜欢: ${state.userLikes.slice(-5).join(', ') || '无'}
-- 用户讨厌: ${state.userDislikes.slice(-5).join(', ') || '无'}
-
-## 统计
-- 总狩猎: ${state.totalHunts} 次
-- 总推送: ${state.totalPushes} 次
-
-## 时间
-- 上次心跳: ${state.lastHeartbeat}
-- 上次狩猎: ${state.lastHunt || '无'}
-- 上次休息: ${state.lastRest || '无'}
-`;
+function serializeStateJson(state: AgentState): string {
+  return JSON.stringify(state, null, 2);
 }
 
 /**
  * 加载 Agent 状态
  */
 export async function loadState(): Promise<AgentState> {
-  const statePath = getDataPath('state.md');
+  const statePath = getDataPath('state.json');
   
-  // 文件不存在则创建默认状态
   if (!existsSync(statePath)) {
     const defaultState = createDefaultState();
     await saveState(defaultState);
@@ -160,15 +73,15 @@ export async function loadState(): Promise<AgentState> {
   }
   
   const content = await readFile(statePath, 'utf-8');
-  return parseStateMarkdown(content);
+  return parseStateJson(content);
 }
 
 /**
  * 保存 Agent 状态
  */
 export async function saveState(state: AgentState): Promise<void> {
-  const statePath = getDataPath('state.md');
-  const content = serializeStateMarkdown(state);
+  const statePath = getDataPath('state.json');
+  const content = serializeStateJson(state);
   await writeFile(statePath, content, 'utf-8');
 }
 

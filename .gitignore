@@ -9,7 +9,7 @@ dist/
 .env.*.local
 
 # 数据文件
-data/state.md
+data/state.json
 data/history/*.md
 data/memory/*.md
 
@@ -36,3 +36,5 @@ Thumbs.db
 # 保留空目录结构
 !data/history/.gitkeep
 !data/memory/.gitkeep
+
+AGENTS.md
