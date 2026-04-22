@@ -1,4 +1,4 @@
-import { generateText, generateObject } from 'ai';
+import { generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
 import { config } from '../config.js';
@@ -19,7 +19,7 @@ function createDeepSeekProvider() {
   }
 
   return createOpenAI({
-    baseURL: 'https://api.deepseek.com/v1',
+    baseURL: 'https://api.deepseek.com',
     apiKey,
   });
 }
@@ -52,7 +52,7 @@ export async function callLLM(
   });
 
   const { text } = await generateText({
-    model: provider(config.llmModel),
+    model: provider.chat(config.llmModel),
     temperature: config.llmTemperature,
     system: systemPrompt,
     prompt: userPrompt,
@@ -80,32 +80,45 @@ export async function callLLMForDecision(
     userLength: userPrompt.length,
   });
 
-  const { object } = await generateObject({
-    model: provider(config.llmModel),
+  const jsonSchema = z.object({
+    action: z.string().refine(
+      (val: string) => VALID_ACTIONS.includes(val as (typeof VALID_ACTIONS)[number]),
+      {
+        message: `无效行动，可用: ${VALID_ACTIONS.join(', ')}`,
+      },
+    ),
+    reasoning: z.string(),
+    topic: z.string().optional(),
+  });
+
+  const { text } = await generateText({
+    model: provider.chat(config.llmModel),
     temperature: config.llmTemperature,
     system: systemPrompt,
     prompt: userPrompt,
-    schema: z.object({
-      action: z.string().refine(
-        (val: string) => VALID_ACTIONS.includes(val as (typeof VALID_ACTIONS)[number]),
-        {
-          message: `无效行动，可用: ${VALID_ACTIONS.join(', ')}`,
-        },
-      ),
-      reasoning: z.string(),
-      topic: z.string().optional(),
-    }),
   });
 
+  let parsed: z.infer<typeof jsonSchema>;
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('响应中未找到 JSON 对象');
+    }
+    parsed = jsonSchema.parse(JSON.parse(jsonMatch[0]));
+  } catch (parseError) {
+    logger.error('JSON 解析失败', { text, error: parseError });
+    throw new Error(`LLM 响应解析失败: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+  }
+
   logger.debug('LLM 决策结果', {
-    action: object.action,
-    reasoning: object.reasoning,
-    hasTopic: !!object.topic,
+    action: parsed.action,
+    reasoning: parsed.reasoning,
+    hasTopic: !!parsed.topic,
   });
 
   return {
-    action: object.action as (typeof VALID_ACTIONS)[number],
-    reasoning: object.reasoning,
-    params: object.topic ? { topic: object.topic } : undefined,
+    action: parsed.action as (typeof VALID_ACTIONS)[number],
+    reasoning: parsed.reasoning,
+    params: parsed.topic ? { topic: parsed.topic } : undefined,
   };
 }
