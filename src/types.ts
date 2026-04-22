@@ -46,14 +46,9 @@ export interface AgentState {
 // 决策相关
 // ============================================
 
-/** 行动类型 */
-export type ActionType = 
-  | 'hunt'          // 狩猎：搜索话题并推送
-  | 'rest'          // 发呆：什么都不干
-  | 'complain'      // 抱怨：发一条抱怨消息
-  | 'celebrate'     // 得瑟：发一条得瑟消息
-  | 'ignore'        // 罢工：故意不理用户
-  | 'procrastinate'; // 拖延：该干不干
+import type { ActionType } from './constants/decision.js';
+
+export type { ActionType };
 
 /** 决策参数 */
 export interface DecisionParams {

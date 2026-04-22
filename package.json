@@ -21,8 +21,10 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.53",
     "ai": "^6.0.168",
-    "consola": "^3.4.2"
+    "consola": "^3.4.2",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bun": "latest",
