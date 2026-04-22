@@ -1,9 +1,8 @@
 import { config, validateConfig } from "./config";
 import { loadState, saveState, heartbeat } from "./agent/state";
-import { createLogger } from "./logger";
-import { consola, createConsola } from "consola";
+import { consola } from "./logger";
 
-const logger = createLogger("main");
+const logger = consola.withTag("main");
 
 /**
  * 主入口

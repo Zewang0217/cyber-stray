@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import type { AgentState, Mood } from '../types';
 import { getDataPath } from '../config';
+import { consola } from '../logger';
 
 /**
  * 默认初始状态
@@ -54,17 +55,19 @@ function parseStateMarkdown(content: string): AgentState {
       if (!match) continue;
       
       const [, key, value] = match;
+      if (!key || !value) continue;
+      
       const normalizedKey = key.trim().toLowerCase();
       const normalizedValue = value.trim();
       
       // 解析数值
       if (normalizedKey.includes('无聊')) {
         const numMatch = normalizedValue.match(/(\d+)/);
-        if (numMatch) result.boredom = parseInt(numMatch[1], 10);
+        if (numMatch?.[1]) result.boredom = parseInt(numMatch[1], 10);
       }
       else if (normalizedKey.includes('精力')) {
         const numMatch = normalizedValue.match(/(\d+)/);
-        if (numMatch) result.energy = parseInt(numMatch[1], 10);
+        if (numMatch?.[1]) result.energy = parseInt(numMatch[1], 10);
       }
       else if (normalizedKey.includes('心情')) {
         const moodMap: Record<string, Mood> = {
@@ -85,21 +88,21 @@ function parseStateMarkdown(content: string): AgentState {
       }
       else if (normalizedKey.includes('脾气')) {
         const numMatch = normalizedValue.match(/(\d+)/);
-        if (numMatch) result.temper = parseInt(numMatch[1], 10);
+        if (numMatch?.[1]) result.temper = parseInt(numMatch[1], 10);
       }
       else if (normalizedKey.includes('总狩猎')) {
         const numMatch = normalizedValue.match(/(\d+)/);
-        if (numMatch) result.totalHunts = parseInt(numMatch[1], 10);
+        if (numMatch?.[1]) result.totalHunts = parseInt(numMatch[1], 10);
       }
       else if (normalizedKey.includes('总推送')) {
         const numMatch = normalizedValue.match(/(\d+)/);
-        if (numMatch) result.totalPushes = parseInt(numMatch[1], 10);
+        if (numMatch?.[1]) result.totalPushes = parseInt(numMatch[1], 10);
       }
     }
     
     return result;
   } catch (error) {
-    console.error('解析状态文件失败，使用默认状态:', error);
+    consola.error('解析状态文件失败，使用默认状态:', error);
     return defaultState;
   }
 }
