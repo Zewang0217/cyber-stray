@@ -9,7 +9,7 @@ dist/
 .env.*.local
 
 # 数据文件
-data/state.md
+data/state.json
 data/history/*.md
 data/memory/*.md
 
