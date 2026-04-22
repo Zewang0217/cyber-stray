@@ -1,6 +1,8 @@
-import { config, validateConfig } from "./config";
-import { loadState, saveState, heartbeat } from "./agent/state";
-import { consola } from "./logger";
+import { config, validateConfig } from "./config.js";
+import { loadState, heartbeat } from "./agent/state.js";
+import { decide } from "./agent/planner.js";
+import { executeAction } from "./agent/actions.js";
+import { consola } from "./logger.js";
 
 const logger = consola.withTag("main");
 
@@ -71,11 +73,13 @@ async function runHeartbeat(): Promise<void> {
       temper: state.temper,
     });
 
-    // 2. 决策（TODO: Phase 3 实现）
-    // const decision = await decide(state);
+    // 2. 决策
+    const decision = await decide(state);
 
-    // 3. 执行行动（TODO: Phase 4 实现）
-    // await executeAction(decision);
+    // 3. 执行行动
+    if (decision.action !== 'rest') {
+      await executeAction(decision, state);
+    }
   } catch (error) {
     logger.error("心跳执行失败", { error: String(error) });
   }
