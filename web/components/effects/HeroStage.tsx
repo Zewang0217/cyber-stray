@@ -1,31 +1,28 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence, useSpring } from "framer-motion";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
-// Preload the GLB model
 useGLTF.preload("/low_poly_dog.glb");
 
-// ==================== Phase 2: The Actor - 3D Dog Model ====================
 function DogModel() {
   const { scene } = useGLTF("/low_poly_dog.glb");
   const modelRef = useRef<THREE.Group>(null);
-  const startTimeRef = useRef<number>(0);
-  const isInitializedRef = useRef(false);
 
   const clonedScene = useMemo(() => {
     const cloned = scene.clone();
     cloned.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        if (child.material) {
-          child.material.needsUpdate = true;
-          if (child.material.map) {
-            child.material.map.needsUpdate = true;
-          }
-        }
+        child.material = new THREE.MeshPhysicalMaterial({
+          color: "#1e1e2e",
+          emissive: "#cba6f7",
+          emissiveIntensity: 0.5,
+          metalness: 0.9,
+          roughness: 0.1,
+        });
       }
     });
     return cloned;
@@ -45,14 +42,11 @@ function DogModel() {
     }
   }, []);
 
-  useFrame(() => {
-    if (!isInitializedRef.current) {
-      startTimeRef.current = Date.now();
-      isInitializedRef.current = true;
-    }
+  useFrame((state) => {
     if (modelRef.current) {
-      const elapsed = (Date.now() - startTimeRef.current) / 1000;
-      modelRef.current.rotation.y = Math.sin(elapsed * 0.5) * 0.1;
+      const t = state.clock.elapsedTime;
+      modelRef.current.rotation.y = Math.sin(t * 0.5) * 0.1;
+      modelRef.current.position.y += Math.sin(t * 2) * 0.002;
     }
   });
 
@@ -63,79 +57,103 @@ function DogModel() {
   );
 }
 
-// ==================== Phase 1 & 2: Curtain & Dog Container ====================
-function CurtainSection({ onCurtainOpen }: { onCurtainOpen: () => void }) {
+function CurtainSection({
+  onCurtainOpen,
+  onDogLanded,
+}: {
+  onCurtainOpen: () => void;
+  onDogLanded: () => void;
+}) {
   const [showDog, setShowDog] = useState(false);
   const [dogLanded, setDogLanded] = useState(false);
+  const [laserDone, setLaserDone] = useState(false);
 
-  // Spring animation for dog drop - starts at -200vh and drops to 0
   const dogY = useSpring("-200%", {
-    stiffness: 200,
-    damping: 10,
-    mass: 1,
+    stiffness: 150,
+    damping: 12,
+    mass: 2,
   });
 
   useEffect(() => {
-    // Show dog when curtain is mostly open
     const dogTimer = setTimeout(() => {
       setShowDog(true);
-      // Animate dog falling
       dogY.set("0%");
       onCurtainOpen();
-    }, 1200);
+    }, 2300);
 
-    // Trigger land effect after dog lands
     const landTimer = setTimeout(() => {
       setDogLanded(true);
-    }, 2000);
+      onDogLanded();
+    }, 3000);
 
     return () => {
       clearTimeout(dogTimer);
       clearTimeout(landTimer);
     };
-  }, [dogY, onCurtainOpen]);
+  }, [dogY, onCurtainOpen, onDogLanded]);
 
   return (
     <div className="absolute inset-0 z-10">
-      {/* Upper Curtain */}
+      {/* Center Laser Cutting Line */}
       <motion.div
-        className="absolute top-0 left-0 right-0 h-1/2 bg-black z-20"
-        initial={{ y: 0 }}
-        animate={{ y: "-100%" }}
+        className="absolute top-0 bottom-0 left-1/2 w-[2px] -translate-x-1/2 z-30"
+        style={{ background: "#cba6f7", boxShadow: "0 0 12px 4px oklch(0.7 0.3 300 / 0.6)" }}
+        initial={{ opacity: 0, scaleY: 0 }}
+        animate={{ opacity: [0, 1, 0], scaleY: [0, 1, 1] }}
+        transition={{ duration: 1, times: [0, 0.8, 1], delay: 0.3 }}
+        onAnimationComplete={() => setLaserDone(true)}
+      />
+
+      {/* Left Gate */}
+      <motion.div
+        className="absolute top-0 bottom-0 left-0 w-1/2 z-20"
+        style={{
+          background: `repeating-linear-gradient(
+            0deg,
+            #11111b 0px,
+            #11111b 3px,
+            #181825 3px,
+            #181825 6px
+          )`,
+          boxShadow: "inset -8px 0 20px rgba(0,0,0,0.6)",
+        }}
+        initial={{ x: 0 }}
+        animate={laserDone ? { x: "-100%" } : { x: 0 }}
         transition={{
-          delay: 0.5,
-          duration: 1.2,
-          type: "spring",
-          stiffness: 100,
-          damping: 20,
-          mass: 1,
+          delay: 0.8,
+          duration: 1.5,
+          ease: [0.76, 0, 0.24, 1],
         }}
       />
 
-      {/* Lower Curtain */}
+      {/* Right Gate */}
       <motion.div
-        className="absolute bottom-0 left-0 right-0 h-1/2 bg-black z-20"
-        initial={{ y: 0 }}
-        animate={{ y: "100%" }}
+        className="absolute top-0 bottom-0 right-0 w-1/2 z-20"
+        style={{
+          background: `repeating-linear-gradient(
+            0deg,
+            #11111b 0px,
+            #11111b 3px,
+            #181825 3px,
+            #181825 6px
+          )`,
+          boxShadow: "inset 8px 0 20px rgba(0,0,0,0.6)",
+        }}
+        initial={{ x: 0 }}
+        animate={laserDone ? { x: "100%" } : { x: 0 }}
         transition={{
-          delay: 0.5,
-          duration: 1.2,
-          type: "spring",
-          stiffness: 100,
-          damping: 20,
-          mass: 1,
+          delay: 0.8,
+          duration: 1.5,
+          ease: [0.76, 0, 0.24, 1],
         }}
       />
 
-      {/* Dog Container - Falls from above with spring physics */}
+      {/* Dog Container */}
       <AnimatePresence>
         {showDog && (
           <motion.div
             className="absolute inset-0 flex items-center justify-center z-[15]"
             style={{ y: dogY }}
-            onLayoutAnimationComplete={() => {
-              // Alternative landing detection
-            }}
           >
             <div className="w-64 h-64 md:w-80 md:h-80">
               <Canvas
@@ -153,7 +171,7 @@ function CurtainSection({ onCurtainOpen }: { onCurtainOpen: () => void }) {
         )}
       </AnimatePresence>
 
-      {/* Impact Glow Effect - Neon Purple */}
+      {/* Impact Glow Effect */}
       <AnimatePresence>
         {dogLanded && (
           <motion.div
@@ -177,8 +195,13 @@ function CurtainSection({ onCurtainOpen }: { onCurtainOpen: () => void }) {
   );
 }
 
-// ==================== Phase 3: The Credits ====================
-function CreditsSection({ show, onEnter }: { show: boolean; onEnter?: () => void }) {
+function CreditsSection({
+  show,
+  onEnter,
+}: {
+  show: boolean;
+  onEnter?: () => void;
+}) {
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
@@ -211,7 +234,6 @@ function CreditsSection({ show, onEnter }: { show: boolean; onEnter?: () => void
           initial="hidden"
           animate="visible"
         >
-          {/* Main Title */}
           <motion.h1
             className="font-[family-name:var(--font-space-grotesk)] text-6xl md:text-8xl font-bold text-white tracking-tight mb-4"
             variants={itemVariants}
@@ -222,7 +244,6 @@ function CreditsSection({ show, onEnter }: { show: boolean; onEnter?: () => void
             CYBER STRAY
           </motion.h1>
 
-          {/* Subtitle */}
           <motion.p
             className="text-lg md:text-xl text-white/70 tracking-wide mb-12"
             variants={itemVariants}
@@ -230,7 +251,6 @@ function CreditsSection({ show, onEnter }: { show: boolean; onEnter?: () => void
             The automated information hound.
           </motion.p>
 
-          {/* CTA Button - Glassmorphism */}
           <motion.button
             className="pointer-events-auto px-8 py-4 rounded-full text-white font-medium
               backdrop-blur-xl bg-white/10 border border-white/20
@@ -250,7 +270,6 @@ function CreditsSection({ show, onEnter }: { show: boolean; onEnter?: () => void
   );
 }
 
-// ==================== Phase 4: 3D Tilt Background ====================
 function TiltBackground() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [transform, setTransform] = useState({ rotateX: 0, rotateY: 0 });
@@ -264,7 +283,6 @@ function TiltBackground() {
       const mouseX = e.clientX - centerX;
       const mouseY = e.clientY - centerY;
 
-      // Max rotation: 3 degrees
       const rotateY = (mouseX / (rect.width / 2)) * 3;
       const rotateX = -(mouseY / (rect.height / 2)) * 3;
 
@@ -312,11 +330,20 @@ function TiltBackground() {
   );
 }
 
-// ==================== Main HeroStage Component ====================
 export function HeroStage({ onEnter }: { onEnter?: () => void }) {
   const [curtainOpen, setCurtainOpen] = useState(false);
   const [showCredits, setShowCredits] = useState(false);
-  const [isSkipped, setIsSkipped] = useState(false);
+  const [isSkipped, setIsSkipped] = useState(true);
+  const [shake, setShake] = useState(false);
+
+  useEffect(() => {
+    const played = sessionStorage.getItem("cyber_intro_played");
+    if (!played) {
+      setIsSkipped(false);
+    } else {
+      setShowCredits(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (isSkipped) {
@@ -325,7 +352,6 @@ export function HeroStage({ onEnter }: { onEnter?: () => void }) {
     }
 
     if (curtainOpen) {
-      // Show credits 1.5s after curtain opens (dog has landed)
       const timer = setTimeout(() => {
         setShowCredits(true);
       }, 1500);
@@ -333,23 +359,39 @@ export function HeroStage({ onEnter }: { onEnter?: () => void }) {
     }
   }, [curtainOpen, isSkipped]);
 
-  const handleSkip = () => {
+  const handleSkip = useCallback(() => {
     setIsSkipped(true);
     setCurtainOpen(true);
-  };
+    sessionStorage.setItem("cyber_intro_played", "true");
+  }, []);
+
+  const handleEnterClick = useCallback(() => {
+    sessionStorage.setItem("cyber_intro_played", "true");
+    onEnter?.();
+  }, [onEnter]);
+
+  const handleDogLanded = useCallback(() => {
+    setShake(true);
+    setTimeout(() => setShake(false), 400);
+  }, []);
 
   return (
-    <div className="fixed inset-0 w-full h-full overflow-hidden">
-      {/* 3D Tilt Background */}
+    <motion.div
+      className="fixed inset-0 w-full h-full overflow-hidden"
+      animate={shake ? { y: [0, 10, -5, 0] } : { y: 0 }}
+      transition={{ duration: 0.4 }}
+    >
       <TiltBackground />
 
-      {/* Curtain & Dog Section */}
-      {!isSkipped && <CurtainSection onCurtainOpen={() => setCurtainOpen(true)} />}
+      {!isSkipped && (
+        <CurtainSection
+          onCurtainOpen={() => setCurtainOpen(true)}
+          onDogLanded={handleDogLanded}
+        />
+      )}
 
-      {/* Credits Section */}
-      <CreditsSection show={showCredits} onEnter={onEnter} />
+      <CreditsSection show={showCredits} onEnter={handleEnterClick} />
 
-      {/* Skip Animation Button */}
       {!isSkipped && (
         <motion.button
           className="absolute top-6 right-6 z-50 px-4 py-2 text-sm text-white/50 
@@ -363,6 +405,6 @@ export function HeroStage({ onEnter }: { onEnter?: () => void }) {
           Skip Intro
         </motion.button>
       )}
-    </div>
+    </motion.div>
   );
 }

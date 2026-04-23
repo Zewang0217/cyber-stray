@@ -21,6 +21,7 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@gltf-transform/cli": "^4.3.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
