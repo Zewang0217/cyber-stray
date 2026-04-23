@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence, useSpring } from "framer-motion";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
@@ -13,9 +13,23 @@ useGLTF.preload("/low_poly_dog.glb");
 function DogModel() {
   const { scene } = useGLTF("/low_poly_dog.glb");
   const modelRef = useRef<THREE.Group>(null);
+  const startTimeRef = useRef<number>(0);
+  const isInitializedRef = useRef(false);
 
-  // Clone the scene to avoid mutations
-  const clonedScene = scene.clone();
+  const clonedScene = useMemo(() => {
+    const cloned = scene.clone();
+    cloned.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        if (child.material) {
+          child.material.needsUpdate = true;
+          if (child.material.map) {
+            child.material.map.needsUpdate = true;
+          }
+        }
+      }
+    });
+    return cloned;
+  }, [scene]);
 
   useEffect(() => {
     if (modelRef.current) {
@@ -25,14 +39,20 @@ function DogModel() {
       const maxDim = Math.max(size.x, size.y, size.z);
       const scale = 2 / maxDim;
       modelRef.current.scale.setScalar(scale);
-      modelRef.current.position.sub(center.multiplyScalar(scale));
+      modelRef.current.position.x = -center.x * scale;
+      modelRef.current.position.y = -center.y * scale;
+      modelRef.current.position.z = -center.z * scale;
     }
   }, []);
 
-  useFrame((state) => {
+  useFrame(() => {
+    if (!isInitializedRef.current) {
+      startTimeRef.current = Date.now();
+      isInitializedRef.current = true;
+    }
     if (modelRef.current) {
-      // Subtle idle rotation
-      modelRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.5) * 0.1;
+      const elapsed = (Date.now() - startTimeRef.current) / 1000;
+      modelRef.current.rotation.y = Math.sin(elapsed * 0.5) * 0.1;
     }
   });
 
@@ -118,9 +138,13 @@ function CurtainSection({ onCurtainOpen }: { onCurtainOpen: () => void }) {
             }}
           >
             <div className="w-64 h-64 md:w-80 md:h-80">
-              <Canvas camera={{ position: [0, 0, 5], fov: 50 }}>
-                <ambientLight intensity={0.8} />
-                <directionalLight position={[5, 5, 5]} intensity={1} />
+              <Canvas
+                camera={{ position: [0, 0, 8], fov: 50, near: 0.1, far: 1000 }}
+                gl={{ antialias: true, alpha: true }}
+              >
+                <ambientLight intensity={0.6} />
+                <hemisphereLight intensity={0.4} groundColor="#444" />
+                <directionalLight position={[5, 5, 5]} intensity={1.2} />
                 <pointLight position={[-5, -5, -5]} intensity={0.5} color="#8b5cf6" />
                 <DogModel />
               </Canvas>
