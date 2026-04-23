@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence, useSpring } from "framer-motion";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { useGLTF, Environment, Float, ContactShadows } from "@react-three/drei";
+import { EffectComposer, Bloom, ChromaticAberration } from "@react-three/postprocessing";
+import { BlendFunction } from "postprocessing";
 import * as THREE from "three";
 
 useGLTF.preload("/low_poly_dog.glb");
@@ -16,12 +18,13 @@ function DogModel() {
     const cloned = scene.clone();
     cloned.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        child.material = new THREE.MeshPhysicalMaterial({
+        child.material = new THREE.MeshStandardMaterial({
           color: "#1e1e2e",
+          metalness: 0.8,
+          roughness: 0.25,
           emissive: "#cba6f7",
-          emissiveIntensity: 0.5,
-          metalness: 0.9,
-          roughness: 0.1,
+          emissiveIntensity: 0.1,
+          envMapIntensity: 1.0,
         });
       }
     });
@@ -39,20 +42,21 @@ function DogModel() {
       modelRef.current.position.x = -center.x * scale;
       modelRef.current.position.y = -center.y * scale;
       modelRef.current.position.z = -center.z * scale;
+      modelRef.current.rotation.y = Math.PI / 3;
     }
   }, []);
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     if (modelRef.current) {
-      const t = state.clock.elapsedTime;
-      modelRef.current.rotation.y = Math.sin(t * 0.5) * 0.1;
-      modelRef.current.position.y += Math.sin(t * 2) * 0.002;
+      modelRef.current.rotation.y += delta * 0.5;
     }
   });
 
   return (
     <group ref={modelRef}>
-      <primitive object={clonedScene} />
+      <Float speed={2} rotationIntensity={0.2} floatIntensity={0.5}>
+        <primitive object={clonedScene} />
+      </Float>
     </group>
   );
 }
@@ -67,6 +71,7 @@ function CurtainSection({
   const [showDog, setShowDog] = useState(false);
   const [dogLanded, setDogLanded] = useState(false);
   const [laserDone, setLaserDone] = useState(false);
+  const chromaticOffset = useMemo(() => new THREE.Vector2(0.002, 0.002), []);
 
   const dogY = useSpring("-200%", {
     stiffness: 150,
@@ -93,10 +98,10 @@ function CurtainSection({
   }, [dogY, onCurtainOpen, onDogLanded]);
 
   return (
-    <div className="absolute inset-0 z-10">
+    <div className="absolute inset-0 z-[9998]">
       {/* Center Laser Cutting Line */}
       <motion.div
-        className="absolute top-0 bottom-0 left-1/2 w-[2px] -translate-x-1/2 z-30"
+        className="absolute top-0 bottom-0 left-1/2 w-[2px] -translate-x-1/2 z-[10000]"
         style={{ background: "#cba6f7", boxShadow: "0 0 12px 4px oklch(0.7 0.3 300 / 0.6)" }}
         initial={{ opacity: 0, scaleY: 0 }}
         animate={{ opacity: [0, 1, 0], scaleY: [0, 1, 1] }}
@@ -106,7 +111,7 @@ function CurtainSection({
 
       {/* Left Gate */}
       <motion.div
-        className="absolute top-0 bottom-0 left-0 w-1/2 z-20"
+        className="absolute top-0 bottom-0 left-0 w-1/2 z-[9999]"
         style={{
           background: `repeating-linear-gradient(
             0deg,
@@ -128,7 +133,7 @@ function CurtainSection({
 
       {/* Right Gate */}
       <motion.div
-        className="absolute top-0 bottom-0 right-0 w-1/2 z-20"
+        className="absolute top-0 bottom-0 right-0 w-1/2 z-[9999]"
         style={{
           background: `repeating-linear-gradient(
             0deg,
@@ -157,14 +162,29 @@ function CurtainSection({
           >
             <div className="w-64 h-64 md:w-80 md:h-80">
               <Canvas
-                camera={{ position: [0, 0, 8], fov: 50, near: 0.1, far: 1000 }}
-                gl={{ antialias: true, alpha: true }}
+                camera={{ position: [0, 1, 8], fov: 50, near: 0.1, far: 1000 }}
+                gl={{ antialias: true, alpha: true, toneMapping: THREE.ACESFilmicToneMapping }}
               >
-                <ambientLight intensity={0.6} />
-                <hemisphereLight intensity={0.4} groundColor="#444" />
-                <directionalLight position={[5, 5, 5]} intensity={1.2} />
-                <pointLight position={[-5, -5, -5]} intensity={0.5} color="#8b5cf6" />
+                <ambientLight intensity={1.5} color="#1e1e2e" />
+                <directionalLight position={[5, 2, -5]} intensity={10} color="#cba6f7" />
+                <directionalLight position={[-5, 2, 5]} intensity={10} color="#89b4fa" />
+                <Environment preset="city" />
                 <DogModel />
+                <ContactShadows
+                  position={[0, -2, 0]}
+                  opacity={0.4}
+                  scale={10}
+                  blur={2}
+                  far={4}
+                  color="#000000"
+                />
+                <EffectComposer>
+                  <Bloom luminanceThreshold={1} mipmapBlur intensity={1.5} />
+                  <ChromaticAberration
+                    blendFunction={BlendFunction.NORMAL}
+                    offset={chromaticOffset}
+                  />
+                </EffectComposer>
               </Canvas>
             </div>
           </motion.div>
@@ -377,7 +397,7 @@ export function HeroStage({ onEnter }: { onEnter?: () => void }) {
 
   return (
     <motion.div
-      className="fixed inset-0 w-full h-full overflow-hidden"
+      className="fixed inset-0 w-full h-full overflow-hidden z-[9999]"
       animate={shake ? { y: [0, 10, -5, 0] } : { y: 0 }}
       transition={{ duration: 0.4 }}
     >
@@ -394,7 +414,7 @@ export function HeroStage({ onEnter }: { onEnter?: () => void }) {
 
       {!isSkipped && (
         <motion.button
-          className="absolute top-6 right-6 z-50 px-4 py-2 text-sm text-white/50 
+          className="absolute top-6 right-6 z-[10001] px-4 py-2 text-sm text-white/50 
             backdrop-blur-md bg-black/20 rounded-full border border-white/10
             hover:text-white/80 hover:bg-black/30 transition-colors"
           initial={{ opacity: 0 }}
