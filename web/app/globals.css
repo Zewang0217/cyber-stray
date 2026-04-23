@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* ============================================
+     Semantic Colors (mapped via CSS variables)
+     These reference --c-* vars that are theme-swapped
+     ============================================ */
+  --color-base: var(--c-base);
+  --color-mantle: var(--c-mantle);
+  --color-crust: var(--c-crust);
+  --color-text: var(--c-text);
+  --color-subtext: var(--c-subtext);
+  --color-accent: var(--c-accent);
+  --color-accent-blue: var(--c-accent-blue);
+  --color-danger: var(--c-danger);
+  --color-warning: var(--c-warning);
+  --color-success: var(--c-success);
+  --color-surface: var(--c-surface);
+  --color-surface-highlight: var(--c-surface-highlight);
+  --color-overlay: var(--c-overlay);
+
+  /* ============================================
+     Typography
+     ============================================ */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+  --font-heading: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+
+  /* ============================================
+     Animations
+     ============================================ */
+  --animate-pulse-border: pulse-border 2s ease-in-out infinite;
+  --animate-radar-spin: radar-spin 3s linear infinite;
+  --animate-cursor-blink: cursor-blink 1s step-end infinite;
+
+  @keyframes pulse-border {
+    0%, 100% {
+      opacity: 0.3;
+      box-shadow: 0 0 8px 0px var(--c-danger);
+    }
+    50% {
+      opacity: 0.8;
+      box-shadow: 0 0 24px 4px var(--c-danger);
+    }
+  }
+
+  @keyframes radar-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes cursor-blink {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
+}
+
+/* ============================================
+   Mocha (Dark) - Default Theme
+   ============================================ */
+:root {
+  --c-base: #1e1e2e;
+  --c-mantle: #181825;
+  --c-crust: #11111b;
+  --c-text: #cdd6f4;
+  --c-subtext: #a6adc8;
+  --c-accent: #cba6f7;
+  --c-accent-blue: #89b4fa;
+  --c-danger: #f38ba8;
+  --c-warning: #f9e2af;
+  --c-success: #a6e3a1;
+  --c-surface: #313244;
+  --c-surface-highlight: #45475a;
+  --c-overlay: #6c7086;
+
+  --background: var(--c-base);
+  --foreground: var(--c-text);
+}
+
+/* ============================================
+   Latte (Light) Theme
+   ============================================ */
+html.light {
+  --c-base: #eff1f5;
+  --c-mantle: #e6e9ef;
+  --c-crust: #dce0e8;
+  --c-text: #4c4f69;
+  --c-subtext: #6c6f85;
+  --c-accent: #8839ef;
+  --c-accent-blue: #1e66f5;
+  --c-danger: #d20f39;
+  --c-warning: #df8e1d;
+  --c-success: #40a02b;
+  --c-surface: #ccd0da;
+  --c-surface-highlight: #bcc0cc;
+  --c-overlay: #9ca0b0;
+}
+
+/* ============================================
+   Global Styles
+   ============================================ */
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--c-base);
+  color: var(--c-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--c-crust);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--c-surface-highlight);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--c-overlay);
+}
+
+/* Selection */
+::selection {
+  background-color: var(--c-accent);
+  color: var(--c-crust);
+}
