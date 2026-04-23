@@ -1,28 +1,41 @@
 import { consola } from '../logger';
+import { search } from '../tools/search/index.js';
+import { filterResults } from '../tools/filter/index.js';
+import { config } from '../config.js';
 import type { Decision, AgentState } from '../types';
 
 const logger = consola.withTag('actions');
 
 /**
  * 执行狩猎行动
- * TODO: Phase 4 实现完整流程
- * 流程：搜索话题 → 筛选结果 → 生成文案 → 推送
+ * Phase 5: 搜索话题 → 筛选结果 → TODO: 生成文案 → 推送
  */
 export async function executeHunt(decision: Decision, state: AgentState): Promise<void> {
   const topic = decision.params?.topic ?? state.userLikes[state.userLikes.length - 1] ?? '科技新闻';
 
   logger.info('执行狩猎', { topic, reasoning: decision.reasoning });
 
-  // TODO: 调用搜索工具
-  // const results = await searchTopic(topic);
+  const results = await search(topic, { maxResults: config.maxSearchResults });
 
-  // TODO: 筛选并生成文案
-  // const content = await generateContent(results, state);
+  if (results.length === 0) {
+    logger.warn('搜索无结果', { topic });
+    return;
+  }
 
-  // TODO: 推送到飞书
-  // await pushToFeishu(content);
+  const filtered = await filterResults(results, state, { topic });
 
-  logger.success('狩猎完成（骨架阶段，未实际搜索）');
+  if (filtered.length === 0) {
+    logger.warn('筛选后无合格结果', { topic, originalCount: results.length });
+    return;
+  }
+
+  logger.success('筛选完成', {
+    topic,
+    originalCount: results.length,
+    filteredCount: filtered.length,
+    topScore: filtered[0]?.score,
+    topResult: filtered[0]?.title,
+  });
 }
 
 /**

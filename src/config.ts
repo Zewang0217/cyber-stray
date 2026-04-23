@@ -21,6 +21,7 @@ export const config: AgentConfig = {
   llmTemperature: 0.8,  // 高温度增加随机性
 
   // 搜索配置
+  searchProvider: process.env.SEARCH_PROVIDER || 'duckduckgo',
   searchApiKey: process.env.TAVILY_API_KEY || '',
   maxSearchResults: 10,
 
@@ -36,7 +37,7 @@ export const config: AgentConfig = {
 export function validateConfig(): void {
   const missing: string[] = [];
 
-  if (!config.searchApiKey) {
+  if (config.searchProvider !== 'duckduckgo' && !config.searchApiKey) {
     missing.push('TAVILY_API_KEY');
   }
 
