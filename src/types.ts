@@ -123,6 +123,7 @@ export interface AgentConfig {
   llmTemperature: number;
   
   // 搜索配置
+  searchProvider: string;
   searchApiKey: string;
   maxSearchResults: number;
   

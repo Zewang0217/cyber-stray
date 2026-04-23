@@ -58,4 +58,16 @@
 - **对话/日志区**: 模拟终端控制台（Terminal），文字出现需要带有类似打字机（Typewriter）的效果，光标一直闪烁。
 
 ## 6. AI 编码提示 (Prompt for Cursor/Windsurf)
+
 > "Act as an elite frontend engineer and creative developer. Strictly follow this DESIGN.md. Whenever you create a new component, apply Catppuccin colors, ensure the font pairings (Space Grotesk + Mono), and wrap it in Framer Motion spring animations. Build me a UI that feels alive, fluid, and heavily themed around a cyberpunk digital pet wandering the web."
+
+## 7. 编码时提示
+
+# UI Generation Quality Standards (Kimi K2.6 / Cinematic Level)
+
+When generating Next.js (React) + Tailwind + Framer Motion components, you MUST adhere to these elite frontend standards:
+1. **Color Space:** Use `oklch()` for all dynamic colors, gradients, and glows to ensure flawless, human-perceptual color blending. No muddy RGB gradients.
+2. **Fluidity:** Use `clamp()` for typography sizes and container paddings. The layout must scale infinitely and fluidly without relying solely on rigid `sm/md/lg` breakpoints.
+3. **Motion Orchestration:** Never use basic `opacity-100` transitions. Every entrance must be orchestrated. Use Framer Motion's `staggerChildren` for lists. Add subtle Parallax via `useScroll` on Hero sections.
+4. **Glassmorphism & Depth:** Cards should use ultra-refined glass effects (e.g., `backdrop-blur-xl bg-white/5 border border-white/10`) with distinct depth layers.
+5. **Typesafe:** Everything must be 100% strictly typed TypeScript. No `any`.
