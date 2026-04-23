@@ -11,10 +11,6 @@ interface CircularGaugeProps {
   strokeWidth?: number;
 }
 
-/**
- * 环形发光进度条
- * 用于展示 boredom / energy / temper 等状态值
- */
 export function CircularGauge({
   value,
   max = 100,
@@ -31,7 +27,6 @@ export function CircularGauge({
   return (
     <div className="flex flex-col items-center gap-2">
       <div className="relative" style={{ width: size, height: size }}>
-        {/* 发光滤镜背景 */}
         <svg
           width={size}
           height={size}
@@ -45,9 +40,31 @@ export function CircularGauge({
                 <feMergeNode in="SourceGraphic" />
               </feMerge>
             </filter>
+            <filter id={`liquid-${label}`}>
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.02"
+                numOctaves="3"
+                result="noise"
+                seed={label.length * 17 + value}
+              >
+                <animate
+                  attributeName="baseFrequency"
+                  values="0.02;0.04;0.02"
+                  dur="3s"
+                  repeatCount="indefinite"
+                />
+              </feTurbulence>
+              <feDisplacementMap
+                in="SourceGraphic"
+                in2="noise"
+                scale="3"
+                xChannelSelector="R"
+                yChannelSelector="G"
+              />
+            </filter>
           </defs>
 
-          {/* 背景轨道 */}
           <circle
             cx={size / 2}
             cy={size / 2}
@@ -59,7 +76,6 @@ export function CircularGauge({
             opacity={0.3}
           />
 
-          {/* 进度条 */}
           <motion.circle
             cx={size / 2}
             cy={size / 2}
@@ -72,14 +88,13 @@ export function CircularGauge({
             initial={{ strokeDashoffset: circumference }}
             animate={{ strokeDashoffset }}
             transition={{ type: "spring", stiffness: 400, damping: 25 }}
-            filter={`url(#glow-${label})`}
+            filter={`url(#glow-${label}) url(#liquid-${label})`}
           />
         </svg>
 
-        {/* 中心数值 */}
         <div className="absolute inset-0 flex items-center justify-center">
           <motion.span
-            className="font-mono text-lg font-bold"
+            className="font-mono text-body font-bold"
             style={{ color }}
             initial={{ opacity: 0, scale: 0.5 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -90,8 +105,7 @@ export function CircularGauge({
         </div>
       </div>
 
-      {/* 标签 */}
-      <span className="text-xs font-medium text-subtext uppercase tracking-wider">
+      <span className="text-xs-fluid font-medium text-subtext uppercase tracking-wider">
         {label}
       </span>
     </div>

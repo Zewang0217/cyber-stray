@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useScroll, useTransform } from "framer-motion";
 import { useAgentState } from "@/hooks/useAgentState";
 import { CircularGauge } from "@/components/dashboard/CircularGauge";
 import { MoodBadge } from "@/components/dashboard/MoodBadge";
@@ -11,17 +11,20 @@ import { PulseBorder } from "@/components/effects/PulseBorder";
 /**
  * Dashboard 首页
  * Agent 状态总览与核心指标展示
+ * 包含 parallax 滚动效果和 staggerChildren 动画编排
  */
 export default function DashboardPage(): React.ReactElement {
   const { state, isLoading, error } = useAgentState();
-
+  const { scrollY } = useScroll();
+  const heroY = useTransform(scrollY, [0, 300], [0, -50]);
+  const heroOpacity = useTransform(scrollY, [0, 200], [1, 0.3]);
 
   const isBored = state ? state.boredom >= 80 : false;
 
 
   if (isLoading) {
     return (
-      <div className="p-8 flex items-center justify-center min-h-screen">
+      <div className="spacing-lg flex items-center justify-center min-h-screen">
         <motion.div
           className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent"
           animate={{ rotate: 360 }}
@@ -33,24 +36,27 @@ export default function DashboardPage(): React.ReactElement {
 
   if (error || !state) {
     return (
-      <div className="p-8 flex items-center justify-center min-h-screen">
+      <div className="spacing-lg flex items-center justify-center min-h-screen">
         <div className="text-center">
           <p className="text-danger font-mono mb-2">ERROR: {error ?? "State unavailable"}</p>
-          <p className="text-subtext text-sm">请确认 Agent 已启动并生成了 data/state.json</p>
+          <p className="text-subtext text-small">请确认 Agent 已启动并生成了 data/state.json</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="spacing-lg max-w-6xl mx-auto">
       {isBored && <PulseBorder />}
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-10">
+      {/* Header with Parallax */}
+      <motion.div 
+        className="flex items-center justify-between mb-10"
+        style={{ y: heroY, opacity: heroOpacity }}
+      >
         <div>
           <motion.h1
-            className="font-heading text-3xl font-bold text-text"
+            className="font-heading text-hero font-bold text-text"
             style={{ letterSpacing: "-0.04em" }}
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -58,16 +64,22 @@ export default function DashboardPage(): React.ReactElement {
           >
             仪表盘
           </motion.h1>
-          <p className="text-subtext mt-1">实时监控 Agent 状态与活动</p>
+          <p className="text-body text-subtext mt-1">实时监控 Agent 状态与活动</p>
         </div>
         <ThemeToggle />
-      </div>
-      {/* 状态卡片区 */}
+      </motion.div>
+      {/* 状态卡片区 - Stagger Animation */}
       <motion.div
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 400, damping: 25, delay: 0.1 }}
+        initial="hidden"
+        animate="visible"
+        variants={{
+          hidden: { opacity: 0 },
+          visible: {
+            opacity: 1,
+            transition: { staggerChildren: 0.12, delayChildren: 0.1 },
+          },
+        }}
       >
         <StatCard
           label="总狩猎次数"
@@ -99,9 +111,9 @@ export default function DashboardPage(): React.ReactElement {
         transition={{ type: "spring", stiffness: 400, damping: 25, delay: 0.2 }}
       >
         {/* 状态仪表盘 */}
-        <div className="lg:col-span-2 p-6 rounded-2xl bg-mantle/60 border border-surface backdrop-blur-sm">
+        <div className="lg:col-span-2 p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="font-heading text-lg font-bold text-text">Agent 状态</h2>
+            <h2 className="font-heading text-heading font-bold text-text">Agent 状态</h2>
             <MoodBadge mood={state.mood} />
           </div>
           <div className="flex items-center justify-around py-4">
@@ -162,8 +174,8 @@ export default function DashboardPage(): React.ReactElement {
           </div>
         </div>
         {/* 快捷信息面板 */}
-        <div className="p-6 rounded-2xl bg-mantle/60 border border-surface backdrop-blur-sm">
-          <h2 className="font-heading text-lg font-bold text-text mb-4">
+        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
+          <h2 className="font-heading text-heading font-bold text-text mb-4">
             记忆碎片
           </h2>
           <div className="space-y-4">

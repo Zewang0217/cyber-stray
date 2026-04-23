@@ -21,7 +21,7 @@ export function GlassCard({
   return (
     <motion.div
       className={cn(
-        "relative p-6 rounded-2xl bg-mantle/60 border border-surface backdrop-blur-sm overflow-hidden group hover:border-accent/20 transition-colors",
+        "relative p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10 overflow-hidden group hover:border-accent/20 transition-colors",
         className
       )}
       whileHover={{ y: -4 }}

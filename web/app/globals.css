@@ -20,6 +20,25 @@
   --color-overlay: var(--c-overlay);
 
   /* ============================================
+     Fluid Typography (clamp-based)
+     ============================================ */
+  --font-size-hero: clamp(2rem, 5vw + 1rem, 4rem);
+  --font-size-title: clamp(1.5rem, 3vw + 0.5rem, 2.5rem);
+  --font-size-heading: clamp(1.125rem, 2vw + 0.25rem, 1.5rem);
+  --font-size-body: clamp(1rem, 2vw, 1.25rem);
+  --font-size-small: clamp(0.75rem, 1.5vw, 0.875rem);
+  --font-size-xs: clamp(0.625rem, 1vw, 0.75rem);
+
+  /* ============================================
+     Fluid Spacing (clamp-based)
+     ============================================ */
+  --spacing-fluid-xs: clamp(0.25rem, 0.5vw, 0.5rem);
+  --spacing-fluid-sm: clamp(0.5rem, 1vw, 1rem);
+  --spacing-fluid-md: clamp(1rem, 2vw, 2rem);
+  --spacing-fluid-lg: clamp(2rem, 4vw, 4rem);
+  --spacing-fluid-xl: clamp(3rem, 6vw, 6rem);
+
+  /* ============================================
      Typography
      ============================================ */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
@@ -36,11 +55,11 @@
   @keyframes pulse-border {
     0%, 100% {
       opacity: 0.3;
-      box-shadow: 0 0 8px 0px var(--c-danger);
+      box-shadow: 0 0 8px 0px oklch(0.658 0.222 18);
     }
     50% {
       opacity: 0.8;
-      box-shadow: 0 0 24px 4px var(--c-danger);
+      box-shadow: 0 0 24px 4px oklch(0.658 0.222 18);
     }
   }
 
@@ -65,21 +84,22 @@
 
 /* ============================================
    Mocha (Dark) - Default Theme
+   All colors in oklch color space
    ============================================ */
 :root {
-  --c-base: #1e1e2e;
-  --c-mantle: #181825;
-  --c-crust: #11111b;
-  --c-text: #cdd6f4;
-  --c-subtext: #a6adc8;
-  --c-accent: #cba6f7;
-  --c-accent-blue: #89b4fa;
-  --c-danger: #f38ba8;
-  --c-warning: #f9e2af;
-  --c-success: #a6e3a1;
-  --c-surface: #313244;
-  --c-surface-highlight: #45475a;
-  --c-overlay: #6c7086;
+  --c-base: oklch(0.185 0.014 265);
+  --c-mantle: oklch(0.162 0.012 265);
+  --c-crust: oklch(0.129 0.008 265);
+  --c-text: oklch(0.892 0.038 265);
+  --c-subtext: oklch(0.767 0.031 265);
+  --c-accent: oklch(0.702 0.148 326.5);
+  --c-accent-blue: oklch(0.707 0.132 253);
+  --c-danger: oklch(0.658 0.222 18);
+  --c-warning: oklch(0.863 0.132 95);
+  --c-success: oklch(0.768 0.137 148);
+  --c-surface: oklch(0.286 0.024 265);
+  --c-surface-highlight: oklch(0.346 0.030 265);
+  --c-overlay: oklch(0.467 0.036 265);
 
   --background: var(--c-base);
   --foreground: var(--c-text);
@@ -87,21 +107,22 @@
 
 /* ============================================
    Latte (Light) Theme
+   All colors in oklch color space
    ============================================ */
 html.light {
-  --c-base: #eff1f5;
-  --c-mantle: #e6e9ef;
-  --c-crust: #dce0e8;
-  --c-text: #4c4f69;
-  --c-subtext: #6c6f85;
-  --c-accent: #8839ef;
-  --c-accent-blue: #1e66f5;
-  --c-danger: #d20f39;
-  --c-warning: #df8e1d;
-  --c-success: #40a02b;
-  --c-surface: #ccd0da;
-  --c-surface-highlight: #bcc0cc;
-  --c-overlay: #9ca0b0;
+  --c-base: oklch(0.951 0.020 265);
+  --c-mantle: oklch(0.930 0.018 265);
+  --c-crust: oklch(0.912 0.016 265);
+  --c-text: oklch(0.331 0.048 265);
+  --c-subtext: oklch(0.476 0.042 265);
+  --c-accent: oklch(0.546 0.245 330);
+  --c-accent-blue: oklch(0.497 0.242 259);
+  --c-danger: oklch(0.472 0.268 19);
+  --c-warning: oklch(0.705 0.188 80);
+  --c-success: oklch(0.578 0.218 145);
+  --c-surface: oklch(0.858 0.032 265);
+  --c-surface-highlight: oklch(0.830 0.034 265);
+  --c-overlay: oklch(0.671 0.040 265);
 }
 
 /* ============================================
@@ -120,7 +141,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -139,8 +159,54 @@ body {
   background: var(--c-overlay);
 }
 
-/* Selection */
 ::selection {
   background-color: var(--c-accent);
   color: var(--c-crust);
+}
+
+/* ============================================
+   Utility Classes for Fluid Typography
+   ============================================ */
+.text-hero {
+  font-size: var(--font-size-hero);
+}
+
+.text-title {
+  font-size: var(--font-size-title);
+}
+
+.text-heading {
+  font-size: var(--font-size-heading);
+}
+
+.text-body {
+  font-size: var(--font-size-body);
+}
+
+.text-small {
+  font-size: var(--font-size-small);
+}
+
+.text-xs-fluid {
+  font-size: var(--font-size-xs);
+}
+
+.spacing-xs {
+  padding: var(--spacing-fluid-xs);
+}
+
+.spacing-sm {
+  padding: var(--spacing-fluid-sm);
+}
+
+.spacing-md {
+  padding: var(--spacing-fluid-md);
+}
+
+.spacing-lg {
+  padding: var(--spacing-fluid-lg);
+}
+
+.spacing-xl {
+  padding: var(--spacing-fluid-xl);
 }

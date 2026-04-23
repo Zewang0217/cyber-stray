@@ -13,7 +13,7 @@ export default function HistoryPage(): React.ReactElement {
 
   if (isLoading) {
     return (
-      <div className="p-8 flex items-center justify-center min-h-screen">
+      <div className="spacing-lg flex items-center justify-center min-h-screen">
         <motion.div
           className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent"
           animate={{ rotate: 360 }}
@@ -25,14 +25,14 @@ export default function HistoryPage(): React.ReactElement {
 
   if (error) {
     return (
-      <div className="p-8 flex items-center justify-center min-h-screen">
+      <div className="spacing-lg flex items-center justify-center min-h-screen">
         <p className="text-danger font-mono">ERROR: {error}</p>
       </div>
     );
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="spacing-lg max-w-6xl mx-auto">
       <motion.div
         className="mb-8"
         initial={{ opacity: 0, y: -20 }}
@@ -40,12 +40,12 @@ export default function HistoryPage(): React.ReactElement {
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
       >
         <h1
-          className="font-heading text-3xl font-bold text-text"
+          className="font-heading text-hero font-bold text-text"
           style={{ letterSpacing: "-0.04em" }}
         >
           历史推送
         </h1>
-        <p className="text-subtext mt-1">
+        <p className="text-body text-subtext mt-1">
           共 {items.length} 条推送记录
         </p>
       </motion.div>
@@ -56,8 +56,8 @@ export default function HistoryPage(): React.ReactElement {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
         >
-          <p className="text-lg mb-2">暂无推送记录</p>
-          <p className="text-sm">Agent 还在游荡中，发现有趣内容后会自动推送...</p>
+          <p className="text-heading mb-2">暂无推送记录</p>
+          <p className="text-small">Agent 还在游荡中，发现有趣内容后会自动推送...</p>
         </motion.div>
       ) : (
         <motion.div

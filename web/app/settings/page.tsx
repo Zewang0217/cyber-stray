@@ -8,7 +8,7 @@ import { motion } from "framer-motion";
  */
 export default function SettingsPage(): React.ReactElement {
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="spacing-lg max-w-6xl mx-auto">
       <motion.div
         className="mb-8"
         initial={{ opacity: 0, y: -20 }}
@@ -16,12 +16,12 @@ export default function SettingsPage(): React.ReactElement {
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
       >
         <h1
-          className="font-heading text-3xl font-bold text-text"
+          className="font-heading text-hero font-bold text-text"
           style={{ letterSpacing: "-0.04em" }}
         >
           设置
         </h1>
-        <p className="text-subtext mt-1">
+        <p className="text-body text-subtext mt-1">
           查看当前 Agent 配置（修改需编辑后端 .env 文件）
         </p>
       </motion.div>
@@ -33,8 +33,8 @@ export default function SettingsPage(): React.ReactElement {
         transition={{ type: "spring", stiffness: 400, damping: 25, delay: 0.1 }}
       >
         {/* 心跳配置 */}
-        <div className="p-6 rounded-2xl bg-mantle/60 border border-surface backdrop-blur-sm">
-          <h2 className="font-heading text-lg font-bold text-text mb-4">
+        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
+          <h2 className="font-heading text-heading font-bold text-text mb-4">
             心跳与状态
           </h2>
           <div className="space-y-4 font-mono text-sm">
@@ -62,8 +62,8 @@ export default function SettingsPage(): React.ReactElement {
         </div>
 
         {/* LLM 配置 */}
-        <div className="p-6 rounded-2xl bg-mantle/60 border border-surface backdrop-blur-sm">
-          <h2 className="font-heading text-lg font-bold text-text mb-4">
+        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
+          <h2 className="font-heading text-heading font-bold text-text mb-4">
             LLM 配置
           </h2>
           <div className="space-y-4 font-mono text-sm">
@@ -79,8 +79,8 @@ export default function SettingsPage(): React.ReactElement {
         </div>
 
         {/* 搜索配置 */}
-        <div className="p-6 rounded-2xl bg-mantle/60 border border-surface backdrop-blur-sm">
-          <h2 className="font-heading text-lg font-bold text-text mb-4">
+        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
+          <h2 className="font-heading text-heading font-bold text-text mb-4">
             搜索配置
           </h2>
           <div className="space-y-4 font-mono text-sm">
@@ -96,8 +96,8 @@ export default function SettingsPage(): React.ReactElement {
         </div>
 
         {/* 推送配置 */}
-        <div className="p-6 rounded-2xl bg-mantle/60 border border-surface backdrop-blur-sm">
-          <h2 className="font-heading text-lg font-bold text-text mb-4">
+        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
+          <h2 className="font-heading text-heading font-bold text-text mb-4">
             推送渠道
           </h2>
           <div className="space-y-4 font-mono text-sm">

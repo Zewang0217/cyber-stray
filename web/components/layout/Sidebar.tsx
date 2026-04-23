@@ -35,7 +35,7 @@ export function Sidebar(): React.ReactElement {
   return (
     <aside className="fixed left-0 top-0 h-full w-64 z-50 flex flex-col">
       {/* 玻璃背景 */}
-      <div className="absolute inset-0 bg-mantle/80 backdrop-blur-md border-r border-surface" />
+      <div className="absolute inset-0 backdrop-blur-xl bg-mantle/[0.08] border-r border-white/10" />
 
       <div className="relative flex flex-col h-full p-6">
         {/* Logo */}

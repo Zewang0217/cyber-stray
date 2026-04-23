@@ -44,7 +44,7 @@ export function MouseGlow(): React.ReactElement {
         className="w-[600px] h-[600px] rounded-full opacity-[0.06] blur-3xl"
         style={{
           background:
-            "radial-gradient(circle, var(--color-mocha-mauve) 0%, transparent 70%)",
+            "radial-gradient(circle, oklch(0.702 0.148 326.5) 0%, transparent 70%)",
         }}
       />
     </motion.div>

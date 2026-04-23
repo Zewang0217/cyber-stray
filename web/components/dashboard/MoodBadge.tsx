@@ -55,8 +55,8 @@ export function MoodBadge({ mood }: MoodBadgeProps): React.ReactElement {
     <motion.div
       className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border"
       style={{
-        borderColor: `color-mix(in srgb, ${config.colorVar} 25%, transparent)`,
-        backgroundColor: `color-mix(in srgb, ${config.colorVar} 8%, transparent)`,
+        borderColor: `color-mix(in oklch, ${config.colorVar} 25%, transparent)`,
+        backgroundColor: `color-mix(in oklch, ${config.colorVar} 8%, transparent)`,
       }}
       animate={
         mood === "excited"

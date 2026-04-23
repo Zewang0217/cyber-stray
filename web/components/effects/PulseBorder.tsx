@@ -18,7 +18,7 @@ export function PulseBorder(): React.ReactElement {
       <div
         className="absolute inset-0 rounded-none"
         style={{
-          boxShadow: "inset 0 0 60px 10px color-mix(in srgb, var(--color-danger) 15%, transparent)",
+          boxShadow: "inset 0 0 60px 10px oklch(0.658 0.222 18 / 0.15)",
           animation: "pulse-border 2s ease-in-out infinite",
         }}
       />

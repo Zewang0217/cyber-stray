@@ -16,7 +16,7 @@ interface FeedCardProps {
 export function FeedCard({ item }: FeedCardProps): React.ReactElement {
   return (
     <motion.div
-      className="group p-5 rounded-2xl bg-mantle/60 border border-surface backdrop-blur-sm overflow-hidden hover:border-accent/20 transition-colors"
+      className="group p-5 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10 overflow-hidden hover:border-accent/20 transition-colors"
       variants={{
         hidden: { opacity: 0, y: 30, scale: 0.95 },
         visible: {
@@ -37,7 +37,7 @@ export function FeedCard({ item }: FeedCardProps): React.ReactElement {
       <div
         className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
         style={{
-          boxShadow: `inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 20%, transparent), 0 0 20px -5px color-mix(in srgb, var(--color-accent) 15%, transparent)`,
+          boxShadow: `inset 0 0 0 1px oklch(0.702 0.148 326.5 / 0.2), 0 0 20px -5px oklch(0.702 0.148 326.5 / 0.15)`,
         }}
       />
 

@@ -17,8 +17,8 @@ export function CyberGridBackground(): React.ReactElement {
         className="absolute inset-0 opacity-[0.04]"
         style={{
           backgroundImage: `
-            linear-gradient(to right, var(--color-accent) 1px, transparent 1px),
-            linear-gradient(to bottom, var(--color-accent) 1px, transparent 1px)
+            linear-gradient(to right, oklch(0.702 0.148 326.5) 1px, transparent 1px),
+            linear-gradient(to bottom, oklch(0.702 0.148 326.5) 1px, transparent 1px)
           `,
           backgroundSize: "60px 60px",
         }}
@@ -36,7 +36,7 @@ export function CyberGridBackground(): React.ReactElement {
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse at center, transparent 0%, var(--color-crust) 80%)",
+            "radial-gradient(ellipse at center, transparent 0%, oklch(0.129 0.008 265) 80%)",
         }}
       />
     </div>

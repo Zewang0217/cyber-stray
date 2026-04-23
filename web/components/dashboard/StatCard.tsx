@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, type Variants } from "framer-motion";
 
 interface StatCardProps {
   label: string;
@@ -9,11 +9,16 @@ interface StatCardProps {
   color?: string;
 }
 
-/**
- * 统计卡片
- * 展示总狩猎次数、总推送次数等数据
- * 使用等宽字体，带连字
- */
+const cardVariants: Variants = {
+  hidden: { opacity: 0, y: 30, scale: 0.95 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { type: "spring", stiffness: 400, damping: 25 },
+  },
+};
+
 export function StatCard({
   label,
   value,
@@ -22,7 +27,8 @@ export function StatCard({
 }: StatCardProps): React.ReactElement {
   return (
     <motion.div
-      className="relative p-5 rounded-2xl bg-mantle/60 border border-surface backdrop-blur-sm overflow-hidden group hover:border-accent/20 transition-colors"
+      className="relative p-5 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10 overflow-hidden group hover:border-accent/20 transition-colors"
+      variants={cardVariants}
       whileHover={{ y: -4 }}
       transition={{ type: "spring", stiffness: 400, damping: 25 }}
     >
