@@ -1,4 +1,5 @@
 {
+  "_searchProviderNote": "通过 SEARCH_PROVIDER 环境变量配置，可选值: duckduckgo(免费无实时新闻), tavily(实时新闻), exa(Neural search)",
   "heartbeatInterval": 5,
   "boredomGrowthRate": 5,
   "energyRecoveryRate": 2,
@@ -7,5 +8,6 @@
   "llmTemperature": 0.8,
   "maxSearchResults": 10,
   "maxWanderSteps": 10,
-  "wanderTemperature": 0.9
+  "wanderTemperature": 0.9,
+  "outputLanguage": "zh-CN"
 }

@@ -17,18 +17,20 @@ type BehaviorConfig = Pick<
   | 'maxSearchResults'
   | 'maxWanderSteps'
   | 'wanderTemperature'
+  | 'outputLanguage'
 >;
 
 const defaultBehavior: BehaviorConfig = {
-  heartbeatInterval: 5,      // 分钟
-  boredomGrowthRate: 5,      // 每次心跳无聊值 +5
-  energyRecoveryRate: 2,     // 每次心跳精力 +2
+  heartbeatInterval: 5,
+  boredomGrowthRate: 5,
+  energyRecoveryRate: 2,
   boredomThreshold: 50,
   energyThreshold: 20,
-  llmTemperature: 0.8,       // 高温度增加随机性
+  llmTemperature: 0.8,
   maxSearchResults: 10,
-  maxWanderSteps: 10,        // 每次游荡最多 10 步
-  wanderTemperature: 0.9,    // 游荡高随机性
+  maxWanderSteps: 10,
+  wanderTemperature: 0.9,
+  outputLanguage: 'zh-CN',
 };
 
 /**
@@ -60,6 +62,7 @@ export const config: AgentConfig = {
   // 搜索配置（provider/key 来自环境变量）
   searchProvider: process.env.SEARCH_PROVIDER || 'duckduckgo',
   searchApiKey: process.env.TAVILY_API_KEY || '',
+  exaApiKey: process.env.EXA_API_KEY || '',
 
   // 推送配置（webhook/token 来自环境变量）
   feishuWebhook: process.env.FEISHU_WEBHOOK,

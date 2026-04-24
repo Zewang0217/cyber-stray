@@ -19,11 +19,16 @@ const defaultState: AgentState = {
   recentTopics: [],
   userLikes: ['科技', 'AI'],
   userDislikes: [],
+  agentInterests: ['AI', '科技新闻', '互联网'],
+  wanderHistory: [],
   totalHunts: 5,
+  totalWanders: 5,
+  totalSteps: 10,
   totalPushes: 3,
   consecutiveFailures: 0,
   lastHeartbeat: new Date().toISOString(),
   lastHunt: null,
+  lastWander: null,
   lastRest: null,
 };
 
