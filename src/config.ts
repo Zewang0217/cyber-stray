@@ -20,6 +20,10 @@ export const config: AgentConfig = {
   llmModel: process.env.LLM_MODEL || 'deepseek-chat',
   llmTemperature: 0.8,  // 高温度增加随机性
 
+  // ReAct Loop 配置
+  maxWanderSteps: 10,      // 每次游荡最多 10 步
+  wanderTemperature: 0.9,  // 游荡高随机性
+
   // 搜索配置
   searchProvider: process.env.SEARCH_PROVIDER || 'duckduckgo',
   searchApiKey: process.env.TAVILY_API_KEY || '',
@@ -36,6 +40,10 @@ export const config: AgentConfig = {
  */
 export function validateConfig(): void {
   const missing: string[] = [];
+
+  if (!process.env.DEEPSEEK_API_KEY) {
+    missing.push('DEEPSEEK_API_KEY');
+  }
 
   if (config.searchProvider !== 'duckduckgo' && !config.searchApiKey) {
     missing.push('TAVILY_API_KEY');

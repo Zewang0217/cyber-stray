@@ -26,14 +26,21 @@ function createDefaultState(): AgentState {
     userLikes: [],
     userDislikes: [],
 
+    // Agent 个性化（ReAct 架构）
+    agentInterests: ['科技', 'AI', '互联网'],
+    wanderHistory: [],
+
     // 统计
     totalHunts: 0,
+    totalWanders: 0,
+    totalSteps: 0,
     totalPushes: 0,
     consecutiveFailures: 0,
 
     // 时间感知
     lastHeartbeat: new Date().toISOString(),
     lastHunt: null,
+    lastWander: null,
     lastRest: null,
   };
 }

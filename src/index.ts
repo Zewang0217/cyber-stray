@@ -1,7 +1,6 @@
 import { config, validateConfig } from "./config.js";
 import { loadState, heartbeat } from "./agent/state.js";
-import { decide } from "./agent/planner.js";
-import { executeAction } from "./agent/actions.js";
+import { runAgentLoop } from "./agent/react.js";
 import { consola } from "./logger.js";
 
 const logger = consola.withTag("main");
@@ -27,6 +26,7 @@ async function main(): Promise<void> {
     boredom: state.boredom,
     energy: state.energy,
     mood: state.mood,
+    totalWanders: state.totalWanders,
   });
 
   // 启动心跳定时器
@@ -55,12 +55,14 @@ function startHeartbeat(): void {
 
 /**
  * 执行心跳
+ *
+ * 流程：更新状态 → 直接启动 ReAct Loop → LLM 自主决定是否游荡及如何游荡
  */
 async function runHeartbeat(): Promise<void> {
   logger.info("心跳触发");
 
   try {
-    // 1. 更新状态
+    // 1. 更新状态（无聊值增长、精力恢复）
     const state = await heartbeat(
       config.boredomGrowthRate,
       config.energyRecoveryRate,
@@ -73,13 +75,17 @@ async function runHeartbeat(): Promise<void> {
       temper: state.temper,
     });
 
-    // 2. 决策
-    const decision = await decide(state);
+    // 2. 直接启动 ReAct Loop
+    // LLM 在第一步自主决定：游荡 or 直接 rest()
+    const result = await runAgentLoop(state);
 
-    // 3. 执行行动
-    if (decision.action !== 'rest') {
-      await executeAction(decision, state);
-    }
+    logger.info("本次游荡结束", {
+      steps: result.steps,
+      durationMs: result.durationMs,
+      spokeTimes: result.spokeTimes,
+      visitedUrls: result.visitedUrls.length,
+      endReason: result.endReason,
+    });
   } catch (error) {
     logger.error("心跳执行失败", { error: String(error) });
   }
