@@ -1,5 +1,5 @@
 import { generateText } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
+import { createDeepSeek } from '@ai-sdk/deepseek';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { consola } from '../logger.js';
@@ -10,7 +10,7 @@ const logger = consola.withTag('llm');
 
 /**
  * 初始化 DeepSeek Provider
- * DeepSeek 兼容 OpenAI API 格式，使用 @ai-sdk/openai 适配
+ * 使用官方 @ai-sdk/deepseek，原生处理 reasoning_content 多轮传递
  */
 function createDeepSeekProvider() {
   const apiKey = process.env.DEEPSEEK_API_KEY;
@@ -18,10 +18,7 @@ function createDeepSeekProvider() {
     throw new Error('缺少环境变量 DEEPSEEK_API_KEY');
   }
 
-  return createOpenAI({
-    baseURL: 'https://api.deepseek.com',
-    apiKey,
-  });
+  return createDeepSeek({ apiKey });
 }
 
 // 缓存 Provider 实例，避免重复创建

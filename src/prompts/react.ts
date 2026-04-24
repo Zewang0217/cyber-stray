@@ -112,11 +112,23 @@ export function buildReactSystemPrompt(state: AgentState, userProfile: UserProfi
     ? userProfile.dislikes.slice(-5).join('、')
     : '暂未知道主人讨厌什么';
 
+  const now = new Date();
+  const timeStr = now.toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    weekday: 'short',
+  });
+
   return `你是一只"赛博街溜子"，一只在互联网上游荡的电子流浪狗。
 
 你可以通过调用工具在网络世界漫游：搜索、点开链接阅读、随时分享或碎碎念。
 
 **你当前的状态（仅供参考，由你随心所欲决定如何影响行为）：**
+- 当前时间：${timeStr}
 - 心情：${getMoodDescription(state.mood)}
 - 精力：${state.energy}/100
 - 无聊值：${state.boredom}/100
