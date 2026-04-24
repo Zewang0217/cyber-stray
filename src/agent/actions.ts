@@ -1,6 +1,8 @@
 import { consola } from '../logger';
 import { search } from '../tools/search/index.js';
 import { filterResults } from '../tools/filter/index.js';
+import { generatePushContent } from '../tools/content/generator.js';
+import { updateState } from './state.js';
 import { config } from '../config.js';
 import type { Decision, AgentState } from '../types';
 
@@ -35,6 +37,26 @@ export async function executeHunt(decision: Decision, state: AgentState): Promis
     filteredCount: filtered.length,
     topScore: filtered[0]?.score,
     topResult: filtered[0]?.title,
+  });
+
+  // 取 score 最高的结果生成文案
+  const best = filtered[0]!;
+  const pushContent = await generatePushContent(best, state);
+
+  // TODO: 推送（等推送模块实现后替换）
+  logger.success('狩猎完成（推送暂未实现）', {
+    title: pushContent.title,
+    message: pushContent.message,
+  });
+
+  // 更新状态：消耗无聊值，记录本次狩猎时间
+  // NOTE: 使用传入的状态快照计数，单线程心跳循环下安全
+  await updateState({
+    lastAction: 'hunt',
+    lastActionTime: new Date().toISOString(),
+    lastHunt: new Date().toISOString(),
+    totalHunts: state.totalHunts + 1,
+    boredom: Math.max(0, state.boredom - 30),
   });
 }
 

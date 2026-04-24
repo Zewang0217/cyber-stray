@@ -42,18 +42,21 @@ function getProvider() {
 export async function callLLM(
   systemPrompt: string,
   userPrompt: string,
+  temperature?: number,
 ): Promise<string> {
   const provider = getProvider();
+  const effectiveTemperature = temperature ?? config.llmTemperature;
 
   logger.debug('调用 LLM', {
     model: config.llmModel,
+    temperature: effectiveTemperature,
     systemLength: systemPrompt.length,
     userLength: userPrompt.length,
   });
 
   const { text } = await generateText({
     model: provider.chat(config.llmModel),
-    temperature: config.llmTemperature,
+    temperature: effectiveTemperature,
     system: systemPrompt,
     prompt: userPrompt,
   });
