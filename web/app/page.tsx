@@ -127,7 +127,7 @@ export default function DashboardPage(): React.ReactElement {
                 </motion.div>
                 {/* 状态卡片区 - Stagger Animation */}
                 <motion.div
-                    className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8"
+                    className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8"
                     initial="hidden"
                     animate="visible"
                     variants={{
@@ -142,14 +142,19 @@ export default function DashboardPage(): React.ReactElement {
                     }}
                 >
                     <StatCard
-                        label="总狩猎次数"
-                        value={state.totalHunts}
+                        label="总游荡次数"
+                        value={state.totalWanders ?? 0}
                         color="var(--color-accent)"
+                    />
+                    <StatCard
+                        label="总游荡步数"
+                        value={state.totalSteps ?? 0}
+                        color="var(--color-accent-blue)"
                     />
                     <StatCard
                         label="总推送次数"
                         value={state.totalPushes}
-                        color="var(--color-accent-blue)"
+                        color="var(--color-success)"
                     />
                     <StatCard
                         label="连续失败"
@@ -219,12 +224,12 @@ export default function DashboardPage(): React.ReactElement {
                                 </div>
                                 <div>
                                     <span className="text-subtext">
-                                        上次狩猎:{" "}
+                                        上次游荡:{" "}
                                     </span>
                                     <span className="font-mono text-text">
-                                        {state.lastHunt
+                                        {state.lastWander
                                             ? new Date(
-                                                  state.lastHunt,
+                                                  state.lastWander,
                                               ).toLocaleString("zh-CN")
                                             : "从未"}
                                     </span>
@@ -323,7 +328,75 @@ export default function DashboardPage(): React.ReactElement {
                                     )}
                                 </div>
                             </div>
+                            <div>
+                                <p className="text-xs text-subtext uppercase tracking-wider mb-2">
+                                    Agent 兴趣
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                    {(state.agentInterests ?? []).length > 0 ? (
+                                        (state.agentInterests ?? []).map((interest: string) => (
+                                            <span
+                                                key={interest}
+                                                className="px-2 py-1 rounded-md bg-success/10 text-xs font-mono text-success"
+                                            >
+                                                {interest}
+                                            </span>
+                                        ))
+                                    ) : (
+                                        <span className="text-subtext text-sm">
+                                            暂无兴趣记录
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
                         </div>
+                    </div>
+                </motion.div>
+                {/* 游荡历史 */}
+                <motion.div
+                    className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                >
+                    <h2 className="font-heading text-heading font-bold text-text mb-4">
+                        最近游荡
+                    </h2>
+                    <div className="space-y-3">
+                        {(state.wanderHistory ?? []).length > 0 ? (
+                            (state.wanderHistory ?? [])
+                                .slice(-5)
+                                .reverse()
+                                .map((step) => (
+                                    <div
+                                        key={step.timestamp}
+                                        className="flex items-center gap-3 text-sm"
+                                    >
+                                        <span className="text-subtext shrink-0">
+                                            {new Date(
+                                                step.timestamp,
+                                            ).toLocaleTimeString("zh-CN")}
+                                        </span>
+                                        <span className="font-mono text-accent shrink-0">
+                                            {step.tool}
+                                        </span>
+                                        {step.url && (
+                                            <span className="text-xs text-subtext truncate max-w-[200px]">
+                                                {step.url}
+                                            </span>
+                                        )}
+                                        {step.thought && (
+                                            <span className="text-xs text-text opacity-70 truncate">
+                                                {step.thought.slice(0, 50)}
+                                            </span>
+                                        )}
+                                    </div>
+                                ))
+                        ) : (
+                            <span className="text-subtext text-sm">
+                                暂无游荡记录
+                            </span>
+                        )}
                     </div>
                 </motion.div>
             </div>
