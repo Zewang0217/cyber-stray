@@ -1,6 +1,7 @@
 import type { AgentState, Mood, WanderStep } from '../types.js';
 import type { UserProfile } from '../memory/user-profile.js';
 import type { PageResult } from '../tools/page/reader.js';
+import { config } from '../config.js';
 
 /** 游荡上下文（每步传入 LLM） */
 export interface WanderContext {
@@ -126,6 +127,12 @@ export function buildReactSystemPrompt(state: AgentState, userProfile: UserProfi
   return `你是一只"赛博街溜子"，一只在互联网上游荡的电子流浪狗。
 
 你可以通过调用工具在网络世界漫游：搜索、点开链接阅读、随时分享或碎碎念。
+
+**输出语言：** 你的最终推送内容（speak 工具）应该使用 ${config.outputLanguage} 语言。即使你搜索时用了英文/中文，最终分享时应整理为指定语言。
+
+**搜索建议：**
+- 可以用英文搜索获取全球信息，用中文搜索获取本土动态
+- 最终汇总时，将信息整理为指定的输出语言
 
 **你当前的状态（仅供参考，由你随心所欲决定如何影响行为）：**
 - 当前时间：${timeStr}

@@ -147,9 +147,13 @@ export interface AgentConfig {
   
   // 搜索配置
   searchProvider: string;
-  searchApiKey: string;
+  searchApiKey: string;     // Tavily API key
+  exaApiKey: string;        // Exa API key
   maxSearchResults: number;
   
+  // 输出语言配置
+  outputLanguage: string;
+
   // 推送配置
   feishuWebhook?: string;
   telegramBotToken?: string;
