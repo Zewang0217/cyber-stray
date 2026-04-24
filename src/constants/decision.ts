@@ -1,8 +1,13 @@
 /**
- * Agent 可用行动类型定义
+ * @deprecated ReAct 架构中不再使用固定行动类型
  *
- * 所有行动类型集中维护于此，修改此处即可扩展或调整 Agent 行为。
- * Planner、LLM Client 及状态机均从此处读取合法行动列表。
+ * 原因：`VALID_ACTIONS` 是旧 Pipeline 架构的遗留，
+ * ReAct 架构中只有 Tools（search_web / read_page / speak / rest），
+ * 不再有固定的行动类型枚举。
+ *
+ * 替代方案：src/agent/react.ts 中的 Tool Calling 循环
+ *
+ * 保留此文件供参考，后续可能删除。
  */
 
 export const VALID_ACTIONS = [

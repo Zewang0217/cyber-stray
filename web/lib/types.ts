@@ -13,6 +13,15 @@ export type Mood = 'curious' | 'grumpy' | 'playful' | 'lazy' | 'excited' | 'emo'
 /** 狩猎结果类型 */
 export type HuntResult = 'success' | 'fail' | 'boring' | 'no_result';
 
+/** 游荡步骤记录（ReAct 架构） */
+export interface WanderStep {
+  timestamp: string;
+  tool: string;       // 调用的 Tool 名称
+  thought?: string;   // LLM 内心独白（可选）
+  url?: string;       // 如果访问了某个 URL
+  spoke?: string;     // 如果调用了 speak，记录内容
+}
+
 /** Agent 状态 */
 export interface AgentState {
   // 基础状态
@@ -27,20 +36,30 @@ export interface AgentState {
   // 记忆
   lastAction: ActionType | null;           // 上次行动
   lastActionTime: string | null;            // 上次行动时间 ISO 格式
+  /** @deprecated 使用 lastWander 替代 */
   lastHuntResult: HuntResult | null;        // 上次狩猎结果
   recentTopics: string[];                   // 最近搜过的话题
   userLikes: string[];                      // 用户喜欢的话题
   userDislikes: string[];                   // 用户不喜欢的话题
 
+  // Agent 个性化（ReAct 架构新增）
+  agentInterests: string[];    // Agent 自己的兴趣图谱（LLM 自主维护）
+  wanderHistory: WanderStep[]; // 最近游荡的历史记录
+
   // 统计
-  totalHunts: number;           // 总狩猎次数
+  /** @deprecated 使用 totalWanders 替代 */
+  totalHunts: number;           // 总狩猎次数（旧字段，保留兼容）
+  totalWanders: number;         // 总游荡次数（ReAct 架构）
+  totalSteps: number;           // 总游荡步数（ReAct 架构）
   totalPushes: number;          // 总推送次数
   consecutiveFailures: number;  // 连续失败次数
 
   // 时间感知
-  lastHeartbeat: string;  // 上次心跳时间 ISO 格式
-  lastHunt: string | null;       // 上次狩猎时间
-  lastRest: string | null;       // 上次休息时间
+  lastHeartbeat: string;        // 上次心跳时间 ISO 格式
+  /** @deprecated 使用 lastWander 替代 */
+  lastHunt: string | null;      // 上次狩猎时间（旧字段，保留兼容）
+  lastWander: string | null;    // 上次游荡时间（ReAct 架构）
+  lastRest: string | null;      // 上次休息时间
 }
 
 // ============================================
@@ -122,6 +141,13 @@ export interface AgentConfig {
   energyThreshold: number;
   llmModel: string;
   llmTemperature: number;
+
+  // ReAct Loop 配置（新增）
+  maxWanderSteps: number;        // 每次游荡最大步数
+  wanderTemperature: number;     // 游荡 LLM 温度
+
+  // 搜索配置（更新）
+  searchProvider: string;        // 搜索提供商名称
   searchApiKey: string;
   maxSearchResults: number;
   feishuWebhook?: string;
