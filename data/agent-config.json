@@ -1,0 +1,11 @@
+{
+  "heartbeatInterval": 5,
+  "boredomGrowthRate": 5,
+  "energyRecoveryRate": 2,
+  "boredomThreshold": 50,
+  "energyThreshold": 20,
+  "llmTemperature": 0.8,
+  "maxSearchResults": 10,
+  "maxWanderSteps": 10,
+  "wanderTemperature": 0.9
+}

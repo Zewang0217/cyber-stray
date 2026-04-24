@@ -1,5 +1,5 @@
 import { generateText, stepCountIs, hasToolCall } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
+import { createDeepSeek } from '@ai-sdk/deepseek';
 import { consola } from '../logger.js';
 import { config } from '../config.js';
 import { updateState } from './state.js';
@@ -24,7 +24,8 @@ function createProvider() {
   if (!apiKey) {
     throw new Error('缺少环境变量 DEEPSEEK_API_KEY');
   }
-  return createOpenAI({ baseURL: 'https://api.deepseek.com', apiKey });
+  // 使用官方 @ai-sdk/deepseek provider，原生处理 reasoning_content 多轮传递
+  return createDeepSeek({ apiKey });
 }
 
 // null 表示未初始化；若首次调用时抛出（缺少 API key），保持 null，下次调用重试
