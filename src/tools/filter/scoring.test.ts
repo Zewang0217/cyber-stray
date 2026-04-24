@@ -15,11 +15,16 @@ describe('scoring', () => {
     recentTopics: [],
     userLikes: [],
     userDislikes: [],
+    agentInterests: [],
+    wanderHistory: [],
     totalHunts: 0,
+    totalWanders: 0,
+    totalSteps: 0,
     totalPushes: 0,
     consecutiveFailures: 0,
     lastHeartbeat: new Date().toISOString(),
     lastHunt: null,
+    lastWander: null,
     lastRest: null,
   };
 

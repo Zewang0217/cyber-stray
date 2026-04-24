@@ -1,3 +1,11 @@
+/**
+ * @deprecated 使用 LLM Tool Calling 替代
+ *
+ * 原因：ReAct 架构中，筛选逻辑由 LLM 自主判断，
+ * 不需要硬编码的评分规则。
+ *
+ * 保留此文件供参考，后续可能删除。
+ */
 import { consola } from '../../logger.js';
 import type { SearchResult, AgentState } from '../../types.js';
 

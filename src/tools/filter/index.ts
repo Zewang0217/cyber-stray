@@ -1,3 +1,13 @@
+/**
+ * @deprecated 使用 LLM Tool Calling 替代
+ *
+ * 原因：ReAct 架构中，筛选逻辑由 LLM 自主判断，
+ * 不需要硬编码的评分和过滤规则。
+ *
+ * 替代方案：src/agent/react.ts 中的 Tool Calling 循环
+ *
+ * 保留此文件供参考，后续可能删除。
+ */
 import { dedupResults } from './dedup.js';
 import { scoreResults, type ScoringResult } from './scoring.js';
 import { consola } from '../../logger.js';

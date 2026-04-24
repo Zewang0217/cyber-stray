@@ -1,3 +1,10 @@
+/**
+ * @deprecated 使用 LLM Tool Calling 替代
+ *
+ * 原因：ReAct 架构中，去重逻辑由 LLM 自主判断或不再需要。
+ *
+ * 保留此文件供参考，后续可能删除。
+ */
 import { getUrlHash, loadPushHistory } from './history.js';
 import { consola } from '../../logger.js';
 import type { SearchResult } from '../../types.js';

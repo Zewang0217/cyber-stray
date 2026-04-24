@@ -1,3 +1,14 @@
+/**
+ * @deprecated 由 src/prompts/react.ts 替代
+ *
+ * 原因：硬编码阈值决策 → ReAct 自主决策
+ * ReAct 架构中，LLM 通过 Tool Calling 自主决定下一步行动，
+ * 不再使用固定行动类型的 JSON 输出。
+ *
+ * 替代方案：src/prompts/react.ts
+ *
+ * 保留此文件供参考，后续可能删除。
+ */
 import type { AgentState, Mood } from '../types.js';
 import { VALID_ACTIONS } from '../constants/decision.js';
 
