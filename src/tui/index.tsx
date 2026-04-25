@@ -52,8 +52,9 @@ export function initTUI(): void {
   startTime = Date.now();
   
   // 直接导入并注册日志回调（同步）
-  const { onLog } = require('../logger.js') as { onLog: (cb: (entry: any) => void) => void };
-  onLog((entry) => {
+  const loggerModule = require('../logger.js') as { onLog: (cb: (entry: any) => void) => void };
+  
+  loggerModule.onLog((entry) => {
     addLog({
       timestamp: entry.timestamp,
       level: entry.level,
@@ -61,11 +62,11 @@ export function initTUI(): void {
     });
   });
   
-  // 检查是否支持 raw 模式
+  // 检查是否支持 raw 模式（ink TUI 需要 raw 模式）
   if (!process.stdin.isTTY) {
     // 不支持完整 TUI，使用简单文本模式输出重要日志
     console.log('🐕 赛博街溜子启动 (文本模式)');
-    onLog((entry) => {
+    loggerModule.onLog((entry) => {
       // 只显示重要日志
       if (isImportantLog(entry)) {
         const time = entry.timestamp.slice(11, 19);
@@ -85,7 +86,14 @@ export function initTUI(): void {
       />
     );
   } catch (error) {
-    console.error('[TUI] 启动失败，降级到文件日志:', error);
+    // TUI 启动失败，降级到文本模式
+    console.log('🐕 赛博街溜子启动 (文本模式)');
+    loggerModule.onLog((entry) => {
+      if (isImportantLog(entry)) {
+        const time = entry.timestamp.slice(11, 19);
+        console.log(`[${time}] ${entry.message}`);
+      }
+    });
   }
 }
 

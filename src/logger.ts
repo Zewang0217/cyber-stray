@@ -21,7 +21,7 @@ type LogCallback = (entry: LogEntry) => void;
 /**
  * 日志回调列表
  */
-const logCallbacks: LogCallback[] = [];
+export const logCallbacks: LogCallback[] = [];
 
 /**
  * 注册日志回调（TUI 使用）
