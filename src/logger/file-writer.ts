@@ -1,8 +1,9 @@
 import { appendFile, mkdir } from 'fs/promises';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { consola } from '../logger.js';
+import { createConsola } from 'consola';
 
-const logger = consola.withTag('file-writer');
+// 创建独立的 logger 实例，避免循环依赖
+const logger = createConsola({ level: 4 }).withTag('file-writer');
 
 const LOG_DIR = 'data/logs';
 

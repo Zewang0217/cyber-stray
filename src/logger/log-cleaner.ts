@@ -1,7 +1,8 @@
 import { readdir, unlink } from 'fs/promises';
-import { consola } from '../logger.js';
+import { createConsola } from 'consola';
 
-const logger = consola.withTag('log-cleaner');
+// 创建独立的 logger 实例，避免循环依赖
+const logger = createConsola({ level: 4 }).withTag('log-cleaner');
 
 const LOG_DIR = 'data/logs';
 const DEFAULT_RETENTION_DAYS = 30;

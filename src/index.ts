@@ -3,7 +3,7 @@ import { loadState, heartbeat } from "./agent/state.js";
 import { runAgentLoop } from "./agent/react.js";
 import { initLogger, consola } from "./logger.js";
 
-const logger = consola.withTag("main");
+let logger: ReturnType<typeof consola.withTag>;
 
 /**
  * 主入口
@@ -11,6 +11,9 @@ const logger = consola.withTag("main");
 async function main(): Promise<void> {
   // 初始化日志系统（TUI + 文件）
   initLogger();
+  
+  // 在 initLogger() 之后获取 consola 实例
+  logger = consola.withTag("main");
   
   logger.info("赛博街溜子启动...");
 

@@ -1,4 +1,4 @@
-import { createConsola } from 'consola';
+import { createConsola, type Consola } from 'consola';
 import { writeLog, initFileLogger } from './logger/file-writer.js';
 
 /**
@@ -30,51 +30,9 @@ export function onLog(callback: LogCallback): void {
 }
 
 /**
- * 创建全局 consola 实例
+ * 全局 consola 实例（初始为占位实例）
  */
-const consola = createConsola({
-  level: 4, // 0-5: fatal, error, warn, log, info, debug
-  reporters: [], // 不使用默认 reporter，我们自己处理
-});
-
-/**
- * 创建日志处理器
- */
-function createLogHandler(level: string) {
-  const handler = function (this: unknown, ...args: unknown[]) {
-    const timestamp = new Date().toISOString();
-    const message = args
-      .map((arg) => (typeof arg === 'string' ? arg : JSON.stringify(arg)))
-      .join(' ');
-    
-    const entry: LogEntry = {
-      timestamp,
-      level,
-      message,
-    };
-    
-    // 写入文件
-    writeLog(level, message);
-    
-    // 通知所有回调（包括 TUI）
-    logCallbacks.forEach((cb) => cb(entry));
-  };
-  
-  // 添加 raw 方法
-  handler.raw = function (this: unknown, args: unknown[]) {
-    return handler(...args);
-  };
-  
-  return handler;
-}
-
-consola.fatal = createLogHandler('fatal');
-consola.error = createLogHandler('error');
-consola.warn = createLogHandler('warn');
-consola.log = createLogHandler('log');
-consola.info = createLogHandler('info');
-consola.debug = createLogHandler('debug');
-consola.success = createLogHandler('success');
+export let consola: Consola = createConsola();
 
 /**
  * 初始化日志系统
@@ -88,11 +46,54 @@ export function initLogger(): void {
     initLogCleaner();
   });
   
-  // 3. 启动 TUI（TUI 会自己注册 onLog 回调）
+  // 3. 创建新的 consola 实例
+  const newConsola = createConsola({
+    level: 4, // 0-5: fatal, error, warn, log, info, debug
+    reporters: [], // 不使用默认 reporter，我们自己处理
+  });
+  
+  /**
+   * 创建日志处理器
+   */
+  function createLogHandler(level: string) {
+    return function (...args: unknown[]) {
+      const timestamp = new Date().toISOString();
+      const message = args
+        .map((arg) => (typeof arg === 'string' ? arg : JSON.stringify(arg)))
+        .join(' ');
+      
+      const entry: LogEntry = {
+        timestamp,
+        level,
+        message,
+      };
+      
+      // 写入文件
+      writeLog(level, message);
+      
+      // 通知所有回调（包括 TUI）
+      logCallbacks.forEach((cb) => cb(entry));
+    };
+  }
+  
+  // 4. 包装所有日志方法
+  (newConsola as unknown as Record<string, unknown>).fatal = createLogHandler('fatal');
+  (newConsola as unknown as Record<string, unknown>).error = createLogHandler('error');
+  (newConsola as unknown as Record<string, unknown>).warn = createLogHandler('warn');
+  (newConsola as unknown as Record<string, unknown>).log = createLogHandler('log');
+  (newConsola as unknown as Record<string, unknown>).info = createLogHandler('info');
+  (newConsola as unknown as Record<string, unknown>).debug = createLogHandler('debug');
+  (newConsola as unknown as Record<string, unknown>).success = createLogHandler('success');
+  
+  // 5. 更新导出的 consola（这会影响到所有已经导入的模块）
+  // 注意：这只对之后调用 withTag() 生效，已经创建的 logger 不受影响
+  Object.assign(consola, newConsola);
+  
+  // 6. 启动 TUI（TUI 会自己注册 onLog 回调）
   import('./tui/index.js').then(({ initTUI }) => {
     initTUI();
   });
 }
 
-export { consola };
+// 默认导出
 export const logger = consola.withTag('cyber-stray');

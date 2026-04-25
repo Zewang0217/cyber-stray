@@ -62,14 +62,25 @@ export function initTUI(): void {
     });
   });
   
-  render(
-    <App
-      startTime={startTime}
-      getState={getState}
-      getLogs={getLogs}
-      onExit={handleExit}
-    />
-  );
+  // 检查是否支持 raw 模式
+  if (!process.stdin.isTTY) {
+    // 不支持 TUI，只使用文件日志
+    console.error('[TUI] 当前环境不支持 TUI，仅使用文件日志');
+    return;
+  }
+  
+  try {
+    render(
+      <App
+        startTime={startTime}
+        getState={getState}
+        getLogs={getLogs}
+        onExit={handleExit}
+      />
+    );
+  } catch (error) {
+    console.error('[TUI] 启动失败，降级到文件日志:', error);
+  }
 }
 
 /**
