@@ -1,9 +1,21 @@
 import { appendFile, mkdir } from 'fs/promises';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { createConsola } from 'consola';
+import { Writable } from 'stream';
 
-// 创建独立的 logger 实例，避免循环依赖
-const logger = createConsola({ level: 4 }).withTag('file-writer');
+// 创建空输出流禁用终端输出
+const nullStream = new Writable({
+  write(chunk, encoding, callback) {
+    callback();
+  },
+});
+
+// 创建独立的 logger 实例，避免循环依赖（禁用终端输出）
+const logger = createConsola({
+  level: 4,
+  stdout: nullStream as unknown as NodeJS.WriteStream,
+  stderr: nullStream as unknown as NodeJS.WriteStream,
+}).withTag('file-writer');
 
 const LOG_DIR = 'data/logs';
 

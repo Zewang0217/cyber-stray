@@ -1,8 +1,20 @@
 import { readdir, unlink } from 'fs/promises';
 import { createConsola } from 'consola';
+import { Writable } from 'stream';
 
-// 创建独立的 logger 实例，避免循环依赖
-const logger = createConsola({ level: 4 }).withTag('log-cleaner');
+// 创建空输出流禁用终端输出
+const nullStream = new Writable({
+  write(chunk, encoding, callback) {
+    callback();
+  },
+});
+
+// 创建独立的 logger 实例，避免循环依赖（禁用终端输出）
+const logger = createConsola({
+  level: 4,
+  stdout: nullStream as unknown as NodeJS.WriteStream,
+  stderr: nullStream as unknown as NodeJS.WriteStream,
+}).withTag('log-cleaner');
 
 const LOG_DIR = 'data/logs';
 const DEFAULT_RETENTION_DAYS = 30;

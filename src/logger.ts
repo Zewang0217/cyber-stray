@@ -1,5 +1,6 @@
 import { createConsola, type Consola, type ConsolaReporter } from 'consola';
 import { writeLog, initFileLogger } from './logger/file-writer.js';
+import { Writable } from 'stream';
 
 /**
  * 日志条目类型
@@ -30,7 +31,17 @@ export function onLog(callback: LogCallback): void {
 }
 
 /**
- * 创建文件日志 Reporter
+ * 创建一个空的输出流（用于禁用终端输出）
+ */
+const nullStream = new Writable({
+  write(chunk, encoding, callback) {
+    // 不输出任何内容
+    callback();
+  },
+});
+
+/**
+ * 创建文件日志 Reporter（不输出到终端）
  */
 function createFileReporter(): ConsolaReporter {
   return {
@@ -42,7 +53,7 @@ function createFileReporter(): ConsolaReporter {
       // 写入文件
       writeLog(logObj.level, message, logObj.data as Record<string, unknown>);
       
-      // 通知所有回调
+      // 通知所有回调（TUI）
       logCallbacks.forEach((cb) =>
         cb({
           timestamp: logObj.date.toISOString(),
@@ -52,14 +63,21 @@ function createFileReporter(): ConsolaReporter {
           data: logObj.data as Record<string, unknown>,
         })
       );
+      
+      // 不输出到终端（静默）
     },
   };
 }
 
 /**
- * 默认 consola 实例（所有模块共享）
+ * 默认 consola 实例（所有模块共享，禁用终端输出）
  */
-export const consola = createConsola();
+export const consola: Consola = createConsola({
+  level: 4,
+  reporters: [], // 初始为空，稍后添加
+  stdout: nullStream as unknown as NodeJS.WriteStream,
+  stderr: nullStream as unknown as NodeJS.WriteStream,
+});
 
 /**
  * 初始化日志系统

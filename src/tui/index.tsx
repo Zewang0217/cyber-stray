@@ -64,8 +64,7 @@ export function initTUI(): void {
   
   // 检查是否支持 raw 模式
   if (!process.stdin.isTTY) {
-    // 不支持 TUI，只使用文件日志
-    console.error('[TUI] 当前环境不支持 TUI，仅使用文件日志');
+    // 不支持 TUI，只使用文件日志（静默）
     return;
   }
   
