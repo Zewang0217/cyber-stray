@@ -1,7 +1,7 @@
 import { config, validateConfig } from "./config.js";
 import { loadState, heartbeat } from "./agent/state.js";
 import { runAgentLoop } from "./agent/react.js";
-import { consola } from "./logger.js";
+import { initLogger, consola } from "./logger.js";
 
 const logger = consola.withTag("main");
 
@@ -9,6 +9,9 @@ const logger = consola.withTag("main");
  * 主入口
  */
 async function main(): Promise<void> {
+  // 初始化日志系统（TUI + 文件）
+  initLogger();
+  
   logger.info("赛博街溜子启动...");
 
   // 验证配置
