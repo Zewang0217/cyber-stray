@@ -27,21 +27,45 @@ function getTodayLogPath(): string {
   return `${LOG_DIR}/${today}.log`;
 }
 
+// 日志级别映射（consola 的级别数字越小越严重）
+// LogLevels: fatal=0, error=1, warn=2, log=3, info=4, debug=5, trace=6
+const LEVEL_NAMES: Record<number, string> = {
+  0: 'FATAL',
+  1: 'ERROR',
+  2: 'WARN',
+  3: 'LOG',
+  4: 'INFO',
+  5: 'DEBUG',
+  6: 'TRACE',
+};
+
 /**
- * 格式化日志条目为 JSONL 格式
+ * 格式化日志条目为易读文本格式
+ * 格式：[YYYY-MM-DD HH:mm:ss] [LEVEL] [tag] message {data}
  */
 function formatLogEntry(
-  level: string,
+  level: number | string,
   message: string,
   data?: Record<string, unknown>
 ): string {
-  const entry = {
-    timestamp: new Date().toISOString(),
-    level,
-    message,
-    ...(data && { data }),
-  };
-  return JSON.stringify(entry) + '\n';
+  const now = new Date();
+  const timestamp = now.toISOString().slice(0, 19).replace('T', ' ');
+  
+  // 将数字级别转换为字符串
+  const levelNum = typeof level === 'string' ? parseInt(level) : level;
+  const levelName = LEVEL_NAMES[levelNum] || String(level);
+  
+  let line = `[${timestamp}] [${levelName}] ${message}`;
+  
+  // 如果有额外数据，追加到行尾
+  if (data && Object.keys(data).length > 0) {
+    const dataStr = Object.entries(data)
+      .map(([key, value]) => `${key}=${value}`)
+      .join(' ');
+    line += ` {${dataStr}}`;
+  }
+  
+  return line + '\n';
 }
 
 /**
@@ -55,17 +79,18 @@ export function initFileLogger(): void {
 }
 
 /**
- * 写入日志到文件
+ * 写入日志到文件（同步版本，用于 reporter）
  */
-export async function writeLog(
+export function writeLog(
   level: string,
   message: string,
   data?: Record<string, unknown>
-): Promise<void> {
+): void {
   try {
     const logPath = getTodayLogPath();
     const line = formatLogEntry(level, message, data);
-    await appendFile(logPath, line, 'utf-8');
+    // 使用同步写入，确保日志立即写入文件
+    writeFileSync(logPath, line, { flag: 'a', encoding: 'utf-8' });
   } catch (error) {
     // 文件写入失败不影响主流程
     logger.error('写入日志文件失败', { error: String(error) });

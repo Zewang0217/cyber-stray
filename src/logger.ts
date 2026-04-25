@@ -70,11 +70,36 @@ function createFileReporter(): ConsolaReporter {
 }
 
 /**
+ * 创建文件日志 Reporter 实例（在 consola 创建前就定义）
+ */
+const fileReporter: ConsolaReporter = {
+  log(logObj: any) {
+    const message = logObj.args
+      .map((arg: unknown) => (typeof arg === 'string' ? arg : JSON.stringify(arg)))
+      .join(' ');
+    
+    // 写入文件（传入数字级别）
+    writeLog(logObj.level, message, logObj.data as Record<string, unknown>);
+    
+    // 通知所有回调（TUI）
+    logCallbacks.forEach((cb) =>
+      cb({
+        timestamp: logObj.date.toISOString(),
+        level: String(logObj.level),
+        tag: logObj.tag,
+        message,
+        data: logObj.data as Record<string, unknown>,
+      })
+    );
+  },
+};
+
+/**
  * 默认 consola 实例（所有模块共享，禁用终端输出）
  */
 export const consola: Consola = createConsola({
   level: 4,
-  reporters: [], // 初始为空，稍后添加
+  reporters: [fileReporter], // 一开始就添加 reporter
   stdout: nullStream as unknown as NodeJS.WriteStream,
   stderr: nullStream as unknown as NodeJS.WriteStream,
 });
@@ -91,12 +116,7 @@ export function initLogger(): void {
     initLogCleaner();
   });
   
-  // 3. 添加 reporter 到全局 consola 实例
-  // 注意：这会影响所有使用 consola 的模块
-  const fileReporter = createFileReporter();
-  consola.setReporters([fileReporter]);
-  
-  // 4. 启动 TUI（TUI 会自己注册 onLog 回调）
+  // 3. 启动 TUI（TUI 会自己注册 onLog 回调）
   import('./tui/index.js').then(({ initTUI }) => {
     initTUI();
   });
