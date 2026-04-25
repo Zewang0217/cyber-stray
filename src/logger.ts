@@ -82,15 +82,20 @@ const fileReporter: ConsolaReporter = {
     writeLog(logObj.level, message, logObj.data as Record<string, unknown>);
     
     // 通知所有回调（TUI）
-    logCallbacks.forEach((cb) =>
-      cb({
-        timestamp: logObj.date.toISOString(),
-        level: String(logObj.level),
-        tag: logObj.tag,
-        message,
-        data: logObj.data as Record<string, unknown>,
-      })
-    );
+    // 调试：检查回调列表
+    if (logCallbacks.length === 0) {
+      // 静默，不输出
+    } else {
+      logCallbacks.forEach((cb) =>
+        cb({
+          timestamp: logObj.date.toISOString(),
+          level: String(logObj.level),
+          tag: logObj.tag,
+          message,
+          data: logObj.data as Record<string, unknown>,
+        })
+      );
+    }
   },
 };
 

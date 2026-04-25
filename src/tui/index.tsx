@@ -51,14 +51,13 @@ export function getLogs(): LogEntryType[] {
 export function initTUI(): void {
   startTime = Date.now();
   
-  // 注册日志回调
-  import('../logger.js').then(({ onLog }) => {
-    onLog((entry) => {
-      addLog({
-        timestamp: entry.timestamp,
-        level: entry.level,
-        message: entry.tag ? `[${entry.tag}] ${entry.message}` : entry.message,
-      });
+  // 直接导入并注册日志回调（同步）
+  const { onLog } = require('../logger.js') as { onLog: (cb: (entry: any) => void) => void };
+  onLog((entry) => {
+    addLog({
+      timestamp: entry.timestamp,
+      level: entry.level,
+      message: entry.tag ? `[${entry.tag}] ${entry.message}` : entry.message,
     });
   });
   
@@ -66,14 +65,12 @@ export function initTUI(): void {
   if (!process.stdin.isTTY) {
     // 不支持完整 TUI，使用简单文本模式输出重要日志
     console.log('🐕 赛博街溜子启动 (文本模式)');
-    import('../logger.js').then(({ onLog: loggerOnLog }) => {
-      loggerOnLog((entry) => {
-        // 只显示重要日志
-        if (isImportantLog(entry)) {
-          const time = entry.timestamp.slice(11, 19);
-          console.log(`[${time}] ${entry.message}`);
-        }
-      });
+    onLog((entry) => {
+      // 只显示重要日志
+      if (isImportantLog(entry)) {
+        const time = entry.timestamp.slice(11, 19);
+        console.log(`[${time}] ${entry.message}`);
+      }
     });
     return;
   }
