@@ -64,7 +64,17 @@ export function initTUI(): void {
   
   // 检查是否支持 raw 模式
   if (!process.stdin.isTTY) {
-    // 不支持 TUI，只使用文件日志（静默）
+    // 不支持完整 TUI，使用简单文本模式输出重要日志
+    console.log('🐕 赛博街溜子启动 (文本模式)');
+    import('../logger.js').then(({ onLog: loggerOnLog }) => {
+      loggerOnLog((entry) => {
+        // 只显示重要日志
+        if (isImportantLog(entry)) {
+          const time = entry.timestamp.slice(11, 19);
+          console.log(`[${time}] ${entry.message}`);
+        }
+      });
+    });
     return;
   }
   
@@ -80,6 +90,14 @@ export function initTUI(): void {
   } catch (error) {
     console.error('[TUI] 启动失败，降级到文件日志:', error);
   }
+}
+
+/**
+ * 判断是否是重要日志（用于文本模式）
+ */
+function isImportantLog(entry: any): boolean {
+  const keywords = ['[Step', 'ReAct', 'search_web', 'read_page', 'speak', 'rest', '启动', '结束'];
+  return keywords.some((kw) => entry.message.includes(kw));
 }
 
 /**
