@@ -38,19 +38,29 @@ function isImportantLog(log: LogEntry): boolean {
   const importantTags = [
     'main',
     'react',
-    'tool:search_web',
-    'tool:read_page',
-    'tool:speak',
-    'tool:rest',
+    'tool:',
     'search',
     'tavily',
   ];
-  const importantLevels = ['error', 'warn', 'success'];
+  const importantLevels = ['error', 'warn', 'success', 'info'];
   
-  return (
-    importantTags.some((tag) => log.tag?.includes(tag)) ||
-    importantLevels.some((level) => level.toLowerCase() === log.level.toLowerCase())
-  );
+  // 检查 tag
+  if (log.tag && importantTags.some((tag) => log.tag?.includes(tag))) {
+    return true;
+  }
+  
+  // 检查级别
+  if (importantLevels.some((level) => level.toLowerCase() === log.level.toLowerCase())) {
+    return true;
+  }
+  
+  // 检查消息内容（如果消息包含 Step 或特定关键词，也认为是重要的）
+  const importantKeywords = ['[Step', 'ReAct', 'search_web', 'read_page', 'speak', 'rest'];
+  if (importantKeywords.some((keyword) => log.message.includes(keyword))) {
+    return true;
+  }
+  
+  return false;
 }
 
 export function LogView({ logs, filter }: LogViewProps) {
@@ -73,17 +83,31 @@ export function LogView({ logs, filter }: LogViewProps) {
   // 只显示最近 50 条重要日志
   const displayLogs = filteredLogs.slice(-50);
 
+  // 提取消息中的 tag（如果 log.tag 为空）
+  const extractTag = (log: LogEntry): string | undefined => {
+    if (log.tag) return log.tag;
+    
+    // 尝试从消息中提取 [Step N] 等 tag
+    const stepMatch = log.message.match(/\[Step \d+\]/);
+    if (stepMatch) return stepMatch[0];
+    
+    return undefined;
+  };
+
   return (
     <Box flexDirection="column" flexGrow={1}>
       {displayLogs.length === 0 ? (
         <Text color="gray">等待 Agent 行动...</Text>
       ) : (
-        displayLogs.map((log) => (
-          <Text key={log.id} color={getLogLevelColor(log.level)}>
-            [{log.level.toUpperCase().slice(0, 5)}] {log.timestamp.slice(11, 19)}{' '}
-            {log.tag && <Text color="cyan">[{log.tag}]</Text>} {log.message}
-          </Text>
-        ))
+        displayLogs.map((log) => {
+          const tag = extractTag(log);
+          return (
+            <Text key={log.id} color={getLogLevelColor(log.level)}>
+              [{log.level.toUpperCase().slice(0, 5)}] {log.timestamp.slice(11, 19)}{' '}
+              {tag && <Text color="cyan">[{tag}]</Text>} {log.message}
+            </Text>
+          );
+        })
       )}
     </Box>
   );
