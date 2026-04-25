@@ -1,4 +1,4 @@
-import { createConsola, type Consola } from 'consola';
+import { createConsola, type Consola, type ConsolaReporter } from 'consola';
 import { writeLog, initFileLogger } from './logger/file-writer.js';
 
 /**
@@ -30,9 +30,36 @@ export function onLog(callback: LogCallback): void {
 }
 
 /**
- * 全局 consola 实例（初始为占位实例）
+ * 创建文件日志 Reporter
  */
-export let consola: Consola = createConsola();
+function createFileReporter(): ConsolaReporter {
+  return {
+    log(logObj: any) {
+      const message = logObj.args
+        .map((arg: unknown) => (typeof arg === 'string' ? arg : JSON.stringify(arg)))
+        .join(' ');
+      
+      // 写入文件
+      writeLog(logObj.level, message, logObj.data as Record<string, unknown>);
+      
+      // 通知所有回调
+      logCallbacks.forEach((cb) =>
+        cb({
+          timestamp: logObj.date.toISOString(),
+          level: logObj.level,
+          tag: logObj.tag,
+          message,
+          data: logObj.data as Record<string, unknown>,
+        })
+      );
+    },
+  };
+}
+
+/**
+ * 默认 consola 实例（所有模块共享）
+ */
+export const consola = createConsola();
 
 /**
  * 初始化日志系统
@@ -46,54 +73,15 @@ export function initLogger(): void {
     initLogCleaner();
   });
   
-  // 3. 创建新的 consola 实例
-  const newConsola = createConsola({
-    level: 4, // 0-5: fatal, error, warn, log, info, debug
-    reporters: [], // 不使用默认 reporter，我们自己处理
-  });
+  // 3. 添加 reporter 到全局 consola 实例
+  // 注意：这会影响所有使用 consola 的模块
+  const fileReporter = createFileReporter();
+  consola.setReporters([fileReporter]);
   
-  /**
-   * 创建日志处理器
-   */
-  function createLogHandler(level: string) {
-    return function (...args: unknown[]) {
-      const timestamp = new Date().toISOString();
-      const message = args
-        .map((arg) => (typeof arg === 'string' ? arg : JSON.stringify(arg)))
-        .join(' ');
-      
-      const entry: LogEntry = {
-        timestamp,
-        level,
-        message,
-      };
-      
-      // 写入文件
-      writeLog(level, message);
-      
-      // 通知所有回调（包括 TUI）
-      logCallbacks.forEach((cb) => cb(entry));
-    };
-  }
-  
-  // 4. 包装所有日志方法
-  (newConsola as unknown as Record<string, unknown>).fatal = createLogHandler('fatal');
-  (newConsola as unknown as Record<string, unknown>).error = createLogHandler('error');
-  (newConsola as unknown as Record<string, unknown>).warn = createLogHandler('warn');
-  (newConsola as unknown as Record<string, unknown>).log = createLogHandler('log');
-  (newConsola as unknown as Record<string, unknown>).info = createLogHandler('info');
-  (newConsola as unknown as Record<string, unknown>).debug = createLogHandler('debug');
-  (newConsola as unknown as Record<string, unknown>).success = createLogHandler('success');
-  
-  // 5. 更新导出的 consola（这会影响到所有已经导入的模块）
-  // 注意：这只对之后调用 withTag() 生效，已经创建的 logger 不受影响
-  Object.assign(consola, newConsola);
-  
-  // 6. 启动 TUI（TUI 会自己注册 onLog 回调）
+  // 4. 启动 TUI（TUI 会自己注册 onLog 回调）
   import('./tui/index.js').then(({ initTUI }) => {
     initTUI();
   });
 }
 
-// 默认导出
 export const logger = consola.withTag('cyber-stray');
