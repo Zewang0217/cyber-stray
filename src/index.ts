@@ -2,6 +2,7 @@ import { config, validateConfig } from "./config.js";
 import { loadState, heartbeat } from "./agent/state.js";
 import { runAgentLoop } from "./agent/react.js";
 import { initLogger, consola } from "./logger.js";
+import { updateState } from "./tui/index.js";
 
 let logger: ReturnType<typeof consola.withTag>;
 
@@ -28,6 +29,7 @@ async function main(): Promise<void> {
 
   // 加载状态
   const state = await loadState();
+  updateState(state);
   logger.info("状态加载完成", {
     boredom: state.boredom,
     energy: state.energy,
@@ -73,6 +75,8 @@ async function runHeartbeat(): Promise<void> {
       config.boredomGrowthRate,
       config.energyRecoveryRate,
     );
+
+    updateState(state);
 
     logger.info("状态更新", {
       boredom: state.boredom,

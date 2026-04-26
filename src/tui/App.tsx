@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, useStdout } from 'ink';
 import type { AgentState } from '../types.js';
 import { StatusBar } from './components/StatusBar.js';
 import { LogView, type LogEntry } from './components/LogView.js';
@@ -12,75 +12,92 @@ interface AppProps {
   onExit: () => void;
 }
 
+const FILTERS = ['all', 'info', 'warn', 'error', 'debug'] as const;
+
+function extractToolName(message: string): string {
+  return message.match(/\]\s*(\w+)\b/)?.[1] ?? '';
+}
+
 export function App({ startTime, getState, getLogs, onExit }: AppProps) {
+  const { stdout } = useStdout();
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [agentState, setAgentState] = useState<AgentState | undefined>();
   const [filter, setFilter] = useState<string>('all');
   const [showHelp, setShowHelp] = useState(false);
   const [isAgentRunning, setIsAgentRunning] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [currentAction, setCurrentAction] = useState('');
 
-  // 键盘输入处理
-  useInput((input, key) => {
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const latestLogs = getLogs();
+      const latestState = getState();
+
+      if (latestState) {
+        setAgentState(latestState);
+      }
+
+      if (latestLogs.length > 0) {
+        setLogs([...latestLogs]);
+
+        // 检测最近几条日志中的状态变化
+        const recent = latestLogs.slice(-5);
+        for (const log of recent) {
+          if (!log.tag) continue;
+
+          // ReAct Loop 生命周期
+          if (log.tag === 'react') {
+            if (log.message.includes('启动')) {
+              setIsAgentRunning(true);
+            } else if (log.message.includes('结束') || log.message.includes('本次游荡结束')) {
+              setIsAgentRunning(false);
+              setCurrentAction('');
+            }
+          }
+
+          // Tool 调用
+          if (log.tag.startsWith('tool:')) {
+            const stepMatch = log.message.match(/\[Step (\d+)\]/);
+            if (stepMatch?.[1]) {
+              setCurrentStep(Number(stepMatch[1]));
+            }
+            setCurrentAction(extractToolName(log.message));
+          }
+        }
+      }
+    }, 200);
+
+    return () => clearInterval(interval);
+  }, [getLogs, getState]);
+
+  useInput((input) => {
     if (input === 'q') {
       onExit();
     } else if (input === 'f') {
-      // 切换过滤
-      const filters: string[] = ['all', 'info', 'warn', 'error', 'debug'];
-      const currentIndex = filters.indexOf(filter);
-      const nextIndex = (currentIndex + 1) % filters.length;
-      setFilter(filters[nextIndex] || 'all');
+      const currentIndex = FILTERS.indexOf(filter as typeof FILTERS[number]);
+      const nextIndex = (currentIndex + 1) % FILTERS.length;
+      setFilter(FILTERS[nextIndex]!);
     } else if (input === 'h') {
-      setShowHelp(!showHelp);
+      setShowHelp((prev) => !prev);
     }
   });
 
-  const state = getState();
-  const logs = getLogs();
-
-  // 检测 Agent 是否在运行（通过日志判断）
-  useEffect(() => {
-    if (logs.length === 0) return;
-
-    const lastLog = logs[logs.length - 1];
-    if (!lastLog) return;
-    
-    // 如果最后一条日志是行动相关的，说明 Agent 在运行
-    const runningTags = ['tool:', 'react', 'search'];
-    const isRunning = runningTags.some((tag) => lastLog.tag?.includes(tag));
-    
-    setIsAgentRunning(isRunning);
-    
-    // 提取当前步骤和行动
-    if (isRunning) {
-      const stepMatch = lastLog.message.match(/\[Step (\d+)\]/);
-      if (stepMatch && stepMatch[1]) {
-        setCurrentStep(parseInt(stepMatch[1]));
-      }
-      
-      // 提取行动描述
-      if (lastLog.tag?.includes('tool:')) {
-        const action = lastLog.message.split(' ')[0] || '';
-        setCurrentAction(action);
-      } else if (lastLog.message.includes('ReAct Loop')) {
-        setCurrentAction('启动 ReAct Loop');
-      }
-    }
-  }, [logs]);
+  // 状态栏 4 行 + Loading 2 行 + 标题 1 行 + 底部栏 1 行 + help 可展开 4 行
+  const headerRows = 4 + 2 + 1;
+  const footerRows = (showHelp ? 4 : 0) + 1;
+  const maxLogLines = Math.max(3, (stdout?.rows ?? 40) - headerRows - footerRows - 3);
 
   return (
     <Box flexDirection="column" height="100%">
-      {/* 状态栏 */}
-      <StatusBar state={state} startTime={startTime} />
+      <StatusBar state={agentState} startTime={startTime} />
 
-      {/* Loading 动画 */}
       <Loading
         isRunning={isAgentRunning}
         step={currentStep || undefined}
         action={currentAction}
       />
 
-      {/* 日志视图 */}
-      <Box flexGrow={1} flexDirection="column" marginY={1}>
+      <Box flexDirection="column" marginY={1}>
         <Box marginBottom={1}>
           <Text bold>
             操作日志
@@ -89,10 +106,11 @@ export function App({ startTime, getState, getLogs, onExit }: AppProps) {
             )}
           </Text>
         </Box>
-        <LogView logs={logs} filter={filter} />
+        <Box height={maxLogLines}>
+          <LogView logs={logs} filter={filter} maxLines={maxLogLines} />
+        </Box>
       </Box>
 
-      {/* 帮助提示 */}
       {showHelp && (
         <Box
           flexDirection="column"
@@ -101,17 +119,14 @@ export function App({ startTime, getState, getLogs, onExit }: AppProps) {
           padding={1}
           marginBottom={1}
         >
-          <Text bold color="yellow">
-            快捷键
-          </Text>
+          <Text bold color="yellow">快捷键</Text>
           <Text>  q - 退出</Text>
           <Text>  f - 切换过滤级别</Text>
           <Text>  h - 显示/隐藏帮助</Text>
         </Box>
       )}
 
-      {/* 底部提示 */}
-      <Box marginTop={1} flexDirection="column" borderStyle="single" paddingX={1}>
+      <Box marginTop={1} borderStyle="single" paddingX={1}>
         <Text color="gray">
           快捷键：q 退出 | f 过滤 | h 帮助 | 当前过滤：{filter.toUpperCase()}
         </Text>
