@@ -26,14 +26,17 @@
     "@mozilla/readability": "^0.6.0",
     "ai": "^6.0.168",
     "consola": "^3.4.2",
+    "ink": "^7.0.1",
     "jsdom": "^29.0.2",
+    "react": "^19.2.5",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/jsdom": "^28.0.1",
     "@types/mozilla__readability": "^0.4.2",
-    "typescript": "^5"
+    "@types/react": "^19.2.14",
+    "typescript": "^6.0.3"
   },
   "module": "src/index.ts",
   "private": true
