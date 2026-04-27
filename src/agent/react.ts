@@ -6,6 +6,7 @@ import { updateState } from './state.js';
 import { loadUserProfile } from '../memory/user-profile.js';
 import { buildReactSystemPrompt, buildReactUserPrompt } from '../prompts/react.js';
 import { createTools, type ToolContext } from '../tools/registry/index.js';
+import { buildMemoryPromptContext, recordWanderSummary } from '../memory/long-term.js';
 import type { AgentState } from '../types.js';
 
 const logger = consola.withTag('react');
@@ -76,7 +77,8 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
   };
 
   const userProfile = await loadUserProfile();
-  const systemPrompt = buildReactSystemPrompt(state, userProfile);
+  const memoryContext = await buildMemoryPromptContext();
+  const systemPrompt = buildReactSystemPrompt(state, userProfile, memoryContext);
   const initialUserPrompt = buildReactUserPrompt({
     state,
     userProfile,
@@ -108,13 +110,25 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
 
   const durationMs = Date.now() - startTime;
 
-  logger.info('ReAct Loop 结束', {
+logger.info('ReAct Loop 结束', {
     steps: ctx.stepCount,
     durationMs,
     spokeTimes: ctx.spokeTimes,
     visitedUrls: ctx.visitedUrls.length,
     endReason: ctx.endReason,
   });
+
+  // 记录游荡总结到长期记忆
+  const lastSpoke = ctx.wanderHistory.filter((s) => s.spoke).pop();
+  await recordWanderSummary({
+    steps: ctx.stepCount,
+    topics: ctx.wanderHistory
+      .filter((s) => s.url)
+      .map((s) => s.url || '')
+      .filter(Boolean),
+    spoke: lastSpoke?.spoke || '（本次未分享）',
+    duration: durationMs,
+  }).catch((err: unknown) => logger.warn('记录游荡总结失败', { error: err }));
 
   // 更新状态
   await updateState({

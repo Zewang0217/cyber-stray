@@ -99,8 +99,16 @@ function formatLastToolResult(result: unknown): string {
 
 /**
  * 构建 ReAct Agent 的 system prompt
+ *
+ * @param state - Agent 状态
+ * @param userProfile - 用户画像
+ * @param memoryContext - 可选的长期记忆上下文
  */
-export function buildReactSystemPrompt(state: AgentState, userProfile: UserProfile): string {
+export function buildReactSystemPrompt(
+  state: AgentState,
+  userProfile: UserProfile,
+  memoryContext?: string
+): string {
   const interests = state.agentInterests.length > 0
     ? state.agentInterests.join('、')
     : '什么都好奇';
@@ -165,7 +173,8 @@ export function buildReactSystemPrompt(state: AgentState, userProfile: UserProfi
 - \`read_page\` 会返回页面里的链接，你可以选择点进去继续游荡。
 - 你可以多次调用 \`speak\`，游荡过程中随时分享。
 - 你也可以一次游荡都不分享，空手而归也 OK。
-- \`rest\` 调用后游荡结束，请在累了或者心满意足时调用。`;
+- \`rest\` 调用后游荡结束，请在累了或者心满意足时调用。${memoryContext ? `\n\n${memoryContext}` : ''}`;
+
 }
 
 /**
