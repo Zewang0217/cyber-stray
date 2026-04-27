@@ -25,8 +25,8 @@ import {
   MEMORY_TYPE_PATHS,
   generateMemoryId,
   toSafeFilename,
+  parseMemoryFrontmatter,
 } from './types.js';
-import type { MemoryEntry as MemoryEntryType } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -89,9 +89,9 @@ export class MemoryStore {
   }
 
   /**
-   * 写入索引文件
+   * 写入索引文件（公开，供 MemoryConsolidator 等外部调用）
    */
-  private async writeIndex(index: MemoryIndex): Promise<void> {
+  async writeIndex(index: MemoryIndex): Promise<void> {
     const indexPath = this.getBasePath('INDEX.md');
     const content = this.formatIndexToMarkdown(index);
     await this.ensureDir(this.getBasePath());
@@ -104,11 +104,56 @@ export class MemoryStore {
   private parseIndexFromMarkdown(content: string): MemoryIndex {
     const lines = content.split('\n');
     const meta: Record<string, string> = {};
+    const recentMemories: string[] = [];
+    const importantMemories: string[] = [];
+    const tags: string[] = [];
+    let section: string | null = null;
 
     for (const line of lines) {
-      const match = line.match(/^\s*-\s*(\w+):\s*(.+)$/);
-      if (match && match[1]) {
-        meta[match[1]] = match[2] || '';
+      // 检测章节
+      if (line.startsWith('## 最近记忆')) {
+        section = 'recent';
+        continue;
+      }
+      if (line.startsWith('## 重要记忆')) {
+        section = 'important';
+        continue;
+      }
+      if (line.startsWith('## 标签')) {
+        section = 'tags';
+        continue;
+      }
+      if (line.startsWith('## ') || line.startsWith('# ')) {
+        section = null;
+        continue;
+      }
+
+      if (section === 'recent') {
+        const match = line.match(/^\s*-\s*(.+)$/);
+        if (match && match[1]) {
+          recentMemories.push(match[1].trim());
+        }
+        continue;
+      }
+      if (section === 'important') {
+        const match = line.match(/^\s*-\s*(.+)$/);
+        if (match && match[1]) {
+          importantMemories.push(match[1].trim());
+        }
+        continue;
+      }
+      if (section === 'tags') {
+        const tagMatch = line.match(/^#(\S+)/);
+        if (tagMatch && tagMatch[1]) {
+          tags.push(tagMatch[1]);
+        }
+        continue;
+      }
+
+      // 概览区解析 key: value
+      const metaMatch = line.match(/^\s*-\s*(\w+):\s*(.+)$/);
+      if (metaMatch && metaMatch[1]) {
+        meta[metaMatch[1]] = metaMatch[2] || '';
       }
     }
 
@@ -116,9 +161,9 @@ export class MemoryStore {
       lastUpdated: meta.lastUpdated || new Date().toISOString(),
       totalMemories: parseInt(meta.totalMemories || '0', 10),
       typeStats: this.parseTypeStats(meta.typeStats || ''),
-      recentMemories: [],
-      importantMemories: [],
-      tags: [],
+      recentMemories,
+      importantMemories,
+      tags,
     };
   }
 
@@ -216,7 +261,13 @@ export class MemoryStore {
 
     try {
       const content = await readFile(filepath, 'utf-8');
-      return this.parseMemoryFromMarkdown(content, id, type);
+      const entry = this.parseMemoryFromMarkdown(content, id, type);
+      entry.accessedAt = new Date().toISOString();
+
+      const updatedContent = this.formatMemoryToMarkdown(entry);
+      await writeFile(filepath, updatedContent, 'utf-8');
+
+      return entry;
     } catch (error) {
       logger.error('读取记忆失败', { id, error });
       return null;
@@ -284,6 +335,14 @@ export class MemoryStore {
     try {
       await rm(filepath);
       logger.debug('记忆已删除', { id });
+
+      const index = await this.readIndex();
+      index.totalMemories = Math.max(0, index.totalMemories - 1);
+      index.typeStats[type] = Math.max(0, (index.typeStats[type] || 1) - 1);
+      index.recentMemories = index.recentMemories.filter((memId) => memId !== id);
+      index.importantMemories = index.importantMemories.filter((memId) => memId !== id);
+      await this.writeIndex(index);
+
       return true;
     } catch (error) {
       logger.error('删除记忆失败', { id, error });
@@ -450,12 +509,11 @@ export class MemoryStore {
       `timestamp: ${entry.timestamp}`,
       `tags: ${entry.tags.join(', ')}`,
       `importance: ${entry.importance}`,
-      '---',
-      '',
-      `## ${entry.summary}`,
-      '',
-      entry.content,
     ];
+    if (entry.accessedAt) {
+      lines.push(`accessedAt: ${entry.accessedAt}`);
+    }
+    lines.push('---', '', `## ${entry.summary}`, '', entry.content);
 
     return lines.join('\n');
   }
@@ -465,30 +523,8 @@ export class MemoryStore {
     id: string,
     type: MemoryType
   ): MemoryEntry {
-    const parts = content.split('---');
-    const metaStr = parts[1] || '';
-    const body = parts[2] || '';
-
-    const meta: Record<string, string> = {};
-    for (const line of metaStr.split('\n')) {
-      const match = line.match(/^\s*(\w+):\s*(.+)$/);
-      if (match && match[1]) {
-        meta[match[1]] = match[2] || '';
-      }
-    }
-
-    const summaryMatch = body.match(/^##\s*(.+)$/m);
-    const summary = summaryMatch?.[1] || '';
-
-    return {
-      id,
-      type,
-      timestamp: meta.timestamp || new Date().toISOString(),
-      tags: meta.tags ? meta.tags.split(', ').filter(Boolean) : [],
-      summary,
-      content: body.replace(/^##\s*.+\n/, '').trim(),
-      importance: parseFloat(meta.importance || '0.5'),
-    };
+    const parsed = parseMemoryFrontmatter(content);
+    return { id, type, ...parsed };
   }
 
   private async updateIndexAfterSave(entry: MemoryEntry): Promise<void> {

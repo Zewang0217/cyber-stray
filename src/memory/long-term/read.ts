@@ -103,7 +103,7 @@ export async function buildMemoryPromptContext(
     return '';
   }
 
-  return `\n\n## 长期记忆上下文\n${context}`;
+  return context;
 }
 
 /**

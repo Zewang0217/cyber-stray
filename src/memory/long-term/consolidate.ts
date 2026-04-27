@@ -12,9 +12,23 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { consola } from '../../logger.js';
 
-import { DEFAULT_MEMORY_CONFIG, MEMORY_TYPE_PATHS, type MemoryType } from './types.js';
+import {
+  DEFAULT_MEMORY_CONFIG,
+  MEMORY_TYPE_PATHS,
+  toSafeFilename,
+  parseMemoryFrontmatter,
+  type MemoryType,
+} from './types.js';
+import type { MemoryStore } from './index.js';
 
 const logger = consola.withTag('MemoryConsolidation');
+
+function extractAccessedAt(content: string): string | null {
+  const parts = content.split('---');
+  const metaStr = parts[1] || '';
+  const match = metaStr.match(/accessedAt:\s*(.+)/);
+  return match?.[1]?.trim() || null;
+}
 
 /**
  * 容量管理器
@@ -22,9 +36,11 @@ const logger = consola.withTag('MemoryConsolidation');
 export class MemoryConsolidator {
   private config = DEFAULT_MEMORY_CONFIG;
   private basePath: string;
+  private store?: MemoryStore;
 
-  constructor(basePath: string = DEFAULT_MEMORY_CONFIG.basePath) {
+  constructor(basePath: string = DEFAULT_MEMORY_CONFIG.basePath, store?: MemoryStore) {
     this.basePath = basePath;
+    this.store = store;
   }
 
   /**
@@ -91,6 +107,7 @@ export class MemoryConsolidator {
     const types = type ? [type] : (Object.keys(MEMORY_TYPE_PATHS) as MemoryType[]);
     const cutoff = Date.now() - maxAge;
     let deletedCount = 0;
+    const deletedByType: Record<string, number> = {};
 
     for (const t of types) {
       const dir = join(this.basePath, MEMORY_TYPE_PATHS[t]);
@@ -103,7 +120,7 @@ export class MemoryConsolidator {
 
         try {
           const content = await readFile(filepath, 'utf-8');
-          const entry = this.parseMemoryFile(content, file.replace('.md', ''));
+          const entry = parseMemoryFrontmatter(content);
 
           if (
             new Date(entry.timestamp).getTime() < cutoff &&
@@ -111,6 +128,7 @@ export class MemoryConsolidator {
           ) {
             await rm(filepath);
             deletedCount++;
+            deletedByType[t] = (deletedByType[t] || 0) + 1;
             logger.debug('删除低价值旧记忆', {
               id: file,
               age: entry.timestamp,
@@ -125,6 +143,15 @@ export class MemoryConsolidator {
 
     if (deletedCount > 0) {
       logger.info(`清理了 ${deletedCount} 条低价值旧记忆`);
+
+      if (this.store) {
+        const index = await this.store.readIndex();
+        index.totalMemories = Math.max(0, index.totalMemories - deletedCount);
+        for (const [t, count] of Object.entries(deletedByType)) {
+          index.typeStats[t as MemoryType] = Math.max(0, (index.typeStats[t as MemoryType] || count) - count);
+        }
+        await this.store.writeIndex(index);
+      }
     }
 
     return deletedCount;
@@ -137,7 +164,7 @@ export class MemoryConsolidator {
     const dir = join(this.basePath, MEMORY_TYPE_PATHS.knowledge);
     if (!existsSync(dir)) return;
 
-    const topicLower = topic.toLowerCase().replace(/[^a-z0-9一-龥]/g, '-');
+    const topicLower = toSafeFilename(topic).toLowerCase();
     const files = await readdir(dir);
 
     const topicFiles = files.filter(
@@ -150,7 +177,12 @@ export class MemoryConsolidator {
     for (const file of topicFiles) {
       const filepath = join(dir, file);
       const content = await readFile(filepath, 'utf-8');
-      entries.push(this.parseMemoryFile(content, file.replace('.md', '')));
+      const parsed = parseMemoryFrontmatter(content);
+      entries.push({
+        id: file.replace('.md', ''),
+        type: 'knowledge' as const,
+        ...parsed,
+      });
     }
 
     const merged: Record<string, unknown> = {
@@ -183,6 +215,7 @@ export class MemoryConsolidator {
   async cleanupExpired(): Promise<number> {
     const cutoff = Date.now() - this.config.maxAge;
     let deletedCount = 0;
+    const deletedByType: Record<string, number> = {};
 
     for (const type of Object.keys(MEMORY_TYPE_PATHS) as MemoryType[]) {
       const dir = join(this.basePath, MEMORY_TYPE_PATHS[type]);
@@ -194,10 +227,14 @@ export class MemoryConsolidator {
         const filepath = join(dir, file);
 
         try {
-          const fileStat = await stat(filepath);
-          if (fileStat.atimeMs < cutoff) {
+          const content = await readFile(filepath, 'utf-8');
+          const parsed = parseMemoryFrontmatter(content);
+
+          const accessedAt = extractAccessedAt(content) || parsed.timestamp;
+          if (new Date(accessedAt).getTime() < cutoff) {
             await rm(filepath);
             deletedCount++;
+            deletedByType[type] = (deletedByType[type] || 0) + 1;
           }
         } catch (error) {
           logger.warn('清理过期记忆失败', { file, error });
@@ -207,40 +244,18 @@ export class MemoryConsolidator {
 
     if (deletedCount > 0) {
       logger.info(`清理了 ${deletedCount} 条过期记忆`);
-    }
 
-    return deletedCount;
-  }
-
-  private parseMemoryFile(content: string, id: string): {
-    timestamp: string;
-    tags: string[];
-    importance: number;
-    summary: string;
-    content: string;
-  } {
-    const parts = content.split('---');
-    const metaStr = parts[1] || '';
-    const body = parts[2] || '';
-
-    const meta: Record<string, string> = {};
-    for (const line of metaStr.split('\n')) {
-      const match = line.match(/^\s*(\w+):\s*(.+)$/);
-      if (match && match[1]) {
-        meta[match[1]] = match[2] || '';
+      if (this.store) {
+        const index = await this.store.readIndex();
+        index.totalMemories = Math.max(0, index.totalMemories - deletedCount);
+        for (const [t, count] of Object.entries(deletedByType)) {
+          index.typeStats[t as MemoryType] = Math.max(0, (index.typeStats[t as MemoryType] || count) - count);
+        }
+        await this.store.writeIndex(index);
       }
     }
 
-    const summaryMatch = body.match(/^##\s*(.+)$/m);
-    const summary = summaryMatch?.[1] || '';
-
-    return {
-      timestamp: meta.timestamp || new Date().toISOString(),
-      tags: meta.tags ? meta.tags.split(', ').filter(Boolean) : [],
-      importance: parseFloat(meta.importance || '0.5'),
-      summary,
-      content: body.replace(/^##\s*.+\n/, '').trim(),
-    };
+    return deletedCount;
   }
 
   private formatMemoryToMarkdown(entry: Record<string, unknown>): string {
@@ -264,9 +279,12 @@ export class MemoryConsolidator {
 
 let defaultConsolidator: MemoryConsolidator | null = null;
 
-export function getMemoryConsolidator(): MemoryConsolidator {
+export function getMemoryConsolidator(store?: MemoryStore): MemoryConsolidator {
   if (!defaultConsolidator) {
-    defaultConsolidator = new MemoryConsolidator();
+    defaultConsolidator = new MemoryConsolidator(
+      DEFAULT_MEMORY_CONFIG.basePath,
+      store,
+    );
   }
   return defaultConsolidator;
 }

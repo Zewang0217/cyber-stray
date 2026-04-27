@@ -128,6 +128,18 @@ function toSafeTag(str: string): string {
   return str.toLowerCase().replace(/[^a-z0-9一-龥]/g, '-').substring(0, 20);
 }
 
+function extractDomains(urls: string[]): string[] {
+  return urls
+    .map((url) => {
+      try {
+        return new URL(url).hostname;
+      } catch {
+        return toSafeTag(url);
+      }
+    })
+    .filter(Boolean);
+}
+
 /**
  * 记录一次游荡总结
  */
@@ -140,11 +152,15 @@ export async function recordWanderSummary(params: {
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0];
 
+  const spokeSummary = params.spoke.length > 30
+    ? `${params.spoke.substring(0, 30)}...`
+    : params.spoke;
+
   return store.saveMemory({
     type: 'interaction',
     timestamp: now.toISOString(),
-    tags: ['wander', `date:${dateStr}`, ...params.topics.map(toSafeTag)],
-    summary: `游荡 ${params.steps} 步，分享: ${params.spoke.substring(0, 30)}...`,
+    tags: ['wander', `date:${dateStr}`, ...extractDomains(params.topics)],
+    summary: `游荡 ${params.steps} 步，分享: ${spokeSummary}`,
     content: `本次游荡共 ${params.steps} 步${params.duration ? `，耗时 ${params.duration}ms` : ''}\n\n探索话题: ${params.topics.join(', ')}\n\n分享内容: ${params.spoke}`,
     importance: 0.6,
   });
