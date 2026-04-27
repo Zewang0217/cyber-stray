@@ -69,16 +69,34 @@ const SAFE_FILENAME_REGEX = /[^a-zA-Z0-9一-龥_-]/g;
 
 /**
  * 生成安全的文件名
+ * 防止路径遍历攻击 (../) 和路径分隔符
  */
 export function toSafeFilename(str: string): string {
-  return str.replace(SAFE_FILENAME_REGEX, '-').substring(0, 50);
+  // 阻止路径遍历和多级目录
+  const sanitized = str
+    .replace(/\.\./g, '-')           // 阻止 .. 路径遍历
+    .replace(/[\/\\]/g, '-')          // 阻止路径分隔符
+    .replace(SAFE_FILENAME_REGEX, '-') // 替换其他非法字符
+    .replace(/-+/g, '-')              // 折叠多个连字符
+    .replace(/^-|-$/g, '');           // 去除首尾连字符
+
+  // 防止空文件名
+  if (!sanitized) {
+    return `mem-${Date.now()}`;
+  }
+
+  return sanitized.substring(0, 50);
 }
 
 /**
  * 生成记忆 ID
+ * 使用更长的 hash 降低碰撞风险
  */
 export function generateMemoryId(type: MemoryType, content: string): string {
   const timestamp = Date.now();
-  const hash = content.substring(0, 20).replace(SAFE_FILENAME_REGEX, '');
+  const hash = content
+    .substring(0, 32)                            // 增加 hash 长度到 32
+    .replace(SAFE_FILENAME_REGEX, '')
+    .substring(0, 32);
   return `${type}-${timestamp}-${hash}`;
 }

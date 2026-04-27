@@ -190,7 +190,13 @@ export class MemoryStore {
 
     await this.ensureDir(dir);
     const content = this.formatMemoryToMarkdown(fullEntry);
-    await writeFile(filepath, content, 'utf-8');
+
+    try {
+      await writeFile(filepath, content, 'utf-8');
+    } catch (error) {
+      logger.error('写入记忆文件失败', { id, filepath, error });
+      throw new Error(`记忆写入失败: ${id}`, { cause: error });
+    }
 
     await this.updateIndexAfterSave(fullEntry);
     logger.debug('记忆已保存', { id, type: entry.type });
@@ -351,22 +357,31 @@ export class MemoryStore {
 
   /**
    * 按 token 预算选择记忆
+   * 使用更保守的估算：2.5 chars/token (考虑中文和格式开销)
    */
   private selectMemoriesByTokenBudget(
     memories: Array<MemoryEntry & { score: number }>,
     maxTokens: number
   ): MemoryEntry[] {
-    const maxChars = maxTokens * 4;
-    let totalChars = 0;
+    // 使用更保守的估算，考虑中文和多级 markdown 格式
+    const maxChars = maxTokens * 2.5;
+    const selected: Array<MemoryEntry & { score: number }> = [];
 
-    return memories
-      .sort((a, b) => b.score - a.score)
-      .filter((m) => {
-        const len = m.content.length + m.summary.length;
-        if (totalChars + len > maxChars) return false;
-        totalChars += len;
-        return true;
-      });
+    // 按分数降序排列
+    const sorted = [...memories].sort((a, b) => b.score - a.score);
+
+    for (const m of sorted) {
+      // 计算实际开销：content + summary + tags + 格式开销
+      const tagsLen = m.tags.join(' ').length;
+      const overhead = 30; // markdown 格式开销（标题、分隔符等）
+      const entryLen = m.content.length + m.summary.length + tagsLen + overhead;
+
+      if (selected.reduce((sum, e) => sum + e.content.length + e.summary.length + 30, 0) + entryLen <= maxChars) {
+        selected.push(m);
+      }
+    }
+
+    return selected;
   }
 
   /**
