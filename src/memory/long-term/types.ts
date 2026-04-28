@@ -100,6 +100,26 @@ export function generateMemoryId(type: MemoryType, content: string): string {
   return `${type}-${timestamp}-${hash}`;
 }
 
+/**
+ * 将记忆条目格式化为 Markdown（供 MemoryStore 和 MemoryConsolidator 共享）
+ */
+export function formatMemoryToMarkdown(entry: MemoryEntry): string {
+  const lines = [
+    '---',
+    `id: ${entry.id}`,
+    `type: ${entry.type}`,
+    `timestamp: ${entry.timestamp}`,
+    `tags: ${entry.tags.join(', ')}`,
+    `importance: ${entry.importance}`,
+  ];
+  if (entry.accessedAt) {
+    lines.push(`accessedAt: ${entry.accessedAt}`);
+  }
+  lines.push('---', '', `## ${entry.summary}`, '', entry.content);
+
+  return lines.join('\n');
+}
+
 /** 解析记忆文件的 frontmatter（供 MemoryStore 和 MemoryConsolidator 共享） */
 export function parseMemoryFrontmatter(content: string): {
   timestamp: string;

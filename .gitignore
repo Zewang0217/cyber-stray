@@ -12,6 +12,8 @@ dist/
 data/state.json
 data/history/*.md
 data/memory/*.md
+data/memory/**/*.md
+data/wander-history.json
 
 # 日志
 *.log

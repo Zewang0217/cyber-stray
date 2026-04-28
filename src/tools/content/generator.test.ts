@@ -20,7 +20,6 @@ const defaultState: AgentState = {
   userLikes: ['科技', 'AI'],
   userDislikes: [],
   agentInterests: ['AI', '科技新闻', '互联网'],
-  wanderHistory: [],
   totalHunts: 5,
   totalWanders: 5,
   totalSteps: 10,

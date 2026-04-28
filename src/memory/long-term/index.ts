@@ -7,7 +7,7 @@
  * - 每条记忆为一个 .md 文件
  */
 
-import { readFile, writeFile, mkdir, readdir, stat, rm } from 'fs/promises';
+import { readFile, writeFile, mkdir, readdir, rm } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -26,6 +26,7 @@ import {
   generateMemoryId,
   toSafeFilename,
   parseMemoryFrontmatter,
+  formatMemoryToMarkdown,
 } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -234,7 +235,7 @@ export class MemoryStore {
     const filepath = join(dir, filename);
 
     await this.ensureDir(dir);
-    const content = this.formatMemoryToMarkdown(fullEntry);
+    const content = this.formatEntry(fullEntry);
 
     try {
       await writeFile(filepath, content, 'utf-8');
@@ -264,7 +265,7 @@ export class MemoryStore {
       const entry = this.parseMemoryFromMarkdown(content, id, type);
       entry.accessedAt = new Date().toISOString();
 
-      const updatedContent = this.formatMemoryToMarkdown(entry);
+      const updatedContent = this.formatEntry(entry);
       await writeFile(filepath, updatedContent, 'utf-8');
 
       return entry;
@@ -501,21 +502,8 @@ export class MemoryStore {
     await mkdir(dir, { recursive: true });
   }
 
-  private formatMemoryToMarkdown(entry: MemoryEntry): string {
-    const lines = [
-      '---',
-      `id: ${entry.id}`,
-      `type: ${entry.type}`,
-      `timestamp: ${entry.timestamp}`,
-      `tags: ${entry.tags.join(', ')}`,
-      `importance: ${entry.importance}`,
-    ];
-    if (entry.accessedAt) {
-      lines.push(`accessedAt: ${entry.accessedAt}`);
-    }
-    lines.push('---', '', `## ${entry.summary}`, '', entry.content);
-
-    return lines.join('\n');
+  private formatEntry(entry: MemoryEntry): string {
+    return formatMemoryToMarkdown(entry);
   }
 
   private parseMemoryFromMarkdown(

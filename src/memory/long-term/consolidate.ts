@@ -17,7 +17,9 @@ import {
   MEMORY_TYPE_PATHS,
   toSafeFilename,
   parseMemoryFrontmatter,
+  formatMemoryToMarkdown,
   type MemoryType,
+  type MemoryEntry,
 } from './types.js';
 import type { MemoryStore } from './index.js';
 
@@ -185,7 +187,7 @@ export class MemoryConsolidator {
       });
     }
 
-    const merged: Record<string, unknown> = {
+    const merged: MemoryEntry = {
       id: `knowledge-${topicLower}-merged`,
       type: 'knowledge',
       timestamp: new Date().toISOString(),
@@ -198,7 +200,7 @@ export class MemoryConsolidator {
     const mergedPath = join(dir, `${topicLower}-merged.md`);
     await writeFile(
       mergedPath,
-      this.formatMemoryToMarkdown(merged),
+      formatMemoryToMarkdown(merged),
       'utf-8'
     );
 
@@ -258,23 +260,6 @@ export class MemoryConsolidator {
     return deletedCount;
   }
 
-  private formatMemoryToMarkdown(entry: Record<string, unknown>): string {
-    const lines = [
-      '---',
-      `id: ${entry.id}`,
-      `type: ${entry.type}`,
-      `timestamp: ${entry.timestamp}`,
-      `tags: ${(entry.tags as string[]).join(', ')}`,
-      `importance: ${entry.importance}`,
-      '---',
-      '',
-      `## ${entry.summary}`,
-      '',
-      entry.content as string,
-    ];
-
-    return lines.join('\n');
-  }
 }
 
 let defaultConsolidator: MemoryConsolidator | null = null;
