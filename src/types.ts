@@ -34,7 +34,6 @@ export interface AgentState {
 
   // Agent 个性化（ReAct 架构新增）
   agentInterests: string[];    // Agent 自己的兴趣图谱（LLM 自主维护）
-  wanderHistory: WanderStep[]; // 最近游荡的历史记录
 
   // 统计
   /** @deprecated 使用 totalWanders 替代 */

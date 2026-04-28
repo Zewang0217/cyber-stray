@@ -16,7 +16,6 @@ describe('scoring', () => {
     userLikes: [],
     userDislikes: [],
     agentInterests: [],
-    wanderHistory: [],
     totalHunts: 0,
     totalWanders: 0,
     totalSteps: 0,
