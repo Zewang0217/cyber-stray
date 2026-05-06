@@ -28,7 +28,6 @@ function createDefaultState(): AgentState {
 
     // Agent 个性化（ReAct 架构）
     agentInterests: ['科技', 'AI', '互联网'],
-    wanderHistory: [],
 
     // 统计
     totalHunts: 0,

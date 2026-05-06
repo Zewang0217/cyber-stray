@@ -3,6 +3,8 @@ import { createSearchWebTool } from './search-web.js';
 import { createReadPageTool } from './read-page.js';
 import { createSpeakTool } from './speak.js';
 import { createRestTool } from './rest.js';
+import { createRecordKnowledgeTool } from './record-knowledge.js';
+import { createObserveUserTool } from './observe-user.js';
 
 export type { ToolContext };
 
@@ -13,5 +15,7 @@ export function createTools(ctx: ToolContext) {
     read_page: createReadPageTool(ctx),
     speak: createSpeakTool(ctx),
     rest: createRestTool(ctx),
+    record_knowledge: createRecordKnowledgeTool(ctx),
+    observe_user: createObserveUserTool(ctx),
   };
 }
