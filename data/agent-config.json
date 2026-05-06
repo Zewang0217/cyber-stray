@@ -9,5 +9,15 @@
   "maxSearchResults": 10,
   "maxWanderSteps": 10,
   "wanderTemperature": 0.9,
-  "outputLanguage": "zh-CN"
+  "outputLanguage": "zh-CN",
+
+  "_feishuNote": "飞书配置",
+  "feishu": {
+    "_pushModeNote": "推送方式: lark_channel(机器人双向,默认) | webhook(传统webhook)",
+    "pushMode": "lark_channel",
+    "_receiveModeNote": "接收方式: reaction(表情互动,默认) | webhook(http回调) | none(不接收)",
+    "receiveMode": "reaction",
+    "_chatIdNote": " LarkChannel 推送目标，可选。不配置时自动发送到最近的对话",
+    "chatId": "oc_ed5e44e2a607673f93096e50ae086315"
+  }
 }

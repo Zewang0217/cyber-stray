@@ -128,6 +128,95 @@ bun run src/index.ts
 这解释了太多事情了！我家猫听完都笑了，然后继续装聋。
 ```
 
+## 飞书机器人配置
+
+### 功能特性
+
+- **消息推送**：Agent 通过 LarkChannel 将内容推送到飞书会话
+- **用户反馈**：用户通过表情（👍/👎）对推送内容进行快速反馈
+- **双向通信**：支持接收用户反馈并更新 Agent 状态
+
+### 配置步骤
+
+#### 1. 创建飞书应用
+
+1. 访问 [飞书开放平台](https://open.feishu.cn/)
+2. 点击「创建应用」→「创建企业自建应用」
+3. 填写应用名称和描述，创建应用
+4. 获取 **App ID** 和 **App Secret**
+
+#### 2. 配置权限
+
+在应用详情页进入「权限管理」，开通以下权限：
+
+| 权限名称 | 权限标识 | 说明 |
+|---------|---------|------|
+| 获取企业用户信息 | `contact:user.employee_id:readonly` | 用于 LarkChannel 发送消息 |
+| 获取用户发给机器人的单聊消息 | `im:message` | 接收用户消息（可选） |
+| 给用户发消息 | `im:message:send_as_bot` | 发送消息给用户 |
+
+#### 3. 订阅事件（表情互动反馈）
+
+1. 进入「事件与回调」→「订阅方式」
+2. 选择「长连接模式（WebSocket）」
+3. 添加事件：`moments.reaction.created_v1`（表情互动）
+4. 保存并发布
+
+#### 4. 安装应用
+
+将应用安装到需要接收消息的飞书组织/团队。
+
+#### 5. 配置环境变量
+
+在 `.env` 文件中添加：
+
+```bash
+# 飞书应用配置
+LARK_APP_ID=cli_xxxxxxxxxxxxxx
+LARK_APP_SECRET=your_app_secret_here
+```
+
+#### 6. 配置应用参数
+
+在 `data/agent-config.json` 中配置：
+
+```json
+{
+  "feishu": {
+    "pushMode": "lark_channel",
+    "receiveMode": "reaction",
+    "chatId": "oc_xxxxxxxxxxxxxxxx"
+  }
+}
+```
+
+**参数说明：**
+
+| 参数 | 可选值 | 说明 |
+|------|-------|------|
+| `pushMode` | `lark_channel` / `webhook` | 推送方式，默认 `lark_channel` |
+| `receiveMode` | `reaction` / `webhook` / `none` | 接收反馈方式，默认 `reaction` |
+| `chatId` | 飞书会话 ID | 消息推送目标，可以是群 ID 或单聊会话 ID |
+
+**获取 chatId：**
+- 在飞书中与机器人开启一个会话
+- 会话 URL 中会包含 ID，格式：`oc_xxxxxxxxxxxxxxxx`
+
+### 使用反馈功能
+
+1. Agent 推送消息到飞书
+2. 用户对消息添加 👍（喜欢）或 👎（不喜欢）
+3. Agent 自动读取反馈并调整推送策略
+
+### 故障排查
+
+| 问题 | 解决方案 |
+|------|---------|
+| `Access denied` | 开通 `contact:user.employee_id:readonly` 权限并重新发布 |
+| `Invalid chatId` | 检查 `chatId` 是否正确配置 |
+| 无法收到表情事件 | 确认已订阅 `moments.reaction.created_v1` 事件 |
+| WS 连接失败 | 检查网络连接，确保能访问飞书开放平台 API |
+
 ## 开发路线图
 
 - [ ] 基础框架搭建

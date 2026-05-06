@@ -124,6 +124,7 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
     wanderHistory: [],
     visitedUrls: [],
     spokeTimes: 0,
+    pendingFeedbackCount: 0,
     endReason: 'max_steps',
     startTime,
   };

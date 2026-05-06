@@ -1,6 +1,7 @@
 import { appendFile, mkdir } from 'fs/promises';
 import { consola } from '../../logger.js';
 import { config } from '../../config.js';
+import { sendFeishuMessage } from './lark-sender.js';
 
 const logger = consola.withTag('speak');
 
@@ -18,6 +19,7 @@ export interface SpeakResult {
   success: boolean;
   pushed: boolean;     // 是否已推送到飞书/Telegram
   timestamp: string;
+  messageId?: string; // 飞书消息 ID（用于关联反馈）
   error?: string;      // 推送失败时的错误信息
 }
 
@@ -27,6 +29,7 @@ interface SpeakRecord {
   type: SpeakType;
   pushed: boolean;
   timestamp: string;
+  messageId?: string; // 飞书消息 ID
 }
 
 /**
@@ -41,37 +44,6 @@ async function appendSpeakHistory(record: SpeakRecord): Promise<void> {
   } catch (error) {
     // 日志记录失败不影响主流程
     logger.warn('记录推送历史失败', { error });
-  }
-}
-
-/**
- * 推送到飞书 Webhook
- */
-async function pushToFeishu(content: string): Promise<void> {
-  const webhook = config.feishuWebhook;
-  if (!webhook) {
-    throw new Error('未配置 FEISHU_WEBHOOK');
-  }
-
-  const body = JSON.stringify({
-    msg_type: 'text',
-    content: { text: content },
-  });
-
-  const response = await fetch(webhook, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body,
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`飞书推送失败: HTTP ${response.status}`);
-  }
-
-  const data = (await response.json()) as { code?: number; msg?: string };
-  if (data.code !== 0) {
-    throw new Error(`飞书推送失败: ${data.msg ?? '未知错误'}`);
   }
 }
 
@@ -115,6 +87,10 @@ async function pushToTelegram(content: string): Promise<void> {
  *
  * 会尝试推送到所有已配置的渠道（飞书、Telegram）。
  * 推送失败时记录错误但不中断 ReAct Loop（返回 pushed: false）。
+ *
+ * 飞书发送方式根据 feishu.pushMode 配置：
+ * - lark_channel: 使用 LarkChannel（默认）
+ * - webhook: 使用传统 Webhook
  */
 export async function speak(content: string, type: SpeakType): Promise<SpeakResult> {
   const timestamp = new Date().toISOString();
@@ -138,18 +114,35 @@ export async function speak(content: string, type: SpeakType): Promise<SpeakResu
   }
 
   let pushed = false;
+  let messageId: string | undefined;
   const pushErrors: string[] = [];
 
-  // 尝试推送到飞书
-  if (config.feishuWebhook) {
+  // 推送到飞书（根据配置选择方式）
+  if (config.feishu?.pushMode === 'lark_channel') {
+    // LarkChannel 方式
+    if (config.larkAppId && config.larkAppSecret) {
+      try {
+        messageId = await sendFeishuMessage(content);
+        pushed = true;
+        logger.success('飞书（LarkChannel）推送成功', { messageId });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        pushErrors.push(`飞书: ${message}`);
+        logger.error('飞书（LarkChannel）推送失败', { error: message });
+      }
+    } else {
+      logger.warn('未配置 LARK_APP_ID/LARK_APP_SECRET，无法使用 LarkChannel');
+    }
+  } else if (config.feishuWebhook) {
+    // Webhook 方式
     try {
-      await pushToFeishu(content);
+      messageId = await sendFeishuMessage(content);
       pushed = true;
-      logger.success('飞书推送成功');
+      logger.success('飞书（Webhook）推送成功', { messageId });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       pushErrors.push(`飞书: ${message}`);
-      logger.error('飞书推送失败', { error: message });
+      logger.error('飞书（Webhook）推送失败', { error: message });
     }
   }
 
@@ -167,24 +160,25 @@ export async function speak(content: string, type: SpeakType): Promise<SpeakResu
   }
 
   // 没有配置任何推送渠道时，只记录日志
-  if (!config.feishuWebhook && (!config.telegramBotToken || !config.telegramChatId)) {
+  if (!config.feishu?.pushMode && !config.feishuWebhook && (!config.telegramBotToken || !config.telegramChatId)) {
     logger.info('无推送渠道配置，内容仅记录日志', { content });
   }
 
   // 记录到历史文件
-  await appendSpeakHistory({ content, type, pushed, timestamp });
+  await appendSpeakHistory({ content, type, pushed, timestamp, messageId });
 
   const result: SpeakResult = {
     success: true,
     pushed,
     timestamp,
+    messageId,
   };
 
   if (pushErrors.length > 0 && !pushed) {
     result.error = pushErrors.join('; ');
   }
 
-  logger.info('speak 完成', { type, pushed, hasErrors: pushErrors.length > 0 });
+  logger.info('speak 完成', { type, pushed, messageId, hasErrors: pushErrors.length > 0 });
 
   return result;
 }

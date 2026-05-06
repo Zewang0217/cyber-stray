@@ -5,6 +5,7 @@ import { createSpeakTool } from './speak.js';
 import { createRestTool } from './rest.js';
 import { createRecordKnowledgeTool } from './record-knowledge.js';
 import { createObserveUserTool } from './observe-user.js';
+import { createReadFeedbackTool, createProcessFeedbackTool } from './read-feedback.js';
 
 export type { ToolContext };
 
@@ -17,5 +18,8 @@ export function createTools(ctx: ToolContext) {
     rest: createRestTool(ctx),
     record_knowledge: createRecordKnowledgeTool(ctx),
     observe_user: createObserveUserTool(ctx),
+    // 反馈相关
+    read_feedback: createReadFeedbackTool(ctx),
+    process_feedback: createProcessFeedbackTool(ctx),
   };
 }

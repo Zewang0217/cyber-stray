@@ -10,6 +10,7 @@ export interface ToolContext {
   wanderHistory: WanderStep[];  // 游荡历史记录
   visitedUrls: string[];        // 访问过的 URL
   spokeTimes: number;           // speak 调用次数
+  pendingFeedbackCount: number; // 待处理反馈数量（read_feedback 工具设置）
   endReason: 'rest' | 'max_steps' | 'low_energy' | 'error';
   startTime: number;            // 游荡开始时间（ms）
 }

@@ -157,6 +157,17 @@ export interface AgentConfig {
   feishuWebhook?: string;
   telegramBotToken?: string;
   telegramChatId?: string;
+
+  // 飞书应用配置（用于卡片交互）
+  larkAppId?: string;
+  larkAppSecret?: string;
+
+  // 飞书行为配置
+  feishu?: {
+    pushMode: 'lark_channel' | 'webhook';
+    receiveMode: 'reaction' | 'webhook' | 'none';
+    chatId?: string;
+  };
 }
 
 // ============================================
