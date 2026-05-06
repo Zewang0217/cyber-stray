@@ -18,7 +18,9 @@ type BehaviorConfig = Pick<
   | 'maxWanderSteps'
   | 'wanderTemperature'
   | 'outputLanguage'
->;
+> & {
+  feishu?: AgentConfig['feishu'];
+};
 
 const defaultBehavior: BehaviorConfig = {
   heartbeatInterval: 5,
@@ -68,6 +70,17 @@ export const config: AgentConfig = {
   feishuWebhook: process.env.FEISHU_WEBHOOK,
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
   telegramChatId: process.env.TELEGRAM_CHAT_ID,
+
+  // 飞书应用配置（用于卡片交互）
+  larkAppId: process.env.LARK_APP_ID,
+  larkAppSecret: process.env.LARK_APP_SECRET,
+
+  // 飞书行为配置（从 agent-config.json 读取）
+  feishu: {
+    pushMode: loadBehaviorConfig().feishu?.pushMode || 'lark_channel',
+    receiveMode: loadBehaviorConfig().feishu?.receiveMode || 'reaction',
+    chatId: loadBehaviorConfig().feishu?.chatId || '',
+  },
 };
 
 /**

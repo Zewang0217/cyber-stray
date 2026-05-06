@@ -3,6 +3,7 @@ import { loadState, heartbeat } from "./agent/state.js";
 import { runAgentLoop } from "./agent/react.js";
 import { initLogger, consola } from "./logger.js";
 import { updateState } from "./tui/index.js";
+import { initFeishuWS } from "./tools/feishu/ws-client.js";
 
 let logger: ReturnType<typeof consola.withTag>;
 
@@ -26,6 +27,9 @@ async function main(): Promise<void> {
     logger.error("配置验证失败", { error: String(error) });
     process.exit(1);
   }
+
+  // 初始化飞书事件订阅（WebSocket 长连接）
+  await initFeishuWS();
 
   // 加载状态
   const state = await loadState();

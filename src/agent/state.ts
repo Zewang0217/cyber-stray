@@ -129,6 +129,39 @@ export async function heartbeat(
 }
 
 /**
+ * 根据用户反馈更新心情（无 topic 参数）
+ *
+ * 用于飞书卡片按钮反馈回调
+ */
+export async function updateMoodByFeedback(
+  type: 'like' | 'dislike'
+): Promise<void> {
+  const state = await loadState();
+
+  const updates: Partial<AgentState> = {};
+
+  if (type === 'like') {
+    updates.temper = Math.max(0, state.temper - 5);
+
+    // 连续点赞可能改善心情
+    if (state.temper < 30) {
+      updates.mood = 'excited';
+    }
+  } else {
+    updates.temper = Math.min(100, state.temper + 8);
+
+    // 被踩太多可能变 grumpy
+    if (state.temper > 70) {
+      updates.mood = 'grumpy';
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await updateState(updates);
+  }
+}
+
+/**
  * 记录用户反馈
  */
 export async function recordFeedback(
