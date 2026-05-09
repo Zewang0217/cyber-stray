@@ -123,6 +123,14 @@ export interface Feedback {
 // 配置相关
 // ============================================
 
+/** 阶梯恢复配置 */
+export interface EnergyRecoveryTier {
+  maxEnergy: number;      // 该阶梯的最大能量值（用于判断是否适用此阶梯）
+  recovery: number;        // 恢复量
+  interval: number;        // 心跳间隔（分钟）
+  boredomGrowth: number;  // 该阶梯下的无聊值增长率
+}
+
 /** Agent 配置 */
 export interface AgentConfig {
   // 心跳间隔（分钟）
@@ -140,6 +148,13 @@ export interface AgentConfig {
   // 消耗参数
   energyCostPerStep: number;     // 每步消耗的精力
   boredomReductionPerStep: number;  // 每步降低的无聊值
+
+  // 概率触发配置
+  wanderProbabilityEnabled: boolean;  // 是否启用概率触发 wander
+  wanderProbabilityThreshold: number; // 低于此能量时概率控制生效（0-100）
+
+  // 阶梯恢复配置
+  energyRecoveryTiers: EnergyRecoveryTier[];
   
   // LLM 配置
   llmModel: string;
