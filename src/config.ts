@@ -13,6 +13,9 @@ type BehaviorConfig = Pick<
   | 'energyRecoveryRate'
   | 'boredomThreshold'
   | 'energyThreshold'
+  | 'energyRecoveringThreshold'
+  | 'energyCostPerStep'
+  | 'boredomReductionPerStep'
   | 'llmTemperature'
   | 'maxSearchResults'
   | 'maxWanderSteps'
@@ -28,6 +31,9 @@ const defaultBehavior: BehaviorConfig = {
   energyRecoveryRate: 2,
   boredomThreshold: 50,
   energyThreshold: 20,
+  energyRecoveringThreshold: 30,
+  energyCostPerStep: 2,
+  boredomReductionPerStep: 2,
   llmTemperature: 0.8,
   maxSearchResults: 10,
   maxWanderSteps: 10,

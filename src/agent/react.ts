@@ -41,10 +41,9 @@ function getProvider() {
   return _provider;
 }
 
-/** 每游荡一步减少的无聊值 */
-const BOREDOM_REDUCTION_PER_STEP = 5;
-/** 每游荡一步消耗的精力值 */
-const ENERGY_COST_PER_STEP = 3;
+// 消耗和恢复参数（从配置文件读取，保留硬编码默认值以便静态分析）
+const ENERGY_COST_PER_STEP = config.energyCostPerStep;
+const BOREDOM_REDUCTION_PER_STEP = config.boredomReductionPerStep;
 /** ctx.wanderHistory 在循环内的最大长度（防止单次游荡步数过多时内存堆积） */
 const MAX_WANDER_HISTORY_IN_CTX = 50;
 
