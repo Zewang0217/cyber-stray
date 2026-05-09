@@ -127,14 +127,19 @@ export interface Feedback {
 export interface AgentConfig {
   // 心跳间隔（分钟）
   heartbeatInterval: number;
-  
+
   // 状态增长速率
   boredomGrowthRate: number;    // 每次心跳无聊值增长
   energyRecoveryRate: number;   // 每次心跳精力恢复
-  
+
   // 阈值
   boredomThreshold: number;      // 触发游荡的无聊值阈值
   energyThreshold: number;       // 能量过低阈值
+  energyRecoveringThreshold: number;  // 精力恢复阈值，低于此值时暂停无聊值增长
+
+  // 消耗参数
+  energyCostPerStep: number;     // 每步消耗的精力
+  boredomReductionPerStep: number;  // 每步降低的无聊值
   
   // LLM 配置
   llmModel: string;

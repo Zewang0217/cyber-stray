@@ -105,26 +105,36 @@ export async function updateState(
 
 /**
  * 心跳：更新无聊值和精力值
+ *
+ * @param boredomGrowth - 无聊值增长率
+ * @param energyRecovery - 精力恢复率
+ * @param energyRecoveringThreshold - 精力恢复阈值，低于此值时暂停无聊值增长
  */
 export async function heartbeat(
   boredomGrowth: number,
-  energyRecovery: number
+  energyRecovery: number,
+  energyRecoveringThreshold: number = 30
 ): Promise<AgentState> {
   const state = await loadState();
-  
-  const newBoredom = Math.min(100, state.boredom + boredomGrowth);
+
+  // 精力低于阈值时，暂停无聊值增长（让精力自然恢复）
+  const actualBoredomGrowth = state.energy < energyRecoveringThreshold
+    ? 0
+    : boredomGrowth;
+
+  const newBoredom = Math.min(100, state.boredom + actualBoredomGrowth);
   const newEnergy = Math.min(100, state.energy + energyRecovery);
-  
+
   // 脾气值随时间缓慢衰减
   const newTemper = Math.max(0, state.temper - 1);
-  
+
   const newState = await updateState({
     boredom: newBoredom,
     energy: newEnergy,
     temper: newTemper,
     lastHeartbeat: new Date().toISOString(),
   });
-  
+
   return newState;
 }
 

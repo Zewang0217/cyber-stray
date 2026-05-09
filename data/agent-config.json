@@ -1,23 +1,26 @@
 {
-  "_searchProviderNote": "通过 SEARCH_PROVIDER 环境变量配置，可选值: duckduckgo(免费无实时新闻), tavily(实时新闻), exa(Neural search)",
-  "heartbeatInterval": 5,
-  "boredomGrowthRate": 5,
-  "energyRecoveryRate": 2,
-  "boredomThreshold": 50,
-  "energyThreshold": 20,
-  "llmTemperature": 0.8,
-  "maxSearchResults": 10,
-  "maxWanderSteps": 10,
-  "wanderTemperature": 0.9,
-  "outputLanguage": "zh-CN",
+    "_searchProviderNote": "通过 SEARCH_PROVIDER 环境变量配置，可选值: duckduckgo(免费无实时新闻), tavily(实时新闻), exa(Neural search)",
+    "heartbeatInterval": 10,
+    "boredomGrowthRate": 5,
+    "energyRecoveryRate": 2,
+    "boredomThreshold": 50,
+    "energyThreshold": 20,
+    "energyRecoveringThreshold": 30,
+    "energyCostPerStep": 2,
+    "boredomReductionPerStep": 3,
+    "llmTemperature": 0.8,
+    "maxSearchResults": 10,
+    "maxWanderSteps": 10,
+    "wanderTemperature": 0.9,
+    "outputLanguage": "zh-CN",
 
-  "_feishuNote": "飞书配置",
-  "feishu": {
-    "_pushModeNote": "推送方式: lark_channel(机器人双向,默认) | webhook(传统webhook)",
-    "pushMode": "lark_channel",
-    "_receiveModeNote": "接收方式: reaction(表情互动,默认) | webhook(http回调) | none(不接收)",
-    "receiveMode": "reaction",
-    "_chatIdNote": " LarkChannel 推送目标，可选。不配置时自动发送到最近的对话",
-    "chatId": "oc_ed5e44e2a607673f93096e50ae086315"
-  }
+    "_feishuNote": "飞书配置",
+    "feishu": {
+        "_pushModeNote": "推送方式: lark_channel(机器人双向,默认) | webhook(传统webhook)",
+        "pushMode": "lark_channel",
+        "_receiveModeNote": "接收方式: reaction(表情互动,默认) | webhook(http回调) | none(不接收)",
+        "receiveMode": "reaction",
+        "_chatIdNote": " LarkChannel 推送目标，可选。不配置时自动发送到最近的对话",
+        "chatId": "oc_ed5e44e2a607673f93096e50ae086315"
+    }
 }

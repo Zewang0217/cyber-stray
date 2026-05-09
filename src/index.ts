@@ -75,9 +75,11 @@ async function runHeartbeat(): Promise<void> {
 
   try {
     // 1. 更新状态（无聊值增长、精力恢复）
+    // 当精力低于阈值时，无聊值暂停增长，让精力自然恢复
     const state = await heartbeat(
       config.boredomGrowthRate,
       config.energyRecoveryRate,
+      config.energyRecoveringThreshold,
     );
 
     updateState(state);
