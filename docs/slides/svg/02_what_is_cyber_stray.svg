@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1e2e"/>
+      <stop offset="100%" stop-color="#181825"/>
+    </linearGradient>
+    <linearGradient id="cardGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#181825"/>
+      <stop offset="100%" stop-color="#1e1e2e"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="720" fill="url(#bgGradient)"/>
+
+  <!-- Left visual panel with robot icon -->
+  <rect x="40" y="100" width="380" height="520" rx="16" fill="#181825" stroke="#313244" stroke-width="1"/>
+  <g transform="translate(110, 200)">
+    <use data-icon="chunk-filled/robot" width="240" height="240" fill="#cba6f7" opacity="0.8"/>
+  </g>
+  <text x="230" y="500" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" fill="#6c7086" text-anchor="middle">
+    自动化信息猎犬
+  </text>
+
+  <!-- Right content area -->
+  <text x="480" y="100" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#6c7086">
+    01 / What is it
+  </text>
+  <text x="480" y="150" font-family="Microsoft YaHei, Arial, sans-serif" font-size="36" font-weight="700" fill="#cdd6f4">
+    什么是赛博街溜子？
+  </text>
+
+  <!-- Key points -->
+  <g transform="translate(480, 200)">
+    <!-- Point 1 -->
+    <rect x="0" y="0" width="680" height="90" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <circle cx="40" cy="45" r="20" fill="#cba6f7" opacity="0.2"/>
+    <text x="40" y="50" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#cba6f7" text-anchor="middle" font-weight="700">1</text>
+    <text x="80" y="38" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#cdd6f4" font-weight="600">一只在互联网暗巷中游荡的猎犬</text>
+    <text x="80" y="62" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#a6adc8">自主搜索信息、阅读内容、分享发现、记录知识</text>
+
+    <!-- Point 2 -->
+    <rect x="0" y="110" width="680" height="90" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <circle cx="40" cy="155" r="20" fill="#89b4fa" opacity="0.2"/>
+    <text x="40" y="160" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#89b4fa" text-anchor="middle" font-weight="700">2</text>
+    <text x="80" y="148" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#cdd6f4" font-weight="600">极客工具 + 电子宠物双重人格</text>
+    <text x="80" y="172" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#a6adc8">既是高效的信息收集器，又是有情绪反应的生命体</text>
+
+    <!-- Point 3 -->
+    <rect x="0" y="220" width="680" height="90" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <circle cx="40" y="265" r="20" fill="#f38ba8" opacity="0.2"/>
+    <text x="40" y="270" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#f38ba8" text-anchor="middle" font-weight="700">3</text>
+    <text x="80" y="258" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#cdd6f4" font-weight="600">无需人工干预，自主运转</text>
+    <text x="80" y="282" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#a6adc8">持续游荡、持续学习、持续自改进</text>
+  </g>
+
+  <!-- Footer -->
+  <text x="640" y="700" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086" text-anchor="middle">
+    02 / Architecture
+  </text>
+</svg>

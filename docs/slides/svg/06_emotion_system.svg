@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1e2e"/>
+      <stop offset="100%" stop-color="#181825"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="720" fill="url(#bgGradient)"/>
+
+  <!-- Page header -->
+  <text x="60" y="60" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#6c7086">05 / Emotion</text>
+  <text x="60" y="100" font-family="Microsoft YaHei, Arial, sans-serif" font-size="36" font-weight="700" fill="#cdd6f4">情绪与状态系统</text>
+  <text x="60" y="130" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" fill="#a6adc8">Agent 不仅能干活，还有"感受"</text>
+
+  <!-- State cards - 2x2 grid -->
+  <!-- Boredom -->
+  <g transform="translate(60, 170)">
+    <rect x="0" y="0" width="560" height="150" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <g transform="translate(24, 24)">
+      <use data-icon="chunk-filled/heart-broken" width="32" height="32" fill="#f38ba8"/>
+    </g>
+    <text x="75" y="38" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" fill="#cdd6f4" font-weight="600">boredom 无聊值</text>
+    <text x="75" y="60" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#a6adc8">决定是否主动搜索新话题</text>
+
+    <!-- Boredom bar -->
+    <rect x="24" y="85" width="512" height="16" rx="8" fill="#313244"/>
+    <rect x="24" y="85" width="256" height="16" rx="8" fill="#f38ba8" opacity="0.6"/>
+    <text x="560" y="98" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#f38ba8" text-anchor="end">50%</text>
+    <text x="24" y="130" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" fill="#6c7086">搜索时下降</text>
+    <text x="140" y="130" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" fill="#6c7086">休息时回升</text>
+  </g>
+
+  <!-- Energy -->
+  <g transform="translate(660, 170)">
+    <rect x="0" y="0" width="560" height="150" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <g transform="translate(24, 24)">
+      <use data-icon="chunk-filled/heart-pulse" width="32" height="32" fill="#f9e2af"/>
+    </g>
+    <text x="75" y="38" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" fill="#cdd6f4" font-weight="600">energy 精力值</text>
+    <text x="75" y="60" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#a6adc8">每步消耗，饥饿时急剧下降</text>
+
+    <!-- Energy bar -->
+    <rect x="24" y="85" width="512" height="16" rx="8" fill="#313244"/>
+    <rect x="24" y="85" width="384" height="16" rx="8" fill="#f9e2af" opacity="0.6"/>
+    <text x="560" y="98" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#f9e2af" text-anchor="end">75%</text>
+    <text x="24" y="130" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" fill="#6c7086">每步消耗</text>
+    <text x="100" y="130" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" fill="#6c7086">饥饿时下降更快</text>
+  </g>
+
+  <!-- Mood -->
+  <g transform="translate(60, 350)">
+    <rect x="0" y="0" width="560" height="150" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <g transform="translate(24, 24)">
+      <use data-icon="chunk-filled/heart" width="32" height="32" fill="#cba6f7"/>
+    </g>
+    <text x="75" y="38" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" fill="#cdd6f4" font-weight="600">mood 心情</text>
+    <text x="75" y="60" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#a6adc8">影响 Agent 的表达方式和话题选择</text>
+
+    <!-- Mood states -->
+    <g transform="translate(24, 80)">
+      <rect x="0" y="0" width="90" height="40" rx="8" fill="#cba6f7" opacity="0.2" stroke="#cba6f7" stroke-width="1"/>
+      <text x="45" y="25" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#cba6f7" text-anchor="middle">curious</text>
+
+      <rect x="100" y="0" width="90" height="40" rx="8" fill="#89b4fa" opacity="0.2" stroke="#89b4fa" stroke-width="1"/>
+      <text x="145" y="25" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#89b4fa" text-anchor="middle">happy</text>
+
+      <rect x="200" y="0" width="90" height="40" rx="8" fill="#f9e2af" opacity="0.2" stroke="#f9e2af" stroke-width="1"/>
+      <text x="245" y="25" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#f9e2af" text-anchor="middle">bored</text>
+
+      <rect x="300" y="0" width="90" height="40" rx="8" fill="#f38ba8" opacity="0.2" stroke="#f38ba8" stroke-width="1"/>
+      <text x="345" y="25" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#f38ba8" text-anchor="middle">tired</text>
+    </g>
+  </g>
+
+  <!-- Temper -->
+  <g transform="translate(660, 350)">
+    <rect x="0" y="0" width="560" height="150" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <g transform="translate(24, 24)">
+      <use data-icon="chunk-filled/cog" width="32" height="32" fill="#89b4fa"/>
+    </g>
+    <text x="75" y="38" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" fill="#cdd6f4" font-weight="600">temper 脾气</text>
+    <text x="75" y="60" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#a6adc8">个性化参数，影响决策风格</text>
+
+    <!-- Temper scale -->
+    <g transform="translate(24, 80)">
+      <rect x="0" y="0" width="512" height="8" rx="4" fill="url(#temperGradient)"/>
+      <text x="0" y="30" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" fill="#89b4fa">温和</text>
+      <text x="512" y="30" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" fill="#f38ba8" text-anchor="end">急躁</text>
+      <circle cx="200" cy="4" r="10" fill="#89b4fa"/>
+      <text x="200" y="8" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" fill="#1e1e2e" text-anchor="middle">●</text>
+    </g>
+  </g>
+
+  <!-- State transition diagram -->
+  <rect x="60" y="530" width="1160" height="130" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+  <text x="100" y="570" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" fill="#cdd6f4" font-weight="600">心跳机制</text>
+  <text x="100" y="592" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#a6adc8">每 tick 周期更新无聊/精力值，低精力时触发 rest()</text>
+
+  <g transform="translate(100, 610)">
+    <!-- tick -->
+    <circle cx="20" cy="15" r="15" fill="#cba6f7" opacity="0.3"/>
+    <text x="20" y="20" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#cba6f7" text-anchor="middle">tick</text>
+
+    <path d="M45,15 L80,15" stroke="#313244" stroke-width="2"/>
+
+    <!-- boredom++ -->
+    <rect x="90" y="0" width="100" height="30" rx="6" fill="#f38ba8" opacity="0.15" stroke="#f38ba8" stroke-width="1"/>
+    <text x="140" y="20" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" fill="#f38ba8" text-anchor="middle">boredom++</text>
+
+    <path d="M200,15 L240,15" stroke="#313244" stroke-width="2"/>
+
+    <!-- energy-- -->
+    <rect x="250" y="0" width="100" height="30" rx="6" fill="#f9e2af" opacity="0.15" stroke="#f9e2af" stroke-width="1"/>
+    <text x="300" y="20" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" fill="#f9e2af" text-anchor="middle">energy--</text>
+
+    <path d="M360,15 L400,15" stroke="#313244" stroke-width="2"/>
+
+    <!-- check -->
+    <circle cx="440" cy="15" r="15" fill="#89b4fa" opacity="0.3"/>
+    <text x="440" y="20" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" fill="#89b4fa" text-anchor="middle">check</text>
+
+    <path d="M465,15 L510,15" stroke="#313244" stroke-width="2"/>
+
+    <!-- rest? -->
+    <rect x="520" y="0" width="80" height="30" rx="6" fill="#cba6f7" opacity="0.15" stroke="#cba6f7" stroke-width="1"/>
+    <text x="560" y="20" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" fill="#cba6f7" text-anchor="middle">rest?</text>
+  </g>
+
+  <!-- Footer -->
+  <text x="640" y="700" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086" text-anchor="middle">06 / Stack</text>
+</svg>

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1e2e"/>
+      <stop offset="100%" stop-color="#181825"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="720" fill="url(#bgGradient)"/>
+
+  <!-- Page header -->
+  <text x="60" y="60" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#6c7086">06 / Stack</text>
+  <text x="60" y="100" font-family="Microsoft YaHei, Arial, sans-serif" font-size="36" font-weight="700" fill="#cdd6f4">技术栈</text>
+
+  <!-- Tech stack grid -->
+  <g transform="translate(60, 150)">
+    <!-- Row 1 -->
+    <!-- Bun -->
+    <rect x="0" y="0" width="280" height="120" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <text x="24" y="40" font-family="Consolas, monospace" font-size="20" fill="#cba6f7" font-weight="700">Bun</text>
+    <text x="24" y="65" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#a6adc8">JavaScript 运行时</text>
+    <text x="24" y="85" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086">快速启动 / 内置打包 / 兼容 npm</text>
+
+    <!-- TypeScript -->
+    <rect x="300" y="0" width="280" height="120" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <text x="324" y="40" font-family="Consolas, monospace" font-size="20" fill="#89b4fa" font-weight="700">TypeScript</text>
+    <text x="324" y="65" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#a6adc8">类型安全开发</text>
+    <text x="324" y="85" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086">strict mode / 完整类型推导</text>
+
+    <!-- Vercel AI SDK -->
+    <rect x="600" y="0" width="280" height="120" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <text x="624" y="40" font-family="Consolas, monospace" font-size="18" fill="#f9e2af" font-weight="700">Vercel AI SDK</text>
+    <text x="624" y="65" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#a6adc8">AI 应用开发框架</text>
+    <text x="624" y="85" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086">ReAct Loop / Tool calling / 流式输出</text>
+
+    <!-- DeepSeek -->
+    <rect x="900" y="0" width="280" height="120" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <text x="924" y="40" font-family="Consolas, monospace" font-size="20" fill="#f38ba8" font-weight="700">DeepSeek</text>
+    <text x="924" y="65" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#a6adc8">大语言模型</text>
+    <text x="924" y="85" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086">@ai-sdk/deepseek / 高性价比</text>
+
+    <!-- Row 2 -->
+    <!-- Ink -->
+    <rect x="0" y="140" width="280" height="120" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <text x="24" y="180" font-family="Consolas, monospace" font-size="20" fill="#cba6f7" font-weight="700">Ink</text>
+    <text x="24" y="205" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#a6adc8">React for CLI</text>
+    <text x="24" y="225" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086">TUI 终端界面 / 组件化开发</text>
+
+    <!-- Next.js -->
+    <rect x="300" y="140" width="280" height="120" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <text x="324" y="180" font-family="Consolas, monospace" font-size="20" fill="#89b4fa" font-weight="700">Next.js 16</text>
+    <text x="324" y="205" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#a6adc8">Web Dashboard</text>
+    <text x="324" y="225" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086">服务端渲染 / App Router</text>
+
+    <!-- Tailwind 4 -->
+    <rect x="600" y="140" width="280" height="120" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <text x="624" y="180" font-family="Consolas, monospace" font-size="20" fill="#f9e2af" font-weight="700">Tailwind 4</text>
+    <text x="624" y="205" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#a6adc8">CSS 框架</text>
+    <text x="624" y="225" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086">原子化 CSS / 快速开发</text>
+
+    <!-- Framer Motion -->
+    <rect x="900" y="140" width="280" height="120" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <text x="924" y="180" font-family="Consolas, monospace" font-size="18" fill="#f38ba8" font-weight="700">Framer Motion</text>
+    <text x="924" y="205" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#a6adc8">动画库</text>
+    <text x="924" y="225" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086">流畅动画 / 3D 效果</text>
+
+    <!-- Row 3 -->
+    <!-- Milvus -->
+    <rect x="0" y="280" width="280" height="120" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <text x="24" y="320" font-family="Consolas, monospace" font-size="20" fill="#cba6f7" font-weight="700">Milvus</text>
+    <text x="24" y="345" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#a6adc8">向量数据库</text>
+    <text x="24" y="365" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086">向量检索 / 相似度搜索</text>
+
+    <!-- PostgreSQL -->
+    <rect x="300" y="280" width="280" height="120" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <text x="324" y="320" font-family="Consolas, monospace" font-size="18" fill="#89b4fa" font-weight="700">PostgreSQL</text>
+    <text x="324" y="345" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#a6adc8">关系型数据库</text>
+    <text x="324" y="365" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086">pg_vector / JSON 存储</text>
+
+    <!-- Zod v4 -->
+    <rect x="600" y="280" width="280" height="120" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <text x="624" y="320" font-family="Consolas, monospace" font-size="20" fill="#f9e2af" font-weight="700">Zod v4</text>
+    <text x="624" y="345" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#a6adc8">数据验证</text>
+    <text x="624" y="365" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086">类型安全验证 / Schema 定义</text>
+
+    <!-- Catppuccin -->
+    <rect x="900" y="280" width="280" height="120" rx="12" fill="#181825" stroke="#313244" stroke-width="1"/>
+    <text x="924" y="320" font-family="Consolas, monospace" font-size="18" fill="#f38ba8" font-weight="700">Catppuccin</text>
+    <text x="924" y="345" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#a6adc8">色彩系统</text>
+    <text x="924" y="365" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086">Mocha 暗色主题 / Cyber 调色板</text>
+  </g>
+
+  <!-- Footer -->
+  <text x="640" y="700" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#6c7086" text-anchor="middle">07 / Future</text>
+</svg>

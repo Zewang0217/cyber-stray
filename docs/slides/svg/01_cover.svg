@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1e2e"/>
+      <stop offset="100%" stop-color="#181825"/>
+    </linearGradient>
+    <radialGradient id="glowCenter" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#cba6f7" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#cba6f7" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="titleGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#cba6f7"/>
+      <stop offset="100%" stop-color="#89b4fa"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="720" fill="url(#bgGradient)"/>
+
+  <!-- Center glow -->
+  <ellipse cx="640" cy="360" rx="500" ry="300" fill="url(#glowCenter)"/>
+
+  <!-- Robot icon -->
+  <g transform="translate(540, 180)">
+    <use data-icon="chunk-filled/robot" width="200" height="200" fill="#cba6f7" opacity="0.9"/>
+  </g>
+
+  <!-- Main title -->
+  <text x="640" y="420" font-family="Microsoft YaHei, Arial, sans-serif" font-size="72" font-weight="700" fill="#cdd6f4" text-anchor="middle" letter-spacing="-0.04em">
+    Cyber Stray
+  </text>
+  <text x="640" y="490" font-family="Microsoft YaHei, Arial, sans-serif" font-size="36" fill="#cba6f7" text-anchor="middle">
+    赛博街溜子
+  </text>
+
+  <!-- Subtitle -->
+  <text x="640" y="550" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" fill="#a6adc8" text-anchor="middle">
+    一只能自主游荡、有情绪、持续自改进的 AI Agent
+  </text>
+
+  <!-- Bottom info -->
+  <text x="640" y="660" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#6c7086" text-anchor="middle">
+    数据驱动的自改进智能体 | 2025
+  </text>
+
+  <!-- Decorative line -->
+  <line x1="440" y1="510" x2="840" y2="510" stroke="#cba6f7" stroke-width="1" opacity="0.3"/>
+</svg>
