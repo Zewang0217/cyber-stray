@@ -2,6 +2,24 @@
 node_modules/
 dist/
 *.tsbuildinfo
+bun.lock
+
+# Package lock (use bun.lock)
+package-lock.json
+
+# Presentations
+*.pptx
+*.key
+*.pages
+
+# HTML exports
+*.html
+
+# Agent state (local)
+.agents/
+
+# Generated data
+data/feedback.json
 
 # 环境变量（包含敏感信息）
 .env
