@@ -26,6 +26,9 @@
     "wanderTemperature": 0.9,
     "outputLanguage": "zh-CN",
 
+    "_urlCooldownNote": "URL 冷却天数：同一 URL 在此期间内被访问会返回软提示",
+    "urlCooldownDays": 5,
+
     "_feishuNote": "飞书配置",
     "feishu": {
         "_pushModeNote": "推送方式: lark_channel(机器人双向,默认) | webhook(传统webhook)",

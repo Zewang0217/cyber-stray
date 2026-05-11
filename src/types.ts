@@ -188,6 +188,9 @@ export interface AgentConfig {
     receiveMode: 'reaction' | 'webhook' | 'none';
     chatId?: string;
   };
+
+  // URL 去重配置
+  urlCooldownDays: number;  // URL 冷却天数
 }
 
 // ============================================

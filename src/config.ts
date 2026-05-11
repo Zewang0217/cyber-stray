@@ -24,6 +24,7 @@ type BehaviorConfig = Pick<
   | 'maxWanderSteps'
   | 'wanderTemperature'
   | 'outputLanguage'
+  | 'urlCooldownDays'
 > & {
   feishu?: AgentConfig['feishu'];
 };
@@ -49,6 +50,7 @@ const defaultBehavior: BehaviorConfig = {
   maxWanderSteps: 10,
   wanderTemperature: 0.9,
   outputLanguage: 'zh-CN',
+  urlCooldownDays: 5,
 };
 
 /**
@@ -112,7 +114,7 @@ export function getRecoveryTier(energy: number): EnergyRecoveryTier {
   }
 
   // 默认为最高阶梯
-  return tiers[tiers.length - 1];
+  return tiers[tiers.length - 1]!;
 }
 
 /**

@@ -4,6 +4,7 @@ import { consola } from '../../logger.js';
 import { config } from '../../config.js';
 import { speak } from '../push/speak.js';
 import { pushWanderStep, type ToolContext } from './context.js';
+import { addVisitedUrl, extractUrl } from '../dedup/url-tracker.js';
 
 const logger = consola.withTag('tool:speak');
 
@@ -29,6 +30,16 @@ export function createSpeakTool(ctx: ToolContext) {
 
       const result = await speak(content, type);
       ctx.spokeTimes++;
+
+      // 推送成功后记录 URL 到去重系统
+      if (result.pushed) {
+        const url = extractUrl(content);
+        if (url) {
+          await addVisitedUrl(url, content).catch(err => {
+            logger.error('记录推送 URL 失败', { url, error: err });
+          });
+        }
+      }
 
       pushWanderStep(ctx, {
         timestamp: new Date().toISOString(),
