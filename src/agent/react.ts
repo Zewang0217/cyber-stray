@@ -8,6 +8,7 @@ import { updateState } from './state.js';
 import { loadUserProfile } from '../memory/user-profile.js';
 import { buildReactSystemPrompt, buildReactUserPrompt } from '../prompts/react.js';
 import { createTools, type ToolContext } from '../tools/registry/index.js';
+import { speak } from '../tools/push/speak.js';
 import { buildMemoryPromptContext, recordWanderSummary } from '../memory/long-term.js';
 import type { AgentState, WanderStep } from '../types.js';
 
@@ -169,6 +170,15 @@ logger.info('ReAct Loop 结束', {
     visitedUrls: ctx.visitedUrls.length,
     endReason: ctx.endReason,
   });
+
+  // 空游荡兜底：如果看过页面但没有分享，自动发一条碎碎念通知用户
+  if (ctx.spokeTimes === 0 && ctx.visitedUrls.length > 0) {
+    const lastUrl = ctx.visitedUrls[ctx.visitedUrls.length - 1];
+    await speak(
+      `刚才出去溜达了一圈，看了 ${ctx.visitedUrls.length} 个页面（最后看的是 ${lastUrl}），但没找到值得分享的，改天再说吧~`,
+      'nonsense',
+    ).catch((err: unknown) => logger.warn('空游荡兜底 speak 失败', { error: err }));
+  }
 
   // 记录游荡总结到长期记忆
   const lastSpoke = ctx.wanderHistory.filter((s) => s.spoke).pop();
