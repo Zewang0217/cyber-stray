@@ -10,6 +10,8 @@ import { buildReactSystemPrompt, buildReactUserPrompt } from '../prompts/react.j
 import { createTools, type ToolContext } from '../tools/registry/index.js';
 import { speak } from '../tools/push/speak.js';
 import { buildMemoryPromptContext, recordWanderSummary } from '../memory/long-term.js';
+import { generateTraceId } from '../logger/trace.js';
+import { resetLLMStats, getLLMStats } from '../llm/stats.js';
 import type { AgentState, WanderStep } from '../types.js';
 
 const logger = consola.withTag('react');
@@ -109,8 +111,12 @@ async function appendWanderHistory(steps: WanderStep[]): Promise<void> {
 export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
   const startTime = Date.now();
   const maxSteps = config.maxWanderSteps;
+  const traceId = generateTraceId();
 
-  logger.info('ReAct Loop 启动', {
+  // 重置 LLM 统计
+  resetLLMStats();
+
+  logger.info(`[${traceId}] LOOP 游荡开始`, {
     boredom: state.boredom,
     energy: state.energy,
     mood: state.mood,
@@ -120,6 +126,7 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
   // 初始化上下文（mutable，Tools 会修改）
   const ctx: ToolContext = {
     state,
+    traceId,
     stepCount: 0,
     wanderHistory: [],
     visitedUrls: [],
@@ -127,6 +134,7 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
     pendingFeedbackCount: 0,
     endReason: 'max_steps',
     startTime,
+    searchQueries: [],
   };
 
   const userProfile = await loadUserProfile();
@@ -157,18 +165,28 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
       tools,
     });
   } catch (error) {
-    logger.error('ReAct Loop 执行异常', { error });
+    logger.error(`[${ctx.traceId}] LLM 调用异常`, { error });
     ctx.endReason = 'error';
   }
 
   const durationMs = Date.now() - startTime;
+  const llmStats = getLLMStats();
 
-logger.info('ReAct Loop 结束', {
-    steps: ctx.stepCount,
+  // 汇总统计日志
+  logger.info(`[${ctx.traceId}] STAT === 游荡结束 ===`, {
+    steps: `${ctx.stepCount}/${maxSteps}`,
     durationMs,
-    spokeTimes: ctx.spokeTimes,
-    visitedUrls: ctx.visitedUrls.length,
     endReason: ctx.endReason,
+    llmCalls: llmStats.calls,
+    llmTotalMs: llmStats.totalMs,
+    llmAvgMs: llmStats.avgMs,
+    searchCount: ctx.searchQueries.length,
+    searchQueries: ctx.searchQueries.map((s) => s.query),
+    readCount: ctx.visitedUrls.length,
+    readDomains: ctx.visitedUrls.map((u) => {
+      try { return new URL(u).hostname; } catch { return u; }
+    }),
+    speakCount: ctx.spokeTimes,
   });
 
   // 空游荡兜底：如果看过页面但没有分享，自动发一条碎碎念通知用户

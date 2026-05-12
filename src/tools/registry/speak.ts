@@ -26,10 +26,13 @@ export function createSpeakTool(ctx: ToolContext) {
     }),
     execute: async ({ content, type }) => {
       ctx.stepCount++;
-      logger.info(`[Step ${ctx.stepCount}] speak`, { type, contentLength: content.length });
+      const stepStart = Date.now();
 
       const result = await speak(content, type);
+      const elapsed = Date.now() - stepStart;
       ctx.spokeTimes++;
+
+      logger.info(`[${ctx.traceId}] TOOL speak [type=${type} len=${content.length} pushed=${result.pushed} elapsed=${elapsed}ms]`);
 
       // 推送成功后记录 URL 到去重系统
       if (result.pushed) {

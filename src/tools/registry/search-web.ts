@@ -35,12 +35,23 @@ export function createSearchWebTool(ctx: ToolContext) {
     }),
     execute: async ({ query, quality }) => {
       ctx.stepCount++;
-      logger.info(`[Step ${ctx.stepCount}] search_web`, { query, quality });
+      const stepStart = Date.now();
 
       try {
         const results = quality === 'premium'
           ? await premiumSearch(query, { maxResults: config.maxSearchResults })
           : await search(query, { adapter: 'duckduckgo', maxResults: config.maxSearchResults });
+
+        const elapsed = Date.now() - stepStart;
+
+        // 归档搜索词
+        ctx.searchQueries.push({
+          query,
+          quality,
+          timestamp: new Date().toISOString(),
+        });
+
+        logger.info(`[${ctx.traceId}] TOOL search [query=${query} quality=${quality} results=${results.length} elapsed=${elapsed}ms]`);
 
         pushWanderStep(ctx, {
           timestamp: new Date().toISOString(),
@@ -58,7 +69,8 @@ export function createSearchWebTool(ctx: ToolContext) {
           quality,
         };
       } catch (error) {
-        logger.error('search_web 执行失败', { query, quality, error });
+        const elapsed = Date.now() - stepStart;
+        logger.error(`[${ctx.traceId}] TOOL search ERROR [query=${query} elapsed=${elapsed}ms]`, { error });
         return { results: [], total: 0, error: String(error) };
       }
     },

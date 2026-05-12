@@ -16,11 +16,11 @@ export function createReadPageTool(ctx: ToolContext) {
     }),
     execute: async ({ url }) => {
       ctx.stepCount++;
-      logger.info(`[Step ${ctx.stepCount}] read_page`, { url });
+      const stepStart = Date.now();
 
       // 强制结束条件：精力过低
       if (ctx.state.energy < config.energyThreshold) {
-        logger.warn('精力不足，跳过 read_page', { energy: ctx.state.energy });
+        logger.warn(`[${ctx.traceId}] TOOL read SKIP [url=${url}] 精力不足`);
         ctx.endReason = 'low_energy';
         return { url, title: '', content: '', links: [], error: '精力不足，无法继续游荡' };
       }
@@ -30,11 +30,13 @@ export function createReadPageTool(ctx: ToolContext) {
       const visitedInfo = await getVisitedInfo(url);
 
       const result = await readPage(url);
+      const elapsed = Date.now() - stepStart;
 
       if (result.error) {
-        logger.warn('read_page 失败', { url, error: result.error });
+        logger.warn(`[${ctx.traceId}] TOOL read [url=${url} success=false elapsed=${elapsed}ms] ${result.error}`);
       } else {
         ctx.visitedUrls.push(url);
+        logger.info(`[${ctx.traceId}] TOOL read [url=${url} title="${result.title.slice(0, 30)}" elapsed=${elapsed}ms]`);
       }
 
       pushWanderStep(ctx, {

@@ -11,7 +11,8 @@ export function createRestTool(ctx: ToolContext) {
     inputSchema: z.object({}),
     execute: async () => {
       ctx.stepCount++;
-      logger.info(`[Step ${ctx.stepCount}] rest — 游荡结束`);
+      const elapsed = Date.now() - ctx.startTime;
+      logger.info(`[${ctx.traceId}] TOOL rest [steps=${ctx.stepCount} duration=${elapsed}ms reason=rest]`);
       ctx.endReason = 'rest';
 
       pushWanderStep(ctx, {
@@ -23,7 +24,7 @@ export function createRestTool(ctx: ToolContext) {
       return {
         message: '游荡结束，溜回去了',
         steps: ctx.stepCount,
-        durationMs: Date.now() - ctx.startTime,
+        durationMs: elapsed,
       };
     },
   });

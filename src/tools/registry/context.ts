@@ -3,9 +3,17 @@ import type { AgentState, WanderStep } from '../../types.js';
 /** ctx.wanderHistory 在单次游荡循环内的最大长度 */
 const MAX_CTX_WANDER_HISTORY = 50;
 
+/** 搜索记录 */
+export interface SearchRecord {
+  query: string;
+  quality: 'free' | 'premium';
+  timestamp: string;
+}
+
 /** Tool 执行上下文（在 Tool execute 中共享的 mutable 状态） */
 export interface ToolContext {
   state: AgentState;
+  traceId: string;              // 本次游荡的唯一追踪 ID
   stepCount: number;            // 步数计数器（每次 tool call +1）
   wanderHistory: WanderStep[];  // 游荡历史记录
   visitedUrls: string[];        // 访问过的 URL
@@ -13,6 +21,7 @@ export interface ToolContext {
   pendingFeedbackCount: number; // 待处理反馈数量（read_feedback 工具设置）
   endReason: 'rest' | 'max_steps' | 'low_energy' | 'error';
   startTime: number;            // 游荡开始时间（ms）
+  searchQueries: SearchRecord[]; // 搜索词归档
 }
 
 /**
