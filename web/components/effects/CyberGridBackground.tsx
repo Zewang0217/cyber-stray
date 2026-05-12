@@ -12,15 +12,16 @@ export function CyberGridBackground(): React.ReactElement {
     <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
       {/* 深色底 */}
       <div className="absolute inset-0 bg-crust" />
-      {/* 网格线 */}
+      {/* 网格线 - 使用语义变量 */}
       <motion.div
-        className="absolute inset-0 opacity-[0.04]"
+        className="absolute inset-0"
         style={{
           backgroundImage: `
-            linear-gradient(to right, oklch(0.702 0.148 326.5) 1px, transparent 1px),
-            linear-gradient(to bottom, oklch(0.702 0.148 326.5) 1px, transparent 1px)
+            linear-gradient(to right, var(--c-grid) 1px, transparent 1px),
+            linear-gradient(to bottom, var(--c-grid) 1px, transparent 1px)
           `,
           backgroundSize: "60px 60px",
+          opacity: "var(--c-grid-opacity)",
         }}
         animate={{
           backgroundPosition: ["0px 0px", "60px 60px"],
@@ -31,12 +32,12 @@ export function CyberGridBackground(): React.ReactElement {
           ease: "linear",
         }}
       />
-      {/* 径向暗角 */}
+      {/* 径向暗角 - 使用语义变量 */}
       <div
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse at center, transparent 0%, oklch(0.129 0.008 265) 80%)",
+            "radial-gradient(ellipse at center, transparent 0%, var(--c-crust) 80%)",
         }}
       />
     </div>

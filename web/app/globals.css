@@ -101,6 +101,13 @@
   --c-surface-highlight: oklch(0.346 0.030 265);
   --c-overlay: oklch(0.467 0.036 265);
 
+  /* 动效变量 - 深色模式 */
+  --c-glow: oklch(0.702 0.148 326.5);      /* 霓虹紫光晕 */
+  --c-glow-opacity: 0.06;
+  --c-grid: oklch(0.702 0.148 326.5);      /* 紫色网格线 */
+  --c-grid-opacity: 0.04;
+  --c-glass-border: oklch(1 0 0 / 0.1);    /* 玻璃边框 */
+
   --background: var(--c-base);
   --foreground: var(--c-text);
 }
@@ -123,6 +130,13 @@ html.light {
   --c-surface: oklch(0.858 0.032 265);
   --c-surface-highlight: oklch(0.830 0.034 265);
   --c-overlay: oklch(0.671 0.040 265);
+
+  /* 动效变量 - 浅色模式 (柔和不刺眼) */
+  --c-glow: oklch(0.65 0.18 280);         /* 柔和蓝紫光晕 */
+  --c-glow-opacity: 0.03;                  /* 更淡，避免刺眼 */
+  --c-grid: oklch(0.476 0.042 265);        /* subtext 色网格 */
+  --c-grid-opacity: 0.06;
+  --c-glass-border: oklch(0.331 0.048 265 / 0.15); /* 浅色玻璃边框 */
 }
 
 /* ============================================
