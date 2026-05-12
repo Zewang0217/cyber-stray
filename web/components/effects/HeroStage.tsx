@@ -9,8 +9,35 @@ import * as THREE from "three";
 
 useGLTF.preload("/low_poly_dog.glb");
 
+// ==================== 主题感知颜色 Hook ====================
+function useThemeColors() {
+  const [isDark, setIsDark] = useState(true);
+
+  useEffect(() => {
+    const checkTheme = () => {
+      setIsDark(!document.documentElement.classList.contains("light"));
+    };
+    checkTheme();
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  return {
+    isDark,
+    dogColor: isDark ? "#11111b" : "#e5e5e5",
+    dogEmissive: isDark ? "#cba6f7" : "#89b4fa",
+    curtainColor: isDark ? "#09090b" : "#e5e5e5",
+    laserColor: isDark ? "#cba6f7" : "#89b4fa",
+    background: isDark ? "#09090b" : "#f5f5f5",
+  };
+}
+
 // ==================== The Actor: 3D Dog with Procedural Animation ====================
-function DogModel() {
+function DogModel({ colors }: { colors: ReturnType<typeof useThemeColors> }) {
     const { scene } = useGLTF("/low_poly_dog.glb");
     const modelRef = useRef<THREE.Group>(null);
     const baseScale = useRef<number>(1); // 记录基础缩放比例
@@ -19,18 +46,18 @@ function DogModel() {
         const cloned = scene.clone();
         cloned.traverse((child) => {
             if (child instanceof THREE.Mesh) {
-                // 高级黑曜石装甲材质
+                // 高级黑曜石装甲材质 - 主题感知
                 child.material = new THREE.MeshStandardMaterial({
-                    color: "#11111b", // 极暗的底色
+                    color: colors.dogColor,
                     metalness: 0.8, // 强金属反光
                     roughness: 0.3, // 适度粗糙让高光散开
-                    emissive: "#cba6f7", // 极其微弱的紫光保底
+                    emissive: colors.dogEmissive,
                     emissiveIntensity: 0.05,
                 });
             }
         });
         return cloned;
-    }, [scene]);
+    }, [scene, colors]);
 
     useEffect(() => {
         if (modelRef.current) {
@@ -85,9 +112,11 @@ function DogModel() {
 function CurtainSection({
     onCurtainOpen,
     onDogLanded,
+    colors,
 }: {
     onCurtainOpen: () => void;
     onDogLanded: () => void;
+    colors: ReturnType<typeof useThemeColors>;
 }) {
     const [showDog, setShowDog] = useState(false);
     const [dogLanded, setDogLanded] = useState(false);
@@ -120,12 +149,12 @@ function CurtainSection({
 
     return (
         <div className="absolute inset-0 z-10 overflow-hidden">
-            {/* 激光切割线 */}
+            {/* 激光切割线 - 主题感知 */}
             <motion.div
                 className="absolute top-0 bottom-0 left-1/2 w-[2px] -translate-x-1/2 z-30"
                 style={{
-                    background: "#cba6f7",
-                    boxShadow: "0 0 15px 5px oklch(0.7 0.3 300 / 0.8)",
+                    background: colors.laserColor,
+                    boxShadow: `0 0 15px 5px oklch(0.7 0.3 300 / 0.8)`,
                 }}
                 initial={{ opacity: 0, scaleY: 0 }}
                 animate={{ opacity: [0, 1, 0], scaleY: [0, 1, 1] }}
@@ -133,12 +162,12 @@ function CurtainSection({
                 onAnimationComplete={() => setLaserDone(true)}
             />
 
-            {/* 左闸门 */}
+            {/* 左闸门 - 主题感知 */}
             <motion.div
                 className="absolute top-0 bottom-0 left-0 w-1/2 z-20"
                 style={{
-                    background: `repeating-linear-gradient(0deg, #09090b 0px, #09090b 4px, #11111b 4px, #11111b 8px)`,
-                    boxShadow: "inset -10px 0 30px rgba(0,0,0,0.8)",
+                    background: `repeating-linear-gradient(0deg, ${colors.curtainColor} 0px, ${colors.curtainColor} 4px, ${colors.isDark ? '#11111b' : '#d4d4d4'} 4px, ${colors.isDark ? '#11111b' : '#d4d4d4'} 8px)`,
+                    boxShadow: "inset -10px 0 30px rgba(0,0,0,0.3)",
                 }}
                 initial={{ x: 0 }}
                 animate={laserDone ? { x: "-100%" } : { x: 0 }}
@@ -149,12 +178,12 @@ function CurtainSection({
                 }}
             />
 
-            {/* 右闸门 */}
+            {/* 右闸门 - 主题感知 */}
             <motion.div
                 className="absolute top-0 bottom-0 right-0 w-1/2 z-20"
                 style={{
-                    background: `repeating-linear-gradient(0deg, #09090b 0px, #09090b 4px, #11111b 4px, #11111b 8px)`,
-                    boxShadow: "inset 10px 0 30px rgba(0,0,0,0.8)",
+                    background: `repeating-linear-gradient(0deg, ${colors.curtainColor} 0px, ${colors.curtainColor} 4px, ${colors.isDark ? '#11111b' : '#d4d4d4'} 4px, ${colors.isDark ? '#11111b' : '#d4d4d4'} 8px)`,
+                    boxShadow: "inset 10px 0 30px rgba(0,0,0,0.3)",
                 }}
                 initial={{ x: 0 }}
                 animate={laserDone ? { x: "100%" } : { x: 0 }}
@@ -182,24 +211,24 @@ function CurtainSection({
                             }}
                             gl={{ antialias: true, alpha: true }}
                         >
-                            <ambientLight intensity={0.5} color="#1e1e2e" />
+                            <ambientLight intensity={0.5} color={colors.isDark ? "#1e1e2e" : "#e5e5e5"} />
 
                             {/* 强烈的双色边缘光 */}
                             <directionalLight
                                 position={[5, 2, -5]}
                                 intensity={8}
-                                color="#cba6f7"
+                                color={colors.dogEmissive}
                             />
                             <directionalLight
                                 position={[-5, 2, 5]}
                                 intensity={8}
-                                color="#89b4fa"
+                                color={colors.isDark ? "#89b4fa" : "#1e66f5"}
                             />
 
                             {/* 加入环境光让金属有东西可以反射 */}
                             <Environment preset="city" />
 
-                            <DogModel />
+                            <DogModel colors={colors} />
 
                             {/* 狗底部的物理接触阴影，增加落地真实感 */}
                             <ContactShadows
@@ -242,13 +271,14 @@ function CurtainSection({
 }
 
 // ==================== The Credits (字幕与按钮) ====================
-// (这部分保持你之前的实现，非常不错，只微调了层级和阴影)
 function CreditsSection({
     show,
     onEnter,
+    colors,
 }: {
     show: boolean;
     onEnter?: () => void;
+    colors: ReturnType<typeof useThemeColors>;
 }) {
     const containerVariants = {
         hidden: { opacity: 0 },
@@ -279,23 +309,30 @@ function CreditsSection({
                     animate="visible"
                 >
                     <motion.h1
-                        className="font-[family-name:var(--font-space-grotesk)] text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50 tracking-tight mb-2"
+                        className="font-[family-name:var(--font-space-grotesk)] text-6xl md:text-8xl font-black tracking-tight mb-2"
+                        style={{
+                          color: colors.isDark ? "#cdd6f4" : "#4c4f69",
+                          WebkitTextStroke: colors.isDark ? "0px" : "1px oklch(0.331 0.048 265 / 0.3)",
+                        }}
                         variants={itemVariants}
                     >
                         CYBER STRAY
                     </motion.h1>
                     <motion.p
-                        className="text-lg md:text-xl text-[#a6adc8] tracking-widest uppercase font-mono mb-10"
+                        className="text-lg md:text-xl tracking-widest uppercase font-mono mb-10"
+                        style={{ color: colors.isDark ? "#a6adc8" : "#6c6f85" }}
                         variants={itemVariants}
                     >
                         System Online // Automated Hound
                     </motion.p>
                     <motion.button
-                        className="pointer-events-auto px-10 py-4 rounded-full text-white font-medium
-              backdrop-blur-xl bg-white/5 border border-white/10
-              hover:bg-white/15 hover:border-white/20
-              transition-all duration-300
-              shadow-[0_0_40px_oklch(0.7_0.3_300_/0.15)] hover:shadow-[0_0_60px_oklch(0.7_0.3_300_/0.3)]"
+                        className="pointer-events-auto px-10 py-4 rounded-full font-medium
+              backdrop-blur-xl bg-mantle/20 border border-mantle/30 text-text
+              hover:bg-mantle/30 hover:border-mantle/40
+              transition-all duration-300"
+                        style={{
+                          boxShadow: `0 0 40px oklch(0.5 0.2 300 / 0.15)`,
+                        }}
                         variants={itemVariants}
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
@@ -310,7 +347,7 @@ function CreditsSection({
 }
 
 // ... 你的 TiltBackground 保持不变 ...
-function TiltBackground() {
+function TiltBackground({ colors }: { colors: ReturnType<typeof useThemeColors> }) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [transform, setTransform] = useState({ rotateX: 0, rotateY: 0 });
 
@@ -350,10 +387,16 @@ function TiltBackground() {
                 className="absolute inset-0 transition-transform duration-200 ease-out"
                 style={{
                     transform: `rotateX(${transform.rotateX}deg) rotateY(${transform.rotateY}deg) scale(1.05)`,
-                    background: `
+                    background: colors.isDark
+                        ? `
             radial-gradient(ellipse at 30% 20%, oklch(0.25 0.1 280 / 0.3) 0%, transparent 60%),
             radial-gradient(ellipse at 70% 80%, oklch(0.2 0.08 300 / 0.2) 0%, transparent 60%),
             radial-gradient(circle at center, #09090b 0%, #000000 100%)
+          `
+                        : `
+            radial-gradient(ellipse at 30% 20%, oklch(0.85 0.05 280 / 0.2) 0%, transparent 60%),
+            radial-gradient(ellipse at 70% 80%, oklch(0.90 0.05 300 / 0.15) 0%, transparent 60%),
+            radial-gradient(circle at center, #f5f5f5 0%, #e5e5e5 100%)
           `,
                 }}
             />
@@ -366,6 +409,7 @@ export function HeroStage({ onEnter }: { onEnter?: () => void }) {
     const [curtainOpen, setCurtainOpen] = useState(false);
     const [showCredits, setShowCredits] = useState(false);
     const [shake, setShake] = useState(false);
+    const colors = useThemeColors();
 
     // 用于确保 Portal 只在客户端渲染，防止 Next.js 报错
     const [mounted, setMounted] = useState(false);
@@ -404,21 +448,24 @@ export function HeroStage({ onEnter }: { onEnter?: () => void }) {
     const stageContent = (
         <motion.div
             // 现在的 z-[9999] 绝对有效了，因为它在 <body> 根节点下！
-            className="fixed inset-0 w-full h-full overflow-hidden bg-[#09090b] z-[9999]"
+            className="fixed inset-0 w-full h-full overflow-hidden z-[9999]"
+            style={{ background: colors.background }}
             animate={shake ? { y: [0, 15, -8, 0] } : { y: 0 }}
             transition={{ duration: 0.3 }}
         >
-            <TiltBackground />
+            <TiltBackground colors={colors} />
             <CurtainSection
                 onCurtainOpen={() => setCurtainOpen(true)}
                 onDogLanded={handleDogLanded}
+                colors={colors}
             />
-            <CreditsSection show={showCredits} onEnter={handleEnterClick} />
+            <CreditsSection show={showCredits} onEnter={handleEnterClick} colors={colors} />
 
             <motion.button
-                className="absolute top-6 right-6 z-50 px-4 py-2 text-sm text-white/40
-          backdrop-blur-md bg-white/5 rounded-full border border-white/10
-          hover:text-white/90 hover:bg-white/10 transition-colors"
+                className="absolute top-6 right-6 z-50 px-4 py-2 text-sm rounded-full
+          backdrop-blur-md bg-mantle/20 border border-mantle/30
+          hover:bg-mantle/30 transition-colors"
+                style={{ color: colors.isDark ? "rgba(255,255,255,0.4)" : "rgba(76,79,105,0.6)" }}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 1 }}
