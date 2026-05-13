@@ -78,14 +78,16 @@ export function LogView({ logs, filter, maxLines = 40 }: LogViewProps) {
       {displayLogs.length === 0 ? (
         <Text color="gray">等待 Agent 行动...</Text>
       ) : (
-        displayLogs.map((log) => {
+        displayLogs.map((log, index) => {
           const tag = log.tag ?? extractTag(log.message);
           return (
-            <Text key={log.id} color={levelColor(log.level)}>
-              [{log.level.toUpperCase().slice(0, 5)}]{" "}
-              {log.timestamp.slice(11, 19)}{" "}
-              {tag && <Text color="cyan">[{tag}]</Text>} {log.message}
-            </Text>
+            <Box key={log.id || index}>
+              <Text color={levelColor(log.level)}>
+                [{log.level.toUpperCase().slice(0, 5)}]{" "}
+                {log.timestamp.slice(11, 19)}{" "}
+                {tag && <Text color="cyan">[{tag}]</Text>} {log.message}
+              </Text>
+            </Box>
           );
         })
       )}

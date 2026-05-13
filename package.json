@@ -8,7 +8,7 @@
     "start": "bun run src/index.ts",
     "test": "bun test",
     "lint": "eslint src/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bun tsc --noEmit"
   },
   "keywords": [
     "agent",
@@ -38,6 +38,8 @@
     "@types/bun": "latest",
     "@types/jsdom": "^28.0.1",
     "@types/mozilla__readability": "^0.4.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "typescript": "^5"
   },
   "module": "src/index.ts",
