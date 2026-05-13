@@ -7,7 +7,7 @@ import { config } from '../config.js';
 import { updateState } from './state.js';
 import { loadUserProfile } from '../memory/user-profile.js';
 import { buildReactSystemPrompt, buildReactUserPrompt } from '../prompts/react.js';
-import { createTools, type ToolContext } from '../tools/registry/index.js';
+import { ToolManager, type ToolContext } from '../tools/registry/index.js';
 import { speak } from '../tools/push/speak.js';
 import { buildMemoryPromptContext, recordWanderSummary } from '../memory/long-term.js';
 import { generateTraceId } from '../logger/trace.js';
@@ -42,6 +42,19 @@ function getProvider() {
     _provider = createProvider();
   }
   return _provider;
+}
+
+/** 工具管理器初始化标志 */
+let _toolsInitialized = false;
+
+/**
+ * 确保工具已初始化
+ */
+async function ensureToolsInitialized(): Promise<void> {
+  if (!_toolsInitialized) {
+    await ToolManager.initialize();
+    _toolsInitialized = true;
+  }
 }
 
 // 消耗和恢复参数（从配置文件读取，保留硬编码默认值以便静态分析）
@@ -137,6 +150,9 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
     searchQueries: [],
   };
 
+  // 确保工具已初始化
+  await ensureToolsInitialized();
+
   const userProfile = await loadUserProfile();
   const memoryContext = await buildMemoryPromptContext();
   const systemPrompt = buildReactSystemPrompt(state, userProfile, memoryContext);
@@ -150,7 +166,7 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
   });
 
   const provider = getProvider();
-  const tools = createTools(ctx);
+  const tools = ToolManager.getTools(ctx);
 
   try {
     await generateText({

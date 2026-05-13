@@ -3,12 +3,11 @@ import { z } from 'zod';
 import { consola } from '../../logger.js';
 import { recordKnowledge } from '../../memory/long-term.js';
 import { pushWanderStep, type ToolContext } from './context.js';
+import type { ToolDefinition } from '../tool-manager.js';
 
 const logger = consola.withTag('tool:record_knowledge');
 
-export function createRecordKnowledgeTool(ctx: ToolContext) {
-  return tool({
-    description: `将发现有价值的知识存入长期记忆，供未来游荡时参考。
+const RECORD_KNOWLEDGE_DESCRIPTION = `将发现有价值的知识存入长期记忆，供未来游荡时参考。
 
 **使用时机：**
 - read_page 后发现了值得记住的事实、概念、技术细节
@@ -19,7 +18,17 @@ export function createRecordKnowledgeTool(ctx: ToolContext) {
 - 纯新闻标题和时效性内容（过几天就没用了）
 - 搜索引擎返回的碎片化摘要
 - 已经在已有知识中重复的内容
-- 未经 read_page 验证的推测`,
+- 未经 read_page 验证的推测`;
+
+/** 记录知识工具定义 */
+export const recordKnowledgeToolDef: ToolDefinition = {
+  metadata: {
+    name: 'record_knowledge',
+    description: RECORD_KNOWLEDGE_DESCRIPTION,
+    category: 'memory',
+  },
+  createTool: (ctx: ToolContext) => tool({
+    description: RECORD_KNOWLEDGE_DESCRIPTION,
     inputSchema: z.object({
       title: z.string().describe('知识标题，简洁概括'),
       content: z.string().describe('知识正文，包含关键事实和理解'),
@@ -56,5 +65,8 @@ export function createRecordKnowledgeTool(ctx: ToolContext) {
         return { saved: false, error: String(error) };
       }
     },
-  });
-}
+  }),
+};
+
+/** 向后兼容别名 */
+export const createRecordKnowledgeTool = (ctx: ToolContext) => recordKnowledgeToolDef.createTool(ctx);

@@ -4,6 +4,7 @@ import { consola } from '../../logger.js';
 import { recordObservation } from '../../memory/long-term.js';
 import { tryUpdateUserProfile } from '../../memory/user-profile.js';
 import { pushWanderStep, type ToolContext } from './context.js';
+import type { ToolDefinition } from '../tool-manager.js';
 
 const logger = consola.withTag('tool:observe_user');
 
@@ -12,9 +13,7 @@ const OBSERVATION_TITLE_MAX = 60;
 /** 日志中观察摘要截断长度 */
 const OBSERVATION_LOG_MAX = 80;
 
-export function createObserveUserTool(ctx: ToolContext) {
-  return tool({
-    description: `观察主人的行为模式并记录。用于积累对主人的理解，帮助未来更好地服务。
+const OBSERVE_USER_DESCRIPTION = `观察主人的行为模式并记录。用于积累对主人的理解，帮助未来更好地服务。
 
 **使用时机：**
 - 注意到主人对某类内容表现出明确的兴趣或不感兴趣
@@ -32,7 +31,17 @@ export function createObserveUserTool(ctx: ToolContext) {
 - 主人明确说"我喜欢/讨厌 X"
 - 你发现了一个反复出现的行为模式
 
-注意：画像调整有 30 分钟冷却期，如果被拒绝会在返回信息中告知。调整要谨慎，宁缺毋滥。`,
+注意：画像调整有 30 分钟冷却期，如果被拒绝会在返回信息中告知。调整要谨慎，宁缺毋滥。`;
+
+/** 观察用户工具定义 */
+export const observeUserToolDef: ToolDefinition = {
+  metadata: {
+    name: 'observe_user',
+    description: OBSERVE_USER_DESCRIPTION,
+    category: 'memory',
+  },
+  createTool: (ctx: ToolContext) => tool({
+    description: OBSERVE_USER_DESCRIPTION,
     inputSchema: z.object({
       observation: z.string().describe('观察到的用户行为或模式，尽量具体'),
       profile_change: z
@@ -99,5 +108,8 @@ export function createObserveUserTool(ctx: ToolContext) {
         profile_change: profileResult,
       };
     },
-  });
-}
+  }),
+};
+
+/** 向后兼容别名 */
+export const createObserveUserTool = (ctx: ToolContext) => observeUserToolDef.createTool(ctx);

@@ -4,12 +4,11 @@ import { consola } from '../../logger.js';
 import { config } from '../../config.js';
 import { search, premiumSearch } from '../search/index.js';
 import { pushWanderStep, type ToolContext } from './context.js';
+import type { ToolDefinition } from '../tool-manager.js';
 
 const logger = consola.withTag('tool:search_web');
 
-export function createSearchWebTool(ctx: ToolContext) {
-  return tool({
-    description: `搜索互联网获取信息。
+const SEARCH_WEB_DESCRIPTION = `搜索互联网获取信息。
 
 **搜索策略：**
 - free：免费搜索，适合百科知识、概念解释、历史事件等静态内容
@@ -26,7 +25,17 @@ export function createSearchWebTool(ctx: ToolContext) {
 **示例：**
 - 搜技术趋势：query="latest AI developments", quality="premium"
 - 搜百科知识：query="quantum computing basics", quality="free"
-- 搜国内新闻：query="中国新能源汽车市场", quality="premium"`,
+- 搜国内新闻：query="中国新能源汽车市场", quality="premium"`;
+
+/** 搜索工具定义 */
+export const searchWebToolDef: ToolDefinition = {
+  metadata: {
+    name: 'search_web',
+    description: SEARCH_WEB_DESCRIPTION,
+    category: 'search',
+  },
+  createTool: (ctx: ToolContext) => tool({
+    description: SEARCH_WEB_DESCRIPTION,
     inputSchema: z.object({
       query: z.string().describe('搜索关键词'),
       quality: z.enum(['free', 'premium']).default('free').describe(
@@ -74,5 +83,8 @@ export function createSearchWebTool(ctx: ToolContext) {
         return { results: [], total: 0, error: String(error) };
       }
     },
-  });
-}
+  }),
+};
+
+/** 向后兼容别名 */
+export const createSearchWebTool = (ctx: ToolContext) => searchWebToolDef.createTool(ctx);
