@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box, Text, useInput, useStdout } from 'ink';
 import type { AgentState } from '../types.js';
 import { StatusBar } from './components/StatusBar.js';
 import { LogView, type LogEntry } from './components/LogView.js';
 import { Loading } from './components/Loading.js';
+import { ErrorBoundary } from './components/ErrorBoundary.js';
 
 interface AppProps {
   startTime: number;
@@ -18,7 +19,7 @@ function extractToolName(message: string): string {
   return message.match(/\]\s*(\w+)\b/)?.[1] ?? '';
 }
 
-export function App({ startTime, getState, getLogs, onExit }: AppProps) {
+function AppInner({ startTime, getState, getLogs, onExit }: AppProps) {
   const { stdout } = useStdout();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [agentState, setAgentState] = useState<AgentState | undefined>();
@@ -27,25 +28,44 @@ export function App({ startTime, getState, getLogs, onExit }: AppProps) {
   const [isAgentRunning, setIsAgentRunning] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [currentAction, setCurrentAction] = useState('');
+  const [terminalRows, setTerminalRows] = useState(stdout?.rows ?? 40);
+
+  const prevLogCountRef = useRef(-1);
+  const prevMoodRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!stdout) return;
+    const onResize = () => {
+      setTerminalRows(stdout.rows);
+    };
+    stdout.on('resize', onResize);
+    return () => {
+      stdout.off('resize', onResize);
+    };
+  }, [stdout]);
 
   useEffect(() => {
     const interval = setInterval(() => {
       const latestLogs = getLogs();
       const latestState = getState();
+      const logCount = latestLogs.length;
 
-      if (latestState) {
+      if (latestState && latestState.mood !== prevMoodRef.current) {
+        prevMoodRef.current = latestState.mood;
+        setAgentState(latestState);
+      } else if (latestState && prevMoodRef.current === undefined) {
+        prevMoodRef.current = latestState.mood;
         setAgentState(latestState);
       }
 
-      if (latestLogs.length > 0) {
+      if (logCount > 0 && logCount !== prevLogCountRef.current) {
+        prevLogCountRef.current = logCount;
         setLogs([...latestLogs]);
 
-        // 检测最近几条日志中的状态变化
         const recent = latestLogs.slice(-5);
         for (const log of recent) {
           if (!log.tag) continue;
 
-          // ReAct Loop 生命周期
           if (log.tag === 'react') {
             if (log.message.includes('启动')) {
               setIsAgentRunning(true);
@@ -55,7 +75,6 @@ export function App({ startTime, getState, getLogs, onExit }: AppProps) {
             }
           }
 
-          // Tool 调用
           if (log.tag.startsWith('tool:')) {
             const stepMatch = log.message.match(/\[Step (\d+)\]/);
             if (stepMatch?.[1]) {
@@ -85,7 +104,7 @@ export function App({ startTime, getState, getLogs, onExit }: AppProps) {
   // 状态栏 4 行 + Loading 2 行 + 标题 1 行 + 底部栏 1 行 + help 可展开 4 行
   const headerRows = 4 + 2 + 1;
   const footerRows = (showHelp ? 4 : 0) + 1;
-  const maxLogLines = Math.max(3, (stdout?.rows ?? 40) - headerRows - footerRows - 3);
+  const maxLogLines = Math.max(3, terminalRows - headerRows - footerRows - 3);
 
   return (
     <Box flexDirection="column" height="100%">
@@ -123,14 +142,23 @@ export function App({ startTime, getState, getLogs, onExit }: AppProps) {
           <Text>  q - 退出</Text>
           <Text>  f - 切换过滤级别</Text>
           <Text>  h - 显示/隐藏帮助</Text>
+          <Text>  Ctrl+C - 优雅退出</Text>
         </Box>
       )}
 
       <Box marginTop={1} borderStyle="single" paddingX={1}>
         <Text color="gray">
-          快捷键：q 退出 | f 过滤 | h 帮助 | 当前过滤：{filter.toUpperCase()}
+          快捷键：q 退出 | f 过滤 | h 帮助 | Ctrl+C 退出 | 当前过滤：{filter.toUpperCase()}
         </Text>
       </Box>
     </Box>
+  );
+}
+
+export function App(props: AppProps) {
+  return (
+    <ErrorBoundary onFatal={props.onExit}>
+      <AppInner {...props} />
+    </ErrorBoundary>
   );
 }

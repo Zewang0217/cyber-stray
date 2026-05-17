@@ -1,5 +1,5 @@
 import React from 'react';
-import { render } from 'ink';
+import { render, type Instance } from 'ink';
 import { App } from './App.js';
 import { onLog } from '../logger.js';
 import type { AgentState } from '../types.js';
@@ -8,6 +8,10 @@ import type { LogEntry } from './components/LogView.js';
 let currentState: AgentState | undefined;
 let currentLogs: LogEntry[] = [];
 let startTime = Date.now();
+
+let renderInstance: Instance | null = null;
+let fallbackModeActive = false;
+
 export function updateState(state: AgentState): void {
   currentState = state;
 }
@@ -31,12 +35,12 @@ export function initTUI(): void {
   startTime = Date.now();
 
   if (!process.stdin.isTTY) {
-    initFallbackMode();
+    initFallbackMode('非交互式终端，TUI 不可用');
     return;
   }
 
   try {
-    render(
+    renderInstance = render(
       <App
         startTime={startTime}
         getState={getState}
@@ -46,9 +50,47 @@ export function initTUI(): void {
     );
 
     registerTuiLogCallback();
-  } catch {
-    initFallbackMode();
+  } catch (error) {
+    initFallbackMode(`TUI 初始化失败: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+/**
+ * 优雅关闭 TUI
+ * - 清除屏幕
+ * - 卸载 Ink 组件树
+ * - 恢复终端状态
+ * - 退出进程
+ */
+export function shutdownTUI(reason?: string): void {
+  if (renderInstance) {
+    try {
+      renderInstance.clear();
+      renderInstance.unmount();
+    } catch {
+      // 卸载过程中忽略错误
+    }
+    renderInstance = null;
+  }
+
+  process.stdout.write('\x1b[2J\x1b[H');
+  const msg = reason ? `👋 街溜子下班了... (${reason})` : '👋 街溜子下班了...';
+  console.log(msg);
+  process.exit(0);
+}
+
+/**
+ * 检查 TUI 是否处于活跃状态
+ */
+export function isTuiActive(): boolean {
+  return renderInstance !== null;
+}
+
+/**
+ * 检查是否处于 fallback 文本模式
+ */
+export function isFallbackMode(): boolean {
+  return fallbackModeActive;
 }
 
 function registerTuiLogCallback(): void {
@@ -63,10 +105,18 @@ function registerTuiLogCallback(): void {
   });
 }
 
-function initFallbackMode(): void {
-  console.log('🐕 赛博街溜子启动 (文本模式)');
+function initFallbackMode(reason?: string): void {
+  fallbackModeActive = true;
+  if (reason) {
+    console.log(`🐕 赛博街溜子启动 (文本模式) — ${reason}`);
+  } else {
+    console.log('🐕 赛博街溜子启动 (文本模式)');
+  }
 
-  const importantKeywords = ['[Step', 'ReAct', 'search_web', 'read_page', 'speak', 'rest', '启动', '结束'];
+  console.log('  提示: 文本模式下仅显示关键操作日志');
+  console.log('  退出: 按 Ctrl+C 停止');
+
+  const importantKeywords = ['[Step', 'ReAct', 'search_web', 'read_page', 'speak', 'rest', '启动', '结束', '游荡结束'];
 
   onLog((entry) => {
     if (importantKeywords.some((kw) => entry.message.includes(kw))) {
@@ -77,9 +127,7 @@ function initFallbackMode(): void {
 }
 
 function handleExit(): void {
-  process.stdout.write('\x1b[2J\x1b[H');
-  console.log('👋 街溜子下班了...');
-  process.exit(0);
+  shutdownTUI('用户按键退出');
 }
 
 export function getStartTime(): number {
