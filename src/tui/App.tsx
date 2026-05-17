@@ -101,23 +101,29 @@ function AppInner({ startTime, getState, getLogs, onExit }: AppProps) {
     }
   });
 
-  // 状态栏 4 行 + Loading 2 行 + 标题 1 行 + 底部栏 1 行 + help 可展开 4 行
-  const headerRows = 4 + 2 + 1;
-  const footerRows = (showHelp ? 4 : 0) + 1;
-  const maxLogLines = Math.max(3, terminalRows - headerRows - footerRows - 3);
+  // 固定行数估算:
+  // StatusBar: ~3 (含边框)
+  // Loading:   ~2 (含 margin)
+  // 日志标题:   1
+  // 日志顶部 margin: 1
+  // Help 面板: ~5 (含边框+内边距+margin, 仅展开时)
+  // 底部栏:    ~2 (含边框+margin)
+  const helpRows = showHelp ? 5 : 0;
+  const fixedHeaderRows = 3 + 2 + 1 + 1;
+  const fixedFooterRows = helpRows + 2;
+  const visibleLines = Math.max(3, terminalRows - fixedHeaderRows - fixedFooterRows);
 
   return (
-    <Box flexDirection="column" height="100%">
-      <StatusBar state={agentState} startTime={startTime} />
-
-      <Loading
-        isRunning={isAgentRunning}
-        step={currentStep || undefined}
-        action={currentAction}
-      />
-
-      <Box flexDirection="column" marginY={1}>
-        <Box marginBottom={1}>
+    <Box flexDirection="column" height={terminalRows} overflow="hidden">
+      {/* 固定头部 */}
+      <Box flexDirection="column" flexShrink={0}>
+        <StatusBar state={agentState} startTime={startTime} />
+        <Loading
+          isRunning={isAgentRunning}
+          step={currentStep || undefined}
+          action={currentAction}
+        />
+        <Box marginTop={1} marginBottom={1}>
           <Text bold>
             操作日志
             {filter !== 'all' && (
@@ -125,31 +131,35 @@ function AppInner({ startTime, getState, getLogs, onExit }: AppProps) {
             )}
           </Text>
         </Box>
-        <Box height={maxLogLines}>
-          <LogView logs={logs} filter={filter} maxLines={maxLogLines} />
-        </Box>
       </Box>
 
-      {showHelp && (
-        <Box
-          flexDirection="column"
-          borderStyle="round"
-          borderColor="yellow"
-          padding={1}
-          marginBottom={1}
-        >
-          <Text bold color="yellow">快捷键</Text>
-          <Text>  q - 退出</Text>
-          <Text>  f - 切换过滤级别</Text>
-          <Text>  h - 显示/隐藏帮助</Text>
-          <Text>  Ctrl+C - 优雅退出</Text>
-        </Box>
-      )}
+      {/* 可滚动日志区域 */}
+      <Box flexGrow={1} flexShrink={1} overflowY="hidden">
+        <LogView logs={logs} filter={filter} visibleLines={visibleLines} />
+      </Box>
 
-      <Box marginTop={1} borderStyle="single" paddingX={1}>
-        <Text color="gray">
-          快捷键：q 退出 | f 过滤 | h 帮助 | Ctrl+C 退出 | 当前过滤：{filter.toUpperCase()}
-        </Text>
+      {/* 固定底部 */}
+      <Box flexDirection="column" flexShrink={0}>
+        {showHelp && (
+          <Box
+            flexDirection="column"
+            borderStyle="round"
+            borderColor="yellow"
+            padding={1}
+            marginBottom={1}
+          >
+            <Text bold color="yellow">快捷键</Text>
+            <Text>  q - 退出  |  Ctrl+C - 优雅退出</Text>
+            <Text>  f - 切换过滤级别</Text>
+            <Text>  h - 显示/隐藏帮助</Text>
+          </Box>
+        )}
+
+        <Box borderStyle="single" paddingX={1}>
+          <Text color="gray">
+            q 退出 | f 过滤 | h 帮助 | ↑↓/jk 滚动 | 过滤：{filter.toUpperCase()}
+          </Text>
+        </Box>
       </Box>
     </Box>
   );
