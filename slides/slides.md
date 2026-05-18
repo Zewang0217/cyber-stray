@@ -12,7 +12,6 @@ author: Cyber-Stray Team
 date: 2026/05/09
 colorSchema: dark
 transition: slide-left
-clicks: 8
 ---
 
 # Cyber-Stray
@@ -228,7 +227,7 @@ layout: section
 
 # 系统架构
 
-```mermaid
+```mermaid {scale: 0.7}
 graph TB
     subgraph User["🎯 用户"]
         U[终端设备]

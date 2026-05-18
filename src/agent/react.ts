@@ -7,8 +7,11 @@ import { config } from '../config.js';
 import { updateState } from './state.js';
 import { loadUserProfile } from '../memory/user-profile.js';
 import { buildReactSystemPrompt, buildReactUserPrompt } from '../prompts/react.js';
-import { createTools, type ToolContext } from '../tools/registry/index.js';
+import { ToolManager, type ToolContext } from '../tools/registry/index.js';
+import { speak } from '../tools/push/speak.js';
 import { buildMemoryPromptContext, recordWanderSummary } from '../memory/long-term.js';
+import { generateTraceId } from '../logger/trace.js';
+import { resetLLMStats, getLLMStats } from '../llm/stats.js';
 import type { AgentState, WanderStep } from '../types.js';
 
 const logger = consola.withTag('react');
@@ -39,6 +42,19 @@ function getProvider() {
     _provider = createProvider();
   }
   return _provider;
+}
+
+/** 工具管理器初始化标志 */
+let _toolsInitialized = false;
+
+/**
+ * 确保工具已初始化
+ */
+async function ensureToolsInitialized(): Promise<void> {
+  if (!_toolsInitialized) {
+    await ToolManager.initialize();
+    _toolsInitialized = true;
+  }
 }
 
 // 消耗和恢复参数（从配置文件读取，保留硬编码默认值以便静态分析）
@@ -108,8 +124,12 @@ async function appendWanderHistory(steps: WanderStep[]): Promise<void> {
 export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
   const startTime = Date.now();
   const maxSteps = config.maxWanderSteps;
+  const traceId = generateTraceId();
 
-  logger.info('ReAct Loop 启动', {
+  // 重置 LLM 统计
+  resetLLMStats();
+
+  logger.info(`[${traceId}] LOOP 游荡开始`, {
     boredom: state.boredom,
     energy: state.energy,
     mood: state.mood,
@@ -119,6 +139,7 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
   // 初始化上下文（mutable，Tools 会修改）
   const ctx: ToolContext = {
     state,
+    traceId,
     stepCount: 0,
     wanderHistory: [],
     visitedUrls: [],
@@ -126,7 +147,11 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
     pendingFeedbackCount: 0,
     endReason: 'max_steps',
     startTime,
+    searchQueries: [],
   };
+
+  // 确保工具已初始化
+  await ensureToolsInitialized();
 
   const userProfile = await loadUserProfile();
   const memoryContext = await buildMemoryPromptContext();
@@ -141,7 +166,7 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
   });
 
   const provider = getProvider();
-  const tools = createTools(ctx);
+  const tools = ToolManager.getTools(ctx);
 
   try {
     await generateText({
@@ -156,19 +181,38 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
       tools,
     });
   } catch (error) {
-    logger.error('ReAct Loop 执行异常', { error });
+    logger.error(`[${ctx.traceId}] LLM 调用异常`, { error });
     ctx.endReason = 'error';
   }
 
   const durationMs = Date.now() - startTime;
+  const llmStats = getLLMStats();
 
-logger.info('ReAct Loop 结束', {
-    steps: ctx.stepCount,
+  // 汇总统计日志
+  logger.info(`[${ctx.traceId}] STAT === 游荡结束 ===`, {
+    steps: `${ctx.stepCount}/${maxSteps}`,
     durationMs,
-    spokeTimes: ctx.spokeTimes,
-    visitedUrls: ctx.visitedUrls.length,
     endReason: ctx.endReason,
+    llmCalls: llmStats.calls,
+    llmTotalMs: llmStats.totalMs,
+    llmAvgMs: llmStats.avgMs,
+    searchCount: ctx.searchQueries.length,
+    searchQueries: ctx.searchQueries.map((s) => s.query),
+    readCount: ctx.visitedUrls.length,
+    readDomains: ctx.visitedUrls.map((u) => {
+      try { return new URL(u).hostname; } catch { return u; }
+    }),
+    speakCount: ctx.spokeTimes,
   });
+
+  // 空游荡兜底：如果看过页面但没有分享，自动发一条碎碎念通知用户
+  if (ctx.spokeTimes === 0 && ctx.visitedUrls.length > 0) {
+    const lastUrl = ctx.visitedUrls[ctx.visitedUrls.length - 1];
+    await speak(
+      `刚才出去溜达了一圈，看了 ${ctx.visitedUrls.length} 个页面（最后看的是 ${lastUrl}），但没找到值得分享的，改天再说吧~`,
+      'nonsense',
+    ).catch((err: unknown) => logger.warn('空游荡兜底 speak 失败', { error: err }));
+  }
 
   // 记录游荡总结到长期记忆
   const lastSpoke = ctx.wanderHistory.filter((s) => s.spoke).pop();

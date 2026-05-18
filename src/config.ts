@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'fs';
-import type { AgentConfig } from './types.js';
+import type { AgentConfig, EnergyRecoveryTier } from './types.js';
 
 const CONFIG_PATH = 'data/agent-config.json';
 
@@ -16,17 +16,21 @@ type BehaviorConfig = Pick<
   | 'energyRecoveringThreshold'
   | 'energyCostPerStep'
   | 'boredomReductionPerStep'
+  | 'wanderProbabilityEnabled'
+  | 'wanderProbabilityThreshold'
+  | 'energyRecoveryTiers'
   | 'llmTemperature'
   | 'maxSearchResults'
   | 'maxWanderSteps'
   | 'wanderTemperature'
   | 'outputLanguage'
+  | 'urlCooldownDays'
 > & {
   feishu?: AgentConfig['feishu'];
 };
 
 const defaultBehavior: BehaviorConfig = {
-  heartbeatInterval: 5,
+  heartbeatInterval: 10,
   boredomGrowthRate: 5,
   energyRecoveryRate: 2,
   boredomThreshold: 50,
@@ -34,11 +38,19 @@ const defaultBehavior: BehaviorConfig = {
   energyRecoveringThreshold: 30,
   energyCostPerStep: 2,
   boredomReductionPerStep: 2,
+  wanderProbabilityEnabled: true,
+  wanderProbabilityThreshold: 20,
+  energyRecoveryTiers: [
+    { maxEnergy: 10, recovery: 10, interval: 30, boredomGrowth: 0 },
+    { maxEnergy: 30, recovery: 5, interval: 15, boredomGrowth: 2 },
+    { maxEnergy: 100, recovery: 2, interval: 10, boredomGrowth: 5 },
+  ] as EnergyRecoveryTier[],
   llmTemperature: 0.8,
   maxSearchResults: 10,
   maxWanderSteps: 10,
   wanderTemperature: 0.9,
   outputLanguage: 'zh-CN',
+  urlCooldownDays: 5,
 };
 
 /**
@@ -88,6 +100,22 @@ export const config: AgentConfig = {
     chatId: loadBehaviorConfig().feishu?.chatId || '',
   },
 };
+
+/**
+ * 获取能量对应的恢复阶梯
+ */
+export function getRecoveryTier(energy: number): EnergyRecoveryTier {
+  const tiers = config.energyRecoveryTiers;
+
+  for (const tier of tiers) {
+    if (energy <= tier.maxEnergy) {
+      return tier;
+    }
+  }
+
+  // 默认为最高阶梯
+  return tiers[tiers.length - 1]!;
+}
 
 /**
  * 验证必要配置

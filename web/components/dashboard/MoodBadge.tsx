@@ -50,6 +50,9 @@ export function MoodBadge({ mood }: MoodBadgeProps): React.ReactElement {
   };
 
   const config = moodConfig[mood];
+  if (!config) {
+    return <></>;
+  }
 
   return (
     <motion.div

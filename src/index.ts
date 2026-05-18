@@ -1,4 +1,4 @@
-import { config, validateConfig } from "./config.js";
+import { config, validateConfig, getRecoveryTier } from "./config.js";
 import { loadState, heartbeat } from "./agent/state.js";
 import { runAgentLoop } from "./agent/react.js";
 import { initLogger, consola } from "./logger.js";
@@ -6,6 +6,7 @@ import { updateState } from "./tui/index.js";
 import { initFeishuWS } from "./tools/feishu/ws-client.js";
 
 let logger: ReturnType<typeof consola.withTag>;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
 /**
  * 主入口
@@ -13,10 +14,10 @@ let logger: ReturnType<typeof consola.withTag>;
 async function main(): Promise<void> {
   // 初始化日志系统（TUI + 文件）
   initLogger();
-  
+
   // 在 initLogger() 之后获取 consola 实例
   logger = consola.withTag("main");
-  
+
   logger.info("赛博街溜子启动...");
 
   // 验证配置
@@ -44,56 +45,104 @@ async function main(): Promise<void> {
   // 启动心跳定时器
   startHeartbeat();
 
-  logger.info("心跳定时器已启动", {
-    interval: `${config.heartbeatInterval}分钟`,
-  });
+  logger.info("心跳定时器已启动");
 
   // 保持进程运行
   logger.info("街溜子已就位，开始溜达...");
 }
 
 /**
- * 心跳定时器
+ * 获取当前应该使用的心跳间隔和恢复参数
+ */
+function getHeartbeatParams(state: { energy: number }): {
+  interval: number;
+  recovery: number;
+  boredomGrowth: number;
+} {
+  const tier = getRecoveryTier(state.energy);
+  return {
+    interval: tier.interval,
+    recovery: tier.recovery,
+    boredomGrowth: tier.boredomGrowth,
+  };
+}
+
+/**
+ * 启动心跳定时器
  */
 function startHeartbeat(): void {
-  const intervalMs = config.heartbeatInterval * 60 * 1000;
-
   // 立即执行一次
   runHeartbeat();
+}
 
-  // 定时执行
-  setInterval(runHeartbeat, intervalMs);
+/**
+ * 更新心跳定时器间隔
+ */
+function updateHeartbeatInterval(intervalMinutes: number): void {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+  }
+
+  const intervalMs = intervalMinutes * 60 * 1000;
+  heartbeatTimer = setInterval(runHeartbeat, intervalMs);
+
+  logger.info("心跳间隔已更新", { interval: `${intervalMinutes}分钟` });
 }
 
 /**
  * 执行心跳
  *
- * 流程：更新状态 → 直接启动 ReAct Loop → LLM 自主决定是否游荡及如何游荡
+ * 流程：更新状态 → 概率触发 → ReAct Loop
  */
 async function runHeartbeat(): Promise<void> {
   logger.info("心跳触发");
 
   try {
-    // 1. 更新状态（无聊值增长、精力恢复）
-    // 当精力低于阈值时，无聊值暂停增长，让精力自然恢复
-    const state = await heartbeat(
-      config.boredomGrowthRate,
-      config.energyRecoveryRate,
+    // 获取当前能量对应的心跳参数
+    const state = await loadState();
+    const params = getHeartbeatParams(state);
+
+    // 更新心跳间隔
+    updateHeartbeatInterval(params.interval);
+
+    // 1. 更新状态（使用阶梯恢复参数）
+    const newState = await heartbeat(
+      params.boredomGrowth,
+      params.recovery,
       config.energyRecoveringThreshold,
     );
 
-    updateState(state);
+    updateState(newState);
 
     logger.info("状态更新", {
-      boredom: state.boredom,
-      energy: state.energy,
-      mood: state.mood,
-      temper: state.temper,
+      boredom: newState.boredom,
+      energy: newState.energy,
+      mood: newState.mood,
+      temper: newState.temper,
+      recoveryTier: {
+        interval: params.interval,
+        recovery: params.recovery,
+        boredomGrowth: params.boredomGrowth,
+      },
     });
 
-    // 2. 直接启动 ReAct Loop
-    // LLM 在第一步自主决定：游荡 or 直接 rest()
-    const result = await runAgentLoop(state);
+    // 2. 概率触发 Wander
+    if (config.wanderProbabilityEnabled && newState.energy < config.wanderProbabilityThreshold) {
+      const probability = newState.energy / 100;
+      const roll = Math.random();
+
+      if (roll > probability) {
+        logger.info("精力不足，跳过本次游荡", {
+          energy: newState.energy,
+          probability: `${(probability * 100).toFixed(1)}%`,
+          roll: `${(roll * 100).toFixed(1)}%`,
+        });
+        return;
+      }
+    }
+
+    // 3. 启动 ReAct Loop
+    const result = await runAgentLoop(newState);
 
     logger.info("本次游荡结束", {
       steps: result.steps,
