@@ -466,7 +466,7 @@ async mergeTopicMemories(topic: string): Promise<void> {
 
 **若此表为空则所有声明均已 verified/cited。** 本表有 6 项 `[ASSUMED]`，planner 须在 Wave 0 单测验证 A1/A5（provider 字段），其余 A2/A3/A4/A6 为设计选择已在 CONTEXT.md 用户确认范围内。
 
-## Open Questions
+## Open Questions (RESOLVED via plan incorporation)
 
 1. **`onStepEnd` 的 `performance` 字段在 DeepSeek provider 下是否填充？**
    - What we know: Context7 示例显示 `performance` 字段存在；AI SDK 文档说 performance 含 `totalMs`。
