@@ -142,7 +142,10 @@ export function validateConfig(): void {
 
 /**
  * 获取数据目录路径
+ *
+ * 默认相对于 cwd 的 data/；测试可通过 DATA_DIR 环境变量重定向到临时目录，
+ * 避免污染真实数据。env 未设置时与历史行为完全一致。
  */
 export function getDataPath(filename: string): string {
-  return `data/${filename}`;
+  return `${process.env.DATA_DIR ?? 'data'}/${filename}`;
 }

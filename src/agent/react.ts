@@ -57,6 +57,17 @@ async function ensureToolsInitialized(): Promise<void> {
   }
 }
 
+/**
+ * 重置模块级状态（仅供测试隔离使用）
+ *
+ * 清除缓存的 provider 和工具初始化标志，使下一次 runAgentLoop 重新初始化，
+ * 避免同一进程内多个测试之间互相污染。配合 ToolManager.reset() 使用。
+ */
+export function _resetReactModuleState(): void {
+  _provider = null;
+  _toolsInitialized = false;
+}
+
 // 消耗和恢复参数（从配置文件读取，保留硬编码默认值以便静态分析）
 const ENERGY_COST_PER_STEP = config.energyCostPerStep;
 const BOREDOM_REDUCTION_PER_STEP = config.boredomReductionPerStep;
