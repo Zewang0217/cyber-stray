@@ -203,7 +203,8 @@ export class MemoryStore {
   private parseTypeStats(str: string): Record<MemoryType, number> {
     try {
       return JSON.parse(str);
-    } catch {
+    } catch (error) {
+      consola.warn('解析 typeStats 失败，计数器回退为 0', { raw: str, error });
       return { profile: 0, knowledge: 0, interaction: 0, observation: 0 };
     }
   }

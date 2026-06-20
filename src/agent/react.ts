@@ -11,7 +11,7 @@ import { ToolManager, type ToolContext } from '../tools/registry/index.js';
 import { speak } from '../tools/push/speak.js';
 import { buildMemoryPromptContext, recordWanderSummary } from '../memory/long-term.js';
 import { generateTraceId } from '../logger/trace.js';
-import { resetLLMStats, getLLMStats } from '../llm/stats.js';
+import { resetLLMStats, getLLMStats, startLLMCall, endLLMCall } from '../llm/stats.js';
 import type { AgentState, WanderStep } from '../types.js';
 
 const logger = consola.withTag('react');
@@ -84,8 +84,8 @@ function extractRecentTopics(steps: WanderStep[], existingTopics: string[]): str
     if (step.url) {
       try {
         topics.add(new URL(step.url).hostname);
-      } catch {
-        // 忽略无效 URL
+      } catch (error) {
+        logger.warn('忽略无效 URL，无法提取 hostname', { url: step.url, error });
       }
     }
   }
@@ -168,6 +168,7 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
   const provider = getProvider();
   const tools = ToolManager.getTools(ctx);
 
+  startLLMCall();
   try {
     await generateText({
       model: provider.chat(config.llmModel),
@@ -183,6 +184,8 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
   } catch (error) {
     logger.error(`[${ctx.traceId}] LLM 调用异常`, { error });
     ctx.endReason = 'error';
+  } finally {
+    endLLMCall();
   }
 
   const durationMs = Date.now() - startTime;
