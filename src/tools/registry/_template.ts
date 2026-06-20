@@ -4,7 +4,7 @@
  * 使用步骤：
  * 1. 复制此文件为新 Tool 名称（如 my-tool.ts）
  * 2. 修改 description、inputSchema、execute
- * 3. 在 registry/index.ts 中的 createTools() 里注册
+ * 3. 在 registry/auto-register.ts 的 TOOL_DEFINITIONS 中注册
  * 4. （可选）在 prompts/react.ts 中添加 Tool 说明
  */
 
