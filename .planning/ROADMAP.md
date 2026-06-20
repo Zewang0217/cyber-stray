@@ -33,12 +33,12 @@
   3. 空游荡可以"只学习不推送"结束一轮游荡（强制 speak 兜底已移除）
   4. LLM 调用统计反映真实调用次数（不再恒 0）；工具错误显式记录而非空 catch 吞掉
 
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — MemoryIndex（JSON sidecar `data/memory/.index.json`）+ types.ts schema 扩展 + MemoryStore 改造（双写钩子 / getMemory 不读即写 / getRecentMemories 走索引 / D-09 错误显式化）+ Wave 0 测试（MEM-01）
+- [x] 01-01-PLAN.md — MemoryIndex（JSON sidecar `data/memory/.index.json`）+ types.ts schema 扩展 + MemoryStore 改造（双写钩子 / getMemory 不读即写 / getRecentMemories 走索引 / D-09 错误显式化）+ Wave 0 测试（MEM-01）
 - [ ] 01-03-PLAN.md — 废除空游荡强制 speak（D-05）+ LLM 统计改 onStepEnd 按步计数（D-11）+ generateText 失败重试（D-10）+ stats.ts 重构（MEM-03/MEM-04）
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -152,7 +152,7 @@ Phases execute in numeric order；Phase 2/3 在 Phase 1 后可相对并行（弱
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. 记忆基础设施 | 0/3 | Not started | - |
+| 1. 记忆基础设施 | 1/3 | In Progress|  |
 | 2. 可进化兴趣图谱 | 0/3 | Not started | - |
 | 3. 用户兴趣模型+反馈强化 | 0/3 | Not started | - |
 | 4. 反思回路 | 0/3 | Not started | - |

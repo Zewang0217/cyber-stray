@@ -9,7 +9,7 @@
 
 ### MEM — 记忆基础设施
 
-- [ ] **MEM-01**: 新增 JSON 索引 sidecar（`data/memory/.index.json`），记忆检索/反思不再 O(N) 全文件扫描
+- [x] **MEM-01**: 新增 JSON 索引 sidecar（`data/memory/.index.json`），记忆检索/反思不再 O(N) 全文件扫描
 - [ ] **MEM-02**: 接线 `MemoryConsolidator` + `cleanupVisitedUrls`，记忆有界（合并同话题 / 清理低价值 / 过期遗忘）
 - [ ] **MEM-03**: 废除空游荡强制 speak 兜底（`src/agent/react.ts:209`），让"学习但不推送"成立
 - [ ] **MEM-04**: 修阻塞性 bug —— LLM 调用统计恒 0（`src/llm/stats.ts` 未接线）、空 catch 静默失败（遵 CLAUDE.md 显式报错）
@@ -72,7 +72,7 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MEM-01 | Phase 1 | Pending |
+| MEM-01 | Phase 1 | Complete |
 | MEM-02 | Phase 1 | Pending |
 | MEM-03 | Phase 1 | Pending |
 | MEM-04 | Phase 1 | Pending |
@@ -92,6 +92,7 @@
 | OBS-03 | Phase 6 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 18 total
 - Mapped to phases: 18
 - Unmapped: 0 ✓
