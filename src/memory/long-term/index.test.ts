@@ -1,9 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { MemoryStore } from './index.js';
 import { toSafeFilename } from './types.js';
+import { _resetMemoryIndex, loadJsonIndex } from './memory-index.js';
 
 describe('MemoryStore', () => {
   let dir: string;
@@ -12,10 +13,12 @@ describe('MemoryStore', () => {
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'memory-test-'));
     store = new MemoryStore({ basePath: dir });
+    _resetMemoryIndex();
   });
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+    _resetMemoryIndex();
   });
 
   test('saveMemory→getMemory 往返保持内容一致', async () => {
@@ -100,6 +103,129 @@ describe('MemoryStore', () => {
     // NOTE: totalMemories / typeStats 因概览区中文 key（总记忆数/类型统计）
     // 与 parseIndexFromMarkdown 的 (\w+) 正则不匹配而无法往返——已作为独立
     // 发现报告，不在本测试提交中修复，故此处不断言以避免误绿。
+  });
+});
+
+/**
+ * MEM-01 Task 2：MemoryStore 改造（双写钩子 + 检索走索引 + getMemory 不读即写 + D-09 显式化）
+ *
+ * 覆盖 PLAN.md Task 2 <behavior> 7 条断言：
+ * 1) saveMemory 双写（.index.json records 含该条）
+ * 2) getMemory 不读即写（mtime 不变）
+ * 3) getRecentMemories 索引命中（不经 getMemory）
+ * 4) D-09 not found（getMemory→null / deleteMemory→false）
+ * 5) D-09 解析失败（非法 Markdown → getMemory 抛 Error）
+ * 6) readIndex 解析失败（非法 INDEX.md → readIndex 抛 Error）
+ * 7) deleteMemory 索引联动（.index.json records 不含该条）
+ */
+describe('MemoryStore（索引层改造 / MEM-01）', () => {
+  let dir: string;
+  let store: MemoryStore;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'memory-idx-test-'));
+    store = new MemoryStore({ basePath: dir });
+    _resetMemoryIndex();
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    _resetMemoryIndex();
+  });
+
+  /** 构造一条有效的 saveMemory 入参 */
+  function makeEntryArgs() {
+    return {
+      type: 'knowledge' as const,
+      timestamp: '2026-06-20T00:00:00.000Z',
+      tags: ['ai'],
+      summary: 'DeepSeek V4',
+      content: '开源了 Agent 能力',
+      importance: 0.6,
+    };
+  }
+
+  // 1) saveMemory 双写：INDEX.md + .index.json 同步
+  test('saveMemory 双写：.index.json records 含该条（与 INDEX.md 同步）', async () => {
+    const saved = await store.saveMemory(makeEntryArgs());
+
+    const jsonIndex = await loadJsonIndex(join(dir, '.index.json'));
+    expect(jsonIndex.records.find((r) => r.id === saved.id)).toBeDefined();
+
+    // INDEX.md 也应含该 id（双写可见）
+    const mdIndex = await store.readIndex();
+    expect(mdIndex.recentMemories).toContain(saved.id);
+  });
+
+  // 2) getMemory 不读即写：文件 mtime 不变（写放大消除）
+  test('getMemory 不读即写：前后文件 mtime 不变', async () => {
+    const saved = await store.saveMemory(makeEntryArgs());
+    const filepath = join(dir, 'knowledge', `${toSafeFilename(saved.id)}.md`);
+
+    // 两次 stat：读前 & 读后；时间需 <1s 间隔以保证 mtime 秒级粒度可靠
+    const before = statSync(filepath).mtimeMs;
+    await new Promise((r) => setTimeout(r, 1100)); // 等 >1s（mtime 粒度）
+    await store.getMemory('knowledge', saved.id);
+    const after = statSync(filepath).mtimeMs;
+
+    expect(after).toBe(before);
+  });
+
+  // 3) getRecentMemories 索引命中：不经 getMemory（用 spy wrapper 计数）
+  test('getRecentMemories 索引命中：不调 getMemory（走 jsonIndex 直接 readFile）', async () => {
+    const saved = await store.saveMemory(makeEntryArgs());
+
+    let getMemoryCalls = 0;
+    const spyStore = new MemoryStore({ basePath: dir });
+    const origGetMemory = spyStore.getMemory.bind(spyStore);
+    spyStore.getMemory = async (...args) => {
+      getMemoryCalls++;
+      return origGetMemory(...args);
+    };
+
+    const results = await spyStore.getRecentMemories({ count: 10 });
+    expect(results.length).toBe(1);
+    expect(results[0]!.id).toBe(saved.id);
+    // 走索引后 getRecentMemories 不应再调 getMemory（旧实现循环里调 getMemory）
+    expect(getMemoryCalls).toBe(0);
+  });
+
+  // 4) D-09 not found：getMemory→null / deleteMemory→false
+  test('D-09 not found：getMemory 返 null / deleteMemory 返 false（合法空值）', async () => {
+    const got = await store.getMemory('knowledge', 'does-not-exist');
+    expect(got).toBeNull();
+
+    const deleted = await store.deleteMemory('knowledge', 'does-not-exist');
+    expect(deleted).toBe(false);
+  });
+
+  // 5) D-09 解析失败：非法 Markdown → getMemory 抛 Error（不返 null 兜底）
+  test('D-09 解析失败：非法内容 → getMemory 抛 Error（不返 null）', async () => {
+    const saved = await store.saveMemory(makeEntryArgs());
+    const filepath = join(dir, 'knowledge', `${toSafeFilename(saved.id)}.md`);
+    writeFileSync(filepath, '完全非法的非 Markdown 内容 { 乱码', 'utf-8');
+
+    expect(store.getMemory('knowledge', saved.id)).rejects.toThrow();
+  });
+
+  // 6) readIndex 解析失败：非法 INDEX.md → readIndex 抛 Error（不返默认）
+  test('D-09 readIndex 解析失败：非法 INDEX.md → 抛 Error（不返默认）', async () => {
+    // 先写一条触发 INDEX.md 创建
+    await store.saveMemory(makeEntryArgs());
+    const indexPath = join(dir, 'INDEX.md');
+    writeFileSync(indexPath, '完全非法的内容 ###乱码', 'utf-8');
+
+    expect(store.readIndex()).rejects.toThrow();
+  });
+
+  // 7) deleteMemory 索引联动：.index.json records 不含该条
+  test('deleteMemory 索引联动：.index.json records 不含该条', async () => {
+    const saved = await store.saveMemory(makeEntryArgs());
+    const ok = await store.deleteMemory('knowledge', saved.id);
+    expect(ok).toBe(true);
+
+    const jsonIndex = await loadJsonIndex(join(dir, '.index.json'));
+    expect(jsonIndex.records.find((r) => r.id === saved.id)).toBeUndefined();
   });
 });
 

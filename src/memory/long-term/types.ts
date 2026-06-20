@@ -141,6 +141,11 @@ export function parseMemoryFrontmatter(content: string): {
   summary: string;
   content: string;
 } {
+  // D-09：合法记忆必须有 --- frontmatter 分界。缺分界视为非法内容，抛错（不兜底）
+  if (!content.startsWith('---') || content.split('---').length < 3) {
+    throw new Error('非法记忆内容：缺少 frontmatter 分界（---）');
+  }
+
   const parts = content.split('---');
   const metaStr = parts[1] || '';
   const body = parts[2] || '';

@@ -7,7 +7,7 @@
  * - 每条记忆为一个 .md 文件
  */
 
-import { readFile, writeFile, mkdir, readdir, rm } from 'fs/promises';
+import { readFile, writeFile, mkdir, rm } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -28,6 +28,7 @@ import {
   parseMemoryFrontmatter,
   formatMemoryToMarkdown,
 } from './types.js';
+import { MemoryIndex as MemoryIndexStore, getMemoryIndex } from './memory-index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -40,9 +41,14 @@ const logger = consola.withTag('MemoryStore');
 export class MemoryStore {
   private config: MemoryConfig;
   private indexCache: MemoryIndex | null = null;
+  /** JSON sidecar 索引（检索走它，O(1) 查表替代 O(N) readdir 全扫） */
+  private jsonIndex: MemoryIndexStore;
 
   constructor(config: Partial<MemoryConfig> = {}) {
     this.config = { ...DEFAULT_MEMORY_CONFIG, ...config };
+    // 注入 JSON 索引（getMemoryIndex 单例按 basePath 复用；测试通过
+    // _resetMemoryIndex 重置后再 new MemoryStore 以拿到对应 basePath 的实例）
+    this.jsonIndex = getMemoryIndex(this.config.basePath);
   }
 
   /**
@@ -57,7 +63,9 @@ export class MemoryStore {
   // ============================================
 
   /**
-   * 读取记忆索引
+   * 读取记忆索引（人类可读的 INDEX.md）
+   *
+   * D-09：文件不存在 → 返默认（合法空值）；读取/解析失败 → **抛 Error**（不兜底返默认）。
    */
   async readIndex(): Promise<MemoryIndex> {
     const indexPath = this.getBasePath('INDEX.md');
@@ -66,12 +74,25 @@ export class MemoryStore {
       return this.createDefaultIndex();
     }
 
+    let content: string;
     try {
-      const content = await readFile(indexPath, 'utf-8');
+      content = await readFile(indexPath, 'utf-8');
+    } catch (error) {
+      logger.error('读取 INDEX.md 失败', { indexPath, error });
+      throw new Error(`INDEX.md 读取失败: ${indexPath}`, { cause: error });
+    }
+
+    // D-09：合法 INDEX.md 必须以已知标题开头。缺标题视为非法内容，抛错（不兜底返默认）
+    if (!content.includes('# 赛博街溜子记忆系统')) {
+      logger.error('INDEX.md 非法内容（缺标题标记）', { indexPath });
+      throw new Error(`INDEX.md 解析失败（缺标题标记）: ${indexPath}`);
+    }
+
+    try {
       return this.parseIndexFromMarkdown(content);
     } catch (error) {
-      logger.error('读取索引失败，使用默认索引', { error });
-      return this.createDefaultIndex();
+      logger.error('INDEX.md 解析失败', { indexPath, error });
+      throw new Error(`INDEX.md 解析失败: ${indexPath}`, { cause: error });
     }
   }
 
@@ -253,6 +274,10 @@ export class MemoryStore {
 
   /**
    * 读取单条记忆
+   *
+   * - 文件不存在 → 返 null（not found 合法空值，D-09）
+   * - 读取/解析失败 → **抛 Error**（不返 null 兜底，D-09）
+   * - **不再读即写**（写放大消除）：accessedAt 迁到 JSON 索引，读路径不重写文件
    */
   async getMemory(type: MemoryType, id: string): Promise<MemoryEntry | null> {
     const filepath = this.getMemoryPath(type, id);
@@ -261,23 +286,39 @@ export class MemoryStore {
       return null;
     }
 
+    let content: string;
     try {
-      const content = await readFile(filepath, 'utf-8');
-      const entry = this.parseMemoryFromMarkdown(content, id, type);
-      entry.accessedAt = new Date().toISOString();
-
-      const updatedContent = this.formatEntry(entry);
-      await writeFile(filepath, updatedContent, 'utf-8');
-
-      return entry;
+      content = await readFile(filepath, 'utf-8');
     } catch (error) {
-      logger.error('读取记忆失败', { id, error });
-      return null;
+      logger.error('读取记忆文件失败', { id, filepath, error });
+      throw new Error(`记忆读取失败: ${id}`, { cause: error });
     }
+
+    let entry: MemoryEntry;
+    try {
+      entry = this.parseMemoryFromMarkdown(content, id, type);
+    } catch (error) {
+      logger.error('记忆 Markdown 解析失败', { id, filepath, error });
+      throw new Error(`记忆解析失败: ${id}`, { cause: error });
+    }
+
+    // accessedAt 迁到 JSON 索引：best-effort 更新（失败不阻断读，仅 warn）
+    await this.jsonIndex.touchAccessedAt(type, id).catch((error) => {
+      logger.warn('更新索引 accessedAt 失败', { id, error });
+    });
+    // 返回的 entry.accessedAt 优先读索引（若索引有），否则用 timestamp
+    const indexed = await this.jsonIndex.getAccessedAt(type, id);
+    entry.accessedAt = indexed ?? entry.timestamp;
+
+    return entry;
   }
 
   /**
-   * 获取最近记忆
+   * 获取最近记忆（走 JSON 索引，不再 readdir 全扫）
+   *
+   * 候选条目从 `jsonIndex.queryRecent()` 获取（O(1) 索引查表），仅对命中条目
+   * 按需读 Markdown。文件读取失败 best-effort 跳过（索引滞后于磁盘的边界情况），
+   * 不阻断检索。
    */
   async getRecentMemories(options: {
     count?: number;
@@ -285,28 +326,25 @@ export class MemoryStore {
     since?: string;
   } = {}): Promise<MemoryEntry[]> {
     const { count = 20, type, since } = options;
+    const records = await this.jsonIndex.queryRecent({ count, type, since });
+
     const memories: MemoryEntry[] = [];
-
-    const types = type ? [type] : (Object.keys(MEMORY_TYPE_PATHS) as MemoryType[]);
-
-    for (const t of types) {
-      const dir = this.getBasePath(MEMORY_TYPE_PATHS[t]);
-      if (!existsSync(dir)) continue;
-
-      const files = await readdir(dir);
-      for (const file of files) {
-        if (!file.endsWith('.md')) continue;
-        const entry = await this.getMemory(t, file.replace('.md', ''));
-        if (entry) {
-          if (since && entry.timestamp < since) continue;
-          memories.push(entry);
-        }
+    for (const rec of records) {
+      try {
+        const filepath = this.getBasePath(rec.filepath);
+        const content = await readFile(filepath, 'utf-8');
+        memories.push(this.parseMemoryFromMarkdown(content, rec.id, rec.type));
+      } catch (error) {
+        logger.warn('索引命中但 Markdown 读取失败，跳过', {
+          id: rec.id,
+          filepath: rec.filepath,
+          error,
+        });
       }
     }
 
-    return memories
-      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-      .slice(0, count);
+    // queryRecent 已按 timestamp 降序；防御性二次裁剪（防磁盘解析过滤后超量）
+    return memories.slice(0, count);
   }
 
   /**
@@ -326,6 +364,10 @@ export class MemoryStore {
 
   /**
    * 删除记忆
+   *
+   * - 文件不存在 → 返 false（not found 合法空值，D-09）
+   * - 删除/索引更新失败 → **抛 Error**（不返 false 兜底，D-09）
+   * - 删 Markdown 后双写联动：INDEX.md + .index.json 同步剔除条目
    */
   async deleteMemory(type: MemoryType, id: string): Promise<boolean> {
     const filepath = this.getMemoryPath(type, id);
@@ -345,10 +387,14 @@ export class MemoryStore {
       index.importantMemories = index.importantMemories.filter((memId) => memId !== id);
       await this.writeIndex(index);
 
+      // 索引联动：剔除 .index.json 中对应记录
+      await this.jsonIndex.remove(type, id);
+      await this.jsonIndex.persist();
+
       return true;
     } catch (error) {
       logger.error('删除记忆失败', { id, error });
-      return false;
+      throw new Error(`记忆删除失败: ${id}`, { cause: error });
     }
   }
 
@@ -516,6 +562,12 @@ export class MemoryStore {
     return { id, type, ...parsed };
   }
 
+  /**
+   * 保存后索引更新钩子（三写：Markdown 已写 → INDEX.md → .index.json）
+   *
+   * Markdown 是真相源（saveMemory 已写），INDEX.md 人类可读（既有），.index.json
+   * 查询索引（新增）。三者通过此钩子同步，崩溃后由启动 rebuildIndexFromMarkdown 自愈。
+   */
   private async updateIndexAfterSave(entry: MemoryEntry): Promise<void> {
     const index = await this.readIndex();
 
@@ -536,6 +588,10 @@ export class MemoryStore {
 
     index.lastUpdated = new Date().toISOString();
     await this.writeIndex(index);
+
+    // 三写第三写：JSON 索引 upsert + 一次性 persist
+    await this.jsonIndex.upsert(entry);
+    await this.jsonIndex.persist();
   }
 }
 
