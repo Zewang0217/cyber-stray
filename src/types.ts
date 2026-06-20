@@ -163,6 +163,14 @@ export interface AgentConfig {
 
   // LLM 调用容错配置（D-10：generateText 整体失败重试次数）
   generateTextMaxRetries: number;  // 重试次数（总 attempts = 此值 + 1）
+
+  // 记忆合并/清理阈值（D-03 外置到 agent-config.json；默认值由 config.ts defaultBehavior 提供）
+  consolidation?: {
+    lowImportanceThreshold: number;
+    expiryDays: number;
+    mergeMaxAgeDays: number;
+    urlCleanupDays: number;
+  };
 }
 
 // ============================================

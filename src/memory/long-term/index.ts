@@ -363,6 +363,16 @@ export class MemoryStore {
   }
 
   /**
+   * 读取记忆的 accessedAt（从 JSON 索引，供 MemoryConsolidator 使用）
+   *
+   * accessedAt 已迁到 JSON 索引（01-01），不再存 Markdown frontmatter。
+   * 返回 null 表示索引中无此条目（调用方应回退 timestamp）。
+   */
+  async getMemoryAccessedAt(type: MemoryType, id: string): Promise<string | null> {
+    return this.jsonIndex.getAccessedAt(type, id);
+  }
+
+  /**
    * 删除记忆
    *
    * - 文件不存在 → 返 false（not found 合法空值，D-09）
