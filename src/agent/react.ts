@@ -8,10 +8,9 @@ import { updateState } from './state.js';
 import { loadUserProfile } from '../memory/user-profile.js';
 import { buildReactSystemPrompt, buildReactUserPrompt } from '../prompts/react.js';
 import { ToolManager, type ToolContext } from '../tools/registry/index.js';
-import { speak } from '../tools/push/speak.js';
 import { buildMemoryPromptContext, recordWanderSummary } from '../memory/long-term.js';
 import { generateTraceId } from '../logger/trace.js';
-import { resetLLMStats, getLLMStats, startLLMCall, endLLMCall } from '../llm/stats.js';
+import { resetLLMStats, getLLMStats, recordStep } from '../llm/stats.js';
 import type { AgentState, WanderStep } from '../types.js';
 
 const logger = consola.withTag('react');
@@ -179,24 +178,48 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
   const provider = getProvider();
   const tools = ToolManager.getTools(ctx);
 
-  startLLMCall();
-  try {
-    await generateText({
-      model: provider.chat(config.llmModel),
-      temperature: config.wanderTemperature,
-      system: systemPrompt,
-      prompt: initialUserPrompt,
-      // stopWhen 接受数组：满足任一条件即终止循环
-      // - hasToolCall('rest')：LLM 主动调用 rest 工具后立即停止，不再继续迭代
-      // - stepCountIs(maxSteps)：达到步数上限时强制停止
-      stopWhen: [hasToolCall('rest'), stepCountIs(maxSteps)],
-      tools,
-    });
-  } catch (error) {
-    logger.error(`[${ctx.traceId}] LLM 调用异常`, { error });
-    ctx.endReason = 'error';
-  } finally {
-    endLLMCall();
+  // D-10：generateText 整体失败重试（默认 1 次，总 attempts = generateTextMaxRetries + 1）
+  const maxRetries = config.generateTextMaxRetries ?? 1;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // 每次尝试的步耗时基准（A1：AI SDK v6 StepResult 无 performance.totalMs 字段，
+    // 用 Date.now() 差值作为 durationMs 真值来源）
+    const attemptStart = Date.now();
+    try {
+      await generateText({
+        model: provider.chat(config.llmModel),
+        temperature: config.wanderTemperature,
+        system: systemPrompt,
+        prompt: initialUserPrompt,
+        // stopWhen 接受数组：满足任一条件即终止循环
+        // - hasToolCall('rest')：LLM 主动调用 rest 工具后立即停止，不再继续迭代
+        // - stepCountIs(maxSteps)：达到步数上限时强制停止
+        stopWhen: [hasToolCall('rest'), stepCountIs(maxSteps)],
+        tools,
+        // D-11：按步计数（替换旧版"包整次 generateText 算 1 次"）。
+        // 一个 step = 一次 LLM 调用（含工具步与文本步），onStepFinish 在每步结束时触发。
+        // ⚠ Pitfall 1：回调内抛错被 SDK 静默吞，recordStep 内部已 no-throw，
+        // 这里外层再 try/catch 双重自愈，确保任何异常都不阻断主流程。
+        onStepFinish({ stepNumber, usage }) {
+          try {
+            recordStep({
+              stepNumber,
+              promptTokens: usage?.inputTokens,
+              completionTokens: usage?.outputTokens,
+              totalTokens: usage?.totalTokens,
+              durationMs: Date.now() - attemptStart,
+            });
+          } catch {
+            // 计数自愈：不阻断主流程（recordStep 内部本就 no-throw，这里是外层兜底）
+          }
+        },
+      });
+      break; // 成功，退出重试
+    } catch (error) {
+      logger.error(`[${ctx.traceId}] LLM 调用异常 (attempt ${attempt + 1}/${maxRetries + 1})`, { error });
+      if (attempt === maxRetries) {
+        ctx.endReason = 'error';
+      }
+    }
   }
 
   const durationMs = Date.now() - startTime;
@@ -210,6 +233,7 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
     llmCalls: llmStats.calls,
     llmTotalMs: llmStats.totalMs,
     llmAvgMs: llmStats.avgMs,
+    llmTotalTokens: llmStats.totalTokens,
     searchCount: ctx.searchQueries.length,
     searchQueries: ctx.searchQueries.map((s) => s.query),
     readCount: ctx.visitedUrls.length,
@@ -218,15 +242,6 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
     }),
     speakCount: ctx.spokeTimes,
   });
-
-  // 空游荡兜底：如果看过页面但没有分享，自动发一条碎碎念通知用户
-  if (ctx.spokeTimes === 0 && ctx.visitedUrls.length > 0) {
-    const lastUrl = ctx.visitedUrls[ctx.visitedUrls.length - 1];
-    await speak(
-      `刚才出去溜达了一圈，看了 ${ctx.visitedUrls.length} 个页面（最后看的是 ${lastUrl}），但没找到值得分享的，改天再说吧~`,
-      'nonsense',
-    ).catch((err: unknown) => logger.warn('空游荡兜底 speak 失败', { error: err }));
-  }
 
   // 记录游荡总结到长期记忆
   const lastSpoke = ctx.wanderHistory.filter((s) => s.spoke).pop();

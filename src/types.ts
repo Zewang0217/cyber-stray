@@ -160,6 +160,9 @@ export interface AgentConfig {
 
   // URL 去重配置
   urlCooldownDays: number;  // URL 冷却天数
+
+  // LLM 调用容错配置（D-10：generateText 整体失败重试次数）
+  generateTextMaxRetries: number;  // 重试次数（总 attempts = 此值 + 1）
 }
 
 // ============================================

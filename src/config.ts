@@ -25,6 +25,7 @@ type BehaviorConfig = Pick<
   | 'wanderTemperature'
   | 'outputLanguage'
   | 'urlCooldownDays'
+  | 'generateTextMaxRetries'
 > & {
   feishu?: AgentConfig['feishu'];
 };
@@ -51,6 +52,7 @@ const defaultBehavior: BehaviorConfig = {
   wanderTemperature: 0.9,
   outputLanguage: 'zh-CN',
   urlCooldownDays: 5,
+  generateTextMaxRetries: 1,
 };
 
 /**
