@@ -100,9 +100,14 @@ describe('MemoryStore', () => {
     expect(read.recentMemories).toEqual(['mem-1', 'mem-2']);
     expect(read.importantMemories).toEqual(['mem-imp']);
     expect(read.tags).toEqual(['ai', 'tech']);
-    // NOTE: totalMemories / typeStats 因概览区中文 key（总记忆数/类型统计）
-    // 与 parseIndexFromMarkdown 的 (\w+) 正则不匹配而无法往返——已作为独立
-    // 发现报告，不在本测试提交中修复，故此处不断言以避免误绿。
+    // WR-06：概览区 key 改 ASCII 后 totalMemories / typeStats 也能正确往返
+    expect(read.totalMemories).toBe(5);
+    expect(read.typeStats).toEqual({
+      profile: 1,
+      knowledge: 2,
+      interaction: 1,
+      observation: 1,
+    });
   });
 });
 

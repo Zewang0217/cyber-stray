@@ -7,7 +7,7 @@
  * - 每条记忆为一个 .md 文件
  */
 
-import { readFile, writeFile, mkdir, rm } from 'fs/promises';
+import { readFile, writeFile, mkdir, readdir, rm } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -199,8 +199,10 @@ export class MemoryStore {
       `> 最后更新: ${index.lastUpdated}`,
       '',
       '## 概览',
-      `- 总记忆数: ${index.totalMemories}`,
-      `- 类型统计: ${JSON.stringify(index.typeStats)}`,
+      // WR-06：概览区 key 用 ASCII（旧版中文 key `总记忆数/类型统计` 无法被
+      // parseIndexFromMarkdown 的 \w+ 正则往返解析 → totalMemories 每次回环清零）。
+      `- totalMemories: ${index.totalMemories}`,
+      `- typeStats: ${JSON.stringify(index.typeStats)}`,
       '',
       '## 快速导航',
       '- [用户偏好](./profile/preferences.md)',
@@ -373,11 +375,30 @@ export class MemoryStore {
   }
 
   /**
+   * 从 INDEX.md + .index.json 剔除一条记忆的索引记录（文件删除/归档后调用）
+   *
+   * 抽取自 deleteMemory，供 MemoryConsolidator 归档时复用（CR-02：归档须联动索引，
+   * 否则 .index.json 留孤儿记录 → getRecentMemories 读已归档文件静默丢结果）。
+   */
+  async unlinkFromIndex(type: MemoryType, id: string): Promise<void> {
+    const index = await this.readIndex();
+    index.totalMemories = Math.max(0, index.totalMemories - 1);
+    index.typeStats[type] = Math.max(0, (index.typeStats[type] || 1) - 1);
+    index.recentMemories = index.recentMemories.filter((memId) => memId !== id);
+    index.importantMemories = index.importantMemories.filter((memId) => memId !== id);
+    await this.writeIndex(index);
+
+    // 索引联动：剔除 .index.json 中对应记录
+    await this.jsonIndex.remove(type, id);
+    await this.jsonIndex.persist();
+  }
+
+  /**
    * 删除记忆
    *
    * - 文件不存在 → 返 false（not found 合法空值，D-09）
    * - 删除/索引更新失败 → **抛 Error**（不返 false 兜底，D-09）
-   * - 删 Markdown 后双写联动：INDEX.md + .index.json 同步剔除条目
+   * - 删 Markdown 后双写联动：INDEX.md + .index.json 同步剔除条目（复用 unlinkFromIndex）
    */
   async deleteMemory(type: MemoryType, id: string): Promise<boolean> {
     const filepath = this.getMemoryPath(type, id);
@@ -390,22 +411,51 @@ export class MemoryStore {
       await rm(filepath);
       logger.debug('记忆已删除', { id });
 
-      const index = await this.readIndex();
-      index.totalMemories = Math.max(0, index.totalMemories - 1);
-      index.typeStats[type] = Math.max(0, (index.typeStats[type] || 1) - 1);
-      index.recentMemories = index.recentMemories.filter((memId) => memId !== id);
-      index.importantMemories = index.importantMemories.filter((memId) => memId !== id);
-      await this.writeIndex(index);
-
-      // 索引联动：剔除 .index.json 中对应记录
-      await this.jsonIndex.remove(type, id);
-      await this.jsonIndex.persist();
+      await this.unlinkFromIndex(type, id);
 
       return true;
     } catch (error) {
       logger.error('删除记忆失败', { id, error });
       throw new Error(`记忆删除失败: ${id}`, { cause: error });
     }
+  }
+
+  /**
+   * 启动期索引一致性校验与自愈（CR-01：兑现"崩溃自愈"承诺）
+   *
+   * - .index.json 缺失/损坏/空但 Markdown 存在 → 从 Markdown 重建
+   * - 失败抛错，由调用方 best-effort 兜底（不阻断启动）
+   */
+  async ensureIndexConsistent(): Promise<void> {
+    // 1. 尝试加载；schema 漂移/非法 JSON → rebuild
+    try {
+      await this.jsonIndex.getRecords();
+    } catch (error) {
+      logger.warn('JSON 索引异常，从 Markdown 重建', { error: String(error) });
+      await this.jsonIndex.rebuild();
+      return;
+    }
+    // 2. records 为空但 Markdown 存在 → rebuild（首次启动 / 索引文件丢失）
+    const records = await this.jsonIndex.getRecords();
+    if (records.length === 0) {
+      const mdCount = await this.countMarkdownFiles();
+      if (mdCount > 0) {
+        logger.info('检测到 Markdown 但索引为空，触发 rebuild', { markdownFiles: mdCount });
+        await this.jsonIndex.rebuild();
+      }
+    }
+  }
+
+  /** 统计四个类型子目录下的 Markdown 文件数（供 ensureIndexConsistent 判定是否需 rebuild） */
+  private async countMarkdownFiles(): Promise<number> {
+    let count = 0;
+    for (const type of Object.keys(MEMORY_TYPE_PATHS) as MemoryType[]) {
+      const dir = this.getBasePath(MEMORY_TYPE_PATHS[type]);
+      if (!existsSync(dir)) continue;
+      const files = await readdir(dir);
+      count += files.filter((f) => f.endsWith('.md')).length;
+    }
+    return count;
   }
 
   // ============================================

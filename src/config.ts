@@ -96,8 +96,12 @@ function loadBehaviorConfig(): BehaviorConfig {
  * - 行为参数：从 data/agent-config.json 读取，失败时用默认值
  * - 敏感信息：从环境变量读取，不放入配置文件
  */
+// CR-04：只读一次 agent-config.json（旧版模块加载期读 4 次，既浪费 I/O 又在并发改文件时
+// 可能读到不一致快照）。behavior 已含 W2 嵌套合并后的 consolidation。
+const behavior = loadBehaviorConfig();
+
 export const config: AgentConfig = {
-  ...loadBehaviorConfig(),
+  ...behavior,
 
   // LLM 配置（模型名来自环境变量）
   llmModel: process.env.LLM_MODEL || 'deepseek-chat',
@@ -116,11 +120,12 @@ export const config: AgentConfig = {
   larkAppId: process.env.LARK_APP_ID,
   larkAppSecret: process.env.LARK_APP_SECRET,
 
-  // 飞书行为配置（从 agent-config.json 读取）
+  // 飞书行为配置（CR-04：嵌套字段级合并，与 consolidation 的 W2 一致——用户只配部分字段时
+  // 其余从默认取，不致 undefined。旧版 spread 后又被重建对象覆盖，首读结果被丢弃。）
   feishu: {
-    pushMode: loadBehaviorConfig().feishu?.pushMode || 'lark_channel',
-    receiveMode: loadBehaviorConfig().feishu?.receiveMode || 'reaction',
-    chatId: loadBehaviorConfig().feishu?.chatId || '',
+    pushMode: behavior.feishu?.pushMode ?? 'lark_channel',
+    receiveMode: behavior.feishu?.receiveMode ?? 'reaction',
+    chatId: behavior.feishu?.chatId ?? '',
   },
 };
 

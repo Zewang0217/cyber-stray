@@ -70,6 +70,14 @@ async function main(): Promise<void> {
  * 失败仅 logger.warn，不阻断 agent 启动（T-01-10）。定期调度属 Phase 4 反思周期。
  */
 async function runStartupMemoryMaintenance(): Promise<void> {
+  // CR-01：启动期索引一致性校验/自愈（.index.json 缺失/损坏/空但 Markdown 存在 → 从 Markdown 重建）
+  // 失败仅 warn，不阻断启动（与下方 consolidator 一致的 best-effort 策略）
+  try {
+    await getMemoryStore().ensureIndexConsistent();
+  } catch (error) {
+    logger.warn("启动期索引校验/重建失败（不阻断启动）", { error: String(error) });
+  }
+
   const urlCleanupDays = config.consolidation?.urlCleanupDays ?? 30;
   try {
     const removed = await cleanupVisitedUrls(urlCleanupDays);

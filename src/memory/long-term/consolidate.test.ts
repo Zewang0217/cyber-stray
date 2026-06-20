@@ -64,7 +64,7 @@ describe('MemoryConsolidator', () => {
       join(knowledgeDir, 'knowledge-llmtopic-aaa.md'),
       formatMemoryToMarkdown({
         id: 'knowledge-llmtopic-aaa', type: 'knowledge',
-        timestamp: '2026-06-01T00:00:00.000Z', tags: ['llm'],
+        timestamp: '2026-06-01T00:00:00.000Z', tags: ['llm', 'llmtopic'],
         summary: 'LLM 话题 a', content: '内容a', importance: 0.5,
       }),
       'utf-8',
@@ -73,7 +73,7 @@ describe('MemoryConsolidator', () => {
       join(knowledgeDir, 'knowledge-llmtopic-bbb.md'),
       formatMemoryToMarkdown({
         id: 'knowledge-llmtopic-bbb', type: 'knowledge',
-        timestamp: '2026-06-02T00:00:00.000Z', tags: ['llm'],
+        timestamp: '2026-06-02T00:00:00.000Z', tags: ['llm', 'llmtopic'],
         summary: 'LLM 话题 b', content: '内容b', importance: 0.6,
       }),
       'utf-8',
@@ -92,12 +92,12 @@ describe('MemoryConsolidator', () => {
     const fileB = 'knowledge-softdelete-bbb.md';
     writeFileSync(join(knowledgeDir, fileA), formatMemoryToMarkdown({
       id: 'knowledge-softdelete-aaa', type: 'knowledge',
-      timestamp: '2026-06-01T00:00:00.000Z', tags: ['x'],
+      timestamp: '2026-06-01T00:00:00.000Z', tags: ['x', 'softdelete'],
       summary: '软删 a', content: 'a', importance: 0.5,
     }), 'utf-8');
     writeFileSync(join(knowledgeDir, fileB), formatMemoryToMarkdown({
       id: 'knowledge-softdelete-bbb', type: 'knowledge',
-      timestamp: '2026-06-02T00:00:00.000Z', tags: ['x'],
+      timestamp: '2026-06-02T00:00:00.000Z', tags: ['x', 'softdelete'],
       summary: '软删 b', content: 'b', importance: 0.5,
     }), 'utf-8');
 
@@ -263,11 +263,11 @@ describe('archiveFile', () => {
 
     await archiveFile(sourcePath, 'knowledge', dir);
 
-    // basename 过 toSafeFilename（. 被净化为 -）再补 .md
+    // WR-01：先剥 .md 再净化后补回 → 归档名保持原 id（不再是 xxx-md.md）
     expect(existsSync(sourcePath)).toBe(false);
     const archiveDir = join(dir, '.archive', 'knowledge');
     const archived = readdirSync(archiveDir);
-    expect(archived).toContain('test-arch-xyz-md.md');
+    expect(archived).toContain('test-arch-xyz.md');
   });
 
   test('sourcePath 不存在抛 Error（D-09，不静默跳过）', async () => {

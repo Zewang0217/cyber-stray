@@ -17,7 +17,7 @@
  */
 
 import { readdir, stat, readFile } from 'fs/promises';
-import { join } from 'path';
+import { join, basename } from 'path';
 import { existsSync } from 'fs';
 import { consola } from '../../logger.js';
 import { config } from '../../config.js';
@@ -25,7 +25,6 @@ import { config } from '../../config.js';
 import {
   DEFAULT_MEMORY_CONFIG,
   MEMORY_TYPE_PATHS,
-  toSafeFilename,
   parseMemoryFrontmatter,
   type MemoryType,
   type MemoryEntry,
@@ -114,6 +113,20 @@ export class MemoryConsolidator {
   }
 
   /**
+   * 软删除归档 + 索引联动（CR-02）
+   *
+   * archiveFile 把 Markdown 移到 .archive/ 后，须同步剔除 INDEX.md / .index.json
+   * 中的记录，否则留孤儿记录 → getRecentMemories 读已归档文件静默丢结果。
+   * store 未注入时仅归档不联动（与 mergeTopicMemories 的 D-09 抛错路径不冲突）。
+   */
+  private async archiveAndUnindex(filepath: string, type: MemoryType): Promise<void> {
+    await archiveFile(filepath, type, this.basePath);
+    if (!this.store) return;
+    const id = basename(filepath).replace(/\.md$/, '');
+    await this.store.unlinkFromIndex(type, id);
+  }
+
+  /**
    * 合并旧记忆（D-03 阈值外置；D-01 软删除；D-04 双记）
    *
    * 阈值优先级：options 显式 > config.consolidation > 保守默认
@@ -152,8 +165,8 @@ export class MemoryConsolidator {
             new Date(entry.timestamp).getTime() < cutoff &&
             entry.importance < lowImportanceThreshold
           ) {
-            // D-01：软删除（归档），不再直接 rm
-            await archiveFile(filepath, t, this.basePath);
+            // D-01：软删除（归档）+ CR-02 索引联动，不再直接 rm
+            await this.archiveAndUnindex(filepath, t);
             deletedCount++;
             deletedByType[t] = (deletedByType[t] || 0) + 1;
             logger.debug('归档低价值旧记忆', {
@@ -199,26 +212,32 @@ export class MemoryConsolidator {
     const dir = join(this.basePath, MEMORY_TYPE_PATHS.knowledge);
     if (!existsSync(dir)) return;
 
-    const topicLower = toSafeFilename(topic).toLowerCase();
+    const topicLower = topic.toLowerCase();
     const files = await readdir(dir);
 
-    const topicFiles = files.filter(
-      (f) => f.includes(topicLower) && f.endsWith('.md'),
-    );
-
-    if (topicFiles.length < 2) return;
-
     const entries: MemoryEntry[] = [];
-    for (const file of topicFiles) {
+    const matchedFiles: string[] = [];
+
+    // WR-10：按 tags/summary/content 匹配话题（旧版按文件名子串匹配，saveMemory 生成的
+    // id 不含 topic，生产环境零命中；且子串匹配会误并——如 topic=cat 命中 category）。
+    for (const file of files) {
+      if (!file.endsWith('.md')) continue;
       const filepath = join(dir, file);
       const content = await readFile(filepath, 'utf-8');
       const parsed = parseMemoryFrontmatter(content);
+      const tagHit = parsed.tags.some((t) => t.toLowerCase() === topicLower);
+      const textHit =
+        `${parsed.summary} ${parsed.content}`.toLowerCase().includes(topicLower);
+      if (!tagHit && !textHit) continue;
       entries.push({
-        id: file.replace('.md', ''),
+        id: file.replace(/\.md$/, ''),
         type: 'knowledge',
         ...parsed,
       });
+      matchedFiles.push(file);
     }
+
+    if (entries.length < 2) return;
 
     const mergedId = `knowledge-${topicLower}-merged`;
     const merged: MemoryEntry = {
@@ -234,9 +253,9 @@ export class MemoryConsolidator {
     // D-01：合并记忆走 store.saveMemory（双写 INDEX.md + .index.json），不再 writeFile 绕索引
     await this.store.saveMemory(merged);
 
-    // D-01：旧文件软删除（归档到 .archive/knowledge/），不再直接 rm
-    for (const file of topicFiles) {
-      await archiveFile(join(dir, file), 'knowledge', this.basePath);
+    // D-01：旧文件软删除（归档到 .archive/knowledge/）+ CR-02 索引联动，不再直接 rm
+    for (const file of matchedFiles) {
+      await this.archiveAndUnindex(join(dir, file), 'knowledge');
     }
 
     // D-04：INFO 日志 + observation 记忆双记
@@ -283,8 +302,8 @@ export class MemoryConsolidator {
           }
 
           if (new Date(accessedAt).getTime() < cutoff) {
-            // D-01：软删除（归档），不再直接 rm
-            await archiveFile(filepath, type, this.basePath);
+            // D-01：软删除（归档）+ CR-02 索引联动，不再直接 rm
+            await this.archiveAndUnindex(filepath, type);
             deletedCount++;
             deletedByType[type] = (deletedByType[type] || 0) + 1;
           }

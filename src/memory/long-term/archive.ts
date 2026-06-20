@@ -48,8 +48,10 @@ export async function archiveFile(
   const archiveDir = join(basePath, '.archive', MEMORY_TYPE_PATHS[type]);
   await mkdir(archiveDir, { recursive: true });
 
-  // basename 过 toSafeFilename 防路径遍历（如 `../../etc/passwd` → 合法文件名）
-  const destFilename = `${toSafeFilename(basename(sourcePath))}.md`;
+  // WR-01：先剥扩展名再过 toSafeFilename，否则 `.md` 中的 `.` 被净化为 `-` →
+  // 归档名变 `xxx-md.md`，破坏文件名身份且无法原样恢复。
+  const base = basename(sourcePath).replace(/\.md$/, '');
+  const destFilename = `${toSafeFilename(base)}.md`;
   const destPath = join(archiveDir, destFilename);
 
   await rename(sourcePath, destPath);
