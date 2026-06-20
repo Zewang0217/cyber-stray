@@ -6,14 +6,14 @@ current_phase: 1
 current_phase_name: 记忆基础设施
 status: executing
 stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-06-20T12:58:11.202Z"
+last_updated: "2026-06-20T13:16:37.290Z"
 last_activity: 2026-06-20
 last_activity_desc: Phase 1 execution started
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-06-20)
 ## Current Position
 
 Phase: 1 (记忆基础设施) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-06-20 — Phase 1 execution started
 
@@ -51,6 +51,8 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01 P01 | 14min | 2 tasks | 6 files |
+| Phase 01 P03 | 9min | - tasks | - files |
+| Phase 01 P03 | 9min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -65,6 +67,9 @@ Recent decisions affecting current work:
 - 初始化: 成功标准 = 兴趣可观测进化
 - [Phase ?]: JSON 索引 sidecar（data/memory/.index.json）+ 原子写（temp+rename）+ D-09 错误显式化（MEM-01 完成）
 - [Phase ?]: MemoryStore.getRecentMemories 走索引查表（O(1) 替代 O(N) readdir）；getMemory 不读即写（accessedAt 迁索引）
+- [Phase ?]: AI SDK v6 真实 API 为 onStepFinish（非 onStepEnd），usage 字段 inputTokens/outputTokens（01-03 Rule 1 修正）
+- [Phase ?]: StepResult 无 performance.totalMs，durationMs 始终用 Date.now() 差值（01-03 A1 验证）
+- [Phase ?]: generateTextMaxRetries 默认 1，config 键自包含三件套（01-03 W1 fix / D-10）
 
 ### Pending Todos
 
@@ -83,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-20T12:58:11.197Z
+Last session: 2026-06-20T13:15:57.670Z
 Stopped at: Completed 01-01-PLAN.md
 Resume file: .planning/phases/01-记忆基础设施/01-01-SUMMARY.md
