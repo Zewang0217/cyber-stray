@@ -26,15 +26,15 @@
 **Requirements**: MEM-01, MEM-02, MEM-03, MEM-04
 **Success Criteria** (what must be TRUE):
   1. 检索/反思不再遍历每个记忆文件（索引命中可观测，检索耗时显著下降）
-  2. 记忆有界：consolidator 周期执行后，低价值/过期记忆被合并或清理，`data/memory/` 不再单调无界增长
+  2. consolidator 已接线且可通过单测/手动调用验证合并、软删除、过期清理逻辑正确（D-02 放宽口径：本期只接线 + 单测/手动可跑，**不自动周期触发**；定期自动调度属 Phase 4 反思周期。本期 `data/memory/` 仍可能无界增长直到 Phase 4——用户已明确接受）
   3. 空游荡可以"只学习不推送"结束一轮游荡（强制 speak 兜底已移除）
   4. LLM 调用统计反映真实调用次数（不再恒 0）；工具错误显式记录而非空 catch 吞掉
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: MemoryIndex（JSON sidecar）+ 双写（saveMemory/deleteMemory 钩子原子更新）+ 替换 getRecentMemories 全扫
-- [ ] 01-02: 接线 MemoryConsolidator + cleanupVisitedUrls（随启动/反思周期调度）
-- [ ] 01-03: 废除空游荡强制 speak（react.ts:209）+ 修 LLM stats 接线（react.ts:172 包 start/end）+ 清理空 catch
+- [ ] 01-01-PLAN.md — MemoryIndex（JSON sidecar `data/memory/.index.json`）+ types.ts schema 扩展 + MemoryStore 改造（双写钩子 / getMemory 不读即写 / getRecentMemories 走索引 / D-09 错误显式化）+ Wave 0 测试（MEM-01）
+- [ ] 01-02-PLAN.md — 接线 MemoryConsolidator + cleanupVisitedUrls（启动一次性 best-effort，不自动周期，D-02）+ archive.ts 软删除 + 阈值外置 agent-config.json + D-04 双记（MEM-02）
+- [ ] 01-03-PLAN.md — 废除空游荡强制 speak（D-05）+ LLM 统计改 onStepEnd 按步计数（D-11）+ generateText 失败重试（D-10）+ stats.ts 重构（MEM-03/MEM-04）
 
 ### Phase 2: 可进化兴趣图谱
 **Goal**: 让宠物有可进化的"自我" —— 用带权 InterestGraph 替换冻住的 `agentInterests`，由反思/反馈写入，驱动探索方向，内置防坍缩。
