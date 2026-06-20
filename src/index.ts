@@ -4,6 +4,8 @@ import { runAgentLoop } from "./agent/react.js";
 import { initLogger, consola } from "./logger.js";
 import { updateState, shutdownTUI, isTuiActive } from "./tui/index.js";
 import { initFeishuWS, closeFeishuWS } from "./tools/feishu/ws-client.js";
+import { getMemoryStore, getMemoryConsolidator } from "./memory/long-term.js";
+import { cleanupVisitedUrls } from "./tools/dedup/url-tracker.js";
 
 let logger: ReturnType<typeof consola.withTag>;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -43,6 +45,10 @@ async function main(): Promise<void> {
     totalWanders: state.totalWanders,
   });
 
+  // 启动一次性 best-effort 记忆维护（D-02：不自动周期触发，定期调度属 Phase 4 反思周期）
+  // 失败仅 warn 不阻断启动（T-01-10：consolidator 失败不应让 agent 起不来）
+  await runStartupMemoryMaintenance();
+
   // 注册信号处理器
   registerSignalHandlers();
 
@@ -53,6 +59,35 @@ async function main(): Promise<void> {
 
   // 保持进程运行
   logger.info("街溜子已就位，开始溜达...");
+}
+
+/**
+ * 启动一次性记忆维护（D-02：best-effort，不自动周期触发）
+ *
+ * - cleanupVisitedUrls：按 config.consolidation.urlCleanupDays 清理过期 URL 去重记录
+ * - MemoryConsolidator.consolidateOldMemories + cleanupExpired：合并/清理记忆（D-01 软删除）
+ *
+ * 失败仅 logger.warn，不阻断 agent 启动（T-01-10）。定期调度属 Phase 4 反思周期。
+ */
+async function runStartupMemoryMaintenance(): Promise<void> {
+  const urlCleanupDays = config.consolidation?.urlCleanupDays ?? 30;
+  try {
+    const removed = await cleanupVisitedUrls(urlCleanupDays);
+    if (removed > 0) {
+      logger.info("启动期清理过期 URL 去重记录", { removed, urlCleanupDays });
+    }
+  } catch (error) {
+    logger.warn("cleanupVisitedUrls 启动执行失败（不阻断启动）", { error: String(error) });
+  }
+
+  try {
+    const consolidator = getMemoryConsolidator(getMemoryStore());
+    const merged = await consolidator.consolidateOldMemories();
+    const expired = await consolidator.cleanupExpired();
+    logger.info("启动期记忆 consolidator 一次性执行", { merged, expired });
+  } catch (error) {
+    logger.warn("记忆 consolidator 启动执行失败（不阻断启动）", { error: String(error) });
+  }
 }
 
 /**

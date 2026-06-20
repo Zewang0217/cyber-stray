@@ -32,6 +32,14 @@
     "_generateTextMaxRetriesNote": "generateText 整体失败时的重试次数（D-10）。总 attempts = 此值 + 1。默认 1 次（不指数退避）",
     "generateTextMaxRetries": 1,
 
+    "_consolidationNote": "记忆合并/清理阈值（D-03 外置）。保守默认：先跑通不误删。lowImportanceThreshold=低价值清理阈值；expiryDays=过期天数；mergeMaxAgeDays=合并旧记忆天数；urlCleanupDays=URL 去重清理天数",
+    "consolidation": {
+        "lowImportanceThreshold": 0.2,
+        "expiryDays": 60,
+        "mergeMaxAgeDays": 7,
+        "urlCleanupDays": 30
+    },
+
     "_feishuNote": "飞书配置",
     "feishu": {
         "_pushModeNote": "推送方式: lark_channel(机器人双向,默认) | webhook(传统webhook)",

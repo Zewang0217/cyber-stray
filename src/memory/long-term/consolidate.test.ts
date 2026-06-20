@@ -304,8 +304,8 @@ describe('loadBehaviorConfig 嵌套合并', () => {
     tempEnv.cleanup();
   });
 
-  // Task 2 落地 W2 fix 后启用（PLAN acceptance：部分 consolidation 配置不丢默认）
-  test.skip('部分 consolidation 配置时其它字段仍取默认值（W2 数据安全）', async () => {
+  // W2 数据安全：部分 consolidation 配置时其它字段仍取默认值（防 undefined 阈值致误归档）
+  test('部分 consolidation 配置时其它字段仍取默认值（W2 数据安全）', async () => {
     // 构造只含 consolidation.expiryDays=10 的 agent-config.json（其余字段缺失）
     mkdirSync('data', { recursive: true });
     writeFileSync(

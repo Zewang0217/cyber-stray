@@ -28,6 +28,8 @@ type BehaviorConfig = Pick<
   | 'generateTextMaxRetries'
 > & {
   feishu?: AgentConfig['feishu'];
+  /** D-03 合并/清理阈值（BehaviorConfig 内必填，默认值由 defaultBehavior 提供） */
+  consolidation: NonNullable<AgentConfig['consolidation']>;
 };
 
 const defaultBehavior: BehaviorConfig = {
@@ -53,16 +55,35 @@ const defaultBehavior: BehaviorConfig = {
   outputLanguage: 'zh-CN',
   urlCooldownDays: 5,
   generateTextMaxRetries: 1,
+  consolidation: {
+    lowImportanceThreshold: 0.2,
+    expiryDays: 60,
+    mergeMaxAgeDays: 7,
+    urlCleanupDays: 30,
+  },
 };
 
 /**
  * 从 data/agent-config.json 加载行为配置，缺失字段回退到默认值
+ *
+ * **W2 嵌套合并（数据安全）**：`consolidation` 是嵌套对象，浅合并
+ * `{ ...defaultBehavior, ...file }` 会因用户只配部分字段（如仅 expiryDays）导致
+ * 整个对象被覆盖 → 其余字段 undefined → 误阈值/误归档/数据丢失。因此对嵌套的
+ * `consolidation` 显式做字段级合并：用户字段覆盖默认，未配字段从默认取。
  */
 function loadBehaviorConfig(): BehaviorConfig {
   if (existsSync(CONFIG_PATH)) {
     try {
       const file = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Partial<BehaviorConfig>;
-      return { ...defaultBehavior, ...file };
+      return {
+        ...defaultBehavior,
+        ...file,
+        // W2：嵌套对象显式字段级合并，防部分配置致 undefined 阈值
+        consolidation: {
+          ...defaultBehavior.consolidation,
+          ...(file.consolidation ?? {}),
+        },
+      };
     } catch (err) {
       console.warn(`[config] agent-config.json 解析失败，使用默认配置: ${err}`);
     }
