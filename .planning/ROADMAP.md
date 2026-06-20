@@ -11,7 +11,7 @@
 - Integer phases (1, 2, 3): 计划里程碑工作
 - Decimal phases (2.1, 2.2): 紧急插入（标 INSERTED）
 
-- [ ] **Phase 1: 记忆基础设施** - 索引层 + 接线清理/合并 + 废强制 speak + 修阻塞 bug
+- [x] **Phase 1: 记忆基础设施** - 索引层 + 接线清理/合并 + 废强制 speak + 修阻塞 bug (completed 2026-06-20)
 - [ ] **Phase 2: 可进化兴趣图谱** - 替换冻住 agentInterests → 带权图谱，驱动探索
 - [ ] **Phase 3: 用户兴趣模型 + 反馈强化** - 填充 profile + 点赞加权
 - [ ] **Phase 4: 反思回路** - 周期 LLM 反思：碎片 → 洞察 → 更新兴趣
@@ -33,7 +33,7 @@
   3. 空游荡可以"只学习不推送"结束一轮游荡（强制 speak 兜底已移除）
   4. LLM 调用统计反映真实调用次数（不再恒 0）；工具错误显式记录而非空 catch 吞掉
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -43,7 +43,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — 接线 MemoryConsolidator + cleanupVisitedUrls（启动一次性 best-effort，不自动周期，D-02）+ archive.ts 软删除 + 阈值外置 agent-config.json + D-04 双记（MEM-02）
+- [x] 01-02-PLAN.md — 接线 MemoryConsolidator + cleanupVisitedUrls（启动一次性 best-effort，不自动周期，D-02）+ archive.ts 软删除 + 阈值外置 agent-config.json + D-04 双记（MEM-02）
 
 ### Phase 2: 可进化兴趣图谱
 
@@ -152,7 +152,7 @@ Phases execute in numeric order；Phase 2/3 在 Phase 1 后可相对并行（弱
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. 记忆基础设施 | 2/3 | In Progress|  |
+| 1. 记忆基础设施 | 3/3 | Complete   | 2026-06-20 |
 | 2. 可进化兴趣图谱 | 0/3 | Not started | - |
 | 3. 用户兴趣模型+反馈强化 | 0/3 | Not started | - |
 | 4. 反思回路 | 0/3 | Not started | - |
