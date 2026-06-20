@@ -96,6 +96,36 @@ describe('MemoryIndex', () => {
   });
 
   // ============================================
+  // 2b) 并发 persist 安全（MEM-01 并发修复回归测试）
+  // ============================================
+  test('并发 persist 安全：多个 persist 并行不崩、不丢、无 tmp 残留', async () => {
+    const index = new MemoryIndex(jsonPath, basePath);
+    // 模拟 ReAct 一步内并行多个写工具：并发 upsert + persist
+    const N = 8;
+    const entries = Array.from({ length: N }, (_, i) =>
+      makeEntry({ id: `knowledge-concurrent-${i}`, summary: `并发条目${i}` }),
+    );
+    // 修复前（固定 .tmp 名）：并发 rename ENOENT → persist 抛错 → Promise.all reject
+    // 修复后（唯一 tmp + 串行化）：全部成功落盘
+    await Promise.all(
+      entries.map(async (e) => {
+        await index.upsert(e);
+        await index.persist();
+      }),
+    );
+
+    const reloaded = await loadJsonIndex(jsonPath);
+    expect(reloaded.records.length).toBe(N);
+    for (const e of entries) {
+      expect(reloaded.records.find((r) => r.id === e.id)).toBeDefined();
+    }
+    // 无残留 tmp 文件（所有唯一 tmp 都被 rename 消化）
+    const { readdir: readdirAsync } = await import('fs/promises');
+    const dirFiles = await readdirAsync(basePath);
+    expect(dirFiles.filter((f) => f.includes('.index.json.tmp'))).toEqual([]);
+  });
+
+  // ============================================
   // 3) 重建：从 4 个 MEMORY_TYPE_PATHS 子目录 Markdown 重建
   // ============================================
   test('重建：rebuild 后 records 含 4 个 MEMORY_TYPE_PATHS 子目录的 Markdown 条目', async () => {

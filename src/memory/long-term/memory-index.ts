@@ -106,12 +106,17 @@ export async function loadJsonIndex(path: string): Promise<MemoryJsonIndex> {
  *
  * 临时文件与目标文件在同一目录（保证同文件系统，`rename` 原子性前提）。
  * 读者要么读到旧版、要么读到新版、绝不读到半写。
+ *
+ * **并发安全**：tmp 名带 pid + 时间戳 + 随机后缀，并发 persist 各写各的 tmp
+ * 互不覆盖；固定 `.tmp` 名会在并发 rename 时 ENOENT（ReAct 一步内并行多个
+ * 写工具 → 并发 saveMemory → persist 的实测 FATAL 场景）。
  */
 export async function saveJsonIndex(
   path: string,
   data: MemoryJsonIndex,
 ): Promise<void> {
-  const tmp = `${path}.tmp`;
+  // 唯一 tmp 名：防并发 persist 竞争固定 .tmp 导致 rename ENOENT
+  const tmp = `${path}.tmp.${process.pid}.${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const payload = JSON.stringify(data, null, 2);
   await writeFile(tmp, payload, 'utf-8');
   await rename(tmp, path);
@@ -180,18 +185,38 @@ export class MemoryIndex {
   private readonly jsonPath: string;
   private readonly basePath: string;
   private store: MemoryJsonIndex | null = null;
+  /** persist 串行化链：并发 persist 排队执行防竞争（与 saveJsonIndex 唯一 tmp 名双保险） */
+  private persistChain: Promise<void> = Promise.resolve();
 
   constructor(jsonPath: string, basePath: string) {
     this.jsonPath = jsonPath;
     this.basePath = basePath;
   }
 
-  /** 懒加载索引（首次访问从磁盘读，失败抛错 D-09） */
+  /** 加载 in-flight promise（并发首次加载去重） */
+  private loadPromise: Promise<MemoryJsonIndex> | null = null;
+
+  /**
+   * 懒加载索引（首次访问从磁盘读，失败抛错 D-09）
+   *
+   * 并发去重：多个 ensureLoaded 同时在 store 未加载时进入，共享同一个 loadPromise，
+   * 避免各自 loadJsonIndex 创建多个 store 对象、this.store 被反复覆盖、upsert 改到
+   * 孤立 store（MEM-01 并发安全）。加载失败清空 loadPromise 允许重试。
+   */
   private async ensureLoaded(): Promise<MemoryJsonIndex> {
-    if (this.store === null) {
-      this.store = await loadJsonIndex(this.jsonPath);
+    if (this.store !== null) return this.store;
+    if (this.loadPromise === null) {
+      this.loadPromise = loadJsonIndex(this.jsonPath)
+        .then((s) => {
+          this.store = s;
+          return s;
+        })
+        .catch((e) => {
+          this.loadPromise = null; // 失败清空，允许后续重试（D-09 错误仍向上抛）
+          throw e;
+        });
     }
-    return this.store;
+    return this.loadPromise;
   }
 
   /** 当前内存中的 records（非持久化快照） */
@@ -278,10 +303,20 @@ export class MemoryIndex {
     await this.persist();
   }
 
-  /** 持久化内存 store 到磁盘（原子写） */
+  /**
+   * 持久化内存 store 到磁盘（原子写 + 串行化）
+   *
+   * 串行化：所有 persist 经 promise 链排队执行，防并发 persist 竞争。
+   * 调用方收到各自真实结果；链本身不被前次失败打断（失败仅向当前调用方抛）。
+   */
   async persist(): Promise<void> {
-    const store = await this.ensureLoaded();
-    await saveJsonIndex(this.jsonPath, store);
+    const next = this.persistChain.then(async () => {
+      const store = await this.ensureLoaded();
+      await saveJsonIndex(this.jsonPath, store);
+    });
+    // 链不断：失败只抛给当前调用方，不污染后续 persist 排队（避免 unhandledRejection）
+    this.persistChain = next.catch(() => {});
+    return next;
   }
 }
 
