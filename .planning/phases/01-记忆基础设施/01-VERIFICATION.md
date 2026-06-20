@@ -1,14 +1,19 @@
 ---
 phase: 01-记忆基础设施
-verified: 2026-06-20T22:05:00Z
-status: human_needed
+verified: 2026-06-20T15:35:00Z
+status: passed
 score: 4/4 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
-  previous_status: none
-  previous_score: n/a
-  is_initial: true
+  previous_status: human_needed
+  previous_score: 4/4
+  is_initial: false
+closeout_note: |
+  UAT 收尾（用户决定接受当前验证状态结束 Phase 1）：
+  - UAT① consolidator 启动接线：live 验证 PASS（启动日志「记忆 consolidator 一次性执行」+ 正常进心跳）。
+  - UAT② 空游荡不推送：未 live 抓到空游荡轮次，但代码层单测覆盖核心断言 + live 验证正常 speak 路径未坏，用户接受。
+  - 执行期发现并发 persist FATAL（record_knowledge rename ENOENT），已修（d551149）+ 回归测试；live 未重验，用户接受单测覆盖。
 human_verification:
   - test: "bun run dev 启动端到端观察 consolidator/cleanup 接线"
     expected: "启动日志含「记忆 consolidator 一次性执行 { merged, expired }」或对应 warn；agent 正常进入心跳；可选：data/memory/.archive/ 在 cleanup 后存在归档文件"

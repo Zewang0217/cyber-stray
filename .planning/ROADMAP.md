@@ -152,7 +152,7 @@ Phases execute in numeric order；Phase 2/3 在 Phase 1 后可相对并行（弱
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. 记忆基础设施 | 3/3 | Complete   | 2026-06-20 |
+| 1. 记忆基础设施 | 3/3 | Complete    | 2026-06-20 |
 | 2. 可进化兴趣图谱 | 0/3 | Not started | - |
 | 3. 用户兴趣模型+反馈强化 | 0/3 | Not started | - |
 | 4. 反思回路 | 0/3 | Not started | - |
