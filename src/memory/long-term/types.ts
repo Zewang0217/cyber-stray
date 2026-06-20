@@ -3,6 +3,7 @@
  */
 
 import { createHash } from 'crypto';
+import { z } from 'zod';
 
 /** 记忆类型枚举 */
 export type MemoryType = 'profile' | 'knowledge' | 'interaction' | 'observation';
@@ -40,6 +41,14 @@ export interface MemoryContextOptions {
   };
 }
 
+/** 记忆合并/清理阈值（D-03 外置到 agent-config.json；默认值由 config.ts defaultBehavior 提供） */
+export interface MemoryConsolidationConfig {
+  lowImportanceThreshold: number;
+  expiryDays: number;
+  mergeMaxAgeDays: number;
+  urlCleanupDays: number;
+}
+
 /** 记忆存储配置 */
 export interface MemoryConfig {
   basePath: string;
@@ -47,6 +56,10 @@ export interface MemoryConfig {
   maxTotalSize: number;
   maxAge: number;
   consolidationThreshold: number;
+  /** D-03 合并/清理阈值；本字段本期不在 DEFAULT_MEMORY_CONFIG 设默认（由 config.ts defaultBehavior 提供，避免双源） */
+  consolidation?: MemoryConsolidationConfig;
+  /** D-10 generateText 重试次数；同上不在 DEFAULT_MEMORY_CONFIG 设默认 */
+  generateTextMaxRetries?: number;
 }
 
 /** 默认配置 */
@@ -151,3 +164,54 @@ export function parseMemoryFrontmatter(content: string): {
     content: body.replace(/^##\s*.+\n/, '').trim(),
   };
 }
+
+// ============================================
+// JSON sidecar 索引 schema（MEM-01）
+// ============================================
+
+/**
+ * 单条记忆的索引记录
+ *
+ * 仅含检索/排序所需字段（不含 content），用于 .index.json sidecar。
+ * `filepath` 为相对 basePath 的 Markdown 路径（如 `knowledge/knowledge-xxx.md`）。
+ */
+export interface MemoryIndexRecord {
+  id: string;
+  type: MemoryType;
+  timestamp: string;
+  accessedAt: string;
+  importance: number;
+  tags: string[];
+  summary: string;
+  filepath: string;
+}
+
+/**
+ * JSON sidecar 索引顶层结构
+ *
+ * `version: 1` 为字面量（防 schema 漂移，Pitfall 5）；读取时若版本缺失/不匹配触发 rebuild。
+ */
+export interface MemoryJsonIndex {
+  version: 1;
+  lastUpdated: string;
+  records: MemoryIndexRecord[];
+}
+
+/** Zod schema：单条索引记录（供 loadJsonIndex 校验防脏数据，RESEARCH V5） */
+export const MemoryIndexRecordSchema = z.object({
+  id: z.string(),
+  type: z.enum(['profile', 'knowledge', 'interaction', 'observation']),
+  timestamp: z.string(),
+  accessedAt: z.string(),
+  importance: z.number(),
+  tags: z.array(z.string()),
+  summary: z.string(),
+  filepath: z.string(),
+});
+
+/** Zod schema：JSON sidecar 索引顶层 */
+export const MemoryJsonIndexSchema = z.object({
+  version: z.literal(1),
+  lastUpdated: z.string(),
+  records: z.array(MemoryIndexRecordSchema),
+});
