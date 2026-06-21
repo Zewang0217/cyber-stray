@@ -1,18 +1,13 @@
 /**
- * 长期记忆 JSON sidecar 索引模块（MEM-01）
+ * JSON sidecar 索引模块（MEM-01）。
  *
- * 在 Markdown 真相源（data/memory/<type>/*.md）之上提供可查询的 JSON 索引
- * （data/memory/.index.json），消除检索/反思的 O(N) 全文件扫描。
+ * Markdown 是真相源，.index.json 是查询索引派生层，双写由
+ * MemoryStore.updateIndexAfterSave 维护。
  *
- * 设计要点：
- * - **Markdown 是真相源**，JSON 是查询索引派生层；双写由 MemoryStore 的
- *   `updateIndexAfterSave` 钩子维护。
- * - **原子写**：temp-file + `rename`（同目录保证同文件系统，RESEARCH Pattern 2）。
- * - **崩溃自愈**：启动时若 `.index.json` 缺失或 schema 不匹配，调
- *   `rebuildIndexFromMarkdown()` 从 Markdown 重建（RESEARCH Pitfall 3）。
- * - **D-09 错误显式化**：`loadJsonIndex` 区分 "not found → 返默认空索引" 与
- *   "解析失败 → 抛 Error"（不兜底返默认，CLAUDE.md 红线）。
- * - **accessedAt 迁移**：从 Markdown frontmatter 读出写入索引（Pitfall 4 防丢历史）。
+ * 三个核心约束：
+ * - 原子写 + 并发安全：唯一 tmp 名 + persist 串行 + 首次加载去重
+ * - 崩溃自愈：索引缺失/schema 漂移 → rebuildIndexFromMarkdown 从 Markdown 重建
+ * - D-09 错误显式化：文件不存在返空（合法），解析/schema 失败抛错（不兜底）
  */
 
 import { readFile, writeFile, rename, readdir } from 'fs/promises';
@@ -33,13 +28,13 @@ import {
 
 const logger = consola.withTag('MemoryIndex');
 
-/** 索引文件版本字面量（防 schema 漂移，RESEARCH Pitfall 5） */
+// schema 漂移守卫：改值 → 旧索引被 reject → 触发重建（Pitfall 5）
 const INDEX_VERSION = 1 as const;
 
-/** 排序/重建扫描的 MEMORY_TYPE_PATHS 子目录键（显式枚举，禁通配，Pitfall 6） */
+// 显式枚举四个子目录键，禁通配（Pitfall 6 / A3）
 const MEMORY_TYPE_KEYS = Object.keys(MEMORY_TYPE_PATHS) as MemoryType[];
 
-/** 从 Markdown frontmatter 文本直接提取 accessedAt（parseMemoryFrontmatter 不返回该字段） */
+// parseMemoryFrontmatter 不返 accessedAt，需从 frontmatter 原文提取（Pitfall 4）
 function extractAccessedAtFromContent(
   content: string,
   fallback: string,
@@ -48,7 +43,7 @@ function extractAccessedAtFromContent(
   return match?.[1]?.trim() || fallback;
 }
 
-/** 构造一个空的默认索引（不落盘，由调用方决定是否 persist） */
+/** 返回空索引（不落盘，调用方决定何时 persist） */
 export function createDefaultJsonIndex(): MemoryJsonIndex {
   return {
     version: INDEX_VERSION,
@@ -58,13 +53,8 @@ export function createDefaultJsonIndex(): MemoryJsonIndex {
 }
 
 /**
- * 加载 JSON sidecar 索引
- *
- * - 文件不存在 → 返默认空索引（**not found 合法空值**，不落盘）
- * - 文件存在且合法 → Zod schema 校验通过后返回
- * - JSON.parse 失败 / Zod 校验失败 → **抛 Error（不兜底返默认，D-09）**
- *
- * @throws Error 当文件存在但非法（JSON.parse 失败或 schema 不匹配）
+ * 加载 .index.json。文件不存在返空（合法），解析/schema 失败抛错。
+ * @throws Error JSON 非法或 schema 不匹配——不兜底返默认（D-09 / CLAUDE.md 红线）。
  */
 export async function loadJsonIndex(path: string): Promise<MemoryJsonIndex> {
   if (!existsSync(path)) {
@@ -102,14 +92,9 @@ export async function loadJsonIndex(path: string): Promise<MemoryJsonIndex> {
 }
 
 /**
- * 原子写入 JSON sidecar 索引（temp-file + rename，RESEARCH Pattern 2）
- *
- * 临时文件与目标文件在同一目录（保证同文件系统，`rename` 原子性前提）。
- * 读者要么读到旧版、要么读到新版、绝不读到半写。
- *
- * **并发安全**：tmp 名带 pid + 时间戳 + 随机后缀，并发 persist 各写各的 tmp
- * 互不覆盖；固定 `.tmp` 名会在并发 rename 时 ENOENT（ReAct 一步内并行多个
- * 写工具 → 并发 saveMemory → persist 的实测 FATAL 场景）。
+ * 原子写入 .index.json（temp-file + rename）。
+ * 并发安全：tmp 名带 pid+时间戳+随机，并发 persist 互不覆盖（固定 .tmp 在 ReAct
+ * 并行 tool call 实测场景下 rename ENOENT 导致 FATAL record_knowledge 失败）。
  */
 export async function saveJsonIndex(
   path: string,
@@ -123,13 +108,10 @@ export async function saveJsonIndex(
 }
 
 /**
- * 从 Markdown 真相源重建索引记录
- *
- * **仅扫描 MEMORY_TYPE_PATHS 的四个明确子目录**（禁递归、禁通配），
- * 天然不扫 `.archive/`（Pitfall 6 / A3）。读取每个 Markdown 的 frontmatter
- * 构造 `MemoryIndexRecord`，并迁移 frontmatter 中的 accessedAt（Pitfall 4）。
- *
- * @throws Error 当子目录 readFile / parse 失败（不兜底跳过，D-09）
+ * 从 Markdown 真相源重建索引记录。
+ * 仅扫 MEMORY_TYPE_PATHS 四个子目录（禁递归），天然不扫 .archive/（Pitfall 6/A3）。
+ * 同步迁移 frontmatter accessedAt（Pitfall 4）。
+ * @throws Error 子目录 readFile/parse 失败——不兜底跳过（D-09）。
  */
 export async function rebuildIndexFromMarkdown(
   basePath: string,
@@ -168,7 +150,7 @@ export async function rebuildIndexFromMarkdown(
   };
 }
 
-/** queryRecent 的过滤选项 */
+// fields self-documenting
 export interface QueryRecentOptions {
   count?: number;
   type?: MemoryType;
@@ -176,16 +158,16 @@ export interface QueryRecentOptions {
 }
 
 /**
- * MemoryIndex：JSON sidecar 索引读写类（懒加载 + 模块级单例）
+ * JSON sidecar 索引读写类。
  *
- * 写方法（upsert/remove/touchAccessedAt）仅改内存 store，由调用方在
- * 钩子末尾统一调一次 `persist()`（避免每次 upsert 都写盘）。
+ * 写方法仅改内存，由调用方统一调 persist() 落盘（避免每次 upsert 都写盘）。
+ * 模块级单例（getMemoryIndex），仿 getMemoryStore / url-tracker 模式。
  */
 export class MemoryIndex {
   private readonly jsonPath: string;
   private readonly basePath: string;
   private store: MemoryJsonIndex | null = null;
-  /** persist 串行化链：并发 persist 排队执行防竞争（与 saveJsonIndex 唯一 tmp 名双保险） */
+  // 并发 persist 串行排队（与 saveJsonIndex 唯一 tmp 双保险）
   private persistChain: Promise<void> = Promise.resolve();
 
   constructor(jsonPath: string, basePath: string) {
@@ -193,15 +175,13 @@ export class MemoryIndex {
     this.basePath = basePath;
   }
 
-  /** 加载 in-flight promise（并发首次加载去重） */
+  // 首次加载 in-flight 去重：并发 ensureLoaded 共享同一个 loadPromise
   private loadPromise: Promise<MemoryJsonIndex> | null = null;
 
   /**
-   * 懒加载索引（首次访问从磁盘读，失败抛错 D-09）
-   *
-   * 并发去重：多个 ensureLoaded 同时在 store 未加载时进入，共享同一个 loadPromise，
-   * 避免各自 loadJsonIndex 创建多个 store 对象、this.store 被反复覆盖、upsert 改到
-   * 孤立 store（MEM-01 并发安全）。加载失败清空 loadPromise 允许重试。
+   * 懒加载索引。
+   * 并发去重：多个 ensureLoaded 同时进入共享 loadPromise，防止各自 loadJsonIndex
+   * 创建多个 store 互相覆盖（并发首次加载的实测 bug）。失败清空 loadPromise 允许重试。
    */
   private async ensureLoaded(): Promise<MemoryJsonIndex> {
     if (this.store !== null) return this.store;
@@ -212,24 +192,20 @@ export class MemoryIndex {
           return s;
         })
         .catch((e) => {
-          this.loadPromise = null; // 失败清空，允许后续重试（D-09 错误仍向上抛）
+          this.loadPromise = null; // 失败清空 loadPromise，允许后续重试
           throw e;
         });
     }
     return this.loadPromise;
   }
 
-  /** 当前内存中的 records（非持久化快照） */
+  // 返回当前内存 store 的 records 快照（非持久化，调用方决定何时 persist）
   async getRecords(): Promise<MemoryIndexRecord[]> {
     const store = await this.ensureLoaded();
     return store.records;
   }
 
-  /**
-   * 写入或更新一条索引记录（存在则更新、不存在则追加）
-   *
-   * 仅改内存；由调用方调 `persist()` 落盘。
-   */
+  /** 写入或更新一条索引记录。存在则更新，不存在则追加。仅改内存。 */
   async upsert(entry: MemoryEntry): Promise<void> {
     const store = await this.ensureLoaded();
     const filepath = `${MEMORY_TYPE_PATHS[entry.type]}/${entry.id}.md`;
@@ -253,7 +229,7 @@ export class MemoryIndex {
     store.lastUpdated = new Date().toISOString();
   }
 
-  /** 按 id 删除索引记录；不存在的 id 不抛错（幂等） */
+  /** 按 id 删除索引记录。不存在的 id 不抛错（幂等）。 */
   async remove(type: MemoryType, id: string): Promise<void> {
     const store = await this.ensureLoaded();
     store.records = store.records.filter((r) => !(r.id === id && r.type === type));
@@ -261,9 +237,8 @@ export class MemoryIndex {
   }
 
   /**
-   * 查询最近记忆（按 timestamp 降序 + type/since 过滤 + count 裁剪）
-   *
-   * 返回 `MemoryIndexRecord[]`（仅索引字段，**不读 Markdown**，O(1) 索引查表）。
+   * 查询最近记忆（timestamp 降序 + type/since 过滤 + count 裁剪）。
+   * 仅返回索引字段（不读 Markdown），O(1) 查表。
    */
   async queryRecent(options: QueryRecentOptions = {}): Promise<MemoryIndexRecord[]> {
     const { count = 20, type, since } = options;
@@ -276,7 +251,7 @@ export class MemoryIndex {
       .slice(0, count);
   }
 
-  /** 更新该条 accessedAt 为 now；找不到条目不抛错（best-effort） */
+  // 更新 accessedAt 为当前时间；找不到不抛错（best-effort）
   async touchAccessedAt(type: MemoryType, id: string): Promise<void> {
     const store = await this.ensureLoaded();
     const rec = store.records.find((r) => r.id === id && r.type === type);
@@ -285,50 +260,37 @@ export class MemoryIndex {
     store.lastUpdated = rec.accessedAt;
   }
 
-  /** 读取该条 accessedAt；不存在返 null（not found 合法空值） */
+  // 读取 accessedAt；不存在返 null（not found 合法空值）
   async getAccessedAt(type: MemoryType, id: string): Promise<string | null> {
     const store = await this.ensureLoaded();
     const rec = store.records.find((r) => r.id === id && r.type === type);
     return rec?.accessedAt ?? null;
   }
 
-  /**
-   * 从 Markdown 重建索引（崩溃自愈 / schema 漂移修复）
-   *
-   * 重建后**立即 persist**（让磁盘 .index.json 与 Markdown 一致）。
-   * 失败抛错（D-09），调用方可 try/catch 降级为 warn 不阻断（RESEARCH Pitfall 3）。
-   */
+  /** 从 Markdown 重建并立即 persist。失败抛错（D-09），调用方 try/catch 降级为 warn。 */
   async rebuild(): Promise<void> {
     this.store = await rebuildIndexFromMarkdown(this.basePath);
     await this.persist();
   }
 
   /**
-   * 持久化内存 store 到磁盘（原子写 + 串行化）
-   *
-   * 串行化：所有 persist 经 promise 链排队执行，防并发 persist 竞争。
-   * 调用方收到各自真实结果；链本身不被前次失败打断（失败仅向当前调用方抛）。
+   * 持久化到磁盘（原子写 + 串行化）。
+   * 所有 persist 经 promise 链排队，防并发竞争。失败仅向当前调用方抛，链不断。
    */
   async persist(): Promise<void> {
     const next = this.persistChain.then(async () => {
       const store = await this.ensureLoaded();
       await saveJsonIndex(this.jsonPath, store);
     });
-    // 链不断：失败只抛给当前调用方，不污染后续 persist 排队（避免 unhandledRejection）
+    // 链不断：失败只抛给当前调用方，不污染后续 persist 排队
     this.persistChain = next.catch(() => {});
     return next;
   }
 }
 
-// ============================================
-// 模块级单例（仿 getMemoryStore / url-tracker 模式）
-// ============================================
-
 let defaultMemoryIndex: MemoryIndex | null = null;
 
-/**
- * 获取/创建模块级单例 MemoryIndex（jsonPath/basePath 默认指向 data/memory）
- */
+/** 获取模块级单例（jsonPath/basePath 默认指向 data/memory） */
 export function getMemoryIndex(basePath = 'data/memory'): MemoryIndex {
   if (!defaultMemoryIndex) {
     defaultMemoryIndex = new MemoryIndex(join(basePath, '.index.json'), basePath);
@@ -336,9 +298,7 @@ export function getMemoryIndex(basePath = 'data/memory'): MemoryIndex {
   return defaultMemoryIndex;
 }
 
-/**
- * 重置模块级单例（测试隔离用，仿 react.ts 的 `_resetReactModuleState`）
- */
+/** 重置模块级单例（测试隔离用） */
 export function _resetMemoryIndex(): void {
   defaultMemoryIndex = null;
 }
