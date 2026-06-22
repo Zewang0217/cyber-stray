@@ -62,3 +62,10 @@ Thumbs.db
 AGENTS.md
 
 .kilo/
+
+# 运行态数据（dev 跑产生，不入库）
+data/dedup/visited-urls.json
+
+# 本地脚本/锁文件（不入库）
+generate-ppt.cjs
+skills-lock.json
