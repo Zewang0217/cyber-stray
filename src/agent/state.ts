@@ -19,9 +19,7 @@ function createDefaultState(): AgentState {
     stubbornness: 30,
 
     // 记忆
-    lastAction: null,
     lastActionTime: null,
-    lastHuntResult: null,
     recentTopics: [],
     userLikes: [],
     userDislikes: [],
@@ -30,7 +28,6 @@ function createDefaultState(): AgentState {
     agentInterests: ['科技', 'AI', '互联网'],
 
     // 统计
-    totalHunts: 0,
     totalWanders: 0,
     totalSteps: 0,
     totalPushes: 0,
@@ -38,7 +35,6 @@ function createDefaultState(): AgentState {
 
     // 时间感知
     lastHeartbeat: new Date().toISOString(),
-    lastHunt: null,
     lastWander: null,
     lastRest: null,
   };

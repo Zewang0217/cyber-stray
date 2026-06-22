@@ -1,17 +1,17 @@
 import { generateText, stepCountIs, hasToolCall } from 'ai';
 import { createDeepSeek } from '@ai-sdk/deepseek';
-import { readFile, writeFile } from 'fs/promises';
+import { readFile, writeFile, rename, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
+import { dirname } from 'path';
 import { consola } from '../logger.js';
-import { config } from '../config.js';
+import { config, getDataPath } from '../config.js';
 import { updateState } from './state.js';
 import { loadUserProfile } from '../memory/user-profile.js';
 import { buildReactSystemPrompt, buildReactUserPrompt } from '../prompts/react.js';
 import { ToolManager, type ToolContext } from '../tools/registry/index.js';
-import { speak } from '../tools/push/speak.js';
 import { buildMemoryPromptContext, recordWanderSummary } from '../memory/long-term.js';
 import { generateTraceId } from '../logger/trace.js';
-import { resetLLMStats, getLLMStats } from '../llm/stats.js';
+import { resetLLMStats, getLLMStats, recordStep } from '../llm/stats.js';
 import type { AgentState, WanderStep } from '../types.js';
 
 const logger = consola.withTag('react');
@@ -57,13 +57,25 @@ async function ensureToolsInitialized(): Promise<void> {
   }
 }
 
+/**
+ * 重置模块级状态（仅供测试隔离使用）
+ *
+ * 清除缓存的 provider 和工具初始化标志，使下一次 runAgentLoop 重新初始化，
+ * 避免同一进程内多个测试之间互相污染。配合 ToolManager.reset() 使用。
+ */
+export function _resetReactModuleState(): void {
+  _provider = null;
+  _toolsInitialized = false;
+}
+
 // 消耗和恢复参数（从配置文件读取，保留硬编码默认值以便静态分析）
 const ENERGY_COST_PER_STEP = config.energyCostPerStep;
 const BOREDOM_REDUCTION_PER_STEP = config.boredomReductionPerStep;
 /** ctx.wanderHistory 在循环内的最大长度（防止单次游荡步数过多时内存堆积） */
 const MAX_WANDER_HISTORY_IN_CTX = 50;
 
-const WANDER_HISTORY_PATH = 'data/wander-history.json';
+/** CR-05：游荡历史文件名（路径走 getDataPath，尊重 DATA_DIR，测试隔离） */
+const WANDER_HISTORY_FILE = 'wander-history.json';
 const MAX_WANDER_HISTORY_ENTRIES = 100;
 
 /**
@@ -84,8 +96,8 @@ function extractRecentTopics(steps: WanderStep[], existingTopics: string[]): str
     if (step.url) {
       try {
         topics.add(new URL(step.url).hostname);
-      } catch {
-        // 忽略无效 URL
+      } catch (error) {
+        logger.warn('忽略无效 URL，无法提取 hostname', { url: step.url, error });
       }
     }
   }
@@ -95,22 +107,26 @@ function extractRecentTopics(steps: WanderStep[], existingTopics: string[]): str
 
 /**
  * 将本次游荡步骤追加到游荡历史日志文件
+ *
+ * - 走 getDataPath（尊重 DATA_DIR，测试隔离；CR-05）
+ * - 原子写：temp + rename（崩溃不致半写损坏文件；CR-05，与 memory-index 同标准）
+ * - 解析失败抛错（D-09：不兜底空数组吞历史；调用点已有 .catch 兜 warn 不阻断主流程）
  */
 async function appendWanderHistory(steps: WanderStep[]): Promise<void> {
-  try {
-    let history: WanderStep[] = [];
-    if (existsSync(WANDER_HISTORY_PATH)) {
-      const raw = await readFile(WANDER_HISTORY_PATH, 'utf-8');
-      history = JSON.parse(raw);
-    }
-    history.push(...steps);
-    if (history.length > MAX_WANDER_HISTORY_ENTRIES) {
-      history = history.slice(-MAX_WANDER_HISTORY_ENTRIES);
-    }
-    await writeFile(WANDER_HISTORY_PATH, JSON.stringify(history, null, 2), 'utf-8');
-  } catch (err) {
-    logger.warn('写入游荡历史日志失败', { error: err });
+  const fullPath = getDataPath(WANDER_HISTORY_FILE);
+  let history: WanderStep[] = [];
+  if (existsSync(fullPath)) {
+    const raw = await readFile(fullPath, 'utf-8');
+    history = JSON.parse(raw);
   }
+  history.push(...steps);
+  if (history.length > MAX_WANDER_HISTORY_ENTRIES) {
+    history = history.slice(-MAX_WANDER_HISTORY_ENTRIES);
+  }
+  const tmp = `${fullPath}.tmp`;
+  await mkdir(dirname(fullPath), { recursive: true });
+  await writeFile(tmp, JSON.stringify(history, null, 2), 'utf-8');
+  await rename(tmp, fullPath);
 }
 
 /**
@@ -168,34 +184,78 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
   const provider = getProvider();
   const tools = ToolManager.getTools(ctx);
 
-  try {
-    await generateText({
-      model: provider.chat(config.llmModel),
-      temperature: config.wanderTemperature,
-      system: systemPrompt,
-      prompt: initialUserPrompt,
-      // stopWhen 接受数组：满足任一条件即终止循环
-      // - hasToolCall('rest')：LLM 主动调用 rest 工具后立即停止，不再继续迭代
-      // - stepCountIs(maxSteps)：达到步数上限时强制停止
-      stopWhen: [hasToolCall('rest'), stepCountIs(maxSteps)],
-      tools,
-    });
-  } catch (error) {
-    logger.error(`[${ctx.traceId}] LLM 调用异常`, { error });
-    ctx.endReason = 'error';
+  // D-10：generateText 整体失败重试（默认 1 次，总 attempts = generateTextMaxRetries + 1）
+  const maxRetries = config.generateTextMaxRetries ?? 1;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // 每次尝试的步耗时基准（A1：AI SDK v6 StepResult 无 performance.totalMs 字段，
+    // 用 Date.now() 差值作为 durationMs 真值来源）
+    const attemptStart = Date.now();
+    try {
+      await generateText({
+        model: provider.chat(config.llmModel),
+        temperature: config.wanderTemperature,
+        system: systemPrompt,
+        prompt: initialUserPrompt,
+        // stopWhen 接受数组：满足任一条件即终止循环
+        // - hasToolCall('rest')：LLM 主动调用 rest 工具后立即停止，不再继续迭代
+        // - stepCountIs(maxSteps)：达到步数上限时强制停止
+        stopWhen: [hasToolCall('rest'), stepCountIs(maxSteps)],
+        tools,
+        // D-11：按步计数（替换旧版"包整次 generateText 算 1 次"）。
+        // 一个 step = 一次 LLM 调用（含工具步与文本步），onStepFinish 在每步结束时触发。
+        // ⚠ Pitfall 1：回调内抛错被 SDK 静默吞，recordStep 内部已 no-throw，
+        // 这里外层再 try/catch 双重自愈，确保任何异常都不阻断主流程。
+        onStepFinish({ stepNumber, usage }) {
+          try {
+            recordStep({
+              stepNumber,
+              promptTokens: usage?.inputTokens,
+              completionTokens: usage?.outputTokens,
+              totalTokens: usage?.totalTokens,
+              durationMs: Date.now() - attemptStart,
+            });
+          } catch {
+            // 计数自愈：不阻断主流程（recordStep 内部本就 no-throw，这里是外层兜底）
+          }
+        },
+      });
+      break; // 成功，退出重试
+    } catch (error) {
+      logger.error(`[${ctx.traceId}] LLM 调用异常 (attempt ${attempt + 1}/${maxRetries + 1})`, { error });
+      if (attempt === maxRetries) {
+        ctx.endReason = 'error';
+        // CR-06：全部重试失败——仅记 consecutiveFailures，不计 totalWanders（失败不算一次成功游荡），
+        // 也不进入下游状态更新/总结记录，避免把失败的游荡计入成功统计。
+        await updateState({
+          consecutiveFailures: state.consecutiveFailures + 1,
+        }).catch((err: unknown) => logger.warn('更新 consecutiveFailures 失败', { error: err }));
+        return {
+          steps: 0,
+          durationMs: Date.now() - startTime,
+          spokeTimes: 0,
+          visitedUrls: [],
+          endReason: 'error',
+        };
+      }
+    }
   }
 
   const durationMs = Date.now() - startTime;
   const llmStats = getLLMStats();
+  // CR-03：步数以 onStepFinish 累加的 llmStats.calls 为真值（含纯文本步），与 stopWhen
+  // 的 stepCountIs(maxSteps) 同源；ctx.stepCount 仅作 tool-call 计数供工具内 [Step N] 日志，
+  // 不再用于状态核算（否则纯文本步不入计 → energy/boredom/totalSteps 系统性偏低）。
+  const stepsTaken = llmStats.calls;
 
   // 汇总统计日志
   logger.info(`[${ctx.traceId}] STAT === 游荡结束 ===`, {
-    steps: `${ctx.stepCount}/${maxSteps}`,
+    steps: `${stepsTaken}/${maxSteps}`,
     durationMs,
     endReason: ctx.endReason,
     llmCalls: llmStats.calls,
     llmTotalMs: llmStats.totalMs,
     llmAvgMs: llmStats.avgMs,
+    llmTotalTokens: llmStats.totalTokens,
     searchCount: ctx.searchQueries.length,
     searchQueries: ctx.searchQueries.map((s) => s.query),
     readCount: ctx.visitedUrls.length,
@@ -205,19 +265,10 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
     speakCount: ctx.spokeTimes,
   });
 
-  // 空游荡兜底：如果看过页面但没有分享，自动发一条碎碎念通知用户
-  if (ctx.spokeTimes === 0 && ctx.visitedUrls.length > 0) {
-    const lastUrl = ctx.visitedUrls[ctx.visitedUrls.length - 1];
-    await speak(
-      `刚才出去溜达了一圈，看了 ${ctx.visitedUrls.length} 个页面（最后看的是 ${lastUrl}），但没找到值得分享的，改天再说吧~`,
-      'nonsense',
-    ).catch((err: unknown) => logger.warn('空游荡兜底 speak 失败', { error: err }));
-  }
-
   // 记录游荡总结到长期记忆
   const lastSpoke = ctx.wanderHistory.filter((s) => s.spoke).pop();
   await recordWanderSummary({
-    steps: ctx.stepCount,
+    steps: stepsTaken,
     topics: ctx.wanderHistory
       .filter((s) => s.url)
       .map((s) => s.url || '')
@@ -235,16 +286,16 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
   await updateState({
     lastWander: new Date().toISOString(),
     totalWanders: state.totalWanders + 1,
-    totalSteps: state.totalSteps + ctx.stepCount,
+    totalSteps: state.totalSteps + stepsTaken,
     totalPushes: state.totalPushes + ctx.spokeTimes,
-    boredom: Math.max(0, state.boredom - ctx.stepCount * BOREDOM_REDUCTION_PER_STEP),
-    energy: Math.max(0, state.energy - ctx.stepCount * ENERGY_COST_PER_STEP),
+    boredom: Math.max(0, state.boredom - stepsTaken * BOREDOM_REDUCTION_PER_STEP),
+    energy: Math.max(0, state.energy - stepsTaken * ENERGY_COST_PER_STEP),
     recentTopics: extractRecentTopics(ctx.wanderHistory, state.recentTopics),
     consecutiveFailures: ctx.endReason === 'error' ? state.consecutiveFailures + 1 : 0,
   });
 
   return {
-    steps: ctx.stepCount,
+    steps: stepsTaken,
     durationMs,
     spokeTimes: ctx.spokeTimes,
     visitedUrls: ctx.visitedUrls,

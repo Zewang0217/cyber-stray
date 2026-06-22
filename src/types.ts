@@ -9,9 +9,6 @@
 /** Agent 心情类型 */
 export type Mood = 'curious' | 'grumpy' | 'playful' | 'lazy' | 'excited' | 'emo';
 
-/** 狩猎结果类型 */
-export type HuntResult = 'success' | 'fail' | 'boring' | 'no_result';
-
 /** Agent 状态 */
 export interface AgentState {
   // 基础状态
@@ -24,10 +21,7 @@ export interface AgentState {
   stubbornness: number;  // 固执程度 0-100（高=不听用户反馈）
 
   // 记忆
-  lastAction: ActionType | null;           // 上次行动
   lastActionTime: string | null;            // 上次行动时间 ISO 格式
-  /** @deprecated 使用 lastWander 替代 */
-  lastHuntResult: HuntResult | null;        // 上次狩猎结果
   recentTopics: string[];                   // 最近搜过的话题
   userLikes: string[];                      // 用户喜欢的话题
   userDislikes: string[];                   // 用户不喜欢的话题
@@ -36,8 +30,6 @@ export interface AgentState {
   agentInterests: string[];    // Agent 自己的兴趣图谱（LLM 自主维护）
 
   // 统计
-  /** @deprecated 使用 totalWanders 替代 */
-  totalHunts: number;           // 总狩猎次数（旧字段，保留兼容）
   totalWanders: number;         // 总游荡次数（ReAct 架构）
   totalSteps: number;           // 总游荡步数（ReAct 架构）
   totalPushes: number;          // 总推送次数
@@ -45,8 +37,6 @@ export interface AgentState {
 
   // 时间感知
   lastHeartbeat: string;        // 上次心跳时间 ISO 格式
-  /** @deprecated 使用 lastWander 替代 */
-  lastHunt: string | null;      // 上次狩猎时间（旧字段，保留兼容）
   lastWander: string | null;    // 上次游荡时间（ReAct 架构）
   lastRest: string | null;      // 上次休息时间
 }
@@ -61,29 +51,8 @@ export interface WanderStep {
 }
 
 // ============================================
-// 决策相关
+// 搜索与推送相关
 // ============================================
-
-import type { ActionType } from './constants/decision.js';
-
-export type { ActionType };
-
-/** 决策参数 */
-export interface DecisionParams {
-  topic?: string;     // hunt 用：搜索话题
-  reason?: string;    // 内心独白
-}
-
-/** LLM 决策结果 */
-export interface Decision {
-  action: ActionType;
-  params?: DecisionParams;
-  reasoning: string;          // 为什么这么做（日志用）
-  moodUpdate?: Partial<Pick<AgentState, 'mood' | 'temper' | 'boredom' | 'energy'>>;
-}
-
-// ============================================
-// 狩猎相关
 // ============================================
 
 /** 搜索结果 */
@@ -191,6 +160,17 @@ export interface AgentConfig {
 
   // URL 去重配置
   urlCooldownDays: number;  // URL 冷却天数
+
+  // LLM 调用容错配置（D-10：generateText 整体失败重试次数）
+  generateTextMaxRetries: number;  // 重试次数（总 attempts = 此值 + 1）
+
+  // 记忆合并/清理阈值（D-03 外置到 agent-config.json；默认值由 config.ts defaultBehavior 提供）
+  consolidation?: {
+    lowImportanceThreshold: number;
+    expiryDays: number;
+    mergeMaxAgeDays: number;
+    urlCleanupDays: number;
+  };
 }
 
 // ============================================

@@ -25,8 +25,11 @@ type BehaviorConfig = Pick<
   | 'wanderTemperature'
   | 'outputLanguage'
   | 'urlCooldownDays'
+  | 'generateTextMaxRetries'
 > & {
   feishu?: AgentConfig['feishu'];
+  /** D-03 合并/清理阈值（BehaviorConfig 内必填，默认值由 defaultBehavior 提供） */
+  consolidation: NonNullable<AgentConfig['consolidation']>;
 };
 
 const defaultBehavior: BehaviorConfig = {
@@ -51,16 +54,36 @@ const defaultBehavior: BehaviorConfig = {
   wanderTemperature: 0.9,
   outputLanguage: 'zh-CN',
   urlCooldownDays: 5,
+  generateTextMaxRetries: 1,
+  consolidation: {
+    lowImportanceThreshold: 0.2,
+    expiryDays: 60,
+    mergeMaxAgeDays: 7,
+    urlCleanupDays: 30,
+  },
 };
 
 /**
  * 从 data/agent-config.json 加载行为配置，缺失字段回退到默认值
+ *
+ * **W2 嵌套合并（数据安全）**：`consolidation` 是嵌套对象，浅合并
+ * `{ ...defaultBehavior, ...file }` 会因用户只配部分字段（如仅 expiryDays）导致
+ * 整个对象被覆盖 → 其余字段 undefined → 误阈值/误归档/数据丢失。因此对嵌套的
+ * `consolidation` 显式做字段级合并：用户字段覆盖默认，未配字段从默认取。
  */
 function loadBehaviorConfig(): BehaviorConfig {
   if (existsSync(CONFIG_PATH)) {
     try {
       const file = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Partial<BehaviorConfig>;
-      return { ...defaultBehavior, ...file };
+      return {
+        ...defaultBehavior,
+        ...file,
+        // W2：嵌套对象显式字段级合并，防部分配置致 undefined 阈值
+        consolidation: {
+          ...defaultBehavior.consolidation,
+          ...(file.consolidation ?? {}),
+        },
+      };
     } catch (err) {
       console.warn(`[config] agent-config.json 解析失败，使用默认配置: ${err}`);
     }
@@ -73,8 +96,12 @@ function loadBehaviorConfig(): BehaviorConfig {
  * - 行为参数：从 data/agent-config.json 读取，失败时用默认值
  * - 敏感信息：从环境变量读取，不放入配置文件
  */
+// CR-04：只读一次 agent-config.json（旧版模块加载期读 4 次，既浪费 I/O 又在并发改文件时
+// 可能读到不一致快照）。behavior 已含 W2 嵌套合并后的 consolidation。
+const behavior = loadBehaviorConfig();
+
 export const config: AgentConfig = {
-  ...loadBehaviorConfig(),
+  ...behavior,
 
   // LLM 配置（模型名来自环境变量）
   llmModel: process.env.LLM_MODEL || 'deepseek-chat',
@@ -93,11 +120,12 @@ export const config: AgentConfig = {
   larkAppId: process.env.LARK_APP_ID,
   larkAppSecret: process.env.LARK_APP_SECRET,
 
-  // 飞书行为配置（从 agent-config.json 读取）
+  // 飞书行为配置（CR-04：嵌套字段级合并，与 consolidation 的 W2 一致——用户只配部分字段时
+  // 其余从默认取，不致 undefined。旧版 spread 后又被重建对象覆盖，首读结果被丢弃。）
   feishu: {
-    pushMode: loadBehaviorConfig().feishu?.pushMode || 'lark_channel',
-    receiveMode: loadBehaviorConfig().feishu?.receiveMode || 'reaction',
-    chatId: loadBehaviorConfig().feishu?.chatId || '',
+    pushMode: behavior.feishu?.pushMode ?? 'lark_channel',
+    receiveMode: behavior.feishu?.receiveMode ?? 'reaction',
+    chatId: behavior.feishu?.chatId ?? '',
   },
 };
 
@@ -142,7 +170,10 @@ export function validateConfig(): void {
 
 /**
  * 获取数据目录路径
+ *
+ * 默认相对于 cwd 的 data/；测试可通过 DATA_DIR 环境变量重定向到临时目录，
+ * 避免污染真实数据。env 未设置时与历史行为完全一致。
  */
 export function getDataPath(filename: string): string {
-  return `data/${filename}`;
+  return `${process.env.DATA_DIR ?? 'data'}/${filename}`;
 }
