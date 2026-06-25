@@ -2,6 +2,8 @@ import { appendFile, mkdir } from 'fs/promises';
 import { consola } from '../../logger.js';
 import { config } from '../../config.js';
 import { sendFeishuMessage } from './lark-sender.js';
+import { getInterestGraph } from '../../memory/interest-graph.js';
+import { registerSpeakTopics } from '../../memory/feedback-pipeline.js';
 
 const logger = consola.withTag('speak');
 
@@ -166,6 +168,20 @@ export async function speak(content: string, type: SpeakType): Promise<SpeakResu
 
   // 记录到历史文件
   await appendSpeakHistory({ content, type, pushed, timestamp, messageId });
+
+  // Phase 3: 注册消息-兴趣映射，供后续反馈强化
+  if (pushed && messageId) {
+    try {
+      const graph = getInterestGraph();
+      const topTopics = graph.getTopInterests(3, 0.05);
+      if (topTopics.length > 0) {
+        registerSpeakTopics(messageId, topTopics);
+      }
+    } catch (error) {
+      // InterestGraph 不可用时静默跳过，不影响 speak 结果
+      logger.warn('注册消息-兴趣映射失败', { error });
+    }
+  }
 
   const result: SpeakResult = {
     success: true,

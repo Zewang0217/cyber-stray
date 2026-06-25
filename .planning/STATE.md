@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 3
-current_phase_name: 用户兴趣模型 + 反馈强化
+current_phase: 4
+current_phase_name: 反思回路
 status: ready
-stopped_at: Phase 2 complete, transitioned to Phase 3
-last_updated: "2026-06-25T07:20:00.000Z"
+stopped_at: Phase 3 complete, transitioned to Phase 4
+last_updated: "2026-06-25T10:00:00.000Z"
 last_activity: 2026-06-25
-last_activity_desc: Phase 2 complete — InterestGraph + 防坍缩 + Prompt 注入
+last_activity_desc: Phase 3 complete — UserProfile 加固 + 反馈管道 + 置信度校准
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 3
   completed_plans: 3
-  percent: 33
+  percent: 50
 ---
 
 # Project State
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-25)
 
 **Core value:** 让赛博宠物闭环自进化——被自己进化的好奇心驱动探索学习，并主动推送主人感兴趣的内容。
-**Current focus:** Phase 3 — 用户兴趣模型 + 反馈强化
+**Current focus:** Phase 4 — 反思回路
 
 ## Current Position
 
-Phase: 3 — 用户兴趣模型 + 反馈强化
+Phase: 4 — 反思回路
 Plan: Not started
-Status: Phase 2 complete — ready for Phase 3
-Last activity: 2026-06-25 — Phase 2 complete (InterestGraph + 防坍缩 + Prompt 注入)
+Status: Phase 3 complete — ready for Phase 4
+Last activity: 2026-06-25 — Phase 3 complete (UserProfile 加固 + 反馈管道 + 置信度校准)
 
-Progress: [████████████████████░░░░] 33%
+Progress: [██████████████████████████░░░░] 50%
 
 ## Performance Metrics
 
@@ -49,12 +49,14 @@ Progress: [████████████████████░░░
 |-------|-------|-------|----------|
 | 1 | 3 | - | - |
 | 2 | 3 | - | - |
+| 3 | — | 3 plans | 3 files new, 3 modified |
 
 *Updated after each plan completion*
 | Phase 01 P01 | 14min | 2 tasks | 6 files |
 | Phase 01 P02 | 14min | 2 tasks | 8 files |
 | Phase 01 P03 | 9min | 2 tasks | 7 files |
 | Phase 02 | — | 3 plans | 7 files (2 new, 5 modified) |
+| Phase 03 | — | 3 files new, 2 modified |
 
 ## Accumulated Context
 
@@ -79,7 +81,11 @@ Recent decisions affecting current work:
 - [Phase 2]: 防坍缩机制 — 权重衰减 + novelty 探索预算 + 单兴趣上限/数量下限 + 兴趣熵（INT-02）
 - [Phase 2]: 进化兴趣注入 ReAct prompt，驱动 search_web 方向（INT-03）
 - [Phase 2]: agentInterests 保留为派生字段（兼容现有 UI），由 InterestGraph 同步
-- [Phase 2]: source 预留 'reflection'/'feedback'，Phase 3/4 接入时无需改数据结构
+- [Phase 2]: source 预留 'reflection'/'feedback'，Phase 3 接入 feedback 来源
+- [Phase 3]: UserProfile Zod schema 校验（防漂移）+ loadUserProfile 解析/schema 失败抛错（D-09） + sampleCount 无界字段（USR-01）
+- [Phase 3]: 反馈管道 feedback-pipeline.ts — 飞书表情反馈 → updateUserProfile + InterestGraph.reinforce（USR-02）
+- [Phase 3]: 置信度 sigmoid 校准 sampleCount/(sampleCount+K) K=10 + 探索预算防早期反馈锁死（USR-03）
+- [Phase 3]: speak 成功时注册 messageId → Top 兴趣映射（内存 Map），供反馈查找关联话题
 
 ### Pending Todos
 
@@ -98,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-25T07:20:00.000Z
-Stopped at: Phase 2 complete, transitioned to Phase 3
-Resume file: .planning/phases/02-可进化兴趣图谱/02-SUMMARY.md
+Last session: 2026-06-25T10:00:00.000Z
+Stopped at: Phase 3 complete, transitioned to Phase 4
+Resume file: .planning/phases/03-用户兴趣模型-反馈强化/03-SUMMARY.md
