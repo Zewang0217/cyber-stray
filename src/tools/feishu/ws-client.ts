@@ -10,8 +10,7 @@
 
 import { createLarkChannel, type ReactionEvent } from '@larksuiteoapi/node-sdk';
 import { consola } from '../../logger.js';
-import { recordFeedback } from '../../memory/feedback-store.js';
-import { updateMoodByFeedback } from '../../agent/state.js';
+import { processFeedback } from '../../memory/feedback-pipeline.js';
 
 const logger = consola.withTag('feishu-ws');
 
@@ -71,20 +70,21 @@ export async function initFeishuWS(): Promise<void> {
 
     if (feedbackType) {
       try {
-        // 记录到反馈存储
-        await recordFeedback({
-          type: feedbackType,
-          messageId: evt.messageId,
-          userId: evt.operator.openId,
-        });
-
-        // 更新 Agent 心情
-        await updateMoodByFeedback(feedbackType);
+        // Phase 3: 使用反馈管道（记录 + 画像 + 兴趣加权 + 心情）
+        const result = await processFeedback(
+          feedbackType,
+          evt.messageId,
+          evt.operator.openId,
+        );
 
         logger.success('反馈处理完成', {
           type: feedbackType,
           userId: evt.operator.openId,
           messageId: evt.messageId,
+          topicsMatched: result.topicsMatched,
+          matchedTopics: result.matchedTopics,
+          profileUpdated: result.profileUpdated,
+          interestReinforced: result.interestReinforced,
         });
       } catch (error) {
         logger.error('处理反馈失败', { error });

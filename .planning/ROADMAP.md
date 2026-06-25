@@ -13,7 +13,7 @@
 
 - [x] **Phase 1: 记忆基础设施** - 索引层 + 接线清理/合并 + 废强制 speak + 修阻塞 bug (completed 2026-06-20)
 - [x] **Phase 2: 可进化兴趣图谱** - 替换冻住 agentInterests → 带权图谱，驱动探索 (completed 2026-06-25)
-- [ ] **Phase 3: 用户兴趣模型 + 反馈强化** - 填充 profile + 点赞加权
+- [x] **Phase 3: 用户兴趣模型 + 反馈强化** - 填充 profile + 点赞加权 (completed 2026-06-25)
 - [ ] **Phase 4: 反思回路** - 周期 LLM 反思：碎片 → 洞察 → 更新兴趣
 - [ ] **Phase 5: 推送价值门控** - speak 前门控；废强制 speak
 - [ ] **Phase 6: 兴趣可观测性 + 闭环验证** - 导出/Web 展示进化兴趣；端到端验证 loop
@@ -81,9 +81,9 @@ Plans:
 
 Plans:
 
-- [ ] 03-01: 填充 UserProfile（likes/dislikes/confidence/sampleCount）+ Zod 校验
-- [ ] 03-02: 反馈 → 画像 + InterestGraph 加权（兴趣进化的反馈驱动半边）
-- [ ] 03-03: 置信度随样本量校准 + 探索预算（防反馈偏差放大）
+- [x] 03-01: 填充 UserProfile（likes/dislikes/confidence/sampleCount）+ Zod 校验
+- [x] 03-02: 反馈 → 画像 + InterestGraph 加权（兴趣进化的反馈驱动半边）
+- [x] 03-03: 置信度随样本量校准 + 探索预算（防反馈偏差放大）
 
 ### Phase 4: 反思回路
 
@@ -154,7 +154,7 @@ Phases execute in numeric order；Phase 2/3 在 Phase 1 后可相对并行（弱
 |-------|----------------|--------|-----------|
 | 1. 记忆基础设施 | 3/3 | Complete    | 2026-06-20 |
 | 2. 可进化兴趣图谱 | 3/3 | Complete    | 2026-06-25 |
-| 3. 用户兴趣模型+反馈强化 | 0/3 | Not started | - |
+| 3. 用户兴趣模型+反馈强化 | 3/3 | Complete    | 2026-06-25 |
 | 4. 反思回路 | 0/3 | Not started | - |
 | 5. 推送价值门控 | 0/2 | Not started | - |
 | 6. 兴趣可观测性+闭环验证 | 0/3 | Not started | - |
