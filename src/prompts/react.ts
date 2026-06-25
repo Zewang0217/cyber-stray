@@ -124,8 +124,9 @@ export function buildReactSystemPrompt(
         ? state.agentInterests.map((i) => `- ${i}`).join('\n')
         : '- 什么都好奇';
     }
-  } catch {
+  } catch (err) {
     // InterestGraph 不可用时的兼容 fallback
+    logger.warn('InterestGraph 加载失败，fallback 到 state.agentInterests', { error: err });
     interestLines = state.agentInterests.length > 0
       ? state.agentInterests.map((i) => `- ${i}`).join('\n')
       : '- 什么都好奇';

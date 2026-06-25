@@ -30,10 +30,16 @@ const GRAPH_VERSION = 1 as const;
 
 export const InterestNodeSchema = z.object({
   id: z.string().min(1),
-  weight: z.number().min(0).max(1),
+  weight: z.number().min(0).max(1).refine((n) => Number.isFinite(n), {
+    message: 'weight must be finite',
+  }),
   source: z.enum(['default', 'reflection', 'feedback']),
-  createdAt: z.string(),
-  lastReinforced: z.string(),
+  createdAt: z.string().refine((s) => !Number.isNaN(new Date(s).getTime()), {
+    message: 'createdAt must be a valid date string',
+  }),
+  lastReinforced: z.string().refine((s) => !Number.isNaN(new Date(s).getTime()), {
+    message: 'lastReinforced must be a valid date string',
+  }),
   reinforceCount: z.number().int().min(0),
 });
 
@@ -88,6 +94,9 @@ export const DEFAULT_INTEREST_CONFIG: InterestGraphConfig = {
 // ============================================
 
 async function atomicWriteJson(path: string, data: unknown): Promise<void> {
+  const dir = path.substring(0, path.lastIndexOf('/')) || '.';
+  const { mkdir } = await import('fs/promises');
+  await mkdir(dir, { recursive: true });
   const tmp = `${path}.tmp.${process.pid}.${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const payload = JSON.stringify(data, null, 2);
   await writeFile(tmp, payload, 'utf-8');
@@ -300,25 +309,29 @@ export class InterestGraph {
       return false;
     }
 
-    // Novelty 预算检查
-    const totalWeight = this.data.nodes.reduce((sum, n) => sum + n.weight, 0);
-    if (totalWeight + initialWeight > 1.0 + this.config.noveltyBudget) {
+    // Novelty 预算检查：使用有效权重（衰减后）
+    const now = Date.now();
+    const totalEffectiveWeight = this.data.nodes.reduce(
+      (sum, n) => sum + this.computeEffectiveWeight(n, now),
+      0,
+    );
+    if (totalEffectiveWeight + initialWeight > 1.0 + this.config.noveltyBudget) {
       logger.warn('添加兴趣失败：超出 novelty 预算', {
         id,
-        totalWeight,
+        totalEffectiveWeight,
         initialWeight,
         budget: this.config.noveltyBudget,
       });
       return false;
     }
 
-    const now = new Date().toISOString();
+    const nowIso = new Date().toISOString();
     this.data.nodes.push({
       id,
       weight: initialWeight,
       source,
-      createdAt: now,
-      lastReinforced: now,
+      createdAt: nowIso,
+      lastReinforced: nowIso,
       reinforceCount: 0,
     });
 
@@ -377,6 +390,9 @@ export class InterestGraph {
 
     // 确保数量下限
     this.ensureMinCount();
+
+    // 更新 lastUpdated
+    this.data.lastUpdated = new Date().toISOString();
   }
 
   /**
@@ -392,15 +408,16 @@ export class InterestGraph {
         break;
       }
       if (!existingIds.has(seed)) {
+        const seedWeight = Math.min(0.5, this.config.maxWeight);
         this.data.nodes.push({
           id: seed,
-          weight: 0.5,
+          weight: seedWeight,
           source: 'default',
           createdAt: now,
           lastReinforced: now,
           reinforceCount: 0,
         });
-        logger.info('兴趣数量低于下限，从默认种子补充', { seed });
+        logger.info('兴趣数量低于下限，从默认种子补充', { seed, weight: seedWeight });
       }
     }
   }
@@ -412,9 +429,13 @@ export class InterestGraph {
   /**
    * 计算有效权重（应用时间衰减）。
    * weight * exp(-λ * Δt_days)
+   * 防御非法日期返回 0
    */
   private computeEffectiveWeight(node: InterestNode, nowMs: number): number {
     const lastReinforcedMs = new Date(node.lastReinforced).getTime();
+    if (Number.isNaN(lastReinforcedMs)) {
+      return 0;
+    }
     const deltaDays = (nowMs - lastReinforcedMs) / (1000 * 60 * 60 * 24);
     const decayed = node.weight * Math.exp(-this.config.decayLambda * deltaDays);
     return Math.max(0, decayed);

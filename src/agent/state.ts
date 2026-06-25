@@ -86,9 +86,7 @@ export async function loadState(): Promise<AgentState> {
     const graph = getInterestGraph();
     await graph.load();
     const topInterests = graph.getTopInterests(10, 0.05);
-    if (topInterests.length > 0) {
-      state.agentInterests = topInterests;
-    }
+    state.agentInterests = topInterests; // 空数组也同步（清空旧值）
   } catch (error) {
     // InterestGraph 加载失败不阻断状态加载，保留 state.json 中的值
     consola.withTag('state').warn('InterestGraph 同步失败，使用 state.json 中的 agentInterests', { error });
