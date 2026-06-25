@@ -8,6 +8,13 @@ import { z } from 'zod';
 /** 记忆类型枚举 */
 export type MemoryType = 'profile' | 'knowledge' | 'interaction' | 'observation';
 
+/**
+ * 来源可信度标记。
+ * - untrusted:web — 来自网页浏览的原始观察（默认，含未标记的旧数据）
+ * - self:reflection — 反思引擎产出的合成洞察
+ */
+export type Provenance = 'untrusted:web' | 'self:reflection';
+
 /** 记忆条目 */
 export interface MemoryEntry {
   id: string;
@@ -18,6 +25,8 @@ export interface MemoryEntry {
   content: string;
   importance: number;
   accessedAt?: string;
+  /** 来源可信度，未标记的旧数据视为 untrusted:web */
+  provenance?: Provenance;
 }
 
 /** 记忆索引 */
@@ -128,6 +137,9 @@ export function formatMemoryToMarkdown(entry: MemoryEntry): string {
   if (entry.accessedAt) {
     lines.push(`accessedAt: ${entry.accessedAt}`);
   }
+  if (entry.provenance) {
+    lines.push(`provenance: ${entry.provenance}`);
+  }
   lines.push('---', '', `## ${entry.summary}`, '', entry.content);
 
   return lines.join('\n');
@@ -140,6 +152,7 @@ export function parseMemoryFrontmatter(content: string): {
   importance: number;
   summary: string;
   content: string;
+  provenance?: Provenance;
 } {
   // D-09：合法记忆必须有 --- frontmatter 分界。缺分界视为非法内容，抛错（不兜底）
   if (!content.startsWith('---') || content.split('---').length < 3) {
@@ -167,6 +180,7 @@ export function parseMemoryFrontmatter(content: string): {
     importance: parseFloat(meta.importance || '0.5'),
     summary,
     content: body.replace(/^##\s*.+\n/, '').trim(),
+    provenance: (meta.provenance as Provenance | undefined),
   };
 }
 
