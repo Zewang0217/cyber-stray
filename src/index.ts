@@ -6,6 +6,7 @@ import { updateState, shutdownTUI, isTuiActive } from "./tui/index.js";
 import { initFeishuWS, closeFeishuWS } from "./tools/feishu/ws-client.js";
 import { getMemoryStore, getMemoryConsolidator } from "./memory/long-term.js";
 import { cleanupVisitedUrls } from "./tools/dedup/url-tracker.js";
+import { getReflectionScheduler } from "./memory/reflection/index.js";
 
 let logger: ReturnType<typeof consola.withTag>;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -48,6 +49,9 @@ async function main(): Promise<void> {
   // 启动一次性 best-effort 记忆维护（D-02：不自动周期触发，定期调度属 Phase 4 反思周期）
   // 失败仅 warn 不阻断启动（T-01-10：consolidator 失败不应让 agent 起不来）
   await runStartupMemoryMaintenance();
+
+  // Phase 4: 初始化反思调度器
+  await initReflectionScheduler();
 
   // 注册信号处理器
   registerSignalHandlers();
@@ -95,6 +99,25 @@ async function runStartupMemoryMaintenance(): Promise<void> {
     logger.info("启动期记忆 consolidator 一次性执行", { merged, expired });
   } catch (error) {
     logger.warn("记忆 consolidator 启动执行失败（不阻断启动）", { error: String(error) });
+  }
+}
+
+/**
+ * Phase 4: 初始化反思调度器。
+ *
+ * 加载调度状态并配置引擎。失败仅 warn 不阻断启动。
+ */
+async function initReflectionScheduler(): Promise<void> {
+  try {
+    const scheduler = getReflectionScheduler();
+    await scheduler.load();
+    logger.info("反思调度器已初始化", {
+      wanderCount: scheduler.getState().wanderCount,
+      lastReflectionAt: scheduler.getState().lastReflectionAt,
+      totalReflections: scheduler.getState().totalReflections,
+    });
+  } catch (error) {
+    logger.warn("反思调度器初始化失败（不阻断启动）", { error: String(error) });
   }
 }
 
@@ -261,6 +284,13 @@ async function runHeartbeat(): Promise<void> {
 
     // 3. 启动 ReAct Loop
     const result = await runAgentLoop(newState);
+
+    // Phase 4: 游荡后触发反思（异步，不阻塞下一轮心跳）
+    getReflectionScheduler()
+      .tick()
+      .catch((err: unknown) =>
+        logger.warn("反思调度 tick 失败", { error: String(err) }),
+      );
 
     logger.info("本次游荡结束", {
       steps: result.steps,

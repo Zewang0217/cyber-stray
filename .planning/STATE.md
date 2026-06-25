@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 4
-current_phase_name: 反思回路
+current_phase: 5
+current_phase_name: 推送价值门控
 status: ready
-stopped_at: Phase 3 complete, transitioned to Phase 4
-last_updated: "2026-06-25T10:00:00.000Z"
+stopped_at: Phase 4 complete, transitioned to Phase 5
+last_updated: "2026-06-25T12:00:00.000Z"
 last_activity: 2026-06-25
-last_activity_desc: Phase 3 complete — UserProfile 加固 + 反馈管道 + 置信度校准
+last_activity_desc: Phase 4 complete — ReflectionEngine + Scheduler + grounding + provenance
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 3
-  completed_plans: 3
-  percent: 50
+  completed_phases: 4
+  total_plans: 4
+  completed_plans: 4
+  percent: 67
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: 4 — 反思回路
+Phase: 5 — 推送价值门控
 Plan: Not started
-Status: Phase 3 complete — ready for Phase 4
-Last activity: 2026-06-25 — Phase 3 complete (UserProfile 加固 + 反馈管道 + 置信度校准)
+Status: Phase 4 complete — ready for Phase 5
+Last activity: 2026-06-25 — Phase 4 complete (ReflectionEngine + Scheduler + grounding + provenance)
 
-Progress: [██████████████████████████░░░░] 50%
+Progress: [████████████████████████████████░░░░] 67%
 
 ## Performance Metrics
 
@@ -86,6 +86,12 @@ Recent decisions affecting current work:
 - [Phase 3]: 反馈管道 feedback-pipeline.ts — 飞书表情反馈 → updateUserProfile + InterestGraph.reinforce（USR-02）
 - [Phase 3]: 置信度 sigmoid 校准 sampleCount/(sampleCount+K) K=10 + 探索预算防早期反馈锁死（USR-03）
 - [Phase 3]: speak 成功时注册 messageId → Top 兴趣映射（内存 Map），供反馈查找关联话题
+- [Phase 4]: ReflectionEngine + ReflectionScheduler——异步反思，每 5 游荡/4 小时触发，状态持久化 reflection-state.json
+- [Phase 4]: 防自激——反思只读 provenance ≠ self:reflection 的 observation，产出标记 self:reflection
+- [Phase 4]: 防幻觉（grounding）——每条洞察必须引用 ≥1 条真实存在的 source memoryId，无源整条丢弃
+- [Phase 4]: 部分恢复——Zod 校验失败时逐条 retry insight，合法保留/非法丢弃
+- [Phase 4]: MemoryEntry + provenance 可选字段（untrusted:web / self:reflection），formatMemoryToMarkdown/parseMemoryFrontmatter 支持
+- [Phase 4]: 反思温度 0.4（一致性 > 创造性），markdown 代码块剥离用 start/end 匹配替代 lazy regex
 
 ### Pending Todos
 
