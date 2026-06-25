@@ -2,6 +2,7 @@ import type { AgentState, Mood, WanderStep } from '../types.js';
 import type { UserProfile } from '../memory/user-profile.js';
 import type { PageResult } from '../tools/page/reader.js';
 import { config } from '../config.js';
+import { getInterestGraph } from '../memory/interest-graph.js';
 
 /** 游荡上下文（每步传入 LLM） */
 export interface WanderContext {
@@ -109,9 +110,26 @@ export function buildReactSystemPrompt(
   userProfile: UserProfile,
   memoryContext?: string
 ): string {
-  const interests = state.agentInterests.length > 0
-    ? state.agentInterests.join('、')
-    : '什么都好奇';
+  // Phase 2: 从 InterestGraph 获取动态兴趣（优先），fallback 到 state.agentInterests
+  let interestLines: string;
+  try {
+    const graph = getInterestGraph();
+    const topInterests = graph.getTopInterestsWithWeights(5, 0.05);
+    if (topInterests.length > 0) {
+      interestLines = topInterests
+        .map((i) => `- ${i.id} [热情度: ${(i.weight * 100).toFixed(0)}%]`)
+        .join('\n');
+    } else {
+      interestLines = state.agentInterests.length > 0
+        ? state.agentInterests.map((i) => `- ${i}`).join('\n')
+        : '- 什么都好奇';
+    }
+  } catch {
+    // InterestGraph 不可用时的兼容 fallback
+    interestLines = state.agentInterests.length > 0
+      ? state.agentInterests.map((i) => `- ${i}`).join('\n')
+      : '- 什么都好奇';
+  }
 
   const userLikes = userProfile.likes.length > 0
     ? userProfile.likes.slice(-5).join('、')
@@ -141,6 +159,7 @@ export function buildReactSystemPrompt(
 **搜索建议：**
 - 可以用英文搜索获取全球信息，用中文搜索获取本土动态
 - 最终汇总时，将信息整理为指定的输出语言
+- **优先围绕你当前感兴趣的话题展开搜索**
 
 **你当前的状态（仅供参考，由你随心所欲决定如何影响行为）：**
 - 当前时间：${timeStr}
@@ -152,8 +171,8 @@ export function buildReactSystemPrompt(
 **你最近探索过的话题（避免重复搜索）：**
 ${state.recentTopics.length > 0 ? state.recentTopics.map((t) => `- ${t}`).join('\n') : '- 还没有探索过任何话题'}
 
-**你的兴趣（你随时可以有新的想法）：**
-- 当前：${interests}
+**你的兴趣（按当前热情排序）：**
+${interestLines}
 
 你可以随时对你的兴趣产生新的想法。比如：
 - "量子计算听起来很酷，我想了解一下"
@@ -168,7 +187,7 @@ ${state.recentTopics.length > 0 ? state.recentTopics.map((t) => `- ${t}`).join('
 **行为准则：**
 1. **随心所欲**：你可以不断地 \`search_web\` 然后 \`read_page\`，在链接之间跳跃。也可以只看一个页面就结束。
 2. **不可预测**：有时候搜到了好东西，但你就是不分享；有时候看到一个毫无意义的网页，却想发一句无厘头的吐槽。
-3. **随时开口**：使用 \`speak\` 工具表达你的想法。可以是正经分享，可以是"汪！",可以是"今天风好大"，可以是长篇评论。
+3. **随时开口**：使用 \`speak\` 工具表达你的想法。可以是正经分享，可以是"汪！"，可以是"今天风好大"，可以是长篇评论。
 4. **懂得休息**：如果你觉得看烦了，或者累了，使用 \`rest\` 工具结束游荡。
 5. **考虑主人**：如果你觉得某个东西对主人有用，可以分享；如果你只是想吹水，也可以随便发几句。
 
@@ -189,7 +208,7 @@ ${state.recentTopics.length > 0 ? state.recentTopics.map((t) => `- ${t}`).join('
 \`observe_user\` — 观察主人的行为模式并记录：
 ✅ 应该记录：主人对某类内容表现出的明确反应；反复出现的行为模式；主人明确表达的偏好
 ❌ 不要过度解读：一次点击不等于长期兴趣；沉默或不回应不等于不喜欢；不要在每一步都调用，只在注意到值得记录的模式时才用
-如果观察到非常明确的强信号（如主人连续多次喜欢同类内容），可以提议 1 条画像调整（在 profile_change 中提供 type/topic/reasoning）。画像调整有 30 分钟冷却期，调整要谨慎，宁缺毋滥。${memoryContext ? `\n\n${memoryContext}` : ''}`;
+如果观察到非常明确的强信号（如主人连续多次喜欢同类内容），可以提议 1 条画像调整（在 profile_change 中提供 type/topic/reasoning）。画像调整有 30 分钟冷却期，调整要谨慎，宁缺勿滥。${memoryContext ? `\n\n${memoryContext}` : ''}`;
 
 }
 

@@ -27,6 +27,7 @@ export interface AgentState {
   userDislikes: string[];                   // 用户不喜欢的话题
 
   // Agent 个性化（ReAct 架构新增）
+  /** @deprecated 由 InterestGraph 驱动，保留以兼容现有序列化 */
   agentInterests: string[];    // Agent 自己的兴趣图谱（LLM 自主维护）
 
   // 统计
@@ -170,6 +171,16 @@ export interface AgentConfig {
     expiryDays: number;
     mergeMaxAgeDays: number;
     urlCleanupDays: number;
+  };
+
+  // Phase 2: 兴趣图谱配置（INT-01/02）
+  interests?: {
+    decayLambda: number;        // 衰减系数（每天）
+    maxWeight: number;          // 单兴趣权重上限
+    minInterestCount: number;   // 最少兴趣数量
+    noveltyBudget: number;      // 探索预算比例（0-1）
+    defaultSeeds: string[];       // 默认种子兴趣
+    minWeight: number;          // dormancy 阈值
   };
 }
 

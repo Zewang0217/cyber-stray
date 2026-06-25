@@ -30,6 +30,8 @@ type BehaviorConfig = Pick<
   feishu?: AgentConfig['feishu'];
   /** D-03 合并/清理阈值（BehaviorConfig 内必填，默认值由 defaultBehavior 提供） */
   consolidation: NonNullable<AgentConfig['consolidation']>;
+  /** Phase 2: 兴趣图谱配置 */
+  interests: NonNullable<AgentConfig['interests']>;
 };
 
 const defaultBehavior: BehaviorConfig = {
@@ -61,6 +63,14 @@ const defaultBehavior: BehaviorConfig = {
     mergeMaxAgeDays: 7,
     urlCleanupDays: 30,
   },
+  interests: {
+    decayLambda: 0.1,
+    maxWeight: 0.8,
+    minInterestCount: 3,
+    noveltyBudget: 0.15,
+    defaultSeeds: ['科技', 'AI', '互联网'],
+    minWeight: 0.05,
+  },
 };
 
 /**
@@ -82,6 +92,11 @@ function loadBehaviorConfig(): BehaviorConfig {
         consolidation: {
           ...defaultBehavior.consolidation,
           ...(file.consolidation ?? {}),
+        },
+        // Phase 2: 兴趣图谱配置嵌套合并
+        interests: {
+          ...defaultBehavior.interests,
+          ...(file.interests ?? {}),
         },
       };
     } catch (err) {
@@ -127,6 +142,9 @@ export const config: AgentConfig = {
     receiveMode: behavior.feishu?.receiveMode ?? 'reaction',
     chatId: behavior.feishu?.chatId ?? '',
   },
+
+  // Phase 2: 兴趣图谱配置
+  interests: behavior.interests,
 };
 
 /**
