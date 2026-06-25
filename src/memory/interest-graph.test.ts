@@ -110,9 +110,11 @@ describe('InterestGraph', () => {
 
     const effective = graph.getTopInterestsWithWeights(1)[0];
     expect(effective).toBeDefined();
+    // TypeScript 不识别 expect().toBeDefined() 的类型窄化，手动断言
+    const eff = effective!;
     // weight * exp(-1.0 * 2) = 0.5 * 0.135 ≈ 0.067
-    expect(effective.weight).toBeLessThan(0.1);
-    expect(effective.weight).toBeGreaterThan(0.05);
+    expect(eff.weight).toBeLessThan(0.1);
+    expect(eff.weight).toBeGreaterThan(0.05);
   });
 
   it('should remove dormant nodes after decayAll', () => {

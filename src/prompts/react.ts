@@ -2,7 +2,10 @@ import type { AgentState, Mood, WanderStep } from '../types.js';
 import type { UserProfile } from '../memory/user-profile.js';
 import type { PageResult } from '../tools/page/reader.js';
 import { config } from '../config.js';
+import { consola } from '../logger.js';
 import { getInterestGraph } from '../memory/interest-graph.js';
+
+const logger = consola.withTag('prompts');
 
 /** 游荡上下文（每步传入 LLM） */
 export interface WanderContext {
