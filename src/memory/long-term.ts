@@ -15,6 +15,22 @@ export type {
   MemoryConfig,
 } from './long-term/types.js';
 
+// Phase 2: 兴趣图谱
+export {
+  InterestGraph,
+  getInterestGraph,
+  initializeInterestGraph,
+  buildInterestConfig,
+  DEFAULT_INTEREST_CONFIG,
+  _resetInterestGraphCache,
+} from './interest-graph.js';
+export type {
+  InterestNode,
+  InterestGraphData,
+  InterestSource,
+  InterestGraphConfig,
+} from './interest-graph.js';
+
 // 写入
 export {
   recordInteraction,

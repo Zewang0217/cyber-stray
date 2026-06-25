@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import type { AgentState, Mood } from '../types';
 import { getDataPath } from '../config';
 import { consola } from '../logger';
+import { getInterestGraph } from '../memory/interest-graph.js';
 
 /**
  * 默认初始状态
@@ -25,6 +26,7 @@ function createDefaultState(): AgentState {
     userDislikes: [],
 
     // Agent 个性化（ReAct 架构）
+    // 注意：agentInterests 由 InterestGraph 驱动，此处为兼容保留
     agentInterests: ['科技', 'AI', '互联网'],
 
     // 统计
@@ -64,6 +66,8 @@ function serializeStateJson(state: AgentState): string {
 
 /**
  * 加载 Agent 状态
+ * 
+ * 从 state.json 加载基础状态，并从 InterestGraph 同步 agentInterests。
  */
 export async function loadState(): Promise<AgentState> {
   const statePath = getDataPath('state.json');
@@ -75,7 +79,20 @@ export async function loadState(): Promise<AgentState> {
   }
   
   const content = await readFile(statePath, 'utf-8');
-  return parseStateJson(content);
+  const state = parseStateJson(content);
+
+  // Phase 2: 从 InterestGraph 同步 agentInterests（派生字段）
+  try {
+    const graph = getInterestGraph();
+    await graph.load();
+    const topInterests = graph.getTopInterests(10, 0.05);
+    state.agentInterests = topInterests; // 空数组也同步（清空旧值）
+  } catch (error) {
+    // InterestGraph 加载失败不阻断状态加载，保留 state.json 中的值
+    consola.withTag('state').warn('InterestGraph 同步失败，使用 state.json 中的 agentInterests', { error });
+  }
+
+  return state;
 }
 
 /**
