@@ -12,7 +12,7 @@
 - Decimal phases (2.1, 2.2): 紧急插入（标 INSERTED）
 
 - [x] **Phase 1: 记忆基础设施** - 索引层 + 接线清理/合并 + 废强制 speak + 修阻塞 bug (completed 2026-06-20)
-- [ ] **Phase 2: 可进化兴趣图谱** - 替换冻住 agentInterests → 带权图谱，驱动探索
+- [x] **Phase 2: 可进化兴趣图谱** - 替换冻住 agentInterests → 带权图谱，驱动探索 (completed 2026-06-25)
 - [ ] **Phase 3: 用户兴趣模型 + 反馈强化** - 填充 profile + 点赞加权
 - [ ] **Phase 4: 反思回路** - 周期 LLM 反思：碎片 → 洞察 → 更新兴趣
 - [ ] **Phase 5: 推送价值门控** - speak 前门控；废强制 speak
@@ -57,13 +57,13 @@ Plans:
   2. 兴趣随时间可观测变化（权重升降），且不坍缩到单一话题（衰减 + novelty 生效）
   3. 游荡的搜索方向受当前进化兴趣影响（prompt 注入可验证）
 
-**Plans**: 3 plans
+**Plans**: 3/3 plans complete
 
 Plans:
 
-- [ ] 02-01: InterestGraph 数据结构（带权/来源/lastReinforced）+ 持久化 + 替换 state.agentInterests
-- [ ] 02-02: 权重时间衰减 + novelty 探索预算 + 单兴趣上限/数量下限（防坍缩）
-- [ ] 02-03: 进化兴趣注入 ReAct prompt，驱动 search_web 方向
+- [x] 02-01: InterestGraph 数据结构（带权/来源/lastReinforced）+ 持久化 + 替换 state.agentInterests
+- [x] 02-02: 权重时间衰减 + novelty 探索预算 + 单兴趣上限/数量下限（防坍缩）
+- [x] 02-03: 进化兴趣注入 ReAct prompt，驱动 search_web 方向
 
 ### Phase 3: 用户兴趣模型 + 反馈强化
 
@@ -153,7 +153,7 @@ Phases execute in numeric order；Phase 2/3 在 Phase 1 后可相对并行（弱
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. 记忆基础设施 | 3/3 | Complete    | 2026-06-20 |
-| 2. 可进化兴趣图谱 | 0/3 | Not started | - |
+| 2. 可进化兴趣图谱 | 3/3 | Complete    | 2026-06-25 |
 | 3. 用户兴趣模型+反馈强化 | 0/3 | Not started | - |
 | 4. 反思回路 | 0/3 | Not started | - |
 | 5. 推送价值门控 | 0/2 | Not started | - |
