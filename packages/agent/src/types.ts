@@ -182,6 +182,28 @@ export interface AgentConfig {
     defaultSeeds: string[];       // 默认种子兴趣
     minWeight: number;          // dormancy 阈值
   };
+
+  // Phase 5: 推送价值门控配置（PUSH-01/02）
+  pushGate?: {
+    enabled: boolean;
+    threshold: number;
+    weights: {
+      interestRelevance: number;
+      userPreference: number;
+      contentQuality: number;
+    };
+    calibration: {
+      enabled: boolean;
+      windowSize: number;
+      likeRateHigh: number;
+      dislikeRateHigh: number;
+      adjustStep: number;
+    };
+    contentScan: {
+      enabled: boolean;
+      maxUrlCount: number;
+    };
+  };
 }
 
 // ============================================
