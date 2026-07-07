@@ -99,7 +99,7 @@ export function toSafeFilename(str: string): string {
   // 阻止路径遍历和多级目录
   const sanitized = str
     .replace(/\.\./g, '-')           // 阻止 .. 路径遍历
-    .replace(/[\/\\]/g, '-')          // 阻止路径分隔符
+    .replace(/[/\\]/g, '-')          // 阻止路径分隔符
     .replace(SAFE_FILENAME_REGEX, '-') // 替换其他非法字符
     .replace(/-+/g, '-')              // 折叠多个连字符
     .replace(/^-|-$/g, '');           // 去除首尾连字符

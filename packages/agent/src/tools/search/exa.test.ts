@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+﻿import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { ExaAdapter } from './exa.js';
 
 describe('ExaAdapter', () => {
@@ -18,7 +18,7 @@ describe('ExaAdapter', () => {
     globalThis.fetch = (() => Promise.resolve(response)) as unknown as typeof fetch;
   }
 
-  test('适配器可用性检�?, () => {
+  test('适配器可用性检查', () => {
     expect(adapter.isAvailable()).toBe(Boolean(apiKey));
   });
 
@@ -50,7 +50,7 @@ describe('ExaAdapter', () => {
       console.log('跳过：未配置 EXA_API_KEY');
       return;
     }
-    const query = '最新人工智能进�?;
+    const query = '最新人工智能进展';
     console.log(`[query] ${query}`);
     const results = await adapter.search(query);
     console.log(`[结果数量] ${results.length}`);
@@ -72,7 +72,7 @@ describe('ExaAdapter', () => {
     expect(results.length).toBeLessThanOrEqual(3);
   });
 
-  test('API 错误时抛出异�?, async () => {
+  test('API 错误时抛出异常', async () => {
     mockFetch(new Response(null, { status: 500, statusText: 'Internal Server Error' }));
     await expect(adapter.search('test')).rejects.toThrow();
   });

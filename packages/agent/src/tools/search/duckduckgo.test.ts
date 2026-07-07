@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+﻿import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { DuckDuckGoAdapter } from './duckduckgo.js';
 
 describe('DuckDuckGoAdapter', () => {
@@ -17,7 +17,7 @@ describe('DuckDuckGoAdapter', () => {
     globalThis.fetch = (() => Promise.resolve(response)) as unknown as typeof fetch;
   }
 
-  test('适配器可用性检�?, () => {
+  test('适配器可用性检查', () => {
     expect(adapter.isAvailable()).toBe(true);
   });
 
@@ -62,12 +62,12 @@ describe('DuckDuckGoAdapter', () => {
     expect(results.length).toBeLessThanOrEqual(3);
   });
 
-  test('API 错误时抛出异�?, async () => {
+  test('API 错误时抛出异常', async () => {
     mockFetch(new Response(null, { status: 500, statusText: 'Internal Server Error' }));
     await expect(adapter.search('test')).rejects.toThrow();
   });
 
-  test('解析 Abstract �?RelatedTopics', async () => {
+  test('解析 Abstract 和 RelatedTopics', async () => {
     const mockData = {
       AbstractText: 'TypeScript is a programming language',
       AbstractURL: 'https://www.typescriptlang.org/',
@@ -94,7 +94,7 @@ describe('DuckDuckGoAdapter', () => {
     expect(topic1.url).toBe('https://example.com/ts');
   });
 
-  test('�?Abstract 时只返回 RelatedTopics', async () => {
+  test('空 Abstract 时只返回 RelatedTopics', async () => {
     const mockData = {
       RelatedTopics: [
         { Text: 'Topic A', FirstURL: 'https://a.com' },

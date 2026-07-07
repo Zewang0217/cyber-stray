@@ -1,8 +1,8 @@
-/**
+﻿/**
  * FeedbackPipeline 测试
  *
  * 覆盖：registerSpeakTopics 消息-兴趣映射、processFeedback 完整链路
- * （画像更�?+ 兴趣加权）、映射容量控制、解耦失败不阻断�?
+ * （画像更新 + 兴趣加权）、映射容量控制、解耦失败不阻断。
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -55,7 +55,7 @@ describe('FeedbackPipeline', () => {
   });
 
   // ----------------------------------------
-  // processFeedback: 无映射退�?
+  // processFeedback: 无映射退化
   // ----------------------------------------
 
   it('should record feedback even without topic mapping', async () => {
@@ -67,7 +67,7 @@ describe('FeedbackPipeline', () => {
   });
 
   // ----------------------------------------
-  // processFeedback: like �?画像 + 兴趣加权
+  // processFeedback: like → 画像 + 兴趣加权
   // ----------------------------------------
 
   it('should update profile and reinforce interest on like', async () => {
@@ -96,11 +96,11 @@ describe('FeedbackPipeline', () => {
     const node = graph.getNode('量子计算');
     expect(node).toBeDefined();
     expect(node!.weight).toBeGreaterThan(0.3); // 被强化了
-    expect(node!.source).toBe('default'); // 原本�?default 种子
+    expect(node!.source).toBe('default'); // 原本是 default 种子
   });
 
   // ----------------------------------------
-  // processFeedback: dislike �?画像 + 兴趣衰减
+  // processFeedback: dislike → 画像 + 兴趣衰减
   // ----------------------------------------
 
   it('should update profile and decay interest on dislike', async () => {
@@ -124,7 +124,7 @@ describe('FeedbackPipeline', () => {
   });
 
   // ----------------------------------------
-  // processFeedback: like 时兴趣不存在 �?自动创建
+  // processFeedback: like 时兴趣不存在 → 自动创建
   // ----------------------------------------
 
   it('should auto-create interest node on like if not exists', async () => {
@@ -140,7 +140,7 @@ describe('FeedbackPipeline', () => {
     // 兴趣应被自动创建
     const node = graph.getNode('深度学习');
     expect(node).toBeDefined();
-    expect(node!.source).toBe('feedback'); // 来源�?feedback
+    expect(node!.source).toBe('feedback'); // 来源为 feedback
     expect(node!.weight).toBeGreaterThan(0);
   });
 
@@ -155,7 +155,7 @@ describe('FeedbackPipeline', () => {
 
     registerSpeakTopics('msg-reuse', ['AI']);
 
-    // 第一次反�?
+    // 第一次反馈
     await processFeedback('like', 'msg-reuse', 'user-1');
     expect(getMessageTopicMapSize()).toBe(1);
 
@@ -171,11 +171,11 @@ describe('FeedbackPipeline', () => {
   it('should not throw even when InterestGraph starts empty', async () => {
     registerSpeakTopics('msg-no-graph', ['AI']);
 
-    // InterestGraph 单例总是可用的，只是空图谱亦可操�?
+    // InterestGraph 单例总是可用的，只是空图谱亦可操作
     const result = await processFeedback('like', 'msg-no-graph', 'user-1');
     // 记录反馈成功
     expect(result.recorded).toBe(true);
-    // 整体不抛错（即使 interestReinforced 可能�?true，因为会自动创建�?
+    // 整体不抛错（即使 interestReinforced 可能为 true，因为会自动创建）
     expect(result.interestReinforced).toBe(true);
   });
 
@@ -184,16 +184,16 @@ describe('FeedbackPipeline', () => {
   // ----------------------------------------
 
   it('should evict oldest entry when map exceeds capacity', () => {
-    // 填满 200 条映�?
+    // 填满 200 条映射
     for (let i = 0; i < 250; i++) {
       registerSpeakTopics(`msg-${i}`, ['AI']);
     }
-    // 不超过容量上�?
+    // 不超过容量上限
     expect(getMessageTopicMapSize()).toBeLessThanOrEqual(200);
   });
 
   // ----------------------------------------
-  // 03-03: 置信度校�?�?小样本不致锁死方�?
+  // 03-03: 置信度校准 — 小样本不致锁死方向
   // ----------------------------------------
 
   it('should keep confidence moderate with small sample count', async () => {
@@ -207,9 +207,9 @@ describe('FeedbackPipeline', () => {
 
     const profile = await loadUserProfile();
     expect(profile.sampleCount).toBe(3);
-    // sigmoid: 3/(3+10) �?0.23 �?远低于旧公式�?3/20=0.15... 但关键是稳而非�?
+    // sigmoid: 3/(3+10) ≈ 0.23 — 远低于旧公式的 3/20=0.15... 但关键是稳而非高
     expect(profile.confidence).toBeCloseTo(3 / 13, 1);
-    // 置信度远低于 0.5，不会锁死早期方�?
+    // 置信度远低于 0.5，不会锁死早期方向
     expect(profile.confidence).toBeLessThan(0.5);
   });
 
@@ -219,25 +219,25 @@ describe('FeedbackPipeline', () => {
     profile.sampleCount = 90; // 90/(90+10) = 0.9
     await saveUserProfile(profile);
 
-    // 再追�?1 次反馈触�?re-compute
+    // 再追加 1 次反馈触发 re-compute
     registerSpeakTopics('msg-high', ['AI']);
     await processFeedback('like', 'msg-high', 'user-1');
 
     const updated = await loadUserProfile();
     expect(updated.sampleCount).toBe(91);
     expect(updated.confidence).toBeCloseTo(91 / 101, 1);
-    expect(updated.confidence).toBeLessThanOrEqual(0.95); // �?CAP 限制
+    expect(updated.confidence).toBeLessThanOrEqual(0.95); // 受 CAP 限制
   });
 
   // ----------------------------------------
-  // 03-03: 探索预算 �?favorite 不锁死新兴趣
+  // 03-03: 探索预算 — favorite 不锁死新兴趣
   // ----------------------------------------
 
   it('should allow new interest exploration even with high-weighted favorites', async () => {
     await mkdir('data', { recursive: true });
     const graph = getInterestGraph();
 
-    // 多次点赞一个兴趣使其权重接近上�?
+    // 多次点赞一个兴趣使其权重接近上限
     graph.addInterest('量子计算', 0.5);
     for (let i = 0; i < 5; i++) {
       await mkdir('data/memory', { recursive: true });
@@ -245,9 +245,9 @@ describe('FeedbackPipeline', () => {
       await processFeedback('like', `msg-explore-${i}`, 'user-1');
     }
 
-    // 即使 "量子计算" 权重很高，仍能添加新兴趣（novelty 预算生效�?
+    // 即使 "量子计算" 权重很高，仍能添加新兴趣（novelty 预算生效）
     const added = graph.addInterest('音乐', 0.2);
-    // novelty 预算应允许新兴趣加入（除非总有效权重超�?1.0 + noveltyBudget�?
+    // novelty 预算应允许新兴趣加入（除非总有效权重超出 1.0 + noveltyBudget）
     expect(added).toBe(true);
 
     // 验证新兴趣已添加
@@ -265,13 +265,13 @@ describe('FeedbackPipeline', () => {
       await processFeedback('like', `msg-bias-${i}`, 'user-1');
     }
 
-    // 用户画像�?confidence �?sigmoid 的，不应锁死
+    // 用户画像的 confidence 是 sigmoid 的，不应锁死
     const profile = await loadUserProfile();
-    // 10 次样�?�?10/20 = 0.5，仍在可控范�?
+    // 10 次样本 → 10/20 = 0.5，仍在可控范围
     expect(profile.confidence).toBeLessThan(0.6);
 
     // 兴趣图谱中仍能添加新兴趣
-    const addedNew = graph.addInterest('生物�?, 0.2);
+    const addedNew = graph.addInterest('生物学', 0.2);
     expect(addedNew).toBe(true);
   });
 });

@@ -1,8 +1,8 @@
-/**
+﻿/**
  * InterestGraph 测试
  *
- * 覆盖：加�?持久�?round-trip、衰减计算、权重上限、novelty 预算�?
- * 数量下限补充、熵计算、单例行为�?
+ * 覆盖：加载/持久化 round-trip、衰减计算、权重上限、novelty 预算、
+ * 数量下限补充、熵计算、单例行为。
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -71,7 +71,7 @@ describe('InterestGraph', () => {
 
   it('should return false when reinforcing non-existent interest', () => {
     const graph = new InterestGraph('data/interests.json');
-    const ok = graph.reinforce('不存�?, 0.2);
+    const ok = graph.reinforce('不存在', 0.2);
     expect(ok).toBe(false);
   });
 
@@ -96,23 +96,23 @@ describe('InterestGraph', () => {
   it('should decay weight over time', () => {
     const graph = new InterestGraph('data/interests.json', {
       ...DEFAULT_INTEREST_CONFIG,
-      decayLambda: 1.0, // 强衰减便于测�?
+      decayLambda: 1.0, // 强衰减便于测试
     });
 
     const now = new Date().toISOString();
-    // 手动构造一�?2 天前的节�?
+    // 手动构造一个 2 天前的节点
     const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
 
-    graph.addInterest('旧兴�?, 0.5);
-    // 篡改 lastReinforced �?2 天前
-    const node = graph.getNode('旧兴�?)!;
+    graph.addInterest('旧兴趣', 0.5);
+    // 篡改 lastReinforced 为 2 天前
+    const node = graph.getNode('旧兴趣')!;
     node.lastReinforced = twoDaysAgo;
 
     const effective = graph.getTopInterestsWithWeights(1)[0];
     expect(effective).toBeDefined();
-    // TypeScript 不识�?expect().toBeDefined() 的类型窄化，手动断言
+    // TypeScript 不识别 expect().toBeDefined() 的类型窄化，手动断言
     const eff = effective!;
-    // weight * exp(-1.0 * 2) = 0.5 * 0.135 �?0.067
+    // weight * exp(-1.0 * 2) = 0.5 * 0.135 ≈ 0.067
     expect(eff.weight).toBeLessThan(0.1);
     expect(eff.weight).toBeGreaterThan(0.05);
   });
@@ -122,17 +122,17 @@ describe('InterestGraph', () => {
       ...DEFAULT_INTEREST_CONFIG,
       decayLambda: 10.0, // 极强衰减
       minWeight: 0.05,
-      minInterestCount: 0, // 关闭自动补充，方便验证移�?
+      minInterestCount: 0, // 关闭自动补充，方便验证移除
       defaultSeeds: [],
     });
 
-    graph.addInterest('旧兴�?, 0.1);
-    // 篡改 lastReinforced �?10 天前
-    const node = graph.getNode('旧兴�?)!;
+    graph.addInterest('旧兴趣', 0.1);
+    // 篡改 lastReinforced 为 10 天前
+    const node = graph.getNode('旧兴趣')!;
     node.lastReinforced = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
 
     graph.decayAll();
-    expect(graph.getNodeCount()).toBe(0); // 被移�?
+    expect(graph.getNodeCount()).toBe(0); // 被移除
   });
 
   // ----------------------------------------
@@ -145,19 +145,19 @@ describe('InterestGraph', () => {
       decayLambda: 10.0,
       minWeight: 0.05,
       minInterestCount: 3,
-      defaultSeeds: ['科技', 'AI', '互联�?],
+      defaultSeeds: ['科技', 'AI', '互联网'],
     });
 
-    graph.addInterest('旧兴�?, 0.1);
-    const node = graph.getNode('旧兴�?)!;
+    graph.addInterest('旧兴趣', 0.1);
+    const node = graph.getNode('旧兴趣')!;
     node.lastReinforced = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
 
     graph.decayAll();
-    // 旧兴趣被移除，但会从 defaultSeeds 补充�?3 �?
+    // 旧兴趣被移除，但会从 defaultSeeds 补充到 3 个
     expect(graph.getNodeCount()).toBe(3);
     expect(graph.getNode('科技')).toBeDefined();
     expect(graph.getNode('AI')).toBeDefined();
-    expect(graph.getNode('互联�?)).toBeDefined();
+    expect(graph.getNode('互联网')).toBeDefined();
   });
 
   // ----------------------------------------
@@ -173,26 +173,26 @@ describe('InterestGraph', () => {
     // 先加满到接近上限
     graph.addInterest('兴趣A', 0.5);
     graph.addInterest('兴趣B', 0.4);
-    // 总权�?0.9，noveltyBudget 0.1，上�?1.0
-    // 再加 0.2 会超�?1.0 + 0.1 = 1.1？不对，当前�?0.9 + 0.2 = 1.1 > 1.0 + 0.1 = 1.1
-    // 正好等于上限，应该允�?
+    // 总权重 0.9，noveltyBudget 0.1，上限 1.0
+    // 再加 0.2 会超出 1.0 + 0.1 = 1.1？不对，当前是 0.9 + 0.2 = 1.1 > 1.0 + 0.1 = 1.1
+    // 正好等于上限，应该允许
     const ok1 = graph.addInterest('兴趣C', 0.2);
     expect(ok1).toBe(true);
 
-    // 再加就超�?
+    // 再加就超了
     const ok2 = graph.addInterest('兴趣D', 0.1);
     expect(ok2).toBe(false);
   });
 
   // ----------------------------------------
-  // 熵计�?
+  // 熵计算
   // ----------------------------------------
 
   it('should compute entropy for uniform distribution', () => {
     const graph = new InterestGraph('data/interests.json');
     graph.addInterest('A', 0.5);
     graph.addInterest('B', 0.5);
-    // 两个等权重，�?= -0.5*log2(0.5) - 0.5*log2(0.5) = 1.0
+    // 两个等权重，熵 = -0.5*log2(0.5) - 0.5*log2(0.5) = 1.0
     expect(graph.getEntropy()).toBeCloseTo(1.0, 1);
   });
 
@@ -212,7 +212,7 @@ describe('InterestGraph', () => {
   });
 
   // ----------------------------------------
-  // 持久�?round-trip
+  // 持久化 round-trip
   // ----------------------------------------
 
   it('should persist and reload graph', async () => {
@@ -259,7 +259,7 @@ describe('InterestGraph', () => {
   });
 
   // ----------------------------------------
-  // 初始化流�?
+  // 初始化流程
   // ----------------------------------------
 
   it('should seed defaults on initialize when file missing', async () => {
@@ -272,8 +272,8 @@ describe('InterestGraph', () => {
   it('should load existing file on initialize', async () => {
     const { mkdir } = await import('fs/promises');
     await mkdir('data', { recursive: true });
-    // 使用 getInterestGraph 的默认路径（getDataPath('interests.json')�?
-    // 而不是硬编码 'data/interests.json'，确保路径一�?
+    // 使用 getInterestGraph 的默认路径（getDataPath('interests.json')）
+    // 而不是硬编码 'data/interests.json'，确保路径一致
     const { getInterestGraph, _resetInterestGraphCache } = await import('./interest-graph.js');
     const { getDataPath } = await import('../config.js');
     const graphPath = getDataPath('interests.json');
@@ -304,21 +304,21 @@ describe('InterestGraph', () => {
       ...DEFAULT_INTEREST_CONFIG,
       noveltyBudget: 0.5, // 放宽预算以便测试
     });
-    graph.addInterest('低权�?, 0.2);
-    graph.addInterest('高权�?, 0.8);
-    graph.addInterest('中权�?, 0.5);
+    graph.addInterest('低权重', 0.2);
+    graph.addInterest('高权重', 0.8);
+    graph.addInterest('中权重', 0.5);
 
     const tops = graph.getTopInterests(2);
-    expect(tops).toEqual(['高权�?, '中权�?]);
+    expect(tops).toEqual(['高权重', '中权重']);
   });
 
   it('should filter by minWeight', () => {
     const graph = new InterestGraph('data/interests.json');
-    graph.addInterest('高权�?, 0.8);
-    graph.addInterest('低权�?, 0.1);
+    graph.addInterest('高权重', 0.8);
+    graph.addInterest('低权重', 0.1);
 
     const tops = graph.getTopInterests(10, 0.5);
-    expect(tops).toEqual(['高权�?]);
+    expect(tops).toEqual(['高权重']);
   });
 
   // ----------------------------------------

@@ -1,8 +1,8 @@
-/**
+﻿/**
  * UserProfile 测试
  *
- * 覆盖：加�?持久�?round-trip、Zod schema 校验、抛�?vs 默认值边界�?
- * 置信�?sigmoid 校准、sampleCount 无界、冷却期、旧数据迁移�?
+ * 覆盖：加载/持久化 round-trip、Zod schema 校验、抛错 vs 默认值边界、
+ * 置信度 sigmoid 校准、sampleCount 无界、冷却期、旧数据迁移。
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -30,7 +30,7 @@ describe('UserProfile', () => {
   });
 
   // ----------------------------------------
-  // 加载：文件不存在 �?默认画像
+  // 加载：文件不存在 → 默认画像
   // ----------------------------------------
 
   it('should return default profile when file does not exist', async () => {
@@ -44,7 +44,7 @@ describe('UserProfile', () => {
   });
 
   // ----------------------------------------
-  // 加载：非�?JSON �?抛错
+  // 加载：非法 JSON → 抛错
   // ----------------------------------------
 
   it('should throw on corrupted JSON', async () => {
@@ -55,12 +55,12 @@ describe('UserProfile', () => {
   });
 
   // ----------------------------------------
-  // 加载：schema 不匹�?�?抛错
+  // 加载：schema 不匹配 → 抛错
   // ----------------------------------------
 
   it('should throw on schema mismatch', async () => {
     await mkdir('data/memory', { recursive: true });
-    // likes 应该�?string[]，给 number 触发 schema 失败
+    // likes 应该是 string[]，给 number 触发 schema 失败
     const invalid = JSON.stringify({ likes: [123], dislikes: [], lastUpdated: 'bad-date' });
     await writeFile('data/memory/user-profile.json', invalid, 'utf-8');
 
@@ -68,7 +68,7 @@ describe('UserProfile', () => {
   });
 
   // ----------------------------------------
-  // 持久�?round-trip
+  // 持久化 round-trip
   // ----------------------------------------
 
   it('should round-trip profile through save and load', async () => {
@@ -89,7 +89,7 @@ describe('UserProfile', () => {
   // ----------------------------------------
 
   it('should add like topic and remove from dislikes', async () => {
-    // 先手动构造一�?dislike 状�?
+    // 先手动构造一个 dislike 状态
     const profile = await loadUserProfile();
     profile.dislikes.push('AI');
     await saveUserProfile(profile);
@@ -103,7 +103,7 @@ describe('UserProfile', () => {
   it('should not duplicate like entries', async () => {
     await updateUserProfile('like', '科技');
     const updated = await updateUserProfile('like', '科技');
-    // 去重�?likes 中只�?1 �?"科技"
+    // 去重后 likes 中只有 1 个 "科技"
     expect(updated.likes.filter((l) => l === '科技').length).toBe(1);
   });
 
@@ -129,7 +129,7 @@ describe('UserProfile', () => {
     let profile = await loadUserProfile();
     expect(profile.sampleCount).toBe(0);
 
-    // 大量反馈不封�?
+    // 大量反馈不封顶
     for (let i = 0; i < 100; i++) {
       profile = await updateUserProfile('like', `topic-${i}`);
     }
@@ -137,20 +137,20 @@ describe('UserProfile', () => {
   });
 
   // ----------------------------------------
-  // 置信�?sigmoid 校准
+  // 置信度 sigmoid 校准
   // ----------------------------------------
 
   it('should compute sigmoid confidence: sampleCount/(sampleCount+10)', async () => {
     let profile = await loadUserProfile();
 
-    // 0 样本 �?0
+    // 0 样本 → 0
     expect(profile.confidence).toBe(0);
 
-    // 1 样本 �?1/11 �?0.09
+    // 1 样本 → 1/11 ≈ 0.09
     profile = await updateUserProfile('like', 'topic-1');
     expect(profile.confidence).toBeCloseTo(1 / 11, 1);
 
-    // 5 样本 �?5/15 �?0.33
+    // 5 样本 → 5/15 ≈ 0.33
     for (let i = 0; i < 4; i++) {
       profile = await updateUserProfile('like', `extra-${i}`);
     }
@@ -159,24 +159,24 @@ describe('UserProfile', () => {
   });
 
   it('should cap confidence at 0.95', async () => {
-    // 构造已有高 sampleCount 的画�?
+    // 构造已有高 sampleCount 的画像
     const profile = await loadUserProfile();
     profile.sampleCount = 999;
     profile.confidence = 0.99;
     await saveUserProfile(profile);
 
     const updated = await updateUserProfile('like', 'cap-test');
-    // sigmoid: 1000/(1000+10) �?0.99，但应被 cap �?0.95
+    // sigmoid: 1000/(1000+10) ≈ 0.99，但应被 cap 到 0.95
     expect(updated.confidence).toBeLessThanOrEqual(0.95);
   });
 
   // ----------------------------------------
-  // 旧数据迁移（feedbackCount �?sampleCount�?
+  // 旧数据迁移（feedbackCount → sampleCount）
   // ----------------------------------------
 
   it('should migrate old feedbackCount to sampleCount', async () => {
     await mkdir('data/memory', { recursive: true });
-    // 模拟旧格式：�?feedbackCount 但无 sampleCount
+    // 模拟旧格式：有 feedbackCount 但无 sampleCount
     const oldData = {
       likes: ['AI'],
       dislikes: [],
@@ -195,11 +195,11 @@ describe('UserProfile', () => {
   });
 
   // ----------------------------------------
-  // tryUpdateUserProfile: 冷却�?
+  // tryUpdateUserProfile: 冷却期
   // ----------------------------------------
 
   it('should enforce cooldown on tryUpdateUserProfile', async () => {
-    // 第一次成�?
+    // 第一次成功
     const result1 = await tryUpdateUserProfile('like', '量子计算', '主人喜欢量子计算');
     expect(result1.success).toBe(true);
 
@@ -210,7 +210,7 @@ describe('UserProfile', () => {
   });
 
   it('should not enforce cooldown on first call', async () => {
-    const result = await tryUpdateUserProfile('like', '深度学习', '主人对AI感兴�?);
+    const result = await tryUpdateUserProfile('like', '深度学习', '主人对AI感兴趣');
     expect(result.success).toBe(true);
     const profile = result.profile!;
     expect(profile.likes).toContain('深度学习');

@@ -206,6 +206,6 @@ export async function cleanupVisitedUrls(
  */
 export function extractUrl(content: string): string | null {
   // 匹配 http/https URL
-  const urlMatch = content.match(/https?:\/\/[^\s）\)\]。!！,，.。?？]+/);
+  const urlMatch = content.match(/https?:\/\/[^\s）\]。!！,，.。?？]+/);
   return urlMatch ? urlMatch[0] : null;
 }

@@ -1,4 +1,16 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from 'vitest';
+﻿import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
+
+vi.mock('ai', () => ({
+  generateText: vi.fn(),
+  stepCountIs: vi.fn(() => () => false),
+  hasToolCall: vi.fn(() => () => false),
+  tool: vi.fn((def: Record<string, unknown>) => ({
+    ...def,
+    execute: def.execute ?? vi.fn(),
+  })),
+}));
+
+import { generateText } from 'ai';
 import { runAgentLoop, _resetReactModuleState } from './react.js';
 import { loadState } from './state.js';
 import { ToolManager } from '../tools/tool-manager.js';
@@ -13,34 +25,12 @@ import {
 import { existsSync } from 'fs';
 import { join } from 'path';
 
-/**
- * runAgentLoop 测试套件�?1-03 扩展�?
- *
- * 覆盖�?
- * - D-05/MEM-03：空游荡不推送（废除强制 speak 兜底�?
- * - D-10：generateText 失败重试（默�?1 次，�?config.generateTextMaxRetries�?
- * - D-11/MEM-04：onStepFinish 按步计数 calls>1（多�?loop�?
- * - Pitfall 1：onStepFinish 回调内异常被 SDK 静默�?�?主流程不中断
- * - A1：durationMs �?Date.now() 差值（provider 不填 performance.totalMs�?
- * - config.generateTextMaxRetries 键自包含（types.ts/config.ts/agent-config.json 三处一致）
- *
- * 多步按步计数测试通过 mock.module('ai') 注入�?generateText�?
- * 直接�?onStepFinish 模拟多步回调（不依赖真实 LLM 多步工具 loop，更可控）�?
- */
-
-/** 安装 ai 模块 mock：返回自定义 generateText 行为，并暴露 onStepFinish 触发�?*/
-function mockAiModule(
-  generateTextImpl: (opts: {
+function mockGenerateText(
+  impl: (opts: {
     onStepFinish?: (event: { stepNumber: number; usage?: Record<string, number> }) => void;
   }) => Promise<void>,
 ): void {
-  mock.module('ai', () => ({
-    generateText: (opts: {
-      onStepFinish?: (event: { stepNumber: number; usage?: Record<string, number> }) => void;
-    }) => generateTextImpl(opts),
-    stepCountIs: () => () => false,
-    hasToolCall: () => () => false,
-  }));
+  (generateText as ReturnType<typeof vi.fn>).mockImplementation(impl);
 }
 
 describe('runAgentLoop', () => {
@@ -48,6 +38,7 @@ describe('runAgentLoop', () => {
   const savedKey = process.env.DEEPSEEK_API_KEY;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     ({ cleanup } = useTempDataDir());
     process.env.DEEPSEEK_API_KEY = 'test-key';
     _resetReactModuleState();
@@ -58,7 +49,6 @@ describe('runAgentLoop', () => {
   afterEach(() => {
     cleanup();
     restoreFetch();
-    mock.restore();
     if (savedKey === undefined) {
       delete process.env.DEEPSEEK_API_KEY;
     } else {
@@ -66,15 +56,13 @@ describe('runAgentLoop', () => {
     }
   });
 
-  test('config.generateTextMaxRetries 键自包含：types.ts/config.ts/agent-config.json 三处一致写�?, () => {
-    // 断言 D-10 config 键非 undefined，默认�?1
+  test('config.generateTextMaxRetries 键自包含：types.ts/config.ts/agent-config.json 三处一致写入', () => {
     expect(config.generateTextMaxRetries).toBeDefined();
     expect(config.generateTextMaxRetries).toBe(1);
   });
 
-  test('D-11 按步计数：mock generateText 触发多个 onStepFinish �?getLLMStats().calls > 1', async () => {
-    mockAiModule(async (opts) => {
-      // 模拟 3 �?ReAct loop：每步结束触�?onStepFinish
+  test('D-11 按步计数：mock generateText 触发多个 onStepFinish 后 getLLMStats().calls > 1', async () => {
+    mockGenerateText(async (opts) => {
       for (let i = 0; i < 3; i++) {
         opts.onStepFinish?.({
           stepNumber: i,
@@ -85,15 +73,13 @@ describe('runAgentLoop', () => {
 
     const result = await runAgentLoop(makeState());
 
-    // MEM-04 核心：calls 反映真实步数，不再恒�?1
     expect(getLLMStats().calls).toBeGreaterThan(1);
     expect(getLLMStats().calls).toBe(3);
     expect(result.endReason).not.toBe('error');
-  });
+  }, 15000);
 
-  test('A1 durationMs �?Date.now() 差值：成功步后 getLLMStats().totalMs > 0', async () => {
-    mockAiModule(async (opts) => {
-      // 模拟真实 LLM 调用耗时（让 attemptStart �?onStepFinish �?Date.now() 差�?> 0�?
+  test('A1 durationMs 用 Date.now() 差值：成功步后 getLLMStats().totalMs > 0', async () => {
+    mockGenerateText(async (opts) => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       opts.onStepFinish?.({
         stepNumber: 0,
@@ -103,31 +89,25 @@ describe('runAgentLoop', () => {
 
     await runAgentLoop(makeState());
 
-    // A1：provider 不填 performance.totalMs，react.ts �?Date.now() 差值，> 0 证明 fallback 生效
     expect(getLLMStats().totalMs).toBeGreaterThan(0);
     expect(getLLMStats().totalTokens).toBe(15);
   });
 
-  test('D-05/MEM-03 空游荡不推送：mock generateText 不触发任何工�?�?speakCount=0 且无推送历史文�?, async () => {
-    mockAiModule(async () => {
-      // 空游荡：generateText 直接结束，不调用任何工具（含 speak�?
+  test('D-05/MEM-03 空游荡不推送：mock generateText 不触发任何工具 → speakCount=0 且无推送历史文件', async () => {
+    mockGenerateText(async () => {
+      // empty wander
     });
 
     const result = await runAgentLoop(makeState());
 
-    // 废除强制 speak 兜底：spokeTimes===0（未�?speak�?
     expect(result.spokeTimes).toBe(0);
-    // speak 历史文件不存在（speak() 会写 data/history/speaks-<date>.jsonl�?
     const today = new Date().toISOString().slice(0, 10);
     const speakHistoryPath = join('data', 'history', `speaks-${today}.jsonl`);
     expect(existsSync(speakHistoryPath)).toBe(false);
   });
 
-  test('D-10 失败重试：mockFetchError �?endReason=error 且重�?maxRetries+1 �?, async () => {
-    // 用真�?generateText（恢�?ai 模块�? mockFetchError �?fetch reject
-    mockAiModule(async () => {
-      // 真实 generateText 在测试中难以注入；这里直�?mock 成抛错，
-      // 验证 D-10 重试循环：attempt 0..maxRetries，最�?endReason=error
+  test('D-10 失败重试：mockFetchError → endReason=error 且重试 maxRetries+1 次', async () => {
+    mockGenerateText(async () => {
       throw new Error('LLM 调用失败');
     });
 
@@ -136,20 +116,15 @@ describe('runAgentLoop', () => {
 
     expect(result.endReason).toBe('error');
 
-    // 错误路径�?consecutiveFailures +1
     const updated = await loadState();
     expect(updated.consecutiveFailures).toBe(3);
   });
 
-  test('Pitfall 1 自愈：onStepFinish 回调内抛�?�?主流程不中断', async () => {
-    mockAiModule(async (opts) => {
-      // 回调内抛错（模拟 SDK 静默吞前的场景）
+  test('Pitfall 1 自愈：onStepFinish 回调内抛错 → 主流程不中断', async () => {
+    mockGenerateText(async (opts) => {
       opts.onStepFinish?.({ stepNumber: 0, usage: undefined });
     });
 
-    // �?mock �?recordStep 在第一次调用时抛错（模拟极端情况）
-    // 由于 recordStep 内部�?no-throw，外�?onStepFinish try/catch 再兜底，
-    // runAgentLoop 不应抛错
     const result = await runAgentLoop(makeState());
     expect(result).toBeDefined();
     expect(result.endReason).not.toBe('error');

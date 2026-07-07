@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+﻿import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import {
   normalizeUrl,
   getUrlHash,
@@ -12,30 +12,30 @@ import {
 } from './url-tracker.js';
 import { useTempDataDir } from '../../test/helpers.js';
 
-describe('url-tracker 纯函�?, () => {
-  test('normalizeUrl 去协�?查询参数/锚点', () => {
+describe('url-tracker 纯函数', () => {
+  test('normalizeUrl 去协议/查询参数/锚点', () => {
     expect(normalizeUrl('https://a.com/b?x=1#y')).toBe('a.com/b');
     expect(normalizeUrl('http://a.com/b')).toBe('a.com/b');
   });
 
-  test('getUrlHash 对相同归一�?URL 返回相同 hash', () => {
+  test('getUrlHash 对相同归一化 URL 返回相同 hash', () => {
     expect(getUrlHash('https://a.com/b?x=1')).toBe(getUrlHash('http://a.com/b'));
   });
 
   test('extractUrl 从文本提取以 https 开头的 URL', () => {
-    // NOTE: extractUrl 的正则当前排�?ASCII 句号 '.'，会在域名首个点处截�?
+    // NOTE: extractUrl 的正则当前排除 ASCII 句号 '.'，会在域名首个点处截断
     // （既有缺陷，另行报告），故此处只验证能提取到 https 开头的串，不断言完整域名
-    const url = extractUrl('看这�?https://example.com/page');
+    const url = extractUrl('看这个 https://example.com/page');
     expect(url).not.toBeNull();
     expect(url!.startsWith('https://')).toBe(true);
   });
 
-  test('extractUrl �?URL 文本返回 null', () => {
-    expect(extractUrl('没有链接的文�?)).toBeNull();
+  test('extractUrl 无 URL 文本返回 null', () => {
+    expect(extractUrl('没有链接的文本')).toBeNull();
   });
 });
 
-describe('url-tracker 持久�?, () => {
+describe('url-tracker 持久化', () => {
   let cleanup: () => void;
 
   beforeEach(() => {
@@ -51,7 +51,7 @@ describe('url-tracker 持久�?, () => {
     expect(await isInCooldown('https://example.com/a', 5)).toBe(true);
   });
 
-  test('超过冷却期返�?false', async () => {
+  test('超过冷却期返回 false', async () => {
     await addVisitedUrl('https://example.com/b');
     const SIX_DAYS_MS = 6 * 24 * 60 * 60 * 1000;
     const store = await loadVisitedUrls();
@@ -63,12 +63,12 @@ describe('url-tracker 持久�?, () => {
     expect(await isInCooldown('https://example.com/b', 5)).toBe(false);
   });
 
-  test('addVisitedUrl 对重�?URL 更新摘要、不新增记录', async () => {
-    await addVisitedUrl('https://example.com/c', '旧摘�?);
-    await addVisitedUrl('https://example.com/c', '新摘�?);
+  test('addVisitedUrl 对重复 URL 更新摘要、不新增记录', async () => {
+    await addVisitedUrl('https://example.com/c', '旧摘要');
+    await addVisitedUrl('https://example.com/c', '新摘要');
 
     const info = await getVisitedInfo('https://example.com/c');
-    expect(info?.lastContent).toBe('新摘�?);
+    expect(info?.lastContent).toBe('新摘要');
 
     const store = await loadVisitedUrls();
     const matches = store.records.filter((r) => r.hash === getUrlHash('https://example.com/c'));
