@@ -23,13 +23,7 @@ data/feedback.json
 .env.*.local
 
 # 数据文件
-data/state.json
-data/history/*.md
-data/memory/*.md
-data/memory/**/*.md
-# 记忆索引 sidecar（MEM-01：运行时派生产物，由 Markdown 重建）
-data/memory/.index.json
-data/wander-history.json
+packages/agent/data/
 
 # 日志
 *.log
