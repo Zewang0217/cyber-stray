@@ -21,7 +21,7 @@ export class ChannelManager {
     for (const channel of enabled) {
       const chConfig = this.config[channel.id];
       try {
-        await channel.init(chConfig as unknown as Record<string, unknown>);
+        await channel.init(chConfig);
         channel.setEventHandler((event: ChannelEvent) => this.emitEvent(event));
         await channel.start();
         this.startedChannels.push(channel);

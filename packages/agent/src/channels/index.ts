@@ -35,3 +35,7 @@ export async function initChannelManager(config: ChannelsConfig): Promise<void> 
   instance = new ChannelManager(registry, config);
   await instance.init();
 }
+
+export function resetChannelManager(): void {
+  instance = null;
+}

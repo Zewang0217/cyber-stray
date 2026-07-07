@@ -57,7 +57,7 @@ export interface ChannelRelationshipEvent {
 export interface ChannelProtocol {
   readonly id: ChannelId;
   readonly name: string;
-  init(config: Record<string, unknown>): Promise<void>;
+  init(config: ChannelsConfig[ChannelId]): Promise<void>;
   start(): Promise<void>;
   stop(): Promise<void>;
   send(content: string, options?: SendOptions): Promise<SendResult>;

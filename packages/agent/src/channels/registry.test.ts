@@ -7,7 +7,7 @@ function makeMockChannel(id: ChannelId, name: string): ChannelProtocol {
   return {
     id,
     name,
-    async init(_config: Record<string, unknown>): Promise<void> {
+    async init(_config: ChannelsConfig[ChannelId]): Promise<void> {
       status = 'connected';
     },
     async start(): Promise<void> {},

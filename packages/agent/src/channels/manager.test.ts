@@ -6,7 +6,7 @@ import type { ChannelId, ChannelProtocol, ChannelEvent, ChannelStatus, SendResul
 function makeMockChannel(
   id: ChannelId,
   name: string,
-  opts: { initFails?: boolean; stopFails?: boolean; sendFails?: boolean } = {},
+  opts: { initFails?: boolean; startFails?: boolean; stopFails?: boolean; sendFails?: boolean } = {},
 ): ChannelProtocol & {
   _lastSendContent?: string;
   _started: boolean;
@@ -19,12 +19,12 @@ function makeMockChannel(
     name,
     _started: false,
     _stopped: false,
-    async init(_config: Record<string, unknown>): Promise<void> {
+    async init(_config: ChannelsConfig[ChannelId]): Promise<void> {
       if (opts.initFails) throw new Error('init failed');
       status = 'disconnected';
     },
     async start(): Promise<void> {
-      if (opts.initFails) throw new Error('start failed');
+      if (opts.startFails) throw new Error('start failed');
       status = 'connected';
       mock._started = true;
     },
@@ -236,5 +236,89 @@ describe('ChannelManager', () => {
     const statuses = manager.getStatuses();
     expect(statuses.get('feishu')).toBe('connected');
     expect(statuses.get('telegram')).toBe('connected');
+  });
+
+  it('init proceeds to other channels when one init fails', async () => {
+    const registry = new ChannelRegistry();
+    const feishu = makeMockChannel('feishu', 'Feishu', { initFails: true });
+    const telegram = makeMockChannel('telegram', 'Telegram');
+    registry.register(feishu);
+    registry.register(telegram);
+
+    const config = makeAllEnabledConfig();
+    const manager = new ChannelManager(registry, config);
+    await manager.init();
+
+    expect(feishu._started).toBe(false);
+    expect(telegram._started).toBe(true);
+  });
+
+  it('init proceeds to other channels when one start fails', async () => {
+    const registry = new ChannelRegistry();
+    const feishu = makeMockChannel('feishu', 'Feishu', { startFails: true });
+    const telegram = makeMockChannel('telegram', 'Telegram');
+    registry.register(feishu);
+    registry.register(telegram);
+
+    const config = makeAllEnabledConfig();
+    const manager = new ChannelManager(registry, config);
+    await manager.init();
+
+    expect(feishu._started).toBe(false);
+    expect(telegram._started).toBe(true);
+  });
+
+  it('shutdown proceeds when stop throws', async () => {
+    const registry = new ChannelRegistry();
+    const feishu = makeMockChannel('feishu', 'Feishu', { stopFails: true });
+    const telegram = makeMockChannel('telegram', 'Telegram');
+    registry.register(feishu);
+    registry.register(telegram);
+
+    const config = makeAllEnabledConfig();
+    const manager = new ChannelManager(registry, config);
+    await manager.init();
+
+    await manager.shutdown();
+    expect(feishu._stopped).toBe(false);
+    expect(telegram._stopped).toBe(true);
+  });
+
+  it('sendTo handles send failure', async () => {
+    const registry = new ChannelRegistry();
+    const feishu = makeMockChannel('feishu', 'Feishu', { sendFails: true });
+    registry.register(feishu);
+
+    const config = makeAllEnabledConfig();
+    const manager = new ChannelManager(registry, config);
+
+    await expect(manager.sendTo('feishu', 'test')).rejects.toThrow('send failed');
+  });
+
+  it('emitEvent catches handler errors', async () => {
+    const registry = new ChannelRegistry();
+    const feishu = makeMockChannel('feishu', 'Feishu');
+    registry.register(feishu);
+
+    const config = makeAllEnabledConfig();
+    const manager = new ChannelManager(registry, config);
+    await manager.init();
+
+    const received: ChannelEvent[] = [];
+    manager.onEvent(() => { throw new Error('handler error'); });
+    manager.onEvent((evt) => received.push(evt));
+
+    const event: ChannelEvent = {
+      type: 'message',
+      channelId: 'feishu',
+      content: 'hello',
+      sender: 'user1',
+      messageId: 'msg-123',
+      raw: {},
+    };
+    feishu._eventHandler!(event);
+
+    expect(received).toHaveLength(1);
+    expect(received[0]).toBe(event);
   });
 });
