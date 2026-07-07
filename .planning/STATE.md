@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 5
-current_phase_name: 推送价值门控
-status: ready
-stopped_at: Phase 4 complete, transitioned to Phase 5
-last_updated: "2026-06-25T12:00:00.000Z"
+current_phase: 6
+current_phase_name: 兴趣可观测性 + 闭环验证
+status: complete
+stopped_at: Phase 6 complete — milestone v1.0 finished
+last_updated: "2026-06-25T18:00:00.000Z"
 last_activity: 2026-06-25
-last_activity_desc: Phase 4 complete — ReflectionEngine + Scheduler + grounding + provenance
+last_activity_desc: Phase 6 complete — interest history + web panel + E2E verification
 progress:
   total_phases: 6
-  completed_phases: 4
-  total_plans: 4
-  completed_plans: 4
-  percent: 67
+  completed_phases: 6
+  total_plans: 6
+  completed_plans: 6
+  percent: 100
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: 5 — 推送价值门控
-Plan: Not started
-Status: Phase 4 complete — ready for Phase 5
-Last activity: 2026-06-25 — Phase 4 complete (ReflectionEngine + Scheduler + grounding + provenance)
+Phase: 6 — 兴趣可观测性 + 闭环验证
+Plan: 3/3 complete
+Status: ✅ v1.0 里程碑完成 — 所有 6 个 Phase 全部交付
+Last activity: 2026-06-25 — Phase 6 complete (interest history + web panel + E2E verification)
 
-Progress: [████████████████████████████████░░░░] 67%
+Progress: [██████████████████████████████████████████] 100%
 
 ## Performance Metrics
 
@@ -92,10 +92,22 @@ Recent decisions affecting current work:
 - [Phase 4]: 部分恢复——Zod 校验失败时逐条 retry insight，合法保留/非法丢弃
 - [Phase 4]: MemoryEntry + provenance 可选字段（untrusted:web / self:reflection），formatMemoryToMarkdown/parseMemoryFrontmatter 支持
 - [Phase 4]: 反思温度 0.4（一致性 > 创造性），markdown 代码块剥离用 start/end 匹配替代 lazy regex
+- [Phase 5]: PushGate 评分公式 0.4×兴趣相关度 + 0.4×用户偏好 + 0.2×内容质量，默认阈值 0.5
+- [Phase 5]: 门控失败默认放行（不阻断 speak 热路径），推送价值分不够只学不推
+- [Phase 5]: 阈值在线校准——基于最近 20 次反馈的点赞/踩率微调，高赞降阈值（宽松）/高踩升阈值（严格），范围 [0.3, 0.8]
+- [Phase 5]: 内容安全扫描——URL 数量检查 + prompt injection 模式匹配，有警告时额外扣分
+- [Phase 5]: 门控拦截时仍记录 URL 去重（避免 LLM 反复尝试推同一链接）
+- [Phase 5]: PushGateConfig 嵌套合并进 agent-config.json，同 consolidation/interests 模式
+- [Phase 6]: 兴趣历史 JSONL 快照，每次 persist 自动记录（去重），best-effort 不阻断热路径
+- [Phase 6]: initializeInterestGraph 启动接线——修复首次运行无 interests.json 时不写种子兴趣的 bug
+- [Phase 6]: Web API /api/interests + /api/interests/history，useInterestGraph hook 30s 轮询
+- [Phase 6]: InterestBars（权重柱状图）+ EntropyGauge（熵值+坍缩告警）+ InterestHistoryChart（SVG 时间序列）
+- [Phase 6]: 坍缩告警：熵 < 1.0 且节点 > 3 时触发 PulseBorder 风格红色告警
+- [Phase 6]: E2E 闭环验证 18 个测试，覆盖 6 大场景
 
 ### Pending Todos
 
-None yet.
+None — v1.0 里程碑完成。
 
 ### Blockers/Concerns
 

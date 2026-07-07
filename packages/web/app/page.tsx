@@ -8,9 +8,13 @@ import {
     AnimatePresence,
 } from "framer-motion";
 import { useAgentState } from "@/hooks/useAgentState";
+import { useInterestGraph } from "@/hooks/useInterestGraph";
 import { CircularGauge } from "@/components/dashboard/CircularGauge";
 import { MoodBadge } from "@/components/dashboard/MoodBadge";
 import { StatCard } from "@/components/dashboard/StatCard";
+import { InterestBars } from "@/components/dashboard/InterestBars";
+import { EntropyGauge } from "@/components/dashboard/EntropyGauge";
+import { InterestHistoryChart } from "@/components/dashboard/InterestHistoryChart";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { PulseBorder } from "@/components/effects/PulseBorder";
 import { HeroStage } from "@/components/effects/HeroStage";
@@ -27,6 +31,14 @@ export default function DashboardPage(): React.ReactElement {
     const [isCheckingIntro, setIsCheckingIntro] = useState(true);
 
     const { state, isLoading, error } = useAgentState();
+    const {
+        nodes: interestNodes,
+        entropy,
+        nodeCount: interestNodeCount,
+        lastUpdated: interestLastUpdated,
+        history: interestHistory,
+        collapse,
+    } = useInterestGraph();
     const { scrollY } = useScroll();
     const heroY = useTransform(scrollY, [0, 300], [0, -50]);
     const heroOpacity = useTransform(scrollY, [0, 200], [1, 0.3]);
@@ -352,6 +364,49 @@ export default function DashboardPage(): React.ReactElement {
                         </div>
                     </div>
                 </motion.div>
+
+                {/* Phase 6: 兴趣图谱进化 */}
+                <motion.div
+                    className="mb-8"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.25 }}
+                >
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="font-heading text-heading font-bold text-text">
+                            兴趣图谱进化
+                        </h2>
+                        {interestLastUpdated && (
+                            <span className="text-xs text-subtext font-mono">
+                                最后更新: {new Date(interestLastUpdated).toLocaleString('zh-CN')}
+                            </span>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* 兴趣权重条（占 2/3） */}
+                        <div className="lg:col-span-2 p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
+                            <h3 className="font-heading text-sm font-bold text-text mb-4">
+                                当前兴趣分布
+                            </h3>
+                            <InterestBars nodes={interestNodes} />
+                        </div>
+                        {/* 熵值仪表（占 1/3） */}
+                        <EntropyGauge
+                            collapse={collapse}
+                            nodeCount={interestNodeCount}
+                        />
+                    </div>
+                    {/* 权重时间序列（仅在有足够历史时显示） */}
+                    {interestHistory.length >= 2 && (
+                        <div className="mt-6 p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
+                            <h3 className="font-heading text-sm font-bold text-text mb-4">
+                                权重演化趋势
+                            </h3>
+                            <InterestHistoryChart history={interestHistory} />
+                        </div>
+                    )}
+                </motion.div>
+
                 {/* 游荡历史 */}
                 <motion.div
                     className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10"

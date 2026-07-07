@@ -18,6 +18,7 @@ import { existsSync } from 'fs';
 import { z } from 'zod';
 import { consola } from '../logger.js';
 import { getDataPath } from '../config.js';
+import { recordInterestSnapshot } from './interest-history.js';
 
 const logger = consola.withTag('InterestGraph');
 
@@ -174,6 +175,8 @@ export class InterestGraph {
   /**
    * 原子持久化兴趣图谱。
    * 并发调用串行排队，避免竞态覆盖。
+   *
+   * Phase 6: 持久化后记录兴趣快照到历史（best-effort，失败不阻断）。
    */
   async persist(): Promise<void> {
     this.data.lastUpdated = new Date().toISOString();
@@ -181,7 +184,37 @@ export class InterestGraph {
       await atomicWriteJson(this.filePath, this.data);
     });
     await this.persistChain;
+
+    // Phase 6: 记录兴趣快照用于可观测性（best-effort）
+    try {
+      await this.recordSnapshot();
+    } catch (err) {
+      logger.warn('记录兴趣快照失败', { err });
+    }
+
     logger.debug('兴趣图谱已持久化', { nodeCount: this.data.nodes.length });
+  }
+
+  /**
+   * Phase 6: 构建并记录兴趣快照。
+   * 内部方法，由 persist() 调用。
+   */
+  private async recordSnapshot(): Promise<void> {
+    const now = Date.now();
+    const snapshotNodes = this.data.nodes.map((n) => ({
+      id: n.id,
+      weight: n.weight,
+      effectiveWeight: this.computeEffectiveWeight(n, now),
+      source: n.source,
+      reinforceCount: n.reinforceCount,
+    }));
+
+    await recordInterestSnapshot({
+      timestamp: new Date().toISOString(),
+      nodes: snapshotNodes,
+      entropy: this.getEntropy(),
+      nodeCount: this.data.nodes.length,
+    });
   }
 
   // ----------------------------------------
