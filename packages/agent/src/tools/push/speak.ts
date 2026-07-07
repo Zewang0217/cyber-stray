@@ -7,7 +7,7 @@ import { registerSpeakTopics } from '../../memory/feedback-pipeline.js';
 
 const logger = consola.withTag('speak');
 
-/** speak 工具内容类型 */
+/** speak 工具内容类型。与 src/memory/push-gate.ts 的 SpeakType 同步保持。 */
 export type SpeakType = 'share' | 'nonsense' | 'article';
 
 /** speak 工具入参 */
@@ -20,6 +20,12 @@ export interface SpeakInput {
 export interface SpeakResult {
   success: boolean;
   pushed: boolean;     // 是否已推送到飞书/Telegram
+  /** Phase 5: 是否被推送门控拦截 */
+  gated?: boolean;
+  /** Phase 5: 门控评分 */
+  gateScore?: number;
+  /** Phase 5: 门控理由 */
+  gateReasons?: string[];
   timestamp: string;
   messageId?: string; // 飞书消息 ID（用于关联反馈）
   error?: string;      // 推送失败时的错误信息

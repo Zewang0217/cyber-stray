@@ -15,8 +15,8 @@
 - [x] **Phase 2: 可进化兴趣图谱** - 替换冻住 agentInterests → 带权图谱，驱动探索 (completed 2026-06-25)
 - [x] **Phase 3: 用户兴趣模型 + 反馈强化** - 填充 profile + 点赞加权 (completed 2026-06-25)
 - [x] **Phase 4: 反思回路** - 周期 LLM 反思：碎片 → 洞察 → 更新兴趣 (completed 2026-06-25)
-- [ ] **Phase 5: 推送价值门控** - speak 前门控；废强制 speak
-- [ ] **Phase 6: 兴趣可观测性 + 闭环验证** - 导出/Web 展示进化兴趣；端到端验证 loop
+- [x] **Phase 5: 推送价值门控** - speak 前门控；废强制 speak (completed 2026-06-25)
+- [x] **Phase 6: 兴趣可观测性 + 闭环验证** - 导出/Web 展示进化兴趣；端到端验证 loop (completed 2026-06-25)
 
 ## Phase Details
 
@@ -118,12 +118,12 @@ Plans:
   2. 门控阈值可配置，并能用点赞率在线校准
   3. 推送前有内容/URL 扫描（防 injection），不可信来源内容被降权/拦截
 
-**Plans**: 2 plans
+**Plans**: 2/2 plans complete
 
 Plans:
 
-- [ ] 05-01: PushGate 决策（内容 × UserProfile × InterestGraph → 推送价值分）+ 接入 speak 调用点
-- [ ] 05-02: 阈值可配置 + 点赞率在线校准 + 推送前内容/URL 扫描
+- [x] 05-01: PushGate 决策（内容 × UserProfile × InterestGraph → 推送价值分）+ 接入 speak 调用点
+- [x] 05-02: 阈值可配置 + 点赞率在线校准 + 推送前内容/URL 扫描
 
 ### Phase 6: 兴趣可观测性 + 闭环验证
 
@@ -141,9 +141,9 @@ Plans:
 
 Plans:
 
-- [ ] 06-01: 兴趣图谱演化导出/日志（权重时间序列）
-- [ ] 06-02: Web 面板展示进化兴趣 + 兴趣熵/坍缩检测告警
-- [ ] 06-03: 端到端验证自进化 loop（探索→学习→反思→进化→推送 闭环用例）
+- [x] 06-01: 兴趣图谱演化导出/日志（权重时间序列）
+- [x] 06-02: Web 面板展示进化兴趣 + 兴趣熵/坍缩检测告警
+- [x] 06-03: 端到端验证自进化 loop（探索→学习→反思→进化→推送 闭环用例）
 
 ## Progress
 
@@ -156,5 +156,5 @@ Phases execute in numeric order；Phase 2/3 在 Phase 1 后可相对并行（弱
 | 2. 可进化兴趣图谱 | 3/3 | Complete    | 2026-06-25 |
 | 3. 用户兴趣模型+反馈强化 | 3/3 | Complete    | 2026-06-25 |
 | 4. 反思回路 | 3/3 | Complete    | 2026-06-25 |
-| 5. 推送价值门控 | 0/2 | Not started | - |
-| 6. 兴趣可观测性+闭环验证 | 0/3 | Not started | - |
+| 5. 推送价值门控 | 2/2 | Complete    | 2026-06-25 |
+| 6. 兴趣可观测性+闭环验证 | 3/3 | Complete    | 2026-06-25 |

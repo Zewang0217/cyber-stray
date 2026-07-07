@@ -5,7 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts'],
-    root: './packages/agent',
+    root: '.',
     testTimeout: 15000,
     hookTimeout: 15000,
   },

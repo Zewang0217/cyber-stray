@@ -7,6 +7,7 @@ import { initFeishuWS, closeFeishuWS } from "./tools/feishu/ws-client.js";
 import { getMemoryStore, getMemoryConsolidator } from "./memory/long-term.js";
 import { cleanupVisitedUrls } from "./tools/dedup/url-tracker.js";
 import { getReflectionScheduler } from "./memory/reflection/index.js";
+import { initializeInterestGraph, buildInterestConfig } from "./memory/interest-graph.js";
 
 let logger: ReturnType<typeof consola.withTag>;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -45,6 +46,19 @@ async function main(): Promise<void> {
     mood: state.mood,
     totalWanders: state.totalWanders,
   });
+
+  // Phase 6: 初始化兴趣图谱（种子 + 衰减 + 首次持久化）
+  // 修复了 initializeInterestGraph 从未在启动流程调用的 bug
+  try {
+    const interestConfig = buildInterestConfig(config.interests);
+    const graph = await initializeInterestGraph(interestConfig);
+    logger.info("兴趣图谱已初始化", {
+      nodeCount: graph.getNodeCount(),
+      entropy: graph.getEntropy().toFixed(3),
+    });
+  } catch (error) {
+    logger.warn("兴趣图谱初始化失败（不阻断启动）", { error: String(error) });
+  }
 
   // 启动一次性 best-effort 记忆维护（D-02：不自动周期触发，定期调度属 Phase 4 反思周期）
   // 失败仅 warn 不阻断启动（T-01-10：consolidator 失败不应让 agent 起不来）

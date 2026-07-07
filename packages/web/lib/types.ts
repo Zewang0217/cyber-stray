@@ -190,3 +190,44 @@ export interface NavItem {
 
 /** 主题类型 */
 export type Theme = 'mocha' | 'latte';
+
+// ============================================
+// Phase 6: 兴趣图谱类型
+// ============================================
+
+/** 兴趣来源 */
+export type InterestSource = 'default' | 'reflection' | 'feedback';
+
+/** 单个兴趣节点数据 */
+export interface InterestNodeData {
+  id: string;
+  weight: number;
+  effectiveWeight: number;
+  source: InterestSource;
+  reinforceCount: number;
+}
+
+/** 兴趣历史快照 */
+export interface InterestSnapshot {
+  timestamp: string;
+  hash: string;
+  nodes: InterestNodeData[];
+  entropy: number;
+  nodeCount: number;
+}
+
+/** GET /api/interests 响应 */
+export interface InterestGraphResponse {
+  nodes: InterestNodeData[];
+  entropy: number;
+  nodeCount: number;
+  lastUpdated: string | null;
+}
+
+/** 坍缩检测结果 */
+export interface CollapseDetection {
+  isCollapsing: boolean;
+  entropy: number;
+  maxEntropy: number;
+  warning: string | null;
+}

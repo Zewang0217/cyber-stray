@@ -32,6 +32,8 @@ type BehaviorConfig = Pick<
   consolidation: NonNullable<AgentConfig['consolidation']>;
   /** Phase 2: 兴趣图谱配置 */
   interests: NonNullable<AgentConfig['interests']>;
+  /** Phase 5: 推送价值门控配置 */
+  pushGate: NonNullable<AgentConfig['pushGate']>;
 };
 
 const defaultBehavior: BehaviorConfig = {
@@ -71,6 +73,26 @@ const defaultBehavior: BehaviorConfig = {
     defaultSeeds: ['科技', 'AI', '互联网'],
     minWeight: 0.05,
   },
+  pushGate: {
+    enabled: true,
+    threshold: 0.5,
+    weights: {
+      interestRelevance: 0.4,
+      userPreference: 0.4,
+      contentQuality: 0.2,
+    },
+    calibration: {
+      enabled: true,
+      windowSize: 20,
+      likeRateHigh: 0.7,
+      dislikeRateHigh: 0.3,
+      adjustStep: 0.05,
+    },
+    contentScan: {
+      enabled: true,
+      maxUrlCount: 5,
+    },
+  },
 };
 
 /**
@@ -97,6 +119,23 @@ function loadBehaviorConfig(): BehaviorConfig {
         interests: {
           ...defaultBehavior.interests,
           ...(file.interests ?? {}),
+        },
+        // Phase 5: 推送门控配置嵌套合并
+        pushGate: {
+          ...defaultBehavior.pushGate,
+          ...(file.pushGate ?? {}),
+          weights: {
+            ...defaultBehavior.pushGate.weights,
+            ...(file.pushGate?.weights ?? {}),
+          },
+          calibration: {
+            ...defaultBehavior.pushGate.calibration,
+            ...(file.pushGate?.calibration ?? {}),
+          },
+          contentScan: {
+            ...defaultBehavior.pushGate.contentScan,
+            ...(file.pushGate?.contentScan ?? {}),
+          },
         },
       };
     } catch (err) {
@@ -145,6 +184,9 @@ export const config: AgentConfig = {
 
   // Phase 2: 兴趣图谱配置
   interests: behavior.interests,
+
+  // Phase 5: 推送价值门控配置
+  pushGate: behavior.pushGate,
 };
 
 /**
