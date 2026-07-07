@@ -1,47 +1,14 @@
 {
   "name": "cyber-stray",
-  "version": "0.1.0",
-  "description": "一只会在互联网上游荡的自动化信息猎犬，有自己的小脾气和行动逻辑",
-  "type": "module",
+  "private": true,
   "scripts": {
-    "dev": "bun run src/index.ts",
-    "start": "bun run src/index.ts",
-    "test": "bun test",
-    "lint": "eslint src/",
-    "typecheck": "bun tsc --noEmit"
-  },
-  "keywords": [
-    "agent",
-    "ai",
-    "automation"
-  ],
-  "author": "zewang",
-  "contributors": [
-    "luobo <luobolegend@gmail.com>"
-  ],
-  "license": "MIT",
-  "dependencies": {
-    "@ai-sdk/deepseek": "^2.0.29",
-    "@ai-sdk/openai": "^3.0.53",
-    "@larksuiteoapi/node-sdk": "^1.62.1",
-    "@mozilla/readability": "^0.6.0",
-    "ai": "6",
-    "consola": "^3.4.2",
-    "ink": "^7.0.1",
-    "jsdom": "^29.0.2",
-    "pptxgenjs": "^4.0.1",
-    "react": "^19.2.5",
-    "react-devtools-core": "^7.0.1",
-    "zod": "4"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/jsdom": "^28.0.1",
-    "@types/mozilla__readability": "^0.4.2",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "typescript": "^5"
-  },
-  "module": "src/index.ts",
-  "private": true
+    "dev": "pnpm -r dev",
+    "dev:agent": "pnpm --filter @cyber-stray/agent dev",
+    "dev:web": "pnpm --filter @cyber-stray/web dev",
+    "dev:slides": "pnpm --filter @cyber-stray/slides dev",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r build"
+  }
 }
