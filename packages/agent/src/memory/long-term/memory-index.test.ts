@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -17,16 +17,16 @@ import {
 } from './types.js';
 
 /**
- * MEM-01 Wave 0 测试：MemoryIndex（JSON sidecar 索引读写）
+ * MEM-01 Wave 0 测试：MemoryIndex（JSON sidecar 索引读写�?
  *
- * 覆盖 PLAN.md <behavior> 7 条断言：
- * 1) 双写一致性（saveJsonIndex → loadJsonIndex → records 含该条）
+ * 覆盖 PLAN.md <behavior> 7 条断言�?
+ * 1) 双写一致性（saveJsonIndex �?loadJsonIndex �?records 含该条）
  * 2) 原子写（写后 .tmp 不残留）
- * 3) 重建（rebuildIndexFromMarkdown 从 4 个 MEMORY_TYPE_PATHS 子目录重建）
- * 4) 索引命中（queryRecent 不读 Markdown 文件）
- * 5) accessedAt 迁移（rebuild 读取 frontmatter accessedAt 写入索引）
- * 6) schema 漂移（删 version → load 触发重建路径）
- * 7) D-09 显式化（非法 JSON → loadJsonIndex 抛 Error，不返默认）
+ * 3) 重建（rebuildIndexFromMarkdown �?4 �?MEMORY_TYPE_PATHS 子目录重建）
+ * 4) 索引命中（queryRecent 不读 Markdown 文件�?
+ * 5) accessedAt 迁移（rebuild 读取 frontmatter accessedAt 写入索引�?
+ * 6) schema 漂移（删 version �?load 触发重建路径�?
+ * 7) D-09 显式化（非法 JSON �?loadJsonIndex �?Error，不返默认）
  */
 
 describe('MemoryIndex', () => {
@@ -44,14 +44,14 @@ describe('MemoryIndex', () => {
     _resetMemoryIndex();
   });
 
-  /** 构造一条有效 MemoryEntry（含可选 accessedAt） */
+  /** 构造一条有�?MemoryEntry（含可�?accessedAt�?*/
   function makeEntry(overrides: Partial<MemoryEntry> = {}): MemoryEntry {
     return {
       id: 'knowledge-1718000000000-abcdef1234567890',
       type: 'knowledge',
       timestamp: '2026-06-20T00:00:00.000Z',
       tags: ['ai', 'llm'],
-      summary: 'DeepSeek V4 开源',
+      summary: 'DeepSeek V4 开�?,
       content: 'DeepSeek V4 开源，Agent 能力第一',
       importance: 0.6,
       accessedAt: '2026-06-20T01:00:00.000Z',
@@ -60,9 +60,9 @@ describe('MemoryIndex', () => {
   }
 
   // ============================================
-  // 1) 双写一致性
+  // 1) 双写一致�?
   // ============================================
-  test('双写一致性：saveJsonIndex 后 loadJsonIndex records 含该条', async () => {
+  test('双写一致性：saveJsonIndex �?loadJsonIndex records 含该�?, async () => {
     const entry = makeEntry();
     const index = new MemoryIndex(jsonPath, basePath);
     await index.upsert(entry);
@@ -74,14 +74,14 @@ describe('MemoryIndex', () => {
     const found = reloaded.records.find((r) => r.id === entry.id);
     expect(found).toBeDefined();
     expect(found!.type).toBe('knowledge');
-    expect(found!.summary).toBe('DeepSeek V4 开源');
+    expect(found!.summary).toBe('DeepSeek V4 开�?);
     expect(found!.filepath).toBe(`${MEMORY_TYPE_PATHS.knowledge}/${entry.id}.md`);
   });
 
   // ============================================
   // 2) 原子写：temp-file + rename，无 .tmp 残留
   // ============================================
-  test('原子写：写后 .index.json 存在、.index.json.tmp 不残留', async () => {
+  test('原子写：写后 .index.json 存在�?index.json.tmp 不残�?, async () => {
     const index = new MemoryIndex(jsonPath, basePath);
     await index.upsert(makeEntry());
     await index.persist();
@@ -89,24 +89,24 @@ describe('MemoryIndex', () => {
     expect(existsSync(jsonPath)).toBe(true);
     expect(existsSync(`${jsonPath}.tmp`)).toBe(false);
 
-    // 落盘内容是合法 JSON 且含 records
+    // 落盘内容是合�?JSON 且含 records
     const content = JSON.parse(readFileSync(jsonPath, 'utf-8'));
     expect(content.records).toBeInstanceOf(Array);
     expect(content.records.length).toBe(1);
   });
 
   // ============================================
-  // 2b) 并发 persist 安全（MEM-01 并发修复回归测试）
+  // 2b) 并发 persist 安全（MEM-01 并发修复回归测试�?
   // ============================================
-  test('并发 persist 安全：多个 persist 并行不崩、不丢、无 tmp 残留', async () => {
+  test('并发 persist 安全：多�?persist 并行不崩、不丢、无 tmp 残留', async () => {
     const index = new MemoryIndex(jsonPath, basePath);
     // 模拟 ReAct 一步内并行多个写工具：并发 upsert + persist
     const N = 8;
     const entries = Array.from({ length: N }, (_, i) =>
       makeEntry({ id: `knowledge-concurrent-${i}`, summary: `并发条目${i}` }),
     );
-    // 修复前（固定 .tmp 名）：并发 rename ENOENT → persist 抛错 → Promise.all reject
-    // 修复后（唯一 tmp + 串行化）：全部成功落盘
+    // 修复前（固定 .tmp 名）：并�?rename ENOENT �?persist 抛错 �?Promise.all reject
+    // 修复后（唯一 tmp + 串行化）：全部成功落�?
     await Promise.all(
       entries.map(async (e) => {
         await index.upsert(e);
@@ -119,17 +119,17 @@ describe('MemoryIndex', () => {
     for (const e of entries) {
       expect(reloaded.records.find((r) => r.id === e.id)).toBeDefined();
     }
-    // 无残留 tmp 文件（所有唯一 tmp 都被 rename 消化）
+    // 无残�?tmp 文件（所有唯一 tmp 都被 rename 消化�?
     const { readdir: readdirAsync } = await import('fs/promises');
     const dirFiles = await readdirAsync(basePath);
     expect(dirFiles.filter((f) => f.includes('.index.json.tmp'))).toEqual([]);
   });
 
   // ============================================
-  // 3) 重建：从 4 个 MEMORY_TYPE_PATHS 子目录 Markdown 重建
+  // 3) 重建：从 4 �?MEMORY_TYPE_PATHS 子目�?Markdown 重建
   // ============================================
-  test('重建：rebuild 后 records 含 4 个 MEMORY_TYPE_PATHS 子目录的 Markdown 条目', async () => {
-    // 在 4 个子目录各造一个 Markdown 文件
+  test('重建：rebuild �?records �?4 �?MEMORY_TYPE_PATHS 子目录的 Markdown 条目', async () => {
+    // �?4 个子目录各造一�?Markdown 文件
     const types = Object.keys(MEMORY_TYPE_PATHS) as Array<keyof typeof MEMORY_TYPE_PATHS>;
     for (const t of types) {
       const dir = join(basePath, MEMORY_TYPE_PATHS[t]);
@@ -155,7 +155,7 @@ describe('MemoryIndex', () => {
     }
   });
 
-  test('重建只扫 MEMORY_TYPE_PATHS：.archive/ 下的 Markdown 不被扫入', async () => {
+  test('重建只扫 MEMORY_TYPE_PATHS�?archive/ 下的 Markdown 不被扫入', async () => {
     const archiveDir = join(basePath, '.archive', MEMORY_TYPE_PATHS.knowledge);
     mkdirSync(archiveDir, { recursive: true });
     const ghostEntry = makeEntry({ id: 'knowledge-ghost-archived' });
@@ -175,15 +175,15 @@ describe('MemoryIndex', () => {
   // ============================================
   // 4) 索引命中：queryRecent 不读 Markdown 文件
   // ============================================
-  test('索引命中：queryRecent 不读 Markdown（Markdown 不存在仍正常返回）', async () => {
+  test('索引命中：queryRecent 不读 Markdown（Markdown 不存在仍正常返回�?, async () => {
     const index = new MemoryIndex(jsonPath, basePath);
     const entry = makeEntry();
     await index.upsert(entry);
     await index.persist();
 
-    // 关键断言：basePath 下根本没有 Markdown 文件（只持久化了 .index.json）
-    // 若 queryRecent 试图读 Markdown，会因为文件不存在而抛错或返回空。
-    // 它能正常返回 records，证明走的是 JSON 索引、不读 Markdown。
+    // 关键断言：basePath 下根本没�?Markdown 文件（只持久化了 .index.json�?
+    // �?queryRecent 试图�?Markdown，会因为文件不存在而抛错或返回空�?
+    // 它能正常返回 records，证明走的是 JSON 索引、不�?Markdown�?
     const dir = join(basePath, MEMORY_TYPE_PATHS.knowledge);
     expect(existsSync(dir)).toBe(false);
 
@@ -195,9 +195,9 @@ describe('MemoryIndex', () => {
   });
 
   // ============================================
-  // 5) accessedAt 迁移：rebuild 读 frontmatter accessedAt 写入索引
+  // 5) accessedAt 迁移：rebuild �?frontmatter accessedAt 写入索引
   // ============================================
-  test('accessedAt 迁移：rebuild 将 frontmatter accessedAt 写入索引字段', async () => {
+  test('accessedAt 迁移：rebuild �?frontmatter accessedAt 写入索引字段', async () => {
     const dir = join(basePath, MEMORY_TYPE_PATHS.knowledge);
     mkdirSync(dir, { recursive: true });
     const entry = makeEntry({
@@ -221,9 +221,9 @@ describe('MemoryIndex', () => {
   });
 
   // ============================================
-  // 6) schema 漂移：version 缺失 → loadJsonIndex 抛错（D-09）
+  // 6) schema 漂移：version 缺失 �?loadJsonIndex 抛错（D-09�?
   // ============================================
-  test('schema 漂移：手改 .index.json 删 version 字段 → loadJsonIndex 抛 Error', async () => {
+  test('schema 漂移：手�?.index.json �?version 字段 �?loadJsonIndex �?Error', async () => {
     await writeFile(
       jsonPath,
       JSON.stringify({ lastUpdated: '2026-06-20T00:00:00.000Z', records: [] }),
@@ -234,16 +234,16 @@ describe('MemoryIndex', () => {
   });
 
   // ============================================
-  // 7) D-09 显式化：非法 JSON → loadJsonIndex 抛 Error（不返默认）
+  // 7) D-09 显式化：非法 JSON �?loadJsonIndex �?Error（不返默认）
   // ============================================
-  test('D-09 解析失败：手改 .index.json 为非法 JSON → loadJsonIndex 抛 Error（不返默认）', async () => {
+  test('D-09 解析失败：手�?.index.json 为非�?JSON �?loadJsonIndex �?Error（不返默认）', async () => {
     await writeFile(jsonPath, '{ not valid json !!!', 'utf-8');
 
     expect(loadJsonIndex(jsonPath)).rejects.toThrow();
   });
 
   // ============================================
-  // 补充：existsSync false → loadJsonIndex 返默认空索引（not found 合法）
+  // 补充：existsSync false �?loadJsonIndex 返默认空索引（not found 合法�?
   // ============================================
   test('not found 合法空值：文件不存在时 loadJsonIndex 返默认空索引', async () => {
     const loaded = await loadJsonIndex(join(basePath, 'does-not-exist.json'));
@@ -252,26 +252,26 @@ describe('MemoryIndex', () => {
   });
 
   // ============================================
-  // 补充：upsert 存在则更新 / 不存在则追加；remove 删除；touchAccessedAt/getAccessedAt
+  // 补充：upsert 存在则更�?/ 不存在则追加；remove 删除；touchAccessedAt/getAccessedAt
   // ============================================
-  test('upsert：存在则更新、不存在则追加', async () => {
+  test('upsert：存在则更新、不存在则追�?, async () => {
     const index = new MemoryIndex(jsonPath, basePath);
     const entry = makeEntry();
     await index.upsert(entry);
     expect((await index.queryRecent({ count: 10 })).length).toBe(1);
 
-    // 更新（importance 变化）
+    // 更新（importance 变化�?
     await index.upsert({ ...entry, importance: 0.95 });
     const records = await index.queryRecent({ count: 10 });
     expect(records.length).toBe(1);
     expect(records[0]!.importance).toBe(0.95);
   });
 
-  test('remove：按 id 删除条目；不存在的 id 不抛错', async () => {
+  test('remove：按 id 删除条目；不存在�?id 不抛�?, async () => {
     const index = new MemoryIndex(jsonPath, basePath);
     const entry = makeEntry();
     await index.upsert(entry);
-    await index.remove(entry.type, 'nonexistent-id'); // 不抛错
+    await index.remove(entry.type, 'nonexistent-id'); // 不抛�?
     expect((await index.queryRecent({ count: 10 })).length).toBe(1);
 
     await index.remove(entry.type, entry.id);
@@ -291,7 +291,7 @@ describe('MemoryIndex', () => {
     expect(() => new Date(now!).toISOString()).not.toThrow();
   });
 
-  test('queryRecent：支持 type/since 过滤 + count 裁剪 + 时间降序', async () => {
+  test('queryRecent：支�?type/since 过滤 + count 裁剪 + 时间降序', async () => {
     const index = new MemoryIndex(jsonPath, basePath);
     await index.upsert(makeEntry({ id: 'k-1', timestamp: '2026-06-01T00:00:00.000Z', type: 'knowledge' }));
     await index.upsert(makeEntry({ id: 'k-2', timestamp: '2026-06-20T00:00:00.000Z', type: 'knowledge' }));
@@ -314,7 +314,7 @@ describe('MemoryIndex', () => {
     expect(limited.map((r) => r.id)).toEqual(['k-2']);
   });
 
-  test('getMemoryIndex：模块级单例（同一 basePath 复用）', async () => {
+  test('getMemoryIndex：模块级单例（同一 basePath 复用�?, async () => {
     const a = getMemoryIndex(basePath);
     const b = getMemoryIndex(basePath);
     expect(a).toBe(b);
@@ -337,7 +337,7 @@ describe('loadJsonIndex / saveJsonIndex', () => {
     _resetMemoryIndex();
   });
 
-  test('saveJsonIndex → loadJsonIndex 往返一致', async () => {
+  test('saveJsonIndex �?loadJsonIndex 往返一�?, async () => {
     const path = join(basePath, '.index.json');
     const data = {
       version: 1 as const,

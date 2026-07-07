@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { writeFile } from 'fs/promises';
 import { loadState, saveState, updateState } from './state.js';
 import { getDataPath } from '../config.js';
@@ -15,7 +15,7 @@ describe('agent/state', () => {
     cleanup();
   });
 
-  test('loadState 首次：返回默认状态', async () => {
+  test('loadState 首次：返回默认状�?, async () => {
     const state = await loadState();
     expect(state.boredom).toBe(30);
     expect(state.mood).toBe('curious');
@@ -23,7 +23,7 @@ describe('agent/state', () => {
     expect(state.totalWanders).toBe(0);
   });
 
-  test('save→load 往返一致', async () => {
+  test('save→load 往返一�?, async () => {
     const custom = makeState({ mood: 'grumpy', temper: 75, totalWanders: 9 });
     await saveState(custom);
 
@@ -33,7 +33,7 @@ describe('agent/state', () => {
     expect(got.totalWanders).toBe(9);
   });
 
-  test('updateState 部分更新合并，不覆盖未涉及字段', async () => {
+  test('updateState 部分更新合并，不覆盖未涉及字�?, async () => {
     await saveState(makeState({ boredom: 40, energy: 90 }));
     await updateState({ mood: 'excited' });
 
@@ -43,8 +43,8 @@ describe('agent/state', () => {
     expect(got.energy).toBe(90);
   });
 
-  test('loadState 容错：非法 JSON 回退默认且不抛错', async () => {
-    await writeFile(getDataPath('state.json'), '{ 这不是合法 json', 'utf-8');
+  test('loadState 容错：非�?JSON 回退默认且不抛错', async () => {
+    await writeFile(getDataPath('state.json'), '{ 这不是合�?json', 'utf-8');
 
     const state = await loadState();
     expect(state.boredom).toBe(30);
