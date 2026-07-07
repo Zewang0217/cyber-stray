@@ -6,6 +6,8 @@
  * 注意：飞书自定义机器人 Webhook 不支持卡片按钮回调，
  * 因此卡片只展示内容，按钮提示仅供参考。
  * 实际反馈通过表情互动（👍👎）实现。
+ *
+ * @deprecated Moved to channels/feishu/. Will be deleted in Phase 6.
  */
 
 /** 卡片消息结构 */

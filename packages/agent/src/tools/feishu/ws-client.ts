@@ -6,6 +6,8 @@
  *
  * 注意：飞书自定义机器人 Webhook 推送不支持卡片按钮回调，
  * 因此改用表情互动事件。用户对消息添加/移除 👍 或 👎 时触发。
+ *
+ * @deprecated Moved to channels/feishu/. Will be deleted in Phase 6.
  */
 
 import { createLarkChannel, type ReactionEvent } from '@larksuiteoapi/node-sdk';

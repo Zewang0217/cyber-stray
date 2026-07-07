@@ -1,7 +1,5 @@
 import { appendFile, mkdir } from 'fs/promises';
 import { consola } from '../../logger.js';
-import { config } from '../../config.js';
-import { sendFeishuMessage } from './lark-sender.js';
 import { getInterestGraph } from '../../memory/interest-graph.js';
 import { registerSpeakTopics } from '../../memory/feedback-pipeline.js';
 
@@ -50,49 +48,10 @@ async function appendSpeakHistory(record: SpeakRecord): Promise<void> {
 }
 
 /**
- * 推送到 Telegram
- */
-async function pushToTelegram(content: string): Promise<void> {
-  const token = config.telegramBotToken;
-  const chatId = config.telegramChatId;
-
-  if (!token || !chatId) {
-    throw new Error('未配置 TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID');
-  }
-
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
-  const body = JSON.stringify({
-    chat_id: chatId,
-    text: content,
-    parse_mode: 'HTML',
-  });
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body,
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Telegram 推送失败: HTTP ${response.status}`);
-  }
-
-  const data = (await response.json()) as { ok?: boolean; description?: string };
-  if (!data.ok) {
-    throw new Error(`Telegram 推送失败: ${data.description ?? '未知错误'}`);
-  }
-}
-
-/**
  * speak 工具：表达（分享链接、碎碎念、写文章）
  *
- * 会尝试推送到所有已配置的渠道（飞书、Telegram）。
+ * 通过 ChannelManager.broadcast 推送到所有已配置的渠道。
  * 推送失败时记录错误但不中断 ReAct Loop（返回 pushed: false）。
- *
- * 飞书发送方式根据 feishu.pushMode 配置：
- * - lark_channel: 使用 LarkChannel（默认）
- * - webhook: 使用传统 Webhook
  */
 export async function speak(content: string, type: SpeakType): Promise<SpeakResult> {
   const timestamp = new Date().toISOString();
@@ -119,51 +78,27 @@ export async function speak(content: string, type: SpeakType): Promise<SpeakResu
   let messageId: string | undefined;
   const pushErrors: string[] = [];
 
-  // 推送到飞书（根据配置选择方式）
-  if (config.feishu?.pushMode === 'lark_channel') {
-    // LarkChannel 方式
-    if (config.larkAppId && config.larkAppSecret) {
-      try {
-        messageId = await sendFeishuMessage(content);
+  try {
+    const { getChannelManager } = await import('../../channels/index.js');
+    const cm = getChannelManager();
+    const results = await cm.broadcast(content);
+
+    for (const result of results) {
+      if (result.success) {
         pushed = true;
-        logger.success('飞书（LarkChannel）推送成功', { messageId });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        pushErrors.push(`飞书: ${message}`);
-        logger.error('飞书（LarkChannel）推送失败', { error: message });
+        if (result.messageId && !messageId) {
+          messageId = result.messageId;
+        }
+      } else {
+        pushErrors.push(`[${result.channelId}] ${result.error}`);
       }
-    } else {
-      logger.warn('未配置 LARK_APP_ID/LARK_APP_SECRET，无法使用 LarkChannel');
     }
-  } else if (config.feishuWebhook) {
-    // Webhook 方式
-    try {
-      messageId = await sendFeishuMessage(content);
-      pushed = true;
-      logger.success('飞书（Webhook）推送成功', { messageId });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      pushErrors.push(`飞书: ${message}`);
-      logger.error('飞书（Webhook）推送失败', { error: message });
-    }
+  } catch {
+    // ChannelManager not available yet — no channels configured
   }
 
-  // 尝试推送到 Telegram
-  if (config.telegramBotToken && config.telegramChatId) {
-    try {
-      await pushToTelegram(content);
-      pushed = true;
-      logger.success('Telegram 推送成功');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      pushErrors.push(`Telegram: ${message}`);
-      logger.error('Telegram 推送失败', { error: message });
-    }
-  }
-
-  // 没有配置任何推送渠道时，只记录日志
-  if (!config.feishu?.pushMode && !config.feishuWebhook && (!config.telegramBotToken || !config.telegramChatId)) {
-    logger.info('无推送渠道配置，内容仅记录日志', { content });
+  if (!pushed && pushErrors.length === 0) {
+    logger.info('无推送渠道配置，内容仅记录日志');
   }
 
   // 记录到历史文件

@@ -3,10 +3,12 @@ import { loadState, heartbeat, saveState } from "./agent/state.js";
 import { runAgentLoop } from "./agent/react.js";
 import { initLogger, consola } from "./logger.js";
 import { updateState, shutdownTUI, isTuiActive } from "./tui/index.js";
-import { initFeishuWS, closeFeishuWS } from "./tools/feishu/ws-client.js";
 import { getMemoryStore, getMemoryConsolidator } from "./memory/long-term.js";
 import { cleanupVisitedUrls } from "./tools/dedup/url-tracker.js";
 import { getReflectionScheduler } from "./memory/reflection/index.js";
+import { initChannelManager, getChannelManager } from "./channels/index.js";
+import { processFeedback } from "./memory/feedback-pipeline.js";
+import type { ChannelsConfig } from "./channels/types.js";
 
 let logger: ReturnType<typeof consola.withTag>;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -34,7 +36,23 @@ async function main(): Promise<void> {
   }
 
   // 初始化飞书事件订阅（WebSocket 长连接）
-  await initFeishuWS();
+  try {
+    await initChannelManager(config.channels! as ChannelsConfig);
+    logger.info('Channel 层初始化完成');
+
+    const cm = getChannelManager();
+    cm.onEvent((event) => {
+      if (event.type === 'reaction') {
+        processFeedback(
+          event.emoji === 'thumbs_up' ? 'like' : 'dislike',
+          event.messageId,
+          event.userId,
+        ).catch((err) => logger.warn('反馈管道处理失败', { error: String(err) }));
+      }
+    });
+  } catch (error) {
+    logger.warn('Channel 层初始化部分失败（不阻断启动）', { error: String(error) });
+  }
 
   // 加载状态
   const state = await loadState();
@@ -150,7 +168,12 @@ function registerSignalHandlers(): void {
       }
 
       // 2. 关闭飞书 WebSocket 连接
-      await closeFeishuWS();
+      try {
+        await getChannelManager().shutdown();
+        logger.info('所有 Channel 已关闭');
+      } catch (err) {
+        logger.warn('关闭 Channel 失败', { error: String(err) });
+      }
 
       // 3. 保存当前状态
       try {

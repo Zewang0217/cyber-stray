@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'fs';
 import type { AgentConfig, EnergyRecoveryTier } from './types.js';
+import type { ChannelsConfig } from './channels/types.js';
 
 const CONFIG_PATH = 'data/agent-config.json';
 
@@ -26,6 +27,7 @@ type BehaviorConfig = Pick<
   | 'outputLanguage'
   | 'urlCooldownDays'
   | 'generateTextMaxRetries'
+  | 'channels'
 > & {
   feishu?: AgentConfig['feishu'];
   /** D-03 合并/清理阈值（BehaviorConfig 内必填，默认值由 defaultBehavior 提供） */
@@ -71,6 +73,7 @@ const defaultBehavior: BehaviorConfig = {
     defaultSeeds: ['科技', 'AI', '互联网'],
     minWeight: 0.05,
   },
+  channels: {},
 };
 
 /**
@@ -98,6 +101,11 @@ function loadBehaviorConfig(): BehaviorConfig {
           ...defaultBehavior.interests,
           ...(file.interests ?? {}),
         },
+        // Phase 2: 多渠道配置嵌套合并
+        channels: {
+          ...defaultBehavior.channels,
+          ...(file.channels ?? {}),
+        },
       };
     } catch (err) {
       console.warn(`[config] agent-config.json 解析失败，使用默认配置: ${err}`);
@@ -114,6 +122,29 @@ function loadBehaviorConfig(): BehaviorConfig {
 // CR-04：只读一次 agent-config.json（旧版模块加载期读 4 次，既浪费 I/O 又在并发改文件时
 // 可能读到不一致快照）。behavior 已含 W2 嵌套合并后的 consolidation。
 const behavior = loadBehaviorConfig();
+
+const channelsFromConfig: AgentConfig['channels'] = {
+  feishu: {
+    enabled: behavior.channels?.feishu?.enabled ?? !!(process.env.LARK_APP_ID || process.env.FEISHU_WEBHOOK),
+    pushMode: behavior.channels?.feishu?.pushMode ?? (process.env.LARK_APP_ID ? 'lark_channel' : 'webhook'),
+    receiveMode: behavior.channels?.feishu?.receiveMode ?? 'reaction',
+    chatId: behavior.channels?.feishu?.chatId ?? behavior.feishu?.chatId ?? '',
+  },
+  qqbot: {
+    enabled: behavior.channels?.qqbot?.enabled ?? false,
+    pushMode: behavior.channels?.qqbot?.pushMode ?? 'c2c_group',
+    receiveMode: behavior.channels?.qqbot?.receiveMode ?? 'ws_gateway',
+  },
+  'agent-qq-mail': {
+    enabled: behavior.channels?.['agent-qq-mail']?.enabled ?? false,
+    pushMode: behavior.channels?.['agent-qq-mail']?.pushMode ?? 'smtp',
+    receiveMode: behavior.channels?.['agent-qq-mail']?.receiveMode ?? 'imap',
+  },
+  telegram: {
+    enabled: behavior.channels?.telegram?.enabled ?? !!(process.env.TELEGRAM_BOT_TOKEN),
+    pushMode: 'bot_api' as const,
+  },
+};
 
 export const config: AgentConfig = {
   ...behavior,
@@ -145,6 +176,9 @@ export const config: AgentConfig = {
 
   // Phase 2: 兴趣图谱配置
   interests: behavior.interests,
+
+  // Phase 2: 多渠道配置
+  channels: channelsFromConfig,
 };
 
 /**

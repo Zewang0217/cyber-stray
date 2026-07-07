@@ -4,6 +4,8 @@
  * 支持两种发送方式：
  * 1. LarkChannel（机器人双向）- 默认
  * 2. Webhook（传统方式）
+ *
+ * @deprecated Moved to channels/feishu/. Will be deleted in Phase 6.
  */
 
 import { createLarkChannel, type SendResult } from '@larksuiteoapi/node-sdk';

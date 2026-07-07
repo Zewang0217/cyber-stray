@@ -182,6 +182,14 @@ export interface AgentConfig {
     defaultSeeds: string[];       // 默认种子兴趣
     minWeight: number;          // dormancy 阈值
   };
+
+  // Phase 2: 多渠道配置
+  channels?: {
+    feishu?: { enabled?: boolean; pushMode?: 'lark_channel' | 'webhook'; receiveMode?: 'reaction' | 'none'; chatId?: string; };
+    qqbot?: { enabled?: boolean; pushMode?: 'c2c' | 'c2c_group'; receiveMode?: 'ws_gateway' | 'none'; };
+    'agent-qq-mail'?: { enabled?: boolean; pushMode?: string; receiveMode?: string; };
+    telegram?: { enabled?: boolean; pushMode?: 'bot_api'; };
+  };
 }
 
 // ============================================

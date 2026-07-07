@@ -21,6 +21,7 @@ export { ChannelManager } from './manager.js';
 
 import { ChannelRegistry } from './registry.js';
 import { ChannelManager } from './manager.js';
+import { feishuChannel } from './feishu/channel.js';
 import type { ChannelsConfig } from './types.js';
 
 let instance: ChannelManager | null = null;
@@ -32,6 +33,7 @@ export function getChannelManager(): ChannelManager {
 
 export async function initChannelManager(config: ChannelsConfig): Promise<void> {
   const registry = new ChannelRegistry();
+  registry.register(feishuChannel);
   instance = new ChannelManager(registry, config);
   await instance.init();
 }
