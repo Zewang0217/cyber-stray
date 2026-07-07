@@ -1,4 +1,4 @@
-import { describe, test, expect, afterEach } from 'bun:test';
+import { describe, test, expect, afterEach } from 'vitest';
 import { validateConfig, getRecoveryTier, getDataPath } from './config.js';
 
 describe('getDataPath', () => {
@@ -18,7 +18,7 @@ describe('getDataPath', () => {
 });
 
 describe('getRecoveryTier', () => {
-  test('低能量返回第一阶梯（recovery=10）', () => {
+  test('低能量返回第一阶梯（recovery=10�?, () => {
     expect(getRecoveryTier(5).recovery).toBe(10);
   });
 
@@ -26,7 +26,7 @@ describe('getRecoveryTier', () => {
     expect(getRecoveryTier(10).recovery).toBe(10);
   });
 
-  test('高能量返回最高阶梯（recovery=2）', () => {
+  test('高能量返回最高阶梯（recovery=2�?, () => {
     expect(getRecoveryTier(90).recovery).toBe(2);
   });
 });

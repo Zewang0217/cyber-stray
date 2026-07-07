@@ -1,5 +1,5 @@
 {
-  "name": "cyber-stray-slides",
+  "name": "@cyber-stray/slides",
   "version": "1.0.0",
   "description": "Cyber-Stray 比赛路演 PPT",
   "type": "commonjs",

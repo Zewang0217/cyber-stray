@@ -1,11 +1,7 @@
-# Node/Bun
+# pnpm
 node_modules/
 dist/
 *.tsbuildinfo
-bun.lock
-
-# Package lock (use bun.lock)
-package-lock.json
 
 # Presentations
 *.pptx
