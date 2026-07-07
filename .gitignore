@@ -59,3 +59,6 @@ data/dedup/visited-urls.json
 # 本地脚本/锁文件（不入库）
 generate-ppt.cjs
 skills-lock.json
+
+# agent开发时查阅wiki
+docs/agent-wiki/
