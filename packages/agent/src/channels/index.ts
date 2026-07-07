@@ -22,6 +22,9 @@ export { ChannelManager } from './manager.js';
 import { ChannelRegistry } from './registry.js';
 import { ChannelManager } from './manager.js';
 import { feishuChannel } from './feishu/channel.js';
+import { qqbotChannel } from './qqbot/channel.js';
+import { agentQQMailChannel } from './agent-qq-mail/channel.js';
+import { telegramChannel } from './telegram/channel.js';
 import type { ChannelsConfig } from './types.js';
 
 let instance: ChannelManager | null = null;
@@ -34,6 +37,9 @@ export function getChannelManager(): ChannelManager {
 export async function initChannelManager(config: ChannelsConfig): Promise<void> {
   const registry = new ChannelRegistry();
   registry.register(feishuChannel);
+  registry.register(qqbotChannel);
+  registry.register(agentQQMailChannel);
+  registry.register(telegramChannel);
   instance = new ChannelManager(registry, config);
   await instance.init();
 }
