@@ -28,6 +28,7 @@ async function main(): Promise<void> {
 
   // 验证配置
   try {
+    // TODO: 整合config模块
     validateConfig();
     logger.info("配置验证通过");
   } catch (error) {
@@ -38,20 +39,24 @@ async function main(): Promise<void> {
   // 初始化飞书事件订阅（WebSocket 长连接）
   try {
     await initChannelManager(config.channels! as ChannelsConfig);
-    logger.info('Channel 层初始化完成');
+    logger.info("Channel 层初始化完成");
 
     const cm = getChannelManager();
     cm.onEvent((event) => {
-      if (event.type === 'reaction') {
+      if (event.type === "reaction") {
         processFeedback(
-          event.emoji === 'thumbs_up' ? 'like' : 'dislike',
+          event.emoji === "thumbs_up" ? "like" : "dislike",
           event.messageId,
           event.userId,
-        ).catch((err) => logger.warn('反馈管道处理失败', { error: String(err) }));
+        ).catch((err) =>
+          logger.warn("反馈管道处理失败", { error: String(err) }),
+        );
       }
     });
   } catch (error) {
-    logger.warn('Channel 层初始化部分失败（不阻断启动）', { error: String(error) });
+    logger.warn("Channel 层初始化部分失败（不阻断启动）", {
+      error: String(error),
+    });
   }
 
   // 加载状态
@@ -97,17 +102,24 @@ async function runStartupMemoryMaintenance(): Promise<void> {
   try {
     await getMemoryStore().ensureIndexConsistent();
   } catch (error) {
-    logger.warn("启动期索引校验/重建失败（不阻断启动）", { error: String(error) });
+    logger.warn("启动期索引校验/重建失败（不阻断启动）", {
+      error: String(error),
+    });
   }
 
   const urlCleanupDays = config.consolidation?.urlCleanupDays ?? 30;
   try {
     const removed = await cleanupVisitedUrls(urlCleanupDays);
     if (removed > 0) {
-      logger.info("启动期清理过期 URL 去重记录", { removed, urlCleanupDays });
+      logger.info("启动期清理过期 URL 去重记录", {
+        removed,
+        urlCleanupDays,
+      });
     }
   } catch (error) {
-    logger.warn("cleanupVisitedUrls 启动执行失败（不阻断启动）", { error: String(error) });
+    logger.warn("cleanupVisitedUrls 启动执行失败（不阻断启动）", {
+      error: String(error),
+    });
   }
 
   try {
@@ -116,7 +128,9 @@ async function runStartupMemoryMaintenance(): Promise<void> {
     const expired = await consolidator.cleanupExpired();
     logger.info("启动期记忆 consolidator 一次性执行", { merged, expired });
   } catch (error) {
-    logger.warn("记忆 consolidator 启动执行失败（不阻断启动）", { error: String(error) });
+    logger.warn("记忆 consolidator 启动执行失败（不阻断启动）", {
+      error: String(error),
+    });
   }
 }
 
@@ -135,7 +149,9 @@ async function initReflectionScheduler(): Promise<void> {
       totalReflections: scheduler.getState().totalReflections,
     });
   } catch (error) {
-    logger.warn("反思调度器初始化失败（不阻断启动）", { error: String(error) });
+    logger.warn("反思调度器初始化失败（不阻断启动）", {
+      error: String(error),
+    });
   }
 }
 
@@ -167,12 +183,13 @@ function registerSignalHandlers(): void {
         logger.info("心跳定时器已停止");
       }
 
+      // TODO: 整合channel模块
       // 2. 关闭飞书 WebSocket 连接
       try {
         await getChannelManager().shutdown();
-        logger.info('所有 Channel 已关闭');
+        logger.info("所有 Channel 已关闭");
       } catch (err) {
-        logger.warn('关闭 Channel 失败', { error: String(err) });
+        logger.warn("关闭 Channel 失败", { error: String(err) });
       }
 
       // 3. 保存当前状态

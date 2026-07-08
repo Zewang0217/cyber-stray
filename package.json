@@ -1,14 +1,17 @@
 {
-  "name": "cyber-stray",
-  "private": true,
-  "scripts": {
-    "dev": "pnpm -r dev",
-    "dev:agent": "pnpm --filter @cyber-stray/agent dev",
-    "dev:web": "pnpm --filter @cyber-stray/web dev",
-    "dev:slides": "pnpm --filter @cyber-stray/slides dev",
-    "test": "pnpm -r test",
-    "lint": "pnpm -r lint",
-    "typecheck": "pnpm -r typecheck",
-    "build": "pnpm -r build"
-  }
+    "name": "cyber-stray",
+    "private": true,
+    "scripts": {
+        "dev": "pnpm -r dev",
+        "dev:agent": "pnpm --filter @cyber-stray/agent dev",
+        "dev:web": "pnpm --filter @cyber-stray/web dev",
+        "dev:slides": "pnpm --filter @cyber-stray/slides dev",
+        "test": "pnpm -r test",
+        "lint": "pnpm -r lint",
+        "typecheck": "pnpm -r typecheck",
+        "build": "pnpm -r build"
+    },
+    "devDependencies": {
+        "prettier": "3.9.4"
+    }
 }
