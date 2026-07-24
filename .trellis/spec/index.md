@@ -29,10 +29,12 @@ pnpm typecheck          # TS 类型检查
 
 ## 规范导航
 
-- [agent/](agent/index.md) — agent 架构与核心模块
-- [agent/conventions.md](agent/conventions.md) — 工具/记忆/反思/异步的硬约定
-- [web/](web/index.md) — Web 仪表盘规范
-- [guides/](guides/index.md) — 核心价值、架构决策、行为红线、Git 规范
+> Trellis 按"层（subdir）"注入包级 spec：`spec/<package>/<layer>/index.md`。
+
+- [agent/core/](agent/core/index.md) — agent 架构 + 开发前 checklist（layer: `core`）
+- [agent/core/conventions.md](agent/core/conventions.md) — 工具/记忆/反思/异步的硬约定
+- [web/frontend/](web/frontend/index.md) — Web 仪表盘规范（layer: `frontend`，只读契约）
+- [guides/](guides/index.md) — 核心价值、架构决策、行为红线、Git 规范、思维指南
 
 ## 深度参考
 

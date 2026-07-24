@@ -21,7 +21,7 @@
 
 ## 行为红线
 
-- 禁止随意兜底（错误就该报错，不用默认值掩盖）— 详见 [agent/conventions.md](../agent/conventions.md)
+- 禁止随意兜底（错误就该报错，不用默认值掩盖）— 详见 [agent/core/conventions.md](../agent/core/conventions.md)
 - 数据库改动须先征得同意
 - 分步骤工作：较大任务分步汇报，不一次性堆大量改动
 - Think First：写代码前用 1-2 句说方案，不边写边改
@@ -34,3 +34,8 @@
 - 一个提交 = 一个逻辑单元（不按文件拆，按功能点）
 - 分支：`feat/xxx`、`fix/xxx`、`refactor/xxx`
 - Push 前查 diff：无 `console.log` / `print` / TODO 遗留，无敏感信息（密码/token/私钥）
+
+## 思维指南（Trellis 自带方法论）
+
+- [code-reuse-thinking-guide.md](code-reuse-thinking-guide.md) — 动手写新代码前，先想"能不能复用既有实现"
+- [cross-layer-thinking-guide.md](cross-layer-thinking-guide.md) — 跨层改动时，先理清数据流与层边界
