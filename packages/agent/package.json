@@ -1,0 +1,40 @@
+{
+  "name": "@cyber-stray/agent",
+  "version": "0.1.0",
+  "description": "赛博街溜子 - autonomous web-surfing AI agent",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tsx --env-file=../../.env src/index.ts",
+    "test": "vitest",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/deepseek": "^2.0.29",
+    "@ai-sdk/openai": "^3.0.53",
+    "@larksuiteoapi/node-sdk": "^1.62.1",
+    "@mozilla/readability": "^0.6.0",
+    "ai": "6",
+    "consola": "^3.4.2",
+    "ink": "^7.0.1",
+    "jsdom": "^29.0.2",
+    "pptxgenjs": "^4.0.1",
+    "react": "^19.2.5",
+    "react-devtools-core": "^7.0.1",
+    "zod": "4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "@types/jsdom": "^28.0.1",
+    "@types/mozilla__readability": "^0.4.2",
+    "@types/node": "^20",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9",
+    "tsx": "^4",
+    "typescript": "^5",
+    "typescript-eslint": "^8",
+    "vitest": "^3"
+  }
+}
