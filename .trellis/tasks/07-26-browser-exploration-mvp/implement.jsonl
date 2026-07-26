@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/agent/core/index.md", "reason": "agent 架构约定 + 开发前 checklist"}
+{"file": ".trellis/spec/agent/core/conventions.md", "reason": "工具/记忆/反思/异步的硬约定，新工具必须遵守"}
+{"file": ".trellis/spec/agent/backend/index.md", "reason": "backend 层规范入口（错误处理、日志、目录结构）"}
+{"file": ".trellis/spec/agent/backend/error-handling.md", "reason": "BrowserExecutor 错误处理需遵守的规范"}
+{"file": ".trellis/spec/agent/backend/directory-structure.md", "reason": "新文件放置位置需遵守目录结构规范"}
+{"file": ".trellis/spec/agent/backend/quality-guidelines.md", "reason": "质量门禁：测试、lint、typecheck 要求"}
+{"file": ".trellis/spec/guides/index.md", "reason": "跨包思维指南入口"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "避免重复造轮子，复用现有模式"}
+{"file": ".trellis/tasks/07-26-browser-exploration-mvp/research/tool-system.md", "reason": "工具注册模式、ToolDefinition 接口、auto-register 模式"}
+{"file": ".trellis/tasks/07-26-browser-exploration-mvp/research/agent-browser-api.md", "reason": "agent-browser CLI 命令签名、JSON 输出格式、守护进程生命周期"}
+{"file": ".trellis/tasks/07-26-browser-exploration-mvp/research/reflection-and-memory.md", "reason": "反思引擎、记忆系统、ReAct 循环、启动序列"}
