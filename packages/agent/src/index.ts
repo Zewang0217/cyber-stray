@@ -8,6 +8,7 @@ import { getMemoryStore, getMemoryConsolidator } from "./memory/long-term.js";
 import { cleanupVisitedUrls } from "./tools/dedup/url-tracker.js";
 import { getReflectionScheduler } from "./memory/reflection/index.js";
 import { initializeInterestGraph, buildInterestConfig } from "./memory/interest-graph.js";
+import { browserWarmUp, browserShutdown } from "./tools/browser/lifecycle.js";
 
 let logger: ReturnType<typeof consola.withTag>;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -58,6 +59,11 @@ async function main(): Promise<void> {
     });
   } catch (error) {
     logger.warn("兴趣图谱初始化失败（不阻断启动）", { error: String(error) });
+  }
+
+  // 浏览器预热（best-effort，失败不阻断启动；enabled 是主开关）
+  if (config.browser?.enabled !== false && config.browser?.warmUpOnStart !== false) {
+    await browserWarmUp();
   }
 
   // 启动一次性 best-effort 记忆维护（D-02：不自动周期触发，定期调度属 Phase 4 反思周期）
@@ -165,6 +171,9 @@ function registerSignalHandlers(): void {
 
       // 2. 关闭飞书 WebSocket 连接
       await closeFeishuWS();
+
+      // 2.5 关闭浏览器
+      await browserShutdown();
 
       // 3. 保存当前状态
       try {

@@ -9,6 +9,10 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "build": "pnpm -r build"
+    "build": "pnpm -r build",
+    "setup:browser": "tsx scripts/setup-agent-browser.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4"
   }
 }

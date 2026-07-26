@@ -15,7 +15,7 @@ import type { ToolContext } from './registry/context.js';
 export interface ToolMetadata {
   name: string;
   description: string;
-  category?: 'search' | 'web' | 'content' | 'memory' | 'feedback';
+  category?: 'search' | 'web' | 'content' | 'memory' | 'feedback' | 'browser';
   enabled?: boolean;
 }
 
