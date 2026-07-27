@@ -13,6 +13,7 @@ import { buildMemoryPromptContext, recordWanderSummary } from '../memory/long-te
 import { generateTraceId } from '../logger/trace.js';
 import { resetLLMStats, getLLMStats, recordStep } from '../llm/stats.js';
 import type { AgentState, WanderStep } from '../types.js';
+import { getBrowserContext, buildBrowserPromptSection, browserShutdown } from '../tools/browser/lifecycle.js';
 
 const logger = consola.withTag('react');
 
@@ -164,6 +165,7 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
     endReason: 'max_steps',
     startTime,
     searchQueries: [],
+    browserContext: getBrowserContext(),
   };
 
   // 确保工具已初始化
@@ -172,6 +174,8 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
   const userProfile = await loadUserProfile();
   const memoryContext = await buildMemoryPromptContext();
   const systemPrompt = buildReactSystemPrompt(state, userProfile, memoryContext);
+  const browserSection = buildBrowserPromptSection(ctx.browserContext ?? null);
+  const fullSystemPrompt = browserSection ? `${systemPrompt}\n\n${browserSection}` : systemPrompt;
   const initialUserPrompt = buildReactUserPrompt({
     state,
     userProfile,
@@ -194,7 +198,7 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
       await generateText({
         model: provider.chat(config.llmModel),
         temperature: config.wanderTemperature,
-        system: systemPrompt,
+        system: fullSystemPrompt,
         prompt: initialUserPrompt,
         // stopWhen 接受数组：满足任一条件即终止循环
         // - hasToolCall('rest')：LLM 主动调用 rest 工具后立即停止，不再继续迭代
@@ -301,4 +305,14 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
     visitedUrls: ctx.visitedUrls,
     endReason: ctx.endReason,
   };
+}
+
+/**
+ * 游荡结束后根据配置决定是否关闭浏览器。
+ * closeAfterWander=false（默认）时浏览器常驻，跨游荡保持登录态。
+ */
+export async function handlePostWanderBrowser(): Promise<void> {
+  if (config.browser?.closeAfterWander) {
+    await browserShutdown();
+  }
 }

@@ -9,6 +9,9 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "build": "pnpm -r build"
+    "build": "pnpm -r build",
+    "setup:browser": "node scripts/setup-agent-browser.mjs"
+  },
+  "devDependencies": {
   }
 }

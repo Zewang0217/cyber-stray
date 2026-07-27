@@ -183,6 +183,20 @@ export interface AgentConfig {
     minWeight: number;          // dormancy 阈值
   };
 
+  /** 浏览器探索配置 */
+  browser?: {
+    /** 是否启用浏览器工具（默认 true） */
+    enabled: boolean;
+    /** Agent 启动时预热浏览器（默认 true） */
+    warmUpOnStart: boolean;
+    /** 游荡结束后关闭浏览器（默认 false，常驻模式） */
+    closeAfterWander: boolean;
+    /** CLI 命令超时毫秒数（默认 30000） */
+    timeout: number;
+    /** agent-browser 会话名称（默认 'cyber-stray'） */
+    sessionName: string;
+  };
+
   // Phase 5: 推送价值门控配置（PUSH-01/02）
   pushGate?: {
     enabled: boolean;
