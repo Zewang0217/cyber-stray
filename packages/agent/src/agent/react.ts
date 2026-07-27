@@ -13,7 +13,7 @@ import { buildMemoryPromptContext, recordWanderSummary } from '../memory/long-te
 import { generateTraceId } from '../logger/trace.js';
 import { resetLLMStats, getLLMStats, recordStep } from '../llm/stats.js';
 import type { AgentState, WanderStep } from '../types.js';
-import { getBrowserContext, buildBrowserPromptSection } from '../tools/browser/lifecycle.js';
+import { getBrowserContext, buildBrowserPromptSection, browserShutdown } from '../tools/browser/lifecycle.js';
 
 const logger = consola.withTag('react');
 
@@ -305,4 +305,14 @@ export async function runAgentLoop(state: AgentState): Promise<WanderResult> {
     visitedUrls: ctx.visitedUrls,
     endReason: ctx.endReason,
   };
+}
+
+/**
+ * 游荡结束后根据配置决定是否关闭浏览器。
+ * closeAfterWander=false（默认）时浏览器常驻，跨游荡保持登录态。
+ */
+export async function handlePostWanderBrowser(): Promise<void> {
+  if (config.browser?.closeAfterWander) {
+    await browserShutdown();
+  }
 }

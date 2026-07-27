@@ -43,7 +43,7 @@ export const browserSkillListToolDef: ToolDefinition = {
         return { skills };
       } catch (error) {
         logger.error(`[${ctx.traceId}] TOOL browser_skill_list ERROR`, { error });
-        return { skills: [], error: String(error) };
+        return { error: String(error) };
       }
     },
   }),

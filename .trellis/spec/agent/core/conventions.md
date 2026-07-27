@@ -20,6 +20,7 @@
 ## 异步
 
 - **全异步**：所有 I/O 用 `fs/promises` + Promise。
+  - **豁免**：`SkillIndex`（`tools/browser/skills/skill-index.ts`）使用 sync fs 方法——它是启动时一次性扫描 + 低频文件管理（create/patch），不在心跳/ReAct 热路径上，无事件循环阻塞风险。
 - **禁止 `execSync`**：耗时操作（浏览器 / 外部进程）用 `execFile` / `spawn` 包 Promise + `AbortController` 超时。`execSync` 会卡死事件循环——心跳、TUI 渲染、`onStepFinish`、反思调度全部停摆。
 
 ## 浏览器

@@ -11,6 +11,7 @@ import { consola } from '../../../logger.js';
 import { pushWanderStep, type ToolContext } from '../../registry/context.js';
 import type { ToolDefinition } from '../../tool-manager.js';
 import { getBrowserExecutor } from '../executor.js';
+import { updateBrowserContext } from '../lifecycle.js';
 
 const logger = consola.withTag('tool:browse_act');
 
@@ -154,6 +155,15 @@ export const browseActToolDef: ToolDefinition = {
         }
 
         logger.info(`[${ctx.traceId}] TOOL browse_act [action=${input.action}] 成功`);
+
+        // tab 操作后同步 openTabs 到 BrowserContext
+        if (['tab_list', 'tab_new', 'tab_switch', 'tab_close'].includes(input.action)) {
+          const tabs = result.data?.tabs as Array<{ tabId: string; title: string; url: string; active: boolean }> | undefined;
+          if (tabs) {
+            updateBrowserContext({ openTabs: tabs });
+          }
+        }
+
         pushWanderStep(ctx, {
           timestamp: new Date().toISOString(),
           tool: 'browse_act',

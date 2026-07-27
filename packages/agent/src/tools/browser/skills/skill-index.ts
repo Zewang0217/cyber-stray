@@ -8,7 +8,10 @@
 import { mkdirSync, readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { getDataPath } from '../../../config.js';
+import { consola } from '../../../logger.js';
 import { parseSkillFile, type ParsedSkill } from './parser.js';
+
+const logger = consola.withTag('browser:skill-index');
 
 /** 索引条目（轻量元数据） */
 export interface SkillIndexEntry {
@@ -59,8 +62,9 @@ export class SkillIndex {
           description: parsed.meta.description,
           filePath: skillMdPath,
         });
-      } catch {
-        // 解析失败的文件跳过，不阻塞整体扫描
+      } catch (error) {
+        // 解析失败的文件跳过，不阻塞整体扫描，但记录警告
+        logger.warn(`Skill 文件解析失败，已跳过: ${skillMdPath}`, { error: String(error) });
       }
     }
   }

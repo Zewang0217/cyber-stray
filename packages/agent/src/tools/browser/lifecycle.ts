@@ -8,6 +8,7 @@
 
 import { getBrowserExecutor } from './executor.js';
 import { consola } from '../../logger.js';
+import { config } from '../../config.js';
 
 const logger = consola.withTag('browser:lifecycle');
 
@@ -34,7 +35,10 @@ export function getBrowserContext(): BrowserContext | null {
  */
 export async function browserWarmUp(): Promise<BrowserContext | null> {
   try {
-    const executor = getBrowserExecutor();
+    const executor = getBrowserExecutor({
+      session: config.browser?.sessionName,
+      timeout: config.browser?.timeout,
+    });
     const ok = await executor.warmUp();
     if (!ok) {
       logger.warn('浏览器预热失败，降级为无浏览器模式');
@@ -101,12 +105,13 @@ export function buildBrowserPromptSection(ctx: BrowserContext | null): string {
  * 由 browse_page / browse_act 工具调用。
  */
 export function updateBrowserContext(
-  update: Partial<Pick<BrowserContext, 'currentUrl' | 'currentPageTitle'>>,
+  update: Partial<Pick<BrowserContext, 'currentUrl' | 'currentPageTitle' | 'openTabs'>>,
 ): void {
   if (!browserContext) return;
   if (update.currentUrl !== undefined) browserContext.currentUrl = update.currentUrl;
   if (update.currentPageTitle !== undefined)
     browserContext.currentPageTitle = update.currentPageTitle;
+  if (update.openTabs !== undefined) browserContext.openTabs = update.openTabs;
 
   // 追加到 recentPages
   if (update.currentUrl && update.currentUrl !== 'about:blank') {

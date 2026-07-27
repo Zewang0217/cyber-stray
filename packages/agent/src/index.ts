@@ -1,6 +1,6 @@
 import { config, validateConfig, getRecoveryTier } from "./config.js";
 import { loadState, heartbeat, saveState } from "./agent/state.js";
-import { runAgentLoop } from "./agent/react.js";
+import { runAgentLoop, handlePostWanderBrowser } from "./agent/react.js";
 import { initLogger, consola } from "./logger.js";
 import { updateState, shutdownTUI, isTuiActive } from "./tui/index.js";
 import { initFeishuWS, closeFeishuWS } from "./tools/feishu/ws-client.js";
@@ -307,6 +307,9 @@ async function runHeartbeat(): Promise<void> {
 
     // 3. 启动 ReAct Loop
     const result = await runAgentLoop(newState);
+
+    // 游荡后浏览器处理（closeAfterWander 配置）
+    await handlePostWanderBrowser();
 
     // Phase 4: 游荡后触发反思（异步，不阻塞下一轮心跳）
     getReflectionScheduler()
