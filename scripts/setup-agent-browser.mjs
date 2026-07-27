@@ -10,11 +10,11 @@
  */
 import { execFileSync } from 'node:child_process';
 
-function run(cmd: string, args: string[]): string {
+function run(cmd, args) {
   return execFileSync(cmd, args, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
 }
 
-function tryRun(cmd: string, args: string[]): { ok: boolean; output: string } {
+function tryRun(cmd, args) {
   try {
     return { ok: true, output: run(cmd, args) };
   } catch (err) {
@@ -23,7 +23,7 @@ function tryRun(cmd: string, args: string[]): { ok: boolean; output: string } {
   }
 }
 
-function main(): void {
+function main() {
   console.log('🔧 agent-browser 环境设置\n');
 
   // ── Step 1: 检查是否已安装 ──────────────────────────────
@@ -66,11 +66,7 @@ function main(): void {
   }
 
   try {
-    const report = JSON.parse(doctor.output) as {
-      success?: boolean;
-      data?: Record<string, unknown>;
-      error?: string | null;
-    };
+    const report = JSON.parse(doctor.output);
     if (report.success) {
       console.log('   ✅ 所有检查通过');
       if (report.data) {

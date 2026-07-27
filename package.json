@@ -10,9 +10,8 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm -r build",
-    "setup:browser": "tsx scripts/setup-agent-browser.ts"
+    "setup:browser": "node scripts/setup-agent-browser.mjs"
   },
   "devDependencies": {
-    "tsx": "^4"
   }
 }
