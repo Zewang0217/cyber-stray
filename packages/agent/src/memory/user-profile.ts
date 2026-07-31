@@ -2,12 +2,18 @@ import { readFile, writeFile, mkdir, rename } from 'fs/promises';
 import { existsSync } from 'fs';
 import { z } from 'zod';
 import { consola } from '../logger.js';
+import { getDataPath } from '../config.js';
 
 const logger = consola.withTag('UserProfile');
 
-/** F5：调用时解析，不在 import 期冻结 DATA_DIR */
-function getUserProfilePath(): string {
-  return `${process.env.DATA_DIR ?? 'data'}/memory/user-profile.json`;
+/**
+ * 用户画像文件路径
+ *
+ * 调用时求值而非模块级常量：测试在 import 之后才设置 DATA_DIR，
+ * 常量化会把路径固化成真实数据目录，破坏测试隔离。
+ */
+function userProfilePath(): string {
+  return getDataPath('memory/user-profile.json');
 }
 
 /** 单个话题最多保留的喜欢/不喜欢条目数 */
@@ -106,7 +112,8 @@ function createDefaultUserProfile(): UserProfile {
  * 文件存在但解析/schema 失败 → 抛错（D-09：不兜底，不掩错误）。
  */
 export async function loadUserProfile(): Promise<UserProfile> {
-  const profilePath = getUserProfilePath();
+  const profilePath = userProfilePath();
+
   if (!existsSync(profilePath)) {
     logger.debug('用户画像文件不存在，使用默认画像');
     return createDefaultUserProfile();
@@ -153,7 +160,7 @@ export async function loadUserProfile(): Promise<UserProfile> {
  */
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
   try {
-    await atomicWriteJson(getUserProfilePath(), profile);
+    await atomicWriteJson(userProfilePath(), profile);
     logger.debug('用户画像已保存');
   } catch (error) {
     logger.error('保存用户画像失败', { error });

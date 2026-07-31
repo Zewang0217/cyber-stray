@@ -36,9 +36,12 @@ export const speakToolDef: ToolDefinition = {
       ctx.stepCount++;
       const stepStart = Date.now();
 
-      // 门控评估在 quality hook 的 beforeToolCall 完成，命中的兴趣话题已写入 ctx.matchedTopics
-      // （反馈归因用；未评估/失败时为 undefined → speak 不归因，宁可不归因也不能归错）
-      const result = await speak(content, type, ctx.matchedTopics);
+// 门控评估在 quality hook 的 beforeToolCall 完成，命中的兴趣话题已写入 ctx.matchedTopics。
+      // 门控拦截由 hook 侧 deny 处理（含 gated 历史留痕），工具 execute 只走放行路径。
+      const result = await speak(content, type, {
+        mood: ctx.state.mood,
+        matchedTopics: ctx.matchedTopics,
+      });
       const elapsed = Date.now() - stepStart;
       ctx.spokeTimes++;
 

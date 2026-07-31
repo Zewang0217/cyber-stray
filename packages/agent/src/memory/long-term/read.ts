@@ -10,13 +10,11 @@
 import { getMemoryStore } from './index.js';
 import type { MemoryType, MemoryEntry, MemoryContextOptions } from './types.js';
 
-const store = getMemoryStore();
-
 /**
  * 获取用户画像记忆
  */
 export async function getUserProfile(): Promise<MemoryEntry[]> {
-  return store.getRecentMemories({ type: 'profile', count: 20 });
+  return getMemoryStore().getRecentMemories({ type: 'profile', count: 20 });
 }
 
 /**
@@ -49,7 +47,7 @@ export async function getRecentInteractions(
   days: number = 7
 ): Promise<MemoryEntry[]> {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  return store.getRecentMemories({ type: 'interaction', since, count: 50 });
+  return getMemoryStore().getRecentMemories({ type: 'interaction', since, count: 50 });
 }
 
 /**
@@ -59,7 +57,7 @@ export async function getTopicKnowledge(
   topic: string,
   count: number = 5
 ): Promise<MemoryEntry[]> {
-  const all = await store.getRecentMemories({ type: 'knowledge', count: 50 });
+  const all = await getMemoryStore().getRecentMemories({ type: 'knowledge', count: 50 });
   const topicLower = topic.toLowerCase();
 
   return all
@@ -77,14 +75,14 @@ export async function getTopicKnowledge(
 export async function getObservations(
   count: number = 10
 ): Promise<MemoryEntry[]> {
-  return store.getRecentMemories({ type: 'observation', count });
+  return getMemoryStore().getRecentMemories({ type: 'observation', count });
 }
 
 /**
  * 搜索记忆
  */
 export async function searchMemory(query: string): Promise<MemoryEntry[]> {
-  return store.searchMemories(query);
+  return getMemoryStore().searchMemories(query);
 }
 
 /**
@@ -93,7 +91,7 @@ export async function searchMemory(query: string): Promise<MemoryEntry[]> {
 export async function buildMemoryPromptContext(
   options: MemoryContextOptions = {}
 ): Promise<string> {
-  const context = await store.buildMemoryContext({
+  const context = await getMemoryStore().buildMemoryContext({
     maxTokens: options.maxTokens || 3000,
     includeTypes: options.includeTypes || ['profile', 'interaction', 'observation'],
     topicKeywords: options.topicKeywords,
@@ -115,8 +113,8 @@ export async function getMemoryStats(): Promise<{
   recentCount: number;
   importantCount: number;
 }> {
-  const index = await store.readIndex();
-  const recent = await store.getRecentMemories({ count: 100 });
+  const index = await getMemoryStore().readIndex();
+  const recent = await getMemoryStore().getRecentMemories({ count: 100 });
   const important = recent.filter((m) => m.importance >= 0.7);
 
   return {
@@ -132,7 +130,7 @@ export async function getMemoryStats(): Promise<{
  */
 export async function getTodaySummary(): Promise<string> {
   const today = new Date().toISOString().split('T')[0];
-  const interactions = await store.getRecentMemories({
+  const interactions = await getMemoryStore().getRecentMemories({
     type: 'interaction',
     count: 20,
   });

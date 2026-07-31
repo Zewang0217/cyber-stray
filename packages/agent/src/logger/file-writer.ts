@@ -1,7 +1,9 @@
-import { appendFile, mkdir } from 'fs/promises';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import { createConsola } from 'consola';
 import { Writable } from 'stream';
+// 只依赖 config 的路径函数；config 不 import logger，不构成循环依赖
+import { getDataPath } from '../config.js';
 
 // 创建空输出流禁用终端输出
 const nullStream = new Writable({
@@ -17,9 +19,9 @@ const logger = createConsola({
   stderr: nullStream as unknown as NodeJS.WriteStream,
 }).withTag('file-writer');
 
-/** F5：调用时解析，不在 import 期冻结 DATA_DIR（logger 为低层模块，不引 config.js） */
-function getLogDir(): string {
-  return `${process.env.DATA_DIR ?? 'data'}/logs`;
+/** 日志目录（调用时求值，尊重 DATA_DIR） */
+function logDir(): string {
+  return getDataPath('logs');
 }
 
 /**
@@ -27,7 +29,7 @@ function getLogDir(): string {
  */
 function getTodayLogPath(): string {
   const today = new Date().toISOString().slice(0, 10);
-  return `${getLogDir()}/${today}.log`;
+  return join(logDir(), `${today}.log`);
 }
 
 // 日志级别映射（consola 的级别数字越小越严重）
@@ -75,10 +77,10 @@ function formatLogEntry(
  * 初始化日志目录
  */
 export function initFileLogger(): void {
-  const logDir = getLogDir();
-  if (!existsSync(logDir)) {
-    mkdirSync(logDir, { recursive: true });
-    logger.info('创建日志目录', { path: logDir });
+  const dir = logDir();
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+    logger.info('创建日志目录', { path: dir });
   }
 }
 

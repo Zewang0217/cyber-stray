@@ -45,6 +45,7 @@ config 验证 → loadState() → startHeartbeat()
 
 写 agent 代码前，先读 [conventions.md](conventions.md)，确认：
 
+- [ ] **路径**：数据文件走 `getDataPath()`，且不写成模块级常量（会破坏测试隔离）
 - [ ] **异步**：禁 `execSync`（耗时 I/O 用 `execFile`/`spawn` + `AbortController`）
 - [ ] **错误**：禁兜底（抛明确异常，不用默认值/降级/推断掩盖）
 - [ ] **记忆**：索引复用 `MemoryIndex`（不另建）；grounding（洞察必引真实 `sourceIds`）不得绕过；provenance 标记正确

@@ -1,2 +1,14 @@
 packages:
   - 'packages/*'
+allowBuilds:
+  # tsx / vitest 依赖 esbuild 的原生二进制，不构建则 agent 跑不起来
+  esbuild: true
+  # eslint 的原生 resolver
+  unrs-resolver: true
+  # next/image 的图片处理
+  sharp: true
+  # slidev 依赖，postinstall 只是切换 vue 版本别名
+  vue-demi: true
+  # 仅 slidev export PDF 用得到，构建会拉整个 chromium
+  playwright-chromium: false
+  protobufjs: false

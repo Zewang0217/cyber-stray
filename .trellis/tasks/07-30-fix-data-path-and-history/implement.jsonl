@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/agent/core/index.md", "reason": "agent 包的架构与 Pre-Development Checklist；本任务改动 config/memory/logger/push 多个核心模块的路径解析"}
+{"file": ".trellis/spec/agent/core/conventions.md", "reason": "禁兜底、异步 I/O、错误显式化等编码约定，路径解析改造必须遵守"}
+{"file": ".trellis/spec/web/frontend/index.md", "reason": "web 只读契约——修 API 路由时不得引入任何写 agent 数据的路径"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "本任务同时改 agent 写入侧与 web 读取侧，属跨层契约变更"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "历史记录派生要复用已有的 extractUrl，避免重复实现 URL 提取"}

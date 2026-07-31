@@ -8,9 +8,7 @@
  */
 
 import { getMemoryStore } from './index.js';
-import type { MemoryType, MemoryEntry } from './types.js';
-
-const store = getMemoryStore();
+import type { MemoryEntry } from './types.js';
 
 /**
  * 记录一次交互
@@ -24,7 +22,7 @@ export async function recordInteraction(params: {
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0];
 
-  return store.saveMemory({
+  return getMemoryStore().saveMemory({
     type: 'interaction',
     timestamp: now.toISOString(),
     tags: ['daily', `date:${dateStr}`, ...(params.tags || [])],
@@ -44,7 +42,7 @@ export async function recordFeedback(params: {
 }): Promise<MemoryEntry> {
   const now = new Date();
 
-  return store.saveMemory({
+  return getMemoryStore().saveMemory({
     type: 'observation',
     timestamp: now.toISOString(),
     tags: ['feedback', params.type],
@@ -68,7 +66,7 @@ export async function recordKnowledge(params: {
 }): Promise<MemoryEntry> {
   const now = new Date();
 
-  return store.saveMemory({
+  return getMemoryStore().saveMemory({
     type: 'knowledge',
     timestamp: now.toISOString(),
     tags: ['knowledge', toSafeTag(params.topic)],
@@ -90,7 +88,7 @@ export async function recordObservation(params: {
 }): Promise<MemoryEntry> {
   const now = new Date();
 
-  return store.saveMemory({
+  return getMemoryStore().saveMemory({
     type: 'observation',
     timestamp: now.toISOString(),
     tags: ['observation', ...(params.tags || [])],
@@ -114,7 +112,7 @@ export async function updateUserPreference(params: {
     ? `用户不喜欢: ${params.value}`
     : `用户偏好: ${params.key} = ${params.value}`;
 
-  await store.saveMemory({
+  await getMemoryStore().saveMemory({
     type: 'profile',
     timestamp: new Date().toISOString(),
     tags: ['preference', params.type, toSafeTag(params.key)],
@@ -156,7 +154,7 @@ export async function recordWanderSummary(params: {
     ? `${params.spoke.substring(0, 30)}...`
     : params.spoke;
 
-  return store.saveMemory({
+  return getMemoryStore().saveMemory({
     type: 'interaction',
     timestamp: now.toISOString(),
     tags: ['wander', `date:${dateStr}`, ...extractDomains(params.topics)],
