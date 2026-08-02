@@ -51,6 +51,24 @@ export interface WanderStep {
   spoke?: string;         // 如果调用了 speak，记录内容
 }
 
+/** 游荡统计结果 */
+export interface WanderResult {
+  steps: number;          // 本次游荡步数
+  durationMs: number;     // 游荡时长（毫秒）
+  spokeTimes: number;     // 调用 speak 的次数
+  visitedUrls: string[];  // 访问过的 URL
+  endReason: 'rest' | 'max_steps' | 'low_energy' | 'early_stop' | 'error';
+}
+
+/** 游荡策略（由兴趣图谱 + 状态生成，注入 prompt） */
+export interface WanderStrategy {
+  focusTopics: string[];
+  explorationMode: 'deep' | 'broad' | 'novel';
+  maxSteps: number;
+  speakInclination: 'high' | 'normal' | 'low';
+  constraints: string[];
+}
+
 // ============================================
 // 搜索与推送相关
 // ============================================

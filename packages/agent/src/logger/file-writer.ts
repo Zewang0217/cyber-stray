@@ -17,7 +17,7 @@ const logger = createConsola({
   stderr: nullStream as unknown as NodeJS.WriteStream,
 }).withTag('file-writer');
 
-const LOG_DIR = 'data/logs';
+const LOG_DIR = `${process.env.DATA_DIR ?? 'data'}/logs`;
 
 /**
  * 获取今日日志文件路径
