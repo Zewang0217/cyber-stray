@@ -54,7 +54,7 @@ const defaultBehavior: BehaviorConfig = {
   ] as EnergyRecoveryTier[],
   llmTemperature: 0.8,
   maxSearchResults: 10,
-  maxWanderSteps: 10,
+  maxWanderSteps: 100,
   wanderTemperature: 0.9,
   outputLanguage: 'zh-CN',
   urlCooldownDays: 5,
