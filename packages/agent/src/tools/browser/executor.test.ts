@@ -88,8 +88,11 @@ describe('BrowserExecutor', () => {
 
       expect(mockedSpawn).toHaveBeenCalledWith(
         'agent-browser',
-        ['click', '#btn', '--json', '--session', 'cyber-stray'],
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        ['click', '#btn', '--json', '--session', 'cyber-stray', '--restore'],
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+          env: expect.objectContaining({ AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' }),
+        }),
       );
     });
 
@@ -104,9 +107,39 @@ describe('BrowserExecutor', () => {
 
       expect(mockedSpawn).toHaveBeenCalledWith(
         '/usr/bin/ab',
-        ['open', '--json', '--session', 'test-sess'],
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        ['open', '--json', '--session', 'test-sess', '--restore'],
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+          env: expect.objectContaining({ AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' }),
+        }),
       );
+    });
+
+    it('restore=false：不追加 --restore 参数', async () => {
+      const noRestore = new BrowserExecutor({ restore: false });
+      const proc = createMockProcess();
+      mockedSpawn.mockReturnValue(proc as never);
+
+      const promise = noRestore.execute('open');
+      simulateExit(proc, 0, JSON.stringify({ success: true, data: null, error: null }));
+      await promise;
+
+      const args = mockedSpawn.mock.calls[0]?.[1] as string[];
+      expect(args).not.toContain('--restore');
+    });
+
+    it('encryptionKey：传入 AGENT_BROWSER_ENCRYPTION_KEY 环境变量', async () => {
+      const key = 'a'.repeat(64);
+      const withKey = new BrowserExecutor({ encryptionKey: key });
+      const proc = createMockProcess();
+      mockedSpawn.mockReturnValue(proc as never);
+
+      const promise = withKey.execute('open');
+      simulateExit(proc, 0, JSON.stringify({ success: true, data: null, error: null }));
+      await promise;
+
+      const spawnOpts = mockedSpawn.mock.calls[0]?.[2] as { env: Record<string, string> };
+      expect(spawnOpts.env.AGENT_BROWSER_ENCRYPTION_KEY).toBe(key);
     });
 
     it('超时：AbortController 终止进程并返回错误', async () => {

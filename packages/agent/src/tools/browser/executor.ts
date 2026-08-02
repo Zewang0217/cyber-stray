@@ -12,22 +12,27 @@ export class BrowserExecutor {
   private readonly session: string;
   private readonly timeout: number;
   private readonly binaryPath: string;
+  private readonly restore: boolean;
+  private readonly encryptionKey: string | undefined;
 
   constructor(options?: BrowserExecutorOptions) {
     this.session = options?.session ?? DEFAULT_SESSION;
     this.timeout = options?.timeout ?? (Number(process.env.AGENT_BROWSER_TIMEOUT) || DEFAULT_TIMEOUT);
     this.binaryPath = options?.binaryPath ?? DEFAULT_BINARY;
+    this.restore = options?.restore ?? true;
+    this.encryptionKey = options?.encryptionKey;
   }
 
   /**
    * 执行 agent-browser CLI 命令，返回结构化结果。
    *
    * spawn 异步调用，统一追加 `--json --session <name>` 参数。
-   * AbortController 控制超时。
+   * restore 模式追加 `--restore`（cookies + localStorage 跨重启持久化）。
    */
   async execute(command: string, args: string[] = []): Promise<BrowserCommandResult> {
     const startTime = performance.now();
     const fullArgs = [command, ...args, '--json', '--session', this.session];
+    if (this.restore) fullArgs.push('--restore');
 
     logger.debug(`执行: ${this.binaryPath} ${fullArgs.join(' ')}`);
 
@@ -58,7 +63,18 @@ export class BrowserExecutor {
 
         let child: ChildProcess;
         try {
-          child = spawn(this.binaryPath, fullArgs, { signal: ac.signal });
+          child = spawn(this.binaryPath, fullArgs, {
+            signal: ac.signal,
+            env: {
+              ...process.env,
+              // #54: 禁用空闲超时（Cyber Stray 心跳间隔可能 >1h）
+              AGENT_BROWSER_IDLE_TIMEOUT_MS: '0',
+              // #54: 加密 state 文件（AES-256-GCM）
+              ...(this.encryptionKey
+                ? { AGENT_BROWSER_ENCRYPTION_KEY: this.encryptionKey }
+                : {}),
+            },
+          });
         } catch (err) {
           // spawn 本身同步抛错（极少见）
           const message = err instanceof Error ? err.message : String(err);

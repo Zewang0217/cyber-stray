@@ -8,7 +8,10 @@
 
 import { getBrowserExecutor } from './executor.js';
 import { consola } from '../../logger.js';
-import { config } from '../../config.js';
+import { config, getDataPath } from '../../config.js';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { dirname } from 'node:path';
 
 const logger = consola.withTag('browser:lifecycle');
 
@@ -30,14 +33,39 @@ export function getBrowserContext(): BrowserContext | null {
 }
 
 /**
+ * 加载或生成 AES-256-GCM 加密 key（64 字符 hex）。
+ * 存储在 data/.browser-key（gitignored），首次运行时自动生成。
+ */
+async function loadOrCreateEncryptionKey(): Promise<string> {
+  const keyPath = getDataPath('.browser-key');
+  try {
+    const existing = await readFile(keyPath, 'utf-8');
+    const trimmed = existing.trim();
+    if (/^[0-9a-f]{64}$/i.test(trimmed)) return trimmed;
+    logger.warn('.browser-key 格式无效，重新生成');
+  } catch {
+    // 文件不存在，首次生成
+  }
+  const key = randomBytes(32).toString('hex');
+  await mkdir(dirname(keyPath), { recursive: true });
+  await writeFile(keyPath, key + '\n', { mode: 0o600 });
+  logger.info('已生成浏览器加密 key → data/.browser-key');
+  return key;
+}
+
+/**
  * Agent 启动时预热浏览器。
  * 成功返回 BrowserContext；失败返回 null（降级为无浏览器模式，不阻塞启动）。
  */
 export async function browserWarmUp(): Promise<BrowserContext | null> {
   try {
+    const restore = config.browser?.restore !== false;
+    const encryptionKey = restore ? await loadOrCreateEncryptionKey() : undefined;
     const executor = getBrowserExecutor({
       session: config.browser?.sessionName,
       timeout: config.browser?.timeout,
+      restore,
+      encryptionKey,
     });
     const ok = await executor.warmUp();
     if (!ok) {

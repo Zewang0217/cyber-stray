@@ -11,6 +11,34 @@ vi.mock('./executor.js', () => ({
   }),
 }));
 
+const mockReadFile = vi.fn<(path: string, enc: string) => Promise<string>>();
+const mockWriteFile = vi.fn<() => Promise<void>>();
+const mockMkdir = vi.fn<() => Promise<void>>();
+
+vi.mock('node:fs/promises', () => ({
+  readFile: (...args: unknown[]) => mockReadFile(...(args as [string, string])),
+  writeFile: (...args: unknown[]) => mockWriteFile(...(args as [])),
+  mkdir: (...args: unknown[]) => mockMkdir(...(args as [])),
+}));
+
+vi.mock('node:crypto', () => ({
+  randomBytes: () => ({ toString: () => 'b'.repeat(64) }),
+}));
+
+vi.mock('../../config.js', () => ({
+  config: {
+    browser: {
+      enabled: true,
+      warmUpOnStart: true,
+      closeAfterWander: false,
+      timeout: 30000,
+      sessionName: 'cyber-stray',
+      restore: true,
+    },
+  },
+  getDataPath: (f: string) => `data/${f}`,
+}));
+
 vi.mock('../../logger.js', () => ({
   consola: {
     withTag: () => ({
@@ -35,6 +63,10 @@ describe('browser lifecycle', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetBrowserContext();
+    // 默认 key 文件不存在 → 走生成路径
+    mockReadFile.mockRejectedValue(new Error('ENOENT'));
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
   });
 
   describe('browserWarmUp', () => {

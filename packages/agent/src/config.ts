@@ -101,6 +101,7 @@ const defaultBehavior: BehaviorConfig = {
     closeAfterWander: false,
     timeout: 30000,
     sessionName: 'cyber-stray',
+    restore: true,
   },
 };
 

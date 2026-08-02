@@ -195,6 +195,8 @@ export interface AgentConfig {
     timeout: number;
     /** agent-browser 会话名称（默认 'cyber-stray'） */
     sessionName: string;
+    /** 启用 --restore 持久化：cookies + localStorage 跨重启保持（默认 true） */
+    restore: boolean;
   };
 
   // Phase 5: 推送价值门控配置（PUSH-01/02）

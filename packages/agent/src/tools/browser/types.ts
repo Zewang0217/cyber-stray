@@ -21,4 +21,8 @@ export interface BrowserExecutorOptions {
   timeout?: number;
   /** 二进制路径，默认 'agent-browser' */
   binaryPath?: string;
+  /** 启用 --restore 持久化（cookies + localStorage 跨重启保持） */
+  restore?: boolean;
+  /** AES-256-GCM 加密 key（64 字符 hex），传给 AGENT_BROWSER_ENCRYPTION_KEY */
+  encryptionKey?: string;
 }
