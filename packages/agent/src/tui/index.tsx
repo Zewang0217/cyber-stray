@@ -4,10 +4,13 @@ import { App } from './App.js';
 import { onLog } from '../logger.js';
 import type { AgentState } from '../types.js';
 import type { LogEntry } from './components/LogView.js';
+import { SessionStats, type SessionStatsSnapshot } from '../session-stats.js';
 
 let currentState: AgentState | undefined;
 let currentLogs: LogEntry[] = [];
 let startTime = Date.now();
+
+const sessionStats = new SessionStats();
 
 let renderInstance: Instance | null = null;
 let fallbackModeActive = false;
@@ -31,6 +34,12 @@ export function getLogs(): LogEntry[] {
   return currentLogs;
 }
 
+export function getSessionStats(): SessionStatsSnapshot {
+  return sessionStats.snapshot();
+}
+
+export { sessionStats };
+
 export function initTUI(): void {
   startTime = Date.now();
 
@@ -45,6 +54,7 @@ export function initTUI(): void {
         startTime={startTime}
         getState={getState}
         getLogs={getLogs}
+        getSessionStats={getSessionStats}
         onExit={handleExit}
       />,
     );

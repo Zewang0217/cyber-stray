@@ -18,6 +18,7 @@ import { recordFeedback } from './feedback-store.js';
 import { updateUserProfileBatch, type ProfileUpdateEntry } from './user-profile.js';
 import { getInterestGraph } from './interest-graph.js';
 import { updateMoodByFeedback } from '../agent/state.js';
+import { sessionStats } from '../tui/index.js';
 
 const logger = consola.withTag('FeedbackPipeline');
 
@@ -95,6 +96,7 @@ export async function processFeedback(
   try {
     await recordFeedback({ type, messageId, userId });
     result.recorded = true;
+    sessionStats.recordFeedback(type);
   } catch (error) {
     logger.error('记录反馈失败', { error });
     // 记录失败不阻断后续链路

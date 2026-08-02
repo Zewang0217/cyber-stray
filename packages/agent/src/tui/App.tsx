@@ -5,11 +5,14 @@ import { StatusBar } from './components/StatusBar.js';
 import { LogView, type LogEntry } from './components/LogView.js';
 import { Loading } from './components/Loading.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
+import { StatsPanel } from './components/StatsPanel.js';
+import type { SessionStatsSnapshot } from '../session-stats.js';
 
 interface AppProps {
   startTime: number;
   getState: () => AgentState | undefined;
   getLogs: () => LogEntry[];
+  getSessionStats: () => SessionStatsSnapshot;
   onExit: () => void;
 }
 
@@ -19,7 +22,7 @@ function extractToolName(message: string): string {
   return message.match(/\]\s*(\w+)\b/)?.[1] ?? '';
 }
 
-function AppInner({ startTime, getState, getLogs, onExit }: AppProps) {
+function AppInner({ startTime, getState, getLogs, getSessionStats, onExit }: AppProps) {
   const { stdout } = useStdout();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [agentState, setAgentState] = useState<AgentState | undefined>();
@@ -29,6 +32,7 @@ function AppInner({ startTime, getState, getLogs, onExit }: AppProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [currentAction, setCurrentAction] = useState('');
   const [terminalRows, setTerminalRows] = useState(stdout?.rows ?? 40);
+  const [statsSnapshot, setStatsSnapshot] = useState<SessionStatsSnapshot | undefined>();
 
   const prevLogCountRef = useRef(-1);
   const prevMoodRef = useRef<string | undefined>(undefined);
@@ -57,6 +61,8 @@ function AppInner({ startTime, getState, getLogs, onExit }: AppProps) {
         prevMoodRef.current = latestState.mood;
         setAgentState(latestState);
       }
+
+      setStatsSnapshot(getSessionStats());
 
       if (logCount > 0 && logCount !== prevLogCountRef.current) {
         prevLogCountRef.current = logCount;
@@ -87,7 +93,7 @@ function AppInner({ startTime, getState, getLogs, onExit }: AppProps) {
     }, 200);
 
     return () => clearInterval(interval);
-  }, [getLogs, getState]);
+  }, [getLogs, getState, getSessionStats]);
 
   useInput((input) => {
     if (input === 'q') {
@@ -107,10 +113,11 @@ function AppInner({ startTime, getState, getLogs, onExit }: AppProps) {
   // 日志标题:   1
   // 日志顶部 margin: 1
   // Help 面板: ~5 (含边框+内边距+margin, 仅展开时)
+  // StatsPanel: ~1
   // 底部栏:    ~2 (含边框+margin)
   const helpRows = showHelp ? 5 : 0;
   const fixedHeaderRows = 3 + 2 + 1 + 1;
-  const fixedFooterRows = helpRows + 2;
+  const fixedFooterRows = helpRows + 1 + 2;
   const visibleLines = Math.max(3, terminalRows - fixedHeaderRows - fixedFooterRows);
 
   return (
@@ -154,6 +161,8 @@ function AppInner({ startTime, getState, getLogs, onExit }: AppProps) {
             <Text>  h - 显示/隐藏帮助</Text>
           </Box>
         )}
+
+        {statsSnapshot && <StatsPanel stats={statsSnapshot} />}
 
         <Box borderStyle="single" paddingX={1}>
           <Text color="gray">

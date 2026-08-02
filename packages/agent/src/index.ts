@@ -2,7 +2,7 @@ import { config, validateConfig, getRecoveryTier } from "./config.js";
 import { loadState, heartbeat, saveState } from "./agent/state.js";
 import { runAgentLoop } from "./agent/react.js";
 import { initLogger, consola } from "./logger.js";
-import { updateState, shutdownTUI, isTuiActive } from "./tui/index.js";
+import { updateState, shutdownTUI, isTuiActive, sessionStats } from "./tui/index.js";
 import { initFeishuWS, closeFeishuWS } from "./tools/feishu/ws-client.js";
 import { getMemoryStore, getMemoryConsolidator } from "./memory/long-term.js";
 import { cleanupVisitedUrls } from "./tools/dedup/url-tracker.js";
@@ -297,6 +297,7 @@ async function runHeartbeat(): Promise<void> {
     }
 
     // 3. 启动 ReAct Loop
+    sessionStats.beginRound();
     const result = await runAgentLoop(newState);
 
     // Phase 4: 游荡后触发反思（异步，不阻塞下一轮心跳）
@@ -306,6 +307,8 @@ async function runHeartbeat(): Promise<void> {
         logger.warn("反思调度 tick 失败", { error: String(err) }),
       );
 
+    sessionStats.endRound({ pushed: result.spokeTimes > 0 });
+
     logger.info("本次游荡结束", {
       steps: result.steps,
       durationMs: result.durationMs,
@@ -314,6 +317,7 @@ async function runHeartbeat(): Promise<void> {
       endReason: result.endReason,
     });
   } catch (error) {
+    sessionStats.recordError();
     logger.error("心跳执行失败", { error: String(error) });
   }
 }
