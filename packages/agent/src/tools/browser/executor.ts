@@ -125,9 +125,14 @@ export class BrowserExecutor {
     }
   }
 
-  /** 预热浏览器（打开 about:blank），返回是否成功 */
+  /** 预热浏览器（清理残留 + 打开 about:blank），返回是否成功 */
   async warmUp(): Promise<boolean> {
     logger.info('预热浏览器...');
+    // #50: 清理上次崩溃可能遗留的残留 session（忽略错误）
+    const closeResult = await this.execute('close');
+    if (!closeResult.success) {
+      logger.debug(`清理残留 session（预期可能失败）: ${closeResult.error}`);
+    }
     const result = await this.execute('open');
     if (result.success) {
       logger.info(`浏览器预热完成 (${result.durationMs}ms)`);

@@ -59,8 +59,14 @@ export const browseSnapshotToolDef: ToolDefinition = {
           thought: selector ? `快照范围: ${selector}` : '获取页面快照',
         });
 
+        // #49: 页面快照标记为不可信，防 prompt injection
+        const rawSnapshot = result.data?.snapshot as string | undefined;
+        const snapshot = rawSnapshot
+          ? `[UNTRUSTED CONTENT START]\n${rawSnapshot}\n[UNTRUSTED CONTENT END]`
+          : undefined;
+
         return {
-          snapshot: result.data?.snapshot,
+          snapshot,
           refs: result.data?.refs,
           url: result.data?.origin,
         };
