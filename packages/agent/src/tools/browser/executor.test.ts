@@ -232,27 +232,34 @@ describe('BrowserExecutor', () => {
   });
 
   describe('warmUp', () => {
-    it('成功时返回 true', async () => {
-      const spy = vi.spyOn(executor, 'execute').mockResolvedValue({
-        success: true,
-        data: null,
-        error: null,
-        durationMs: 100,
-      });
+    it('成功时先 close 清理残留再 open，返回 true', async () => {
+      const spy = vi.spyOn(executor, 'execute')
+        .mockResolvedValueOnce({ success: true, data: null, error: null, durationMs: 5 })
+        .mockResolvedValueOnce({ success: true, data: null, error: null, durationMs: 100 });
 
       const ok = await executor.warmUp();
 
       expect(ok).toBe(true);
-      expect(spy).toHaveBeenCalledWith('open');
+      expect(spy).toHaveBeenNthCalledWith(1, 'close');
+      expect(spy).toHaveBeenNthCalledWith(2, 'open');
     });
 
-    it('失败时返回 false', async () => {
-      vi.spyOn(executor, 'execute').mockResolvedValue({
-        success: false,
-        data: null,
-        error: '超时',
-        durationMs: 30_000,
-      });
+    it('close 失败不阻塞 open（残留清理 best-effort）', async () => {
+      const spy = vi.spyOn(executor, 'execute')
+        .mockResolvedValueOnce({ success: false, data: null, error: 'no session', durationMs: 5 })
+        .mockResolvedValueOnce({ success: true, data: null, error: null, durationMs: 100 });
+
+      const ok = await executor.warmUp();
+
+      expect(ok).toBe(true);
+      expect(spy).toHaveBeenNthCalledWith(1, 'close');
+      expect(spy).toHaveBeenNthCalledWith(2, 'open');
+    });
+
+    it('open 失败时返回 false', async () => {
+      vi.spyOn(executor, 'execute')
+        .mockResolvedValueOnce({ success: true, data: null, error: null, durationMs: 5 })
+        .mockResolvedValueOnce({ success: false, data: null, error: '超时', durationMs: 30_000 });
 
       const ok = await executor.warmUp();
       expect(ok).toBe(false);

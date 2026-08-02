@@ -70,7 +70,7 @@ describe('browse_snapshot', () => {
 
     expect(mockExecute).toHaveBeenCalledWith('snapshot', ['-i']);
     expect(result).toEqual({
-      snapshot: '@e1 button',
+      snapshot: '[UNTRUSTED CONTENT START]\n@e1 button\n[UNTRUSTED CONTENT END]',
       refs: ['@e1'],
       url: 'https://example.com',
     });

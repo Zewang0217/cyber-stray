@@ -72,11 +72,11 @@ describe('browse_page', () => {
     const result = await getExecute(ctx)({ url: 'https://example.com' }, {});
 
     expect(mockExecute).toHaveBeenNthCalledWith(1, 'open', ['https://example.com']);
-    expect(mockExecute).toHaveBeenNthCalledWith(2, 'read', []);
+    expect(mockExecute).toHaveBeenNthCalledWith(2, 'read', ['--max-output', '15000']);
     expect(result).toEqual({
       url: 'https://example.com',
       title: 'Example',
-      content: 'hello world',
+      content: '[UNTRUSTED CONTENT START]\nhello world\n[UNTRUSTED CONTENT END]',
       truncated: false,
     });
     expect(ctx.stepCount).toBe(1);

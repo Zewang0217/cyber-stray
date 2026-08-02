@@ -46,8 +46,8 @@ export const browsePageToolDef: ToolDefinition = {
           return { url, error: openResult.error ?? '打开页面失败' };
         }
 
-        // 2. 读取渲染后的内容
-        const readResult = await executor.execute('read', []);
+        // 2. 读取渲染后的内容（截断防 token 爆炸，#48）
+        const readResult = await executor.execute('read', ['--max-output', '15000']);
         if (!readResult.success) {
           logger.warn(`[${ctx.traceId}] TOOL browse_page [url=${url}] 读取失败: ${readResult.error}`);
           pushWanderStep(ctx, {
@@ -73,11 +73,21 @@ export const browsePageToolDef: ToolDefinition = {
           thought: `浏览: ${title ?? url}`,
         });
 
+        // #49: 网页内容标记为不可信，防 prompt injection
+        const rawContent = readResult.data?.content as string | undefined;
+        const isTruncated = Boolean(readResult.data?.truncated);
+        const content = rawContent
+          ? `[UNTRUSTED CONTENT START]\n${rawContent}\n[UNTRUSTED CONTENT END]`
+          : undefined;
+
         return {
           url,
           title,
-          content: readResult.data?.content,
-          truncated: readResult.data?.truncated,
+          content,
+          truncated: isTruncated,
+          ...(isTruncated
+            ? { hint: '内容已截断，可用 browse_snapshot 查看页面结构或 browse_act scroll 翻页' }
+            : {}),
         };
       },
     }),
