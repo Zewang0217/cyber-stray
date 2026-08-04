@@ -222,6 +222,12 @@ export interface AgentConfig {
       maxUrlCount: number;
     };
   };
+
+  // Hook 系统配置（RFC #59 §4）
+  hooks?: {
+    /** 禁用的 hook 名称列表（如 ["quality"]） */
+    disabled?: string[];
+  };
 }
 
 // ============================================

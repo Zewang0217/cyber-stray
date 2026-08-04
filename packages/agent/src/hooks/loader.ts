@@ -1,55 +1,43 @@
 /**
- * Hook 加载器：目录扫描自动发现
+ * Hook 加载器
  *
- * 扫描 hooks/ 目录下所有 .ts 文件（排除基础设施文件），
- * 加载 export default 的 HookDefinition，按 priority 升序排列。
- * 配置文件可通过 disabledNames 禁用特定 hook。
+ * 静态注册（对齐 tools/registry/auto-register.ts）：从 register.ts 的
+ * HOOK_DEFINITIONS 数组加载，按 priority 升序排列。
+ *
+ * 为什么不用目录扫描：编译部署后目录里只有 .js，动态 import 扫描会加载 0 个
+ * hook，PushGate/cooldown/精力守卫静默消失（实测证实）。静态注册在编译期
+ * 即可发现缺失，无运行时失效风险。
  */
 
-import { readdirSync } from 'node:fs';
 import { consola } from '../logger.js';
+import { HOOK_DEFINITIONS } from './register.js';
 import type { HookDefinition } from './types.js';
 
 const logger = consola.withTag('hooks:loader');
 
-/** 基础设施文件，不作为 hook 加载 */
-const INFRA_FILES = new Set(['types.ts', 'loader.ts', 'chain.ts', 'index.ts']);
-
 /**
- * 扫描 hooks/ 目录，加载所有 HookDefinition。
+ * 加载所有 HookDefinition。
  *
- * @param disabledNames - 需要禁用的 hook 名称列表（来自 agent-config.json）
+ * @param disabledNames - 需要禁用的 hook 名称列表（来自 agent-config.json 的 hooks.disabled）
  * @returns 按 priority 升序排列的 hook 数组
+ * @throws 当没有任何可用 hook 时抛错（fail-fast，防止守卫静默全灭）
  */
-export async function loadHooks(disabledNames?: string[]): Promise<HookDefinition[]> {
-  const dir = new URL('.', import.meta.url);
-  const files = readdirSync(dir).filter(
-    (f) => f.endsWith('.ts') && !INFRA_FILES.has(f),
-  );
-
-  const hooks: HookDefinition[] = [];
-
-  for (const file of files) {
-    try {
-      const mod = await import(`./${file}`);
-      const def: HookDefinition | undefined = mod.default;
-      if (def?.name && typeof def.priority === 'number') {
-        hooks.push(def);
-      }
-    } catch (error) {
-      logger.warn(`加载 hook 文件失败: ${file}`, { error: String(error) });
-    }
-  }
-
+export function loadHooks(disabledNames?: string[]): HookDefinition[] {
   const disabled = new Set(disabledNames ?? []);
-  const active = hooks
+  const active = HOOK_DEFINITIONS
     .filter((h) => !disabled.has(h.name))
     .sort((a, b) => a.priority - b.priority);
 
+  if (active.length === 0) {
+    throw new Error(
+      `没有可用的 hook（共 ${HOOK_DEFINITIONS.length} 个，全部被禁用？）——安全/质量/去重守卫不能静默缺失`,
+    );
+  }
+
   logger.info(`Hook 加载完成`, {
-    total: hooks.length,
+    total: HOOK_DEFINITIONS.length,
     active: active.length,
-    disabled: hooks.length - active.length,
+    disabled: HOOK_DEFINITIONS.length - active.length,
     order: active.map((h) => h.name),
   });
 

@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'fs';
 import type { AgentConfig, EnergyRecoveryTier } from './types.js';
 
-const CONFIG_PATH = 'data/agent-config.json';
+const CONFIG_PATH = `${process.env.DATA_DIR ?? 'data'}/agent-config.json`;
 
 /**
  * 可从配置文件覆盖的行为参数（敏感信息仍从环境变量读取）
@@ -34,6 +34,8 @@ type BehaviorConfig = Pick<
   interests: NonNullable<AgentConfig['interests']>;
   /** Phase 5: 推送价值门控配置 */
   pushGate: NonNullable<AgentConfig['pushGate']>;
+  /** Hook 系统配置（RFC #59 §4）：disabled 列表 */
+  hooks?: AgentConfig['hooks'];
 };
 
 const defaultBehavior: BehaviorConfig = {

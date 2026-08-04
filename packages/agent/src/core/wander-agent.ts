@@ -26,6 +26,7 @@ import { generateTraceId } from '../logger/trace.js';
 import { WanderEventEmitter } from './events.js';
 import type { WanderEvent } from './events.js';
 import { wanderLoop } from './wander-loop.js';
+import { computeStrategy } from './strategy.js';
 import type { WanderLoopConfig } from './wander-loop.js';
 import { HookChain } from '../hooks/chain.js';
 import type { HookContext } from '../hooks/types.js';
@@ -62,7 +63,8 @@ export class WanderAgent {
   async initHooks(disabledNames?: string[]): Promise<void> {
     if (this.hooksReady) return;
     await ToolManager.initialize();
-    await this.hookChain.init(disabledNames);
+    // RFC #59 §4：配置禁用链路（agent-config.json 的 hooks.disabled）
+    this.hookChain.init(disabledNames ?? this.agentConfig.hooks?.disabled);
     this.hooksReady = true;
   }
 
@@ -156,14 +158,7 @@ export class WanderAgent {
 
   /**
    * 生成游荡策略：兴趣图谱 → 聚焦话题，状态 → 行为参数。
-   *
-   * 硬映射：
-   * - 精力 > 70 → maxSteps=12, 不限探索模式
-   * - 精力 30-70 → maxSteps=8
-   * - 精力 < 30 → maxSteps=4, 强制 deep（不探索新领域）
-   * - 无聊 > 80 → novel（强制搜新领域）
-   * - 无聊 40-80 → broad
-   * - 无聊 < 40 → deep
+   * 映射规则见 core/strategy.ts（computeStrategy，纯函数可测）。
    */
   private buildStrategy(state: AgentState): WanderStrategy {
     // ─── 兴趣 → 聚焦话题 ───
@@ -177,53 +172,7 @@ export class WanderAgent {
       focusTopics = state.agentInterests.slice(0, 3);
     }
 
-    // ─── 精力 → maxSteps（按 config.maxWanderSteps 比例缩放）───
-    const ceiling = this.agentConfig.maxWanderSteps;
-    let maxSteps: number;
-    if (state.energy > 70) {
-      maxSteps = ceiling;
-    } else if (state.energy >= 30) {
-      maxSteps = Math.round(ceiling * 0.6);
-    } else {
-      maxSteps = Math.round(ceiling * 0.2);
-    }
-
-    // ─── 无聊 → explorationMode ───
-    let explorationMode: WanderStrategy['explorationMode'];
-    if (state.boredom > 80) {
-      explorationMode = 'novel';
-    } else if (state.boredom >= 40) {
-      explorationMode = 'broad';
-    } else {
-      explorationMode = 'deep';
-    }
-
-    // 精力过低时强制 deep（不探索新领域，节省精力）
-    if (state.energy < 30) {
-      explorationMode = 'deep';
-    }
-
-    // ─── 心情 → speakInclination ───
-    let speakInclination: WanderStrategy['speakInclination'] = 'normal';
-    if (state.mood === 'excited' || state.mood === 'playful') {
-      speakInclination = 'high';
-    } else if (state.mood === 'lazy' || state.mood === 'emo') {
-      speakInclination = 'low';
-    }
-
-    // ─── 硬约束 ───
-    const constraints: string[] = [];
-    if (focusTopics.length > 0) {
-      constraints.push(`本次游荡的前 3 步搜索中，至少有一次必须围绕"${focusTopics[0]}"展开`);
-    }
-    if (explorationMode === 'novel') {
-      constraints.push('你今天特别想探索没见过的领域，优先搜索之前没搜过的话题');
-    }
-    if (explorationMode === 'deep' && focusTopics.length > 0) {
-      constraints.push(`今天深耕"${focusTopics[0]}"，多角度搜索、多点进链接深读`);
-    }
-
-    return { focusTopics, explorationMode, maxSteps, speakInclination, constraints };
+    return computeStrategy(state, this.agentConfig.maxWanderSteps, focusTopics);
   }
 
   private getProvider() {

@@ -14,7 +14,7 @@ import { consola } from '../logger.js';
 
 const logger = consola.withTag('hook:quality');
 
-export default {
+export const qualityHook = {
   name: 'quality',
   priority: 100,
 
@@ -88,6 +88,18 @@ export default {
       r.gateScore = gateScore;
       r.gateReasons = gateReasons;
     }
+
+    // RFC #59 事件协议：speak 行为事件（门控放行后才会到这里）
+    const speakType = params && typeof params === 'object' && 'type' in params && typeof params.type === 'string'
+      ? params.type
+      : 'unknown';
+    ctx.emit({
+      type: 'speak',
+      content: String(content).slice(0, 200),
+      speakType,
+      gated: false,
+      score: gateScore,
+    });
 
     // 推送成功后记录 URL 到去重系统 + 触发校准
     if (r.pushed) {

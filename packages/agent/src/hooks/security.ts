@@ -9,7 +9,7 @@
 
 import type { HookDefinition } from './types.js';
 
-export default {
+export const securityHook = {
   name: 'security',
   priority: 1,
   // 暂无拦截逻辑，后续 issue 实现

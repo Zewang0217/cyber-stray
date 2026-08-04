@@ -75,7 +75,7 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
         prompt: userPrompt,
         stopWhen: [hasToolCall('rest'), stepCountIs(config.maxSteps)],
         tools,
-        onStepFinish({ stepNumber, usage }) {
+        onStepFinish({ stepNumber, usage, toolCalls }) {
           try {
             recordStep({
               stepNumber,
@@ -87,6 +87,12 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
           } catch {
             // 计数自愈：不阻断主流程
           }
+
+          // 步级事件：action = 本步调用的工具名（逗号分隔），无工具则为 'text_only'
+          const action = toolCalls && toolCalls.length > 0
+            ? toolCalls.map((tc) => tc.toolName).join(',')
+            : 'text_only';
+          emit({ type: 'step_end', step: stepNumber, action });
         },
       });
 

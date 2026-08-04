@@ -16,7 +16,7 @@ const logger = createConsola({
   stderr: nullStream as unknown as NodeJS.WriteStream,
 }).withTag('log-cleaner');
 
-const LOG_DIR = 'data/logs';
+const LOG_DIR = `${process.env.DATA_DIR ?? 'data'}/logs`;
 const DEFAULT_RETENTION_DAYS = 30;
 
 /**

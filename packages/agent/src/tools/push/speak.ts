@@ -1,6 +1,6 @@
 import { appendFile, mkdir } from 'fs/promises';
 import { consola } from '../../logger.js';
-import { config } from '../../config.js';
+import { config, getDataPath } from '../../config.js';
 import { sendFeishuMessage } from './lark-sender.js';
 import { getInterestGraph } from '../../memory/interest-graph.js';
 import { registerSpeakTopics } from '../../memory/feedback-pipeline.js';
@@ -45,8 +45,9 @@ interface SpeakRecord {
  */
 async function appendSpeakHistory(record: SpeakRecord): Promise<void> {
   try {
-    await mkdir('data/history', { recursive: true });
-    const filename = `data/history/speaks-${new Date().toISOString().slice(0, 10)}.jsonl`;
+    const historyDir = getDataPath('history');
+    await mkdir(historyDir, { recursive: true });
+    const filename = `${historyDir}/speaks-${new Date().toISOString().slice(0, 10)}.jsonl`;
     const line = JSON.stringify(record) + '\n';
     await appendFile(filename, line, 'utf-8');
   } catch (error) {

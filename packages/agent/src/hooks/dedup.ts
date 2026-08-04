@@ -11,7 +11,7 @@
 import type { HookDefinition } from './types.js';
 import { isInCooldown, getVisitedInfo } from '../tools/dedup/url-tracker.js';
 
-export default {
+export const dedupHook = {
   name: 'dedup',
   priority: 50,
 

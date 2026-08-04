@@ -73,7 +73,7 @@ export interface MemoryConfig {
 
 /** 默认配置 */
 export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
-  basePath: 'data/memory',
+  basePath: `${process.env.DATA_DIR ?? 'data'}/memory`,
   maxFileSize: 10 * 1024,
   maxTotalSize: 5 * 1024 * 1024,
   maxAge: 30 * 24 * 60 * 60 * 1000,

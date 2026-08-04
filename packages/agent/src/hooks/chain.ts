@@ -20,8 +20,8 @@ export class HookChain {
   private hooks: HookDefinition[] = [];
 
   /** 初始化：加载 hooks */
-  async init(disabledNames?: string[]): Promise<void> {
-    this.hooks = await loadHooks(disabledNames);
+  init(disabledNames?: string[]): void {
+    this.hooks = loadHooks(disabledNames);
   }
 
   /** 获取已加载的 hook 列表（调试用） */

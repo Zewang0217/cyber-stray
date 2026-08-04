@@ -7,7 +7,7 @@
 
 import type { HookDefinition } from './types.js';
 
-export default {
+export const budgetHook = {
   name: 'budget',
   priority: 10,
 

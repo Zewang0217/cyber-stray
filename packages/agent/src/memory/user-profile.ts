@@ -5,8 +5,8 @@ import { consola } from '../logger.js';
 
 const logger = consola.withTag('UserProfile');
 
-/** 用户画像文件路径 */
-const USER_PROFILE_PATH = 'data/memory/user-profile.json';
+/** 用户画像文件路径（尊重 DATA_DIR） */
+const USER_PROFILE_PATH = `${process.env.DATA_DIR ?? 'data'}/memory/user-profile.json`;
 
 /** 单个话题最多保留的喜欢/不喜欢条目数 */
 const MAX_TOPIC_ITEMS = 20;

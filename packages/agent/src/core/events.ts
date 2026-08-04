@@ -17,8 +17,7 @@ export type WanderEvent =
   // 生命周期
   | { type: 'wander_start'; traceId: string; maxSteps: number }
   | { type: 'wander_end'; result: WanderResult }
-  // 步级
-  | { type: 'step_start'; step: number }
+  // 步级（step_start 无稳定 emit 点——AI SDK onStepStart 为 experimental，故不定义）
   | { type: 'step_end'; step: number; action: string }
   // 工具
   | { type: 'tool_call_start'; tool: string; params: unknown }
