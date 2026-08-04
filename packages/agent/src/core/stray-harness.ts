@@ -289,6 +289,9 @@ export class StrayHarness {
           this.logger.debug(`工具失败: ${event.tool} — ${event.error}`);
         }
         break;
+      case 'step_end':
+        this.logger.debug(`步 ${event.step} 结束 [${event.action}]`);
+        break;
       case 'speak':
         this.logger.debug(`推送 [${event.speakType}] gated=${event.gated} score=${event.score ?? 'N/A'}`);
         break;

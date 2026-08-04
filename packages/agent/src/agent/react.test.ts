@@ -128,6 +128,8 @@ describe('WanderAgent.wander (loop + post-processing)', () => {
 
     const updated = await loadState();
     expect(updated.consecutiveFailures).toBe(3);
+    // F11 + CR-06：失败的游荡不计入 totalWanders（早返，不走 postWander）
+    expect(updated.totalWanders).toBe(startState.totalWanders);
   });
 
   test('Pitfall 1 自愈：onStepFinish 回调内 usage=undefined → 主流程不中断', async () => {

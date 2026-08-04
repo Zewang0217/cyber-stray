@@ -53,6 +53,15 @@ export const qualityHook = {
           thought: `[${type}] 内容被门控拦截 (score=${gateResult.score.toFixed(2)})`,
         });
 
+        // F8：gated:true 的 speak 事件（deny 路径不经过 afterToolCall，需在此显式发）
+        ctx.emit({
+          type: 'speak',
+          content: String(content).slice(0, 200),
+          speakType: type,
+          gated: true,
+          score: gateResult.score,
+        });
+
         return {
           action: 'deny',
           reason: `PushGate score ${gateResult.score.toFixed(2)} < threshold`,

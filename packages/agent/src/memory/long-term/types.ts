@@ -71,9 +71,11 @@ export interface MemoryConfig {
   generateTextMaxRetries?: number;
 }
 
-/** 默认配置 */
+/** 默认配置。basePath 用 getter 懒求值（F5：消费时才读 DATA_DIR，不在 import 期冻结） */
 export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
-  basePath: `${process.env.DATA_DIR ?? 'data'}/memory`,
+  get basePath() {
+    return `${process.env.DATA_DIR ?? 'data'}/memory`;
+  },
   maxFileSize: 10 * 1024,
   maxTotalSize: 5 * 1024 * 1024,
   maxAge: 30 * 24 * 60 * 60 * 1000,

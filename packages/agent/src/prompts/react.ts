@@ -115,10 +115,8 @@ function formatStrategyDirective(strategy: WanderStrategy): string {
   };
   lines.push(`- **探索模式：** ${modeDesc[strategy.explorationMode] ?? modeDesc.broad}`);
 
-  // 聚焦话题
-  if (strategy.focusTopics.length > 0) {
-    lines.push(`- **聚焦话题：** ${strategy.focusTopics.join('、')}`);
-  }
+  // 聚焦话题不在此重复渲染——下方「你的兴趣」段落（interestLines）已带权重展示同一组话题，
+  // 硬约束中也会引用 top-1。重复两次浪费 prompt 空间（F10）。
 
   // 分享倾向
   if (strategy.speakInclination === 'high') {

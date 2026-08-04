@@ -2,6 +2,12 @@
 
 > Issue: #59 | 状态: DRAFT | 日期: 2026-08-02
 
+> ⚠️ **RFC-to-code 漂移说明（2026-08-04）**：实现与本文档的差异：
+> - §4 hook 注册：目录扫描 → 静态注册（register.ts），理由见 #59 评论实测
+> - §6 状态→行为映射：绝对值表（12/8/4）→ 按 `maxWanderSteps` 比例缩放（100%/60%/20%），决策记录见 #61 评论
+> - §3 事件协议：`step_start`/`interest_signal` 未实现（无稳定 emit 点）；Harness 订阅事件目前仅打日志，记忆/历史/状态仍在 `postWander` 同步写（事件驱动持久化是后续演进方向）
+> - §4 hook 的 `onStepEnd` 未实现（AI SDK onStepStart/Finish 为 experimental）
+
 ## 1. 问题陈述
 
 当前 agent 内核是单层 `runAgentLoop()` 直接调用 AI SDK `generateText()`。7 个结构性痛点（见 #59）。核心矛盾：工程壳子 B+，灵魂 C——进化机制存在但不驱动行为，状态系统存在但不影响行为。

@@ -35,9 +35,6 @@ import type { AgentState, AgentConfig, WanderResult, WanderStep, WanderStrategy 
 
 const logger = consola.withTag('wander-agent');
 
-/** 消耗和恢复参数 */
-const ENERGY_COST_PER_STEP = config.energyCostPerStep;
-const BOREDOM_REDUCTION_PER_STEP = config.boredomReductionPerStep;
 
 /** 游荡历史文件 */
 const WANDER_HISTORY_FILE = 'wander-history.json';
@@ -148,7 +145,16 @@ export class WanderAgent {
     // 7. 执行 onWanderEnd hooks
     await this.hookChain.runWanderEnd(hookCtx, result);
 
-    // 8. 后处理
+    // 8. CR-06：LLM 全部重试失败——仅记 consecutiveFailures，不计 totalWanders，
+    // 不写总结、不扣精力（失败的游荡不算一次成功游荡）
+    if (result.endReason === 'error') {
+      await updateState({
+        consecutiveFailures: state.consecutiveFailures + 1,
+      }).catch((err: unknown) => logger.warn('更新 consecutiveFailures 失败', { error: err }));
+      return result;
+    }
+
+    // 9. 后处理
     await this.postWander(state, result, toolCtx);
 
     return result;
@@ -167,8 +173,9 @@ export class WanderAgent {
       const graph = getInterestGraph();
       const topInterests = graph.getTopInterestsWithWeights(3, 0.05);
       focusTopics = topInterests.map((i) => i.id);
-    } catch {
-      // InterestGraph 不可用时 fallback 到 state.agentInterests
+    } catch (err) {
+      // InterestGraph 不可用时 fallback 到 state.agentInterests（显式 warn，不静默降级）
+      logger.warn('InterestGraph 查询失败，fallback 到 state.agentInterests', { error: String(err) });
       focusTopics = state.agentInterests.slice(0, 3);
     }
 
@@ -222,8 +229,8 @@ export class WanderAgent {
       totalWanders: state.totalWanders + 1,
       totalSteps: state.totalSteps + result.steps,
       totalPushes: state.totalPushes + ctx.spokeTimes,
-      boredom: Math.max(0, state.boredom - result.steps * BOREDOM_REDUCTION_PER_STEP),
-      energy: Math.max(0, state.energy - result.steps * ENERGY_COST_PER_STEP),
+      boredom: Math.max(0, state.boredom - result.steps * this.agentConfig.boredomReductionPerStep),
+      energy: Math.max(0, state.energy - result.steps * this.agentConfig.energyCostPerStep),
       recentTopics: this.extractRecentTopics(ctx.wanderHistory, state.recentTopics),
       consecutiveFailures: result.endReason === 'error' ? state.consecutiveFailures + 1 : 0,
     });

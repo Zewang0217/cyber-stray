@@ -1,7 +1,10 @@
 /**
- * wanderLoop — 纯函数游荡循环
+ * wanderLoop — 游荡执行循环
  *
- * 不 import 任何单例（config、InterestGraph、MemoryStore 全由参数注入）。
+ * 业务依赖全由参数注入（state/config/tools/model/prompt/emit/toolCtx），
+ * 不读全局业务单例（config、InterestGraph、MemoryStore）。
+ * 注意：并非严格意义的纯函数——依赖 consola 日志单例、llm/stats 全局计数器、
+ * Date.now()，且通过 toolCtx 可变对象与工具共享状态（F9：如实描述）。
  * 只管：调 LLM → 执行工具 → emit 事件 → 返回结果。
  * 后处理（记记忆、写历史、更新状态）归 WanderAgent。
  */

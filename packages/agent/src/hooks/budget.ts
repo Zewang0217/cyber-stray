@@ -15,6 +15,8 @@ export const budgetHook = {
     if (tool !== 'read_page') return { action: 'allow' };
 
     if (ctx.state.energy < ctx.config.energyThreshold) {
+      // 等价旧 read-page.ts：stepCount++ 在能量检查之前，deny 也算一步
+      ctx.toolCtx.stepCount++;
       // 设置 endReason，loop 结束时从 toolCtx 读取
       ctx.toolCtx.endReason = 'low_energy';
 

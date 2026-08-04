@@ -2,6 +2,12 @@
 
 > Issue: #60 | 前置: #59 RFC | 约束: 行为完全不变
 
+> ⚠️ **实现漂移说明（2026-08-04，PR #65 review 后）**：本文档是 Wave 1 时的设计快照，与最终实现有以下差异：
+> - hook 注册方式：目录扫描已放弃（生产态只扫到 .js 会加载 0 个 hook），改为 `hooks/register.ts` 静态注册 + fail-fast
+> - `step_start` 事件已删除（无稳定 emit 点）；`step_end`/`speak` 事件已补全 emit
+> - `buildStrategy` 不再是硬编码——Wave 2 已注入兴趣驱动 + 状态映射（见 `core/strategy.ts`）
+> - DATA_DIR 相关路径全部改为调用时懒解析（禁 import 期冻结）
+
 ## 目标文件结构
 
 ```

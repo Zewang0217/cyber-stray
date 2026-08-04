@@ -20,5 +20,5 @@
 
 ## 文件位置
 
-- 落盘：`${DATA_DIR}/logs/YYYY-MM-DD.log`（走 `getDataPath`，尊重 DATA_DIR 环境变量）
+- 落盘：`${DATA_DIR}/logs/YYYY-MM-DD.log`，**调用时**读取 DATA_DIR（logger 为低层模块，不引 config.js，内联懒解析；其余业务模块走 `getDataPath()`）。禁止在 import 期冻结路径。
 - TUI：Ink 组件订阅 `logCallbacks`，独立渲染

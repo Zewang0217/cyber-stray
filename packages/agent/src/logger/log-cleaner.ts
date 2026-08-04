@@ -16,7 +16,6 @@ const logger = createConsola({
   stderr: nullStream as unknown as NodeJS.WriteStream,
 }).withTag('log-cleaner');
 
-const LOG_DIR = `${process.env.DATA_DIR ?? 'data'}/logs`;
 const DEFAULT_RETENTION_DAYS = 30;
 
 /**
@@ -40,7 +39,8 @@ export async function cleanupOldLogs(
     const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
     
     let removedCount = 0;
-    const files = await readdir(LOG_DIR);
+    const logDir = `${process.env.DATA_DIR ?? 'data'}/logs`;
+    const files = await readdir(logDir);
     
     for (const file of files) {
       const date = parseDateFromFilename(file);
@@ -49,7 +49,7 @@ export async function cleanupOldLogs(
       }
       
       if (date < cutoff) {
-        await unlink(`${LOG_DIR}/${file}`);
+        await unlink(`${logDir}/${file}`);
         removedCount++;
         logger.info('删除过期日志', { file, date: new Date(date).toISOString() });
       }

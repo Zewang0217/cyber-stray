@@ -17,14 +17,17 @@ const logger = createConsola({
   stderr: nullStream as unknown as NodeJS.WriteStream,
 }).withTag('file-writer');
 
-const LOG_DIR = `${process.env.DATA_DIR ?? 'data'}/logs`;
+/** F5：调用时解析，不在 import 期冻结 DATA_DIR（logger 为低层模块，不引 config.js） */
+function getLogDir(): string {
+  return `${process.env.DATA_DIR ?? 'data'}/logs`;
+}
 
 /**
  * 获取今日日志文件路径
  */
 function getTodayLogPath(): string {
   const today = new Date().toISOString().slice(0, 10);
-  return `${LOG_DIR}/${today}.log`;
+  return `${getLogDir()}/${today}.log`;
 }
 
 // 日志级别映射（consola 的级别数字越小越严重）
@@ -72,9 +75,10 @@ function formatLogEntry(
  * 初始化日志目录
  */
 export function initFileLogger(): void {
-  if (!existsSync(LOG_DIR)) {
-    mkdirSync(LOG_DIR, { recursive: true });
-    logger.info('创建日志目录', { path: LOG_DIR });
+  const logDir = getLogDir();
+  if (!existsSync(logDir)) {
+    mkdirSync(logDir, { recursive: true });
+    logger.info('创建日志目录', { path: logDir });
   }
 }
 
