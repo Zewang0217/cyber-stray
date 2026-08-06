@@ -4,19 +4,19 @@
  * Phase 4 (REF-01/02/03)：核心组件——LLM 驱动的碎片观察 → 合成洞察。
  *
  * 流程：
- * 1. 收集原始观察（provenance ≠ self:reflection）
+ * 1. 收集原始素材（observation / knowledge / interaction，provenance ≠ self:reflection）
  * 2. 构建反思 prompt → LLM generateText
  * 3. JSON.parse → Zod 校验 → grounding 验证
  * 4. 写入洞察记忆（provenance = self:reflection）
  * 5. 更新 InterestGraph（source = 'reflection'）
  *
  * 防自激：
- * - 只读 provenance = untrusted:web（或未标记）的 observation
+ * - 只读 provenance ≠ self:reflection 的素材
  * - 产出记忆标记 provenance = self:reflection，不被下次反思读入
  *
  * 防幻觉：
  * - 每条洞察必须引用 ≥1 条 source memoryId（Zod min(1)）
- * - grounding 验证 sourceId 对应的 observation 确实存在
+ * - grounding 验证 sourceId 对应的素材确实存在
  * - 无源/低支撑的洞察整条丢弃
  */
 
@@ -26,7 +26,7 @@ import { consola } from '../../logger.js';
 import { config } from '../../config.js';
 import { getMemoryStore } from '../long-term/index.js';
 import { getInterestGraph } from '../interest-graph.js';
-import type { MemoryEntry } from '../long-term/types.js';
+import type { MemoryEntry, MemoryType } from '../long-term/types.js';
 import {
   ReflectionResultSchema,
   DEFAULT_REFLECTION_CONFIG,
@@ -39,9 +39,30 @@ import type {
 
 const logger = consola.withTag('ReflectionEngine');
 
+/**
+ * 反思输入素材的类型及优先级。
+ *
+ * 游荡期间产出的绝大多数是 knowledge（网上读到的内容）和 interaction（发言记录），
+ * observation 仅由 observe_user 工具偶发写入。只收 observation 会让反思长期
+ * 处于"素材不足"而空转，因此三类都收，并按信息密度排优先级占用配额。
+ */
+const MATERIAL_TYPES: MemoryType[] = ['observation', 'knowledge', 'interaction'];
+
+/** 素材类型的中文标签，用于 prompt 中区分材料性质 */
+const MATERIAL_TYPE_LABELS: Partial<Record<MemoryType, string>> = {
+  observation: '对主人的观察',
+  knowledge: '网上读到的内容',
+  interaction: '自己说过的话',
+};
+
 /** 反思用的 system prompt */
 function buildReflectionSystemPrompt(): string {
-  return `你是一只赛博街溜子的"反思大脑"。你的任务是阅读宠物在互联网上游荡时记录下来的**原始观察**，从中发现规律、趋势和洞察。
+  return `你是一只赛博街溜子的"反思大脑"。你的任务是阅读宠物在互联网上游荡时记录下来的**原始素材**，从中发现规律、趋势和洞察。
+
+素材分三类，性质不同，请区别对待：
+- **对主人的观察**：关于主人偏好的直接证据，最可信，优先据此调整兴趣
+- **网上读到的内容**：外部信息，反映宠物接触了什么，适合用来发现话题趋势
+- **自己说过的话**：宠物自己的输出，不能作为"主人喜欢"的证据，只能反映它在关注什么
 
 你需要输出 JSON 格式的反思结果，包含：
 - insights[]: 洞察列表，每条包含 title（标题）、content（内容）、sourceIds（引用的观察 ID 列表，至少 1 条）、newInterests（发现的新兴趣）、existingInterestUpdates（对已有兴趣的调整）
@@ -59,21 +80,22 @@ function buildReflectionSystemPrompt(): string {
 }
 
 /** 反思用的 user prompt */
-function buildReflectionUserPrompt(observations: MemoryEntry[], maxInsights: number): string {
-  const formatted = observations.map((obs, i) => {
-    const domain = extractDomain(obs);
-    return `[${i + 1}] ID: ${obs.id}
-   时间: ${obs.timestamp}
+function buildReflectionUserPrompt(materials: MemoryEntry[], maxInsights: number): string {
+  const formatted = materials.map((mat, i) => {
+    const domain = extractDomain(mat);
+    return `[${i + 1}] ID: ${mat.id}
+   类型: ${MATERIAL_TYPE_LABELS[mat.type] ?? mat.type}
+   时间: ${mat.timestamp}
    来源域名: ${domain || '未知'}
-   标题: ${obs.summary}
-   内容: ${obs.content.substring(0, 300)}`;
+   标题: ${mat.summary}
+   内容: ${mat.content.substring(0, 300)}`;
   }).join('\n\n---\n\n');
 
-  return `以下是宠物最近记录下的 ${observations.length} 条原始观察：
+  return `以下是宠物最近记录下的 ${materials.length} 条原始素材：
 
 ${formatted}
 
-请基于以上观察，输出最多 ${maxInsights} 条洞察。如果观察不够形成有意义洞察，返回空数组。
+请基于以上素材，输出最多 ${maxInsights} 条洞察。如果素材不够形成有意义洞察，返回空数组。
 
 直接输出 JSON（不要 markdown 代码块）：`;
 }
@@ -133,15 +155,15 @@ export class ReflectionEngine {
       return EMPTY_RESULT;
     }
 
-    // Step 1: 收集原始观察（排除自身产出的洞察）
-    const observations = await this.collectObservations();
-    if (observations.length < 3) {
-      logger.debug('原始观察不足（< 3），跳过反思', { count: observations.length });
+    // Step 1: 收集原始素材（排除自身产出的洞察）
+    const materials = await this.collectMaterials();
+    if (materials.length < 3) {
+      logger.debug('原始素材不足（< 3），跳过反思', { count: materials.length });
       return EMPTY_RESULT;
     }
 
     // Step 2: 调用 LLM 反思
-    const rawOutput = await this.callLLM(observations);
+    const rawOutput = await this.callLLM(materials);
 
     // Step 3: 解析 + Zod 校验
     const parseResult = this.parseAndValidate(rawOutput);
@@ -160,7 +182,7 @@ export class ReflectionEngine {
     // Step 4: grounding 验证 + 裁剪到 maxInsights
     const groundedInsights = this.groundInsights(
       parseResult.result.insights.slice(0, this.cfg.maxInsights),
-      observations,
+      materials,
     );
 
     if (groundedInsights.length === 0) {
@@ -182,7 +204,7 @@ export class ReflectionEngine {
     const { newAdded, updated } = await this.updateInterestGraph(groundedInsights);
 
     logger.info('反思完成', {
-      observationsFed: observations.length,
+      materialsFed: materials.length,
       insightsProduced: writtenCount,
       groundedDiscarded: parseResult.result.insights.length - groundedInsights.length,
       newInterests: newAdded,
@@ -205,25 +227,41 @@ export class ReflectionEngine {
   // Private
   // ==========================================
 
-  /** 收集最近原始观察，排除 provenance = self:reflection 的条目 */
-  private async collectObservations(): Promise<MemoryEntry[]> {
+  /**
+   * 收集最近的反思素材，排除 provenance = self:reflection 的条目（防自激）。
+   *
+   * 按 MATERIAL_TYPES 的优先级依次占用配额：observation 信息密度最高，
+   * 先取满；剩余额度再由 knowledge、interaction 填充。这样素材充裕时
+   * 高价值观察不会被大量知识条目挤出窗口。
+   */
+  private async collectMaterials(): Promise<MemoryEntry[]> {
     const store = getMemoryStore();
     const since = new Date(
       Date.now() - this.cfg.lookbackDays * 24 * 60 * 60 * 1000,
     ).toISOString();
 
-    const all = await store.getRecentMemories({
-      type: 'observation',
-      count: this.cfg.maxObservations,
-      since,
-    });
+    const budget = this.cfg.maxObservations;
+    const collected: MemoryEntry[] = [];
+    const countByType: Partial<Record<MemoryType, number>> = {};
 
-    // 过滤掉反思自身产出的洞察
-    return all.filter((m) => m.provenance !== 'self:reflection');
+    for (const type of MATERIAL_TYPES) {
+      const remaining = budget - collected.length;
+      if (remaining <= 0) break;
+
+      const batch = await store.getRecentMemories({ type, count: remaining, since });
+      const usable = batch.filter((m) => m.provenance !== 'self:reflection');
+
+      collected.push(...usable);
+      countByType[type] = usable.length;
+    }
+
+    logger.debug('反思素材收集完成', { total: collected.length, countByType });
+
+    return collected.slice(0, budget);
   }
 
   /** 调用 LLM 反思，返回原始文本 */
-  private async callLLM(observations: MemoryEntry[]): Promise<string> {
+  private async callLLM(materials: MemoryEntry[]): Promise<string> {
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
       throw new Error('缺少环境变量 DEEPSEEK_API_KEY');
@@ -231,9 +269,9 @@ export class ReflectionEngine {
 
     const provider = createDeepSeek({ apiKey });
     const systemPrompt = buildReflectionSystemPrompt();
-    const userPrompt = buildReflectionUserPrompt(observations, this.cfg.maxInsights);
+    const userPrompt = buildReflectionUserPrompt(materials, this.cfg.maxInsights);
 
-    logger.debug('发起反思 LLM 调用', { observationCount: observations.length });
+    logger.debug('发起反思 LLM 调用', { materialCount: materials.length });
 
     const result = await generateText({
       model: provider.chat(config.llmModel),
@@ -310,15 +348,15 @@ export class ReflectionEngine {
     return { success: true, result: result.data, discardedCount: 0 };
   }
 
-  /** grounding 验证：每条洞察的 sourceIds 必须对应真实存在的观察 */
+  /** grounding 验证：每条洞察的 sourceIds 必须对应真实存在的素材 */
   private groundInsights(
     insights: ReflectionInsight[],
-    observations: MemoryEntry[],
+    materials: MemoryEntry[],
   ): ReflectionInsight[] {
-    const observationIds = new Set(observations.map((o) => o.id));
+    const materialIds = new Set(materials.map((m) => m.id));
 
     return insights.filter((insight) => {
-      const validSources = insight.sourceIds.filter((sid) => observationIds.has(sid));
+      const validSources = insight.sourceIds.filter((sid) => materialIds.has(sid));
       if (validSources.length === 0) {
         logger.warn('洞察因 grounding 失败被丢弃（无有效 sourceId）', {
           title: insight.title,

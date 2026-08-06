@@ -72,6 +72,7 @@ const defaultBehavior: BehaviorConfig = {
     decayLambda: 0.1,
     maxWeight: 0.8,
     minInterestCount: 3,
+    maxInterestCount: 20,
     noveltyBudget: 0.15,
     defaultSeeds: ['科技', 'AI', '互联网'],
     minWeight: 0.05,

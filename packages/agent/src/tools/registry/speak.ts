@@ -36,7 +36,9 @@ export const speakToolDef: ToolDefinition = {
       ctx.stepCount++;
       const stepStart = Date.now();
 
-      const result = await speak(content, type);
+      // 门控评估在 quality hook 的 beforeToolCall 完成，命中的兴趣话题已写入 ctx.matchedTopics
+      // （反馈归因用；未评估/失败时为 undefined → speak 不归因，宁可不归因也不能归错）
+      const result = await speak(content, type, ctx.matchedTopics);
       const elapsed = Date.now() - stepStart;
       ctx.spokeTimes++;
 

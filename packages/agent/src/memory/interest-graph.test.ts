@@ -52,6 +52,35 @@ describe('InterestGraph', () => {
     expect(node!.reinforceCount).toBe(0);
   });
 
+  // ----------------------------------------
+  // 分化判定
+  // ----------------------------------------
+
+  it('should not be differentiated with only untouched default seeds', () => {
+    const graph = new InterestGraph('data/interests.json');
+    graph.seedDefaults();
+    expect(graph.getNodeCount()).toBe(3);
+    expect(graph.isDifferentiated()).toBe(false);
+  });
+
+  it('should not be differentiated when empty', () => {
+    const graph = new InterestGraph('data/interests.json');
+    expect(graph.isDifferentiated()).toBe(false);
+  });
+
+  it('should become differentiated after a seed is reinforced', () => {
+    const graph = new InterestGraph('data/interests.json');
+    graph.seedDefaults();
+    graph.reinforce('AI', 0.1);
+    expect(graph.isDifferentiated()).toBe(true);
+  });
+
+  it('should become differentiated when a non-default interest is added', () => {
+    const graph = new InterestGraph('data/interests.json');
+    graph.addInterest('量子计算', 0.3, 'reflection');
+    expect(graph.isDifferentiated()).toBe(true);
+  });
+
   it('should reject duplicate interest', () => {
     const graph = new InterestGraph('data/interests.json');
     graph.addInterest('量子计算', 0.3);
@@ -164,24 +193,48 @@ describe('InterestGraph', () => {
   // Novelty 预算
   // ----------------------------------------
 
-  it('should reject new interest when novelty budget exceeded', () => {
+  it('should clamp new interest weight to the novelty budget instead of rejecting', () => {
     const graph = new InterestGraph('data/interests.json', {
       ...DEFAULT_INTEREST_CONFIG,
       noveltyBudget: 0.1,
     });
 
-    // 先加满到接近上限
+    // 冷启动期（未达 minInterestCount）不施加预算，权重原样保留
     graph.addInterest('兴趣A', 0.5);
     graph.addInterest('兴趣B', 0.4);
-    // 总权重 0.9，noveltyBudget 0.1，上限 1.0
-    // 再加 0.2 会超出 1.0 + 0.1 = 1.1？不对，当前是 0.9 + 0.2 = 1.1 > 1.0 + 0.1 = 1.1
-    // 正好等于上限，应该允许
-    const ok1 = graph.addInterest('兴趣C', 0.2);
-    expect(ok1).toBe(true);
+    graph.addInterest('兴趣C', 0.2);
+    expect(graph.getNode('兴趣A')!.weight).toBe(0.5);
 
-    // 再加就超了
-    const ok2 = graph.addInterest('兴趣D', 0.1);
-    expect(ok2).toBe(false);
+    // 总有效权重 1.1，预算 0.1 → 新兴趣最多分到 0.11，超出部分钳制而非拒绝
+    const ok = graph.addInterest('兴趣D', 0.5);
+    expect(ok).toBe(true);
+    expect(graph.getNode('兴趣D')!.weight).toBeCloseTo(0.11, 5);
+  });
+
+  it('should still admit new interests on a freshly seeded graph', () => {
+    const graph = new InterestGraph('data/interests.json');
+    graph.seedDefaults(); // 三个种子各 0.5，总量 1.5
+
+    // 旧实现按绝对总量设限（≤ 1.0 + 0.15），1.5 已然超限，
+    // 任何新兴趣都会被拒——兴趣图谱只能在种子内部打转
+    const ok = graph.addInterest('量子计算', 0.3, 'reflection');
+    expect(ok).toBe(true);
+    expect(graph.getNode('量子计算')!.weight).toBeCloseTo(0.225, 3);
+    expect(graph.isDifferentiated()).toBe(true);
+  });
+
+  it('should reject new interests once maxInterestCount is reached', () => {
+    const graph = new InterestGraph('data/interests.json', {
+      ...DEFAULT_INTEREST_CONFIG,
+      maxInterestCount: 5,
+    });
+
+    for (let i = 0; i < 5; i++) {
+      expect(graph.addInterest(`兴趣${i}`, 0.3)).toBe(true);
+    }
+
+    expect(graph.addInterest('第六个', 0.3)).toBe(false);
+    expect(graph.getNodeCount()).toBe(5);
   });
 
   // ----------------------------------------

@@ -2,7 +2,6 @@ import { appendFile, mkdir } from 'fs/promises';
 import { consola } from '../../logger.js';
 import { config, getDataPath } from '../../config.js';
 import { sendFeishuMessage } from './lark-sender.js';
-import { getInterestGraph } from '../../memory/interest-graph.js';
 import { registerSpeakTopics } from '../../memory/feedback-pipeline.js';
 
 const logger = consola.withTag('speak');
@@ -101,7 +100,11 @@ async function pushToTelegram(content: string): Promise<void> {
  * - lark_channel: 使用 LarkChannel（默认）
  * - webhook: 使用传统 Webhook
  */
-export async function speak(content: string, type: SpeakType): Promise<SpeakResult> {
+export async function speak(
+  content: string,
+  type: SpeakType,
+  matchedTopics?: string[],
+): Promise<SpeakResult> {
   const timestamp = new Date().toISOString();
 
   logger.info('speak 调用', { type, contentLength: content.length });
@@ -176,18 +179,11 @@ export async function speak(content: string, type: SpeakType): Promise<SpeakResu
   // 记录到历史文件
   await appendSpeakHistory({ content, type, pushed, timestamp, messageId });
 
-  // Phase 3: 注册消息-兴趣映射，供后续反馈强化
-  if (pushed && messageId) {
-    try {
-      const graph = getInterestGraph();
-      const topTopics = graph.getTopInterests(3, 0.05);
-      if (topTopics.length > 0) {
-        registerSpeakTopics(messageId, topTopics);
-      }
-    } catch (error) {
-      // InterestGraph 不可用时静默跳过，不影响 speak 结果
-      logger.warn('注册消息-兴趣映射失败', { error });
-    }
+  // Phase 3: 注册消息-兴趣映射，供后续反馈强化。
+  // 用门控算出的实际命中话题，而非图谱 Top N——后者与内容无关，会导致每次
+  // 反馈等量强化所有节点，权重占比恒定不变，兴趣图谱永远无法分化。
+  if (pushed && messageId && matchedTopics?.length) {
+    registerSpeakTopics(messageId, matchedTopics);
   }
 
   const result: SpeakResult = {

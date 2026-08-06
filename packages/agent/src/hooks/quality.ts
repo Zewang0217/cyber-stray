@@ -30,6 +30,8 @@ export const qualityHook = {
       // 存储分数供 afterToolCall 使用
       ctx.data['quality:gateScore'] = gateResult.score;
       ctx.data['quality:gateReasons'] = gateResult.reasons;
+      // 实际命中的兴趣话题 → 供 speak() 反馈归因（与工具共享同一 toolCtx）
+      ctx.toolCtx.matchedTopics = gateResult.matchedTopics;
 
       if (!gateResult.passed) {
         logger.info(
