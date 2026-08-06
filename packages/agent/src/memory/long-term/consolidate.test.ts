@@ -1,4 +1,4 @@
-﻿/**
+/**
  * MemoryConsolidator + archiveFile 单测（MEM-02 / Wave 0）
  *
  * 覆盖 PLAN 01-02 Task 1 的 7 条 consolidator 断言 + 3 条 archiveFile 断言：
@@ -324,7 +324,7 @@ describe('loadBehaviorConfig 嵌套合并', () => {
 
     // expiryDays 用用户值；其余三字段必须从默认取（不 undefined）
     expect(consolidation).toBeDefined();
-    expect(consolidation!.expiryDays).toBe(10);
+expect(consolidation!.expiryDays).toBe(10);
     expect(consolidation!.lowImportanceThreshold).toBe(0.2);
     expect(consolidation!.mergeMaxAgeDays).toBe(7);
     expect(consolidation!.urlCleanupDays).toBe(30);
