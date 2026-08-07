@@ -69,13 +69,11 @@ export class HookChain {
     const originalExecute = tool.execute;
     if (!originalExecute) return tool;
 
-    const chain = this;
-
     return {
       ...tool,
       execute: async (params: unknown, options: Parameters<NonNullable<Tool['execute']>>[1]) => {
         // ─── beforeToolCall ───
-        for (const hook of chain.hooks) {
+        for (const hook of this.hooks) {
           if (!hook.beforeToolCall) continue;
           try {
             const result = await hook.beforeToolCall(hookCtx, name, params);
@@ -117,7 +115,7 @@ export class HookChain {
         hookCtx.emit({ type: 'tool_call_end', tool: name, success, durationMs, error: errorMsg });
 
         // ─── afterToolCall ───
-        for (const hook of chain.hooks) {
+        for (const hook of this.hooks) {
           if (!hook.afterToolCall) continue;
           try {
             const modified = await hook.afterToolCall(hookCtx, name, params, result);

@@ -1,0 +1,30 @@
+{
+  "id": "browser-exploration-mvp",
+  "name": "browser-exploration-mvp",
+  "title": "浏览器探索模块 MVP (Issue #44)",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "luobochuanqi",
+  "assignee": "luobochuanqi",
+  "createdAt": "2026-07-26",
+  "completedAt": "2026-07-26",
+  "branch": "feat/agent-browser",
+  "base_branch": "develop",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "07-26-m4-skill-filesystem",
+    "07-26-m2-browser-tools",
+    "07-26-m3-browser-lifecycle"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

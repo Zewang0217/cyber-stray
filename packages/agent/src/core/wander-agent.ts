@@ -31,6 +31,10 @@ import type { WanderLoopConfig } from './wander-loop.js';
 import { HookChain } from '../hooks/chain.js';
 import type { HookContext } from '../hooks/types.js';
 import { getInterestGraph } from '../memory/interest-graph.js';
+import {
+  getBrowserContext,
+  buildBrowserPromptSection,
+} from '../tools/browser/lifecycle.js';
 import type { AgentState, AgentConfig, WanderResult, WanderStep, WanderStrategy } from '../types.js';
 
 const logger = consola.withTag('wander-agent');
@@ -83,7 +87,13 @@ export class WanderAgent {
     // 2. 构建 prompt
     const userProfile = await loadUserProfile();
     const memoryContext = await buildMemoryPromptContext();
-    const systemPrompt = buildReactSystemPrompt(state, userProfile, memoryContext, strategy);
+    let systemPrompt = buildReactSystemPrompt(state, userProfile, memoryContext, strategy);
+    // 浏览器上下文（跨游荡持久，无浏览器时为 null）→ 追加注入 system prompt
+    const browserContext = getBrowserContext();
+    const browserSection = buildBrowserPromptSection(browserContext ?? null);
+    if (browserSection) {
+      systemPrompt = `${systemPrompt}\n\n${browserSection}`;
+    }
     const initialUserPrompt = buildReactUserPrompt({
       state,
       userProfile,
@@ -105,6 +115,7 @@ export class WanderAgent {
       endReason: 'max_steps',
       startTime: Date.now(),
       searchQueries: [],
+      browserContext,
     };
 
     // 4. 获取工具 + hook 包装

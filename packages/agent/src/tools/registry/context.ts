@@ -1,4 +1,5 @@
 import type { AgentState, WanderStep } from '../../types.js';
+import type { BrowserContext } from '../browser/lifecycle.js';
 
 /** ctx.wanderHistory 在单次游荡循环内的最大长度 */
 const MAX_CTX_WANDER_HISTORY = 50;
@@ -22,6 +23,8 @@ export interface ToolContext {
   endReason: 'rest' | 'max_steps' | 'low_energy' | 'early_stop' | 'error';
   startTime: number;            // 游荡开始时间（ms）
   searchQueries: SearchRecord[]; // 搜索词归档
+  /** 浏览器上下文（无浏览器时为 null） */
+  browserContext?: BrowserContext | null;
 }
 
 /**

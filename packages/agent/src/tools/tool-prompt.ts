@@ -13,11 +13,12 @@ const CATEGORY_NAMES: Record<string, string> = {
   content: '内容创作',
   memory: '记忆管理',
   feedback: '反馈处理',
+  browser: '浏览器操作',
   other: '其他',
 };
 
 /** 分类顺序 */
-const CATEGORY_ORDER = ['search', 'web', 'content', 'memory', 'feedback'];
+const CATEGORY_ORDER = ['search', 'web', 'browser', 'content', 'memory', 'feedback'];
 
 /**
  * 生成工具描述 Markdown

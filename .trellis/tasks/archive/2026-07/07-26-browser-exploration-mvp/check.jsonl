@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/agent/core/index.md", "reason": "agent 架构约定 + Quality Check 清单"}
+{"file": ".trellis/spec/agent/core/conventions.md", "reason": "硬约定合规检查"}
+{"file": ".trellis/spec/agent/backend/index.md", "reason": "backend 层 Quality Check 清单"}
+{"file": ".trellis/spec/agent/backend/error-handling.md", "reason": "错误处理合规检查"}
+{"file": ".trellis/spec/agent/backend/quality-guidelines.md", "reason": "质量门禁验证标准"}
+{"file": ".trellis/spec/agent/backend/logging-guidelines.md", "reason": "日志规范合规检查"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "检查是否有重复实现"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层数据流一致性检查"}

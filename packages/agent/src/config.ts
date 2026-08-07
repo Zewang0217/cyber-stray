@@ -33,6 +33,8 @@ type BehaviorConfig = Pick<
   interests: NonNullable<AgentConfig['interests']>;
   /** Phase 5: 推送价值门控配置 */
   pushGate: NonNullable<AgentConfig['pushGate']>;
+  /** 浏览器探索配置 */
+  browser: NonNullable<AgentConfig['browser']>;
   /** Hook 系统配置（RFC #59 §4）：disabled 列表 */
   hooks?: AgentConfig['hooks'];
 };
@@ -94,6 +96,14 @@ const defaultBehavior: BehaviorConfig = {
       maxUrlCount: 5,
     },
   },
+  browser: {
+    enabled: true,
+    warmUpOnStart: true,
+    closeAfterWander: false,
+    timeout: 30000,
+    sessionName: 'cyber-stray',
+    restore: true,
+  },
 };
 
 /**
@@ -138,6 +148,11 @@ function loadBehaviorConfig(): BehaviorConfig {
             ...defaultBehavior.pushGate.contentScan,
             ...(file.pushGate?.contentScan ?? {}),
           },
+        },
+        // 浏览器探索配置嵌套合并
+        browser: {
+          ...defaultBehavior.browser,
+          ...(file.browser ?? {}),
         },
       };
     } catch (err) {
@@ -189,6 +204,9 @@ export const config: AgentConfig = {
 
   // Phase 5: 推送价值门控配置
   pushGate: behavior.pushGate,
+
+  // 浏览器探索配置
+  browser: behavior.browser,
 };
 
 /**

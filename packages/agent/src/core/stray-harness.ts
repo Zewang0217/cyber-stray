@@ -16,6 +16,7 @@ import { getMemoryStore, getMemoryConsolidator } from '../memory/long-term.js';
 import { cleanupVisitedUrls } from '../tools/dedup/url-tracker.js';
 import { getReflectionScheduler } from '../memory/reflection/index.js';
 import { initializeInterestGraph, buildInterestConfig } from '../memory/interest-graph.js';
+import { browserWarmUp, browserShutdown } from '../tools/browser/lifecycle.js';
 import { WanderAgent } from './wander-agent.js';
 import type { WanderEvent } from './events.js';
 
@@ -74,6 +75,11 @@ export class StrayHarness {
       this.logger.warn('兴趣图谱初始化失败（不阻断启动）', { error: String(error) });
     }
 
+    // 浏览器预热（best-effort，失败不阻断启动；enabled 是主开关）
+    if (config.browser?.enabled !== false && config.browser?.warmUpOnStart !== false) {
+      await browserWarmUp();
+    }
+
     // 启动一次性记忆维护
     await this.runStartupMemoryMaintenance();
 
@@ -112,6 +118,9 @@ export class StrayHarness {
 
       // 2. 关闭飞书 WebSocket 连接
       await closeFeishuWS();
+
+      // 2.5 关闭浏览器
+      await browserShutdown();
 
       // 3. 保存当前状态
       try {
@@ -252,6 +261,11 @@ export class StrayHarness {
 
       // 3. 启动游荡（通过 WanderAgent）
       const result = await this.agent.wander(newState);
+
+      // 游荡后浏览器处理（closeAfterWander 配置：true 时关闭并清空上下文）
+      if (config.browser?.closeAfterWander) {
+        await browserShutdown();
+      }
 
       // 4. 游荡后触发反思
       getReflectionScheduler()
