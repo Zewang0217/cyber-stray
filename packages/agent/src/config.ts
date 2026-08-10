@@ -1,7 +1,6 @@
 import { readFileSync, existsSync } from 'fs';
 import type { AgentConfig, EnergyRecoveryTier } from './types.js';
 
-const CONFIG_PATH = 'data/agent-config.json';
 
 /**
  * 可从配置文件覆盖的行为参数（敏感信息仍从环境变量读取）
@@ -36,6 +35,8 @@ type BehaviorConfig = Pick<
   pushGate: NonNullable<AgentConfig['pushGate']>;
   /** 浏览器探索配置 */
   browser: NonNullable<AgentConfig['browser']>;
+  /** Hook 系统配置（RFC #59 §4）：disabled 列表 */
+  hooks?: AgentConfig['hooks'];
 };
 
 const defaultBehavior: BehaviorConfig = {
@@ -56,7 +57,7 @@ const defaultBehavior: BehaviorConfig = {
   ] as EnergyRecoveryTier[],
   llmTemperature: 0.8,
   maxSearchResults: 10,
-  maxWanderSteps: 10,
+  maxWanderSteps: 100,
   wanderTemperature: 0.9,
   outputLanguage: 'zh-CN',
   urlCooldownDays: 5,
@@ -114,9 +115,10 @@ const defaultBehavior: BehaviorConfig = {
  * `consolidation` 显式做字段级合并：用户字段覆盖默认，未配字段从默认取。
  */
 function loadBehaviorConfig(): BehaviorConfig {
-  if (existsSync(CONFIG_PATH)) {
+  const configPath = getDataPath('agent-config.json');
+  if (existsSync(configPath)) {
     try {
-      const file = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Partial<BehaviorConfig>;
+      const file = JSON.parse(readFileSync(configPath, 'utf-8')) as Partial<BehaviorConfig>;
       return {
         ...defaultBehavior,
         ...file,

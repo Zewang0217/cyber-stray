@@ -5,13 +5,17 @@
  */
 
 import { readFile, writeFile, mkdir } from 'fs/promises';
+import { dirname } from 'path';
 import { existsSync } from 'fs';
-import path from 'path';
 import { consola } from '../logger.js';
+import { getDataPath } from '../config.js';
 
 const logger = consola.withTag('feedback-store');
 
-const FEEDBACK_FILE = path.join(process.cwd(), 'data/feedback.json');
+/** 调用时解析路径，避免 import 期捕获 cwd */
+function getFeedbackFilePath(): string {
+  return getDataPath('feedback.json');
+}
 
 /** 反馈类型 */
 export type FeedbackType = 'like' | 'dislike';
@@ -46,14 +50,15 @@ export interface FeedbackStats {
  * 确保反馈文件存在
  */
 async function ensureFeedbackFile(): Promise<void> {
-  if (!existsSync(FEEDBACK_FILE)) {
-    const dir = path.dirname(FEEDBACK_FILE);
+  const filePath = getFeedbackFilePath();
+  if (!existsSync(filePath)) {
+    const dir = dirname(filePath);
     if (!existsSync(dir)) {
       await mkdir(dir, { recursive: true });
     }
     const initial: FeedbackStore = { feedbacks: [], lastUpdated: new Date().toISOString() };
-    await writeFile(FEEDBACK_FILE, JSON.stringify(initial, null, 2), 'utf-8');
-    logger.info('创建反馈存储文件', { path: FEEDBACK_FILE });
+    await writeFile(filePath, JSON.stringify(initial, null, 2), 'utf-8');
+    logger.info('创建反馈存储文件', { path: filePath });
   }
 }
 
@@ -62,7 +67,7 @@ async function ensureFeedbackFile(): Promise<void> {
  */
 async function readStore(): Promise<FeedbackStore> {
   await ensureFeedbackFile();
-  const content = await readFile(FEEDBACK_FILE, 'utf-8');
+  const content = await readFile(getFeedbackFilePath(), 'utf-8');
   return JSON.parse(content) as FeedbackStore;
 }
 
@@ -71,7 +76,7 @@ async function readStore(): Promise<FeedbackStore> {
  */
 async function writeStore(store: FeedbackStore): Promise<void> {
   store.lastUpdated = new Date().toISOString();
-  await writeFile(FEEDBACK_FILE, JSON.stringify(store, null, 2), 'utf-8');
+  await writeFile(getFeedbackFilePath(), JSON.stringify(store, null, 2), 'utf-8');
 }
 
 /**

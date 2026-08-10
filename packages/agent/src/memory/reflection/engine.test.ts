@@ -17,10 +17,11 @@ vi.mock('ai', () => ({
 
 import { generateText } from 'ai';
 import { ReflectionEngine, _resetReflectionEngine } from './engine.js';
-import { getMemoryStore } from '../long-term/index.js';
+import { getMemoryStore, _resetMemoryStore } from '../long-term/index.js';
 import { MemoryStore } from '../long-term/index.js';
 import { _resetInterestGraphCache } from '../interest-graph.js';
 import { useTempDataDir, restoreFetch } from '../../test/helpers.js';
+import { _resetMemoryIndex } from '../long-term/memory-index.js';
 import type { MemoryEntry, Provenance } from '../long-term/types.js';
 
 // ============================================
@@ -77,6 +78,8 @@ describe('ReflectionEngine', () => {
     process.env.DEEPSEEK_API_KEY = 'test-key';
     _resetReflectionEngine();
     _resetInterestGraphCache();
+    _resetMemoryStore();
+    _resetMemoryIndex();
     store = getMemoryStore();
     engine = new ReflectionEngine();
   });
@@ -87,6 +90,8 @@ describe('ReflectionEngine', () => {
     process.env.DEEPSEEK_API_KEY = savedKey;
     _resetReflectionEngine();
     _resetInterestGraphCache();
+    _resetMemoryStore();
+    _resetMemoryIndex();
   });
 
   // ==========================================

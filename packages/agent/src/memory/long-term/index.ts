@@ -666,3 +666,8 @@ export function getMemoryStore(): MemoryStore {
   }
   return defaultStore;
 }
+
+/** 重置默认记忆存储单例（测试隔离：basePath 在构造时冻结，DATA_DIR 变化后需重建） */
+export function _resetMemoryStore(): void {
+  defaultStore = null;
+}

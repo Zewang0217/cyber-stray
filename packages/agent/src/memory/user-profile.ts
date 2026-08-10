@@ -5,8 +5,10 @@ import { consola } from '../logger.js';
 
 const logger = consola.withTag('UserProfile');
 
-/** 用户画像文件路径 */
-const USER_PROFILE_PATH = 'data/memory/user-profile.json';
+/** F5：调用时解析，不在 import 期冻结 DATA_DIR */
+function getUserProfilePath(): string {
+  return `${process.env.DATA_DIR ?? 'data'}/memory/user-profile.json`;
+}
 
 /** 单个话题最多保留的喜欢/不喜欢条目数 */
 const MAX_TOPIC_ITEMS = 20;
@@ -104,34 +106,35 @@ function createDefaultUserProfile(): UserProfile {
  * 文件存在但解析/schema 失败 → 抛错（D-09：不兜底，不掩错误）。
  */
 export async function loadUserProfile(): Promise<UserProfile> {
-  if (!existsSync(USER_PROFILE_PATH)) {
+  const profilePath = getUserProfilePath();
+  if (!existsSync(profilePath)) {
     logger.debug('用户画像文件不存在，使用默认画像');
     return createDefaultUserProfile();
   }
 
   let content: string;
   try {
-    content = await readFile(USER_PROFILE_PATH, 'utf-8');
+    content = await readFile(profilePath, 'utf-8');
   } catch (error) {
-    logger.error('读取用户画像文件失败', { path: USER_PROFILE_PATH, error });
-    throw new Error(`用户画像读取失败: ${USER_PROFILE_PATH}`, { cause: error });
+    logger.error('读取用户画像文件失败', { path: profilePath, error });
+    throw new Error(`用户画像读取失败: ${profilePath}`, { cause: error });
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
   } catch (error) {
-    logger.error('用户画像解析失败（非法 JSON）', { path: USER_PROFILE_PATH, error });
-    throw new Error(`用户画像解析失败: ${USER_PROFILE_PATH}`, { cause: error });
+    logger.error('用户画像解析失败（非法 JSON）', { path: profilePath, error });
+    throw new Error(`用户画像解析失败: ${profilePath}`, { cause: error });
   }
 
   const result = UserProfileSchema.safeParse(parsed);
   if (!result.success) {
     logger.error('用户画像 schema 校验失败', {
-      path: USER_PROFILE_PATH,
+      path: profilePath,
       issues: result.error.issues,
     });
-    throw new Error(`用户画像 schema 校验失败: ${USER_PROFILE_PATH}`, {
+    throw new Error(`用户画像 schema 校验失败: ${profilePath}`, {
       cause: result.error,
     });
   }
@@ -150,7 +153,7 @@ export async function loadUserProfile(): Promise<UserProfile> {
  */
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
   try {
-    await atomicWriteJson(USER_PROFILE_PATH, profile);
+    await atomicWriteJson(getUserProfilePath(), profile);
     logger.debug('用户画像已保存');
   } catch (error) {
     logger.error('保存用户画像失败', { error });

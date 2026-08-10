@@ -294,7 +294,7 @@ describe('archiveFile', () => {
 });
 
 describe('loadBehaviorConfig 嵌套合并', () => {
-  let tempEnv: { cleanup: () => void };
+  let tempEnv: { dataDir: string; cleanup: () => void };
 
   beforeEach(() => {
     tempEnv = useTempDataDir();
@@ -307,9 +307,9 @@ describe('loadBehaviorConfig 嵌套合并', () => {
   // W2 数据安全：部分 consolidation 配置时其它字段仍取默认值（防 undefined 阈值致误归档）
   test('部分 consolidation 配置时其它字段仍取默认值（W2 数据安全）', async () => {
     // 构造只含 consolidation.expiryDays=10 的 agent-config.json（其余字段缺失）
-    mkdirSync('data', { recursive: true });
+    // CONFIG_PATH 走 DATA_DIR（tempEnv.dataDir），不再相对 cwd
     writeFileSync(
-      'data/agent-config.json',
+      `${tempEnv.dataDir}/agent-config.json`,
       JSON.stringify({
         _consolidationNote: 'test',
         consolidation: { expiryDays: 10 },
@@ -324,9 +324,9 @@ describe('loadBehaviorConfig 嵌套合并', () => {
 
     // expiryDays 用用户值；其余三字段必须从默认取（不 undefined）
     expect(consolidation).toBeDefined();
-    expect(consolidation.expiryDays).toBe(10);
-    expect(consolidation.lowImportanceThreshold).toBe(0.2);
-    expect(consolidation.mergeMaxAgeDays).toBe(7);
-    expect(consolidation.urlCleanupDays).toBe(30);
+    expect(consolidation!.expiryDays).toBe(10);
+    expect(consolidation!.lowImportanceThreshold).toBe(0.2);
+    expect(consolidation!.mergeMaxAgeDays).toBe(7);
+    expect(consolidation!.urlCleanupDays).toBe(30);
   });
 });
