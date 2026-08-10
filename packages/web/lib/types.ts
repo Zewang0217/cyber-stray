@@ -1,6 +1,6 @@
 /**
  * 赛博街溜子 Web UI 核心类型定义
- * 与后端 src/types.ts 保持一致
+ * 与后端 packages/agent/src/types.ts 保持一致
  */
 
 // ============================================
@@ -103,14 +103,28 @@ export interface SearchResult {
   score?: number;
 }
 
-/** 推送内容 */
+/** speak 内容类型（与 agent 的 SpeakType 对齐） */
+export type SpeakType = 'share' | 'nonsense' | 'article';
+
+/**
+ * 推送内容（对应 agent 写入 data/history/speaks-*.jsonl 的一行）
+ *
+ * 结构化字段由 agent 从推送正文派生。早于该改动的历史记录只有
+ * content/type/pushed/timestamp，由 /api/history 归一化后补齐。
+ */
 export interface PushContent {
-  title: string;
-  url: string;
-  summary: string;
-  message: string;      // 人格化文案
-  mood: Mood;
+  /** 推送正文原文 */
+  message: string;
   timestamp: string;
+  title: string;
+  summary: string;
+  url?: string;
+  mood?: Mood;
+  type?: SpeakType;
+  /** 是否真的推送出去了 */
+  pushed?: boolean;
+  /** 是否被推送门控拦截（仅学习，没告诉主人） */
+  gated?: boolean;
 }
 
 // ============================================

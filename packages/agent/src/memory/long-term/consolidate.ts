@@ -24,6 +24,7 @@ import { config } from '../../config.js';
 
 import {
   DEFAULT_MEMORY_CONFIG,
+  defaultMemoryBasePath,
   MEMORY_TYPE_PATHS,
   parseMemoryFrontmatter,
   type MemoryType,
@@ -55,7 +56,7 @@ export class MemoryConsolidator {
   private basePath: string;
   private store?: MemoryStore;
 
-  constructor(basePath: string = DEFAULT_MEMORY_CONFIG.basePath, store?: MemoryStore) {
+  constructor(basePath: string = defaultMemoryBasePath(), store?: MemoryStore) {
     this.basePath = basePath;
     this.store = store;
   }
@@ -359,7 +360,7 @@ let defaultConsolidator: MemoryConsolidator | null = null;
 export function getMemoryConsolidator(store?: MemoryStore): MemoryConsolidator {
   if (!defaultConsolidator) {
     defaultConsolidator = new MemoryConsolidator(
-      DEFAULT_MEMORY_CONFIG.basePath,
+      defaultMemoryBasePath(),
       store,
     );
   }

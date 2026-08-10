@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import type { ApiResponse, InterestGraphResponse } from "@/lib/types";
+import { dataPath } from "@/lib/data-path";
 
 /**
  * GET /api/interests
  * 读取兴趣图谱当前状态（含熵值）。
  *
- * 熵值公式与 src/memory/interest-graph.ts InterestGraph.getEntropy() 同步保持。
+ * 熵值公式与 packages/agent/src/memory/interest-graph.ts 的
+ * InterestGraph.getEntropy() 同步保持。
  * 注意：API 用 raw weight，Graph 内部用 effectiveWeight（含时间衰减）。
  * 两端差异可接受——API 展示原始分布，Graph 用于衰减后决策。
  */
@@ -16,7 +18,7 @@ export async function GET(): Promise<NextResponse<ApiResponse<InterestGraphRespo
     let lastUpdated: string | null = null;
 
     try {
-      const content = await readFile("../data/interests.json", "utf-8");
+      const content = await readFile(dataPath("interests.json"), "utf-8");
       const data = JSON.parse(content);
       nodes = data.nodes ?? [];
       lastUpdated = data.lastUpdated ?? null;

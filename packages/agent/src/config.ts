@@ -1,6 +1,16 @@
 import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+import { fileURLToPath } from 'url';
 import type { AgentConfig, EnergyRecoveryTier } from './types.js';
 
+/**
+ * 数据目录锚点：`packages/agent/data`
+ *
+ * 本文件位于 `packages/agent/src/`，故 `../data` 即包内 data 目录。用
+ * import.meta.url 而非 cwd 推导，保证从仓库根、包目录或 pm2/systemd 等任意
+ * 工作目录启动，读写的都是同一份数据。
+ */
+const AGENT_DATA_ROOT = fileURLToPath(new URL('../data', import.meta.url));
 
 /**
  * 可从配置文件覆盖的行为参数（敏感信息仍从环境变量读取）
@@ -250,11 +260,14 @@ export function validateConfig(): void {
 }
 
 /**
- * 获取数据目录路径
+ * 获取数据文件路径
  *
- * 默认相对于 cwd 的 data/；测试可通过 DATA_DIR 环境变量重定向到临时目录，
- * 避免污染真实数据。env 未设置时与历史行为完全一致。
+ * 默认锚定到 `packages/agent/data`（见 AGENT_DATA_ROOT），与启动时的 cwd 无关；
+ * 测试可通过 DATA_DIR 环境变量重定向到临时目录，避免污染真实数据。
+ *
+ * agent 侧任何数据文件都必须经由此函数取路径，不要再写 `data/xxx` 相对路径——
+ * 那种写法绕过 DATA_DIR 且随 cwd 漂移。
  */
 export function getDataPath(filename: string): string {
-  return `${process.env.DATA_DIR ?? 'data'}/${filename}`;
+  return join(process.env.DATA_DIR ?? AGENT_DATA_ROOT, filename);
 }

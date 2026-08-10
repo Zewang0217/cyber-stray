@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/agent/core/index.md", "reason": "agent 包的 Quality Check 清单"}
+{"file": ".trellis/spec/agent/core/conventions.md", "reason": "核对是否引入了兜底逻辑或隐藏错误"}
+{"file": ".trellis/spec/web/frontend/index.md", "reason": "核对 web 只读契约未被破坏"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核对 agent 写入格式与 web 读取格式的契约一致性，含旧格式兼容"}

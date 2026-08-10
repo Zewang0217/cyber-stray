@@ -1,14 +1,30 @@
 ﻿import { describe, test, expect, afterEach } from 'vitest';
+import { fileURLToPath } from 'url';
+import { join } from 'path';
 import { validateConfig, getRecoveryTier, getDataPath } from './config.js';
 
 describe('getDataPath', () => {
+  /** 期望的锚点：packages/agent/data（由本测试文件位置推导，不写死机器路径） */
+  const expectedRoot = fileURLToPath(new URL('../data', import.meta.url));
+
   afterEach(() => {
     delete process.env.DATA_DIR;
   });
 
-  test('默认前缀 data/', () => {
+  test('默认锚定到 agent 包内的 data 目录', () => {
     delete process.env.DATA_DIR;
-    expect(getDataPath('state.json')).toBe('data/state.json');
+    expect(getDataPath('state.json')).toBe(join(expectedRoot, 'state.json'));
+  });
+
+  test('不随 cwd 漂移', () => {
+    delete process.env.DATA_DIR;
+    const originalCwd = process.cwd();
+    try {
+      process.chdir('/tmp');
+      expect(getDataPath('state.json')).toBe(join(expectedRoot, 'state.json'));
+    } finally {
+      process.chdir(originalCwd);
+    }
   });
 
   test('尊重 DATA_DIR 环境变量', () => {

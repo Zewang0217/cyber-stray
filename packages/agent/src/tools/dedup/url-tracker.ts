@@ -202,10 +202,25 @@ export async function cleanupVisitedUrls(
 }
 
 /**
- * 从内容中提取 URL
+ * URL 匹配模式
+ *
+ * 排除空白、成对括号与中英文句读。ASCII 右括号必须排除——LLM 常写
+ * markdown 链接 `[标题](url)`，否则右括号会被吃进 URL。代价是维基百科
+ * 那类 URL 里自带括号的链接会被截断，权衡下前者更常见。
+ *
+ * 注意不要把 ASCII 句号排除掉：那会让所有域名在第一个点处断掉。
+ */
+const URL_PATTERN = /https?:\/\/[^\s<>"'()（）[\]【】，。！？；：、]+/;
+
+/**
+ * 从内容中提取第一个 URL
  */
 export function extractUrl(content: string): string | null {
-  // 匹配 http/https URL
-  const urlMatch = content.match(/https?:\/\/[^\s）\]。!！,，.。?？]+/);
-  return urlMatch ? urlMatch[0] : null;
+  const urlMatch = content.match(URL_PATTERN);
+  if (!urlMatch) {
+    return null;
+  }
+  // 句尾标点常紧贴 URL（"…见 https://a.com/b."），不属于链接本身
+  const trimmed = urlMatch[0].replace(/[.,;:!?]+$/, '');
+  return trimmed || null;
 }

@@ -4,6 +4,7 @@
 
 import { createHash } from 'crypto';
 import { z } from 'zod';
+import { getDataPath } from '../../config.js';
 
 /** 记忆类型枚举 */
 export type MemoryType = 'profile' | 'knowledge' | 'interaction' | 'observation';
@@ -71,11 +72,17 @@ export interface MemoryConfig {
   generateTextMaxRetries?: number;
 }
 
-/** 默认配置。basePath 用 getter 懒求值（F5：消费时才读 DATA_DIR，不在 import 期冻结） */
-export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
-  get basePath() {
-    return `${process.env.DATA_DIR ?? 'data'}/memory`;
-  },
+/**
+ * 记忆根目录的默认位置
+ *
+ * 调用时求值：DATA_DIR 由测试在 import 之后设置，写成模块级常量会被固化。
+ */
+export function defaultMemoryBasePath(): string {
+  return getDataPath('memory');
+}
+
+/** 默认配置（basePath 不在此设默认，见 defaultMemoryBasePath） */
+export const DEFAULT_MEMORY_CONFIG: Omit<MemoryConfig, 'basePath'> = {
   maxFileSize: 10 * 1024,
   maxTotalSize: 5 * 1024 * 1024,
   maxAge: 30 * 24 * 60 * 60 * 1000,

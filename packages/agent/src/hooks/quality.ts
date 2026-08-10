@@ -10,6 +10,7 @@ import type { HookDefinition } from './types.js';
 import { getPushGate, type SpeakType } from '../memory/push-gate.js';
 import { extractUrl, addVisitedUrl } from '../tools/dedup/url-tracker.js';
 import { pushWanderStep } from '../tools/registry/context.js';
+import { recordGatedSpeak } from '../tools/push/speak.js';
 import { consola } from '../logger.js';
 
 const logger = consola.withTag('hook:quality');
@@ -53,6 +54,13 @@ export const qualityHook = {
           tool: 'speak',
           spoke: content,
           thought: `[${type}] 内容被门控拦截 (score=${gateResult.score.toFixed(2)})`,
+        });
+
+        // 留痕"学了但没推"，供仪表盘展示；ctx.spokeTimes 不自增——
+        // 它会累加进 state.totalPushes，被拦截的内容不算推送。
+        await recordGatedSpeak(content, type as SpeakType, {
+          mood: ctx.toolCtx.state.mood,
+          gateScore: gateResult.score,
         });
 
         // F8：gated:true 的 speak 事件（deny 路径不经过 afterToolCall，需在此显式发）

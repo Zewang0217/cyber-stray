@@ -1,6 +1,9 @@
 import { readdir, unlink } from 'fs/promises';
+import { join } from 'path';
 import { createConsola } from 'consola';
 import { Writable } from 'stream';
+// 只依赖 config 的路径函数；config 不 import logger，不构成循环依赖
+import { getDataPath } from '../config.js';
 
 // 创建空输出流禁用终端输出
 const nullStream = new Writable({
@@ -17,6 +20,11 @@ const logger = createConsola({
 }).withTag('log-cleaner');
 
 const DEFAULT_RETENTION_DAYS = 30;
+
+/** 日志目录（调用时求值，尊重 DATA_DIR） */
+function logDir(): string {
+  return getDataPath('logs');
+}
 
 /**
  * 从文件名解析日期
@@ -39,8 +47,8 @@ export async function cleanupOldLogs(
     const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
     
     let removedCount = 0;
-    const logDir = `${process.env.DATA_DIR ?? 'data'}/logs`;
-    const files = await readdir(logDir);
+    const dir = logDir();
+    const files = await readdir(dir);
     
     for (const file of files) {
       const date = parseDateFromFilename(file);
@@ -49,7 +57,7 @@ export async function cleanupOldLogs(
       }
       
       if (date < cutoff) {
-        await unlink(`${logDir}/${file}`);
+        await unlink(join(dir, file));
         removedCount++;
         logger.info('删除过期日志', { file, date: new Date(date).toISOString() });
       }

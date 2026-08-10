@@ -17,6 +17,12 @@
 - **grounding**：反思产出的每条洞察必须引用 ≥1 条真实存在的观察 id（`sourceIds`），无源整条丢弃——这是防幻觉核心，**不得绕过**。改反思结构时勿断此链。
 - **有界**：记忆接 `consolidator` / `cleanup`，不无界增长。
 
+## 数据路径
+
+- **一律走 `getDataPath()`**：agent 的任何数据文件路径都从 `config.ts` 的 `getDataPath()` 取。它锚定在 `packages/agent/data`（由 `import.meta.url` 推导），与启动时的 cwd 无关。写 `'data/xxx'` 相对路径会随启动方式漂移（仓库根 / pm2 / systemd 各不相同），且绕过 `DATA_DIR`。
+- **禁止模块级路径常量**：`const P = getDataPath('x')` 在 import 时求值，而测试是在 import **之后**才设 `DATA_DIR`，常量会被固化成真实数据目录，测试直接写穿生产数据。一律写成调用时求值的函数（`function pPath() { return getDataPath('x') }`）。同理，缓存单例的模块（`const store = getMemoryStore()`）要改成调用处取 `getMemoryStore()`。
+- 验收门禁：`grep -rn "['\"]data/" packages/agent/src --include='*.ts' | grep -v '\.test\.ts'` 应无输出。
+
 ## 异步
 
 - **全异步**：所有 I/O 用 `fs/promises` + Promise。

@@ -22,12 +22,20 @@ describe('url-tracker 纯函数', () => {
     expect(getUrlHash('https://a.com/b?x=1')).toBe(getUrlHash('http://a.com/b'));
   });
 
-  test('extractUrl 从文本提取以 https 开头的 URL', () => {
-    // NOTE: extractUrl 的正则当前排除 ASCII 句号 '.'，会在域名首个点处截断
-    // （既有缺陷，另行报告），故此处只验证能提取到 https 开头的串，不断言完整域名
-    const url = extractUrl('看这个 https://example.com/page');
-    expect(url).not.toBeNull();
-    expect(url!.startsWith('https://')).toBe(true);
+  test('extractUrl 提取完整 URL（含域名中的点）', () => {
+    expect(extractUrl('看这个 https://example.com/page')).toBe('https://example.com/page');
+    expect(extractUrl('https://blog.rust-lang.org/2026/07/30/x')).toBe(
+      'https://blog.rust-lang.org/2026/07/30/x',
+    );
+  });
+
+  test('extractUrl 剥掉紧贴的句尾标点', () => {
+    expect(extractUrl('见 https://example.com/page.')).toBe('https://example.com/page');
+    expect(extractUrl('见 https://example.com/page，然后')).toBe('https://example.com/page');
+  });
+
+  test('extractUrl 不把 markdown 链接的右括号吃进 URL', () => {
+    expect(extractUrl('[标题](https://example.com/a)')).toBe('https://example.com/a');
   });
 
   test('extractUrl 无 URL 文本返回 null', () => {

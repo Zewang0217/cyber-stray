@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import type { AgentState, ApiResponse } from "@/lib/types";
+import { dataPath } from "@/lib/data-path";
 
 /**
  * GET /api/state
@@ -8,7 +9,7 @@ import type { AgentState, ApiResponse } from "@/lib/types";
  */
 export async function GET(): Promise<NextResponse<ApiResponse<AgentState>>> {
   try {
-    const content = await readFile("../data/state.json", "utf-8");
+    const content = await readFile(dataPath("state.json"), "utf-8");
     const state = JSON.parse(content) as AgentState;
 
     return NextResponse.json({

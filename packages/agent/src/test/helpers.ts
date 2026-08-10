@@ -7,10 +7,13 @@
  * - useTempDataDir：通过 DATA_DIR 环境变量隔离文件系统副作用
  */
 
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { AgentState } from '../types.js';
+import { _resetMemoryStore } from '../memory/long-term/index.js';
+import { _resetMemoryIndex } from '../memory/long-term/memory-index.js';
+import { _resetInterestGraphCache } from '../memory/interest-graph.js';
 
 /**
  * 构造一个完整有效的 AgentState 测试夹具，可通过 overrides 覆盖任意字段
@@ -87,20 +90,27 @@ export function restoreFetch(): void {
 }
 
 /**
- * 创建唯一的临时数据目录并将 DATA_DIR 指向它，同时 chdir 进入该目录
+ * 创建唯一的临时数据目录并将 DATA_DIR 指向它，同时 chdir 进入其父目录
  *
- * chdir 确保 react.ts 中硬编码的相对路径（data/wander-history.json、
- * getMemoryStore 的 data/memory）也落在临时目录内，避免污染真实 data/。
+ * DATA_DIR 指向 `<root>/data` 而 cwd 指向 `<root>`，让两条路径解析基准合流：
+ * 走 getDataPath 的模块与测试里写死的 `data/xxx` 字面量夹具落在同一处，
+ * 都在临时目录内，不污染真实的 packages/agent/data/。
  *
- * @returns cleanup 函数，应在 afterEach 中调用以恢复 cwd、删除目录并清除环境变量
+ * @returns dataDir 为数据目录本身，root 为其父目录（即 cwd）；
+ *          cleanup 应在 afterEach 中调用以恢复 cwd、删除目录并清除环境变量
  */
-export function useTempDataDir(): { dataDir: string; cleanup: () => void } {
-  const dataDir = mkdtempSync(join(tmpdir(), 'cyber-stray-test-'));
+export function useTempDataDir(): { dataDir: string; root: string; cleanup: () => void } {
+  const root = mkdtempSync(join(tmpdir(), 'cyber-stray-test-'));
+  const dataDir = join(root, 'data');
+  mkdirSync(dataDir, { recursive: true });
   process.env.DATA_DIR = dataDir;
   const originalCwd = process.cwd();
-  process.chdir(dataDir);
+  process.chdir(root);
+  // 这些单例在构造时把 DATA_DIR 解析成绝对路径，不重置会继续指向上一个临时目录
+  resetPathBoundSingletons();
   return {
     dataDir,
+    root,
     cleanup: () => {
       // 先切回原 cwd，再删除临时目录（否则可能因身处其中而失败）
       try {
@@ -108,8 +118,16 @@ export function useTempDataDir(): { dataDir: string; cleanup: () => void } {
       } catch {
         // 原 cwd 已不存在则忽略
       }
-      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
       delete process.env.DATA_DIR;
+      resetPathBoundSingletons();
     },
   };
+}
+
+/** 重置所有把数据目录固化在实例里的模块级单例 */
+function resetPathBoundSingletons(): void {
+  _resetMemoryStore();
+  _resetMemoryIndex();
+  _resetInterestGraphCache();
 }
