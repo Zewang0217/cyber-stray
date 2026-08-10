@@ -112,6 +112,8 @@ export interface PushGateResult {
   factors: PushGateFactors;
   /** 决策理由（人类可读） */
   reasons: string[];
+  /** 内容实际命中的兴趣节点 ID，供反馈归因使用 */
+  matchedTopics: string[];
 }
 
 // ============================================
@@ -163,6 +165,33 @@ const INJECTION_PATTERNS = [
 ];
 
 // ============================================
+// 兴趣词匹配
+// ============================================
+
+/** 需要词边界保护的 ASCII 兴趣词长度上限 */
+const SHORT_ASCII_MAX_LEN = 4;
+
+/** 纯 ASCII 字母数字 */
+const ASCII_WORD_RE = /^[a-z0-9]+$/i;
+
+/**
+ * 内容是否命中某个兴趣词。
+ *
+ * 短 ASCII 词用子串匹配会大量误命中——"AI" 会命中 said、maintain、explain，
+ * 使得毫不相关的英文内容也拿到兴趣分。对这类词改用词边界匹配。
+ * 中文不适用词边界（\b 在 CJK 字符间不成立），保持子串匹配。
+ */
+export function matchInterest(contentLower: string, interestId: string): boolean {
+  const idLower = interestId.toLowerCase();
+
+  if (idLower.length <= SHORT_ASCII_MAX_LEN && ASCII_WORD_RE.test(idLower)) {
+    return new RegExp(`\\b${idLower}\\b`).test(contentLower);
+  }
+
+  return contentLower.includes(idLower);
+}
+
+// ============================================
 // PushGate
 // ============================================
 
@@ -192,6 +221,7 @@ export class PushGate {
         threshold: this.config.threshold,
         factors: { interestRelevance: 0, userPreference: 0, contentQuality: 0, contentWarnings: [] },
         reasons: ['门控已禁用'],
+        matchedTopics: [],
       };
     }
 
@@ -199,7 +229,8 @@ export class PushGate {
     const contentWarnings = this.scanContent(content);
 
     // 计算各因子得分（每个因子 0-1，失败时返回 0.5 中性分）
-    const interestRelevance = await this.scoreInterestRelevance(content);
+    const { score: interestRelevance, matched: matchedTopics } =
+      await this.scoreInterestRelevance(content);
     const userPreference = await this.scoreUserPreference(content);
     const contentQuality = this.scoreContentQuality(content, type);
 
@@ -237,6 +268,7 @@ export class PushGate {
       contentLen: content.length,
       factors: { interestRelevance, userPreference, contentQuality },
       warnings: contentWarnings.length,
+      matchedTopics,
     });
 
     return {
@@ -245,6 +277,7 @@ export class PushGate {
       threshold: this.config.threshold,
       factors: { interestRelevance, userPreference, contentQuality, contentWarnings },
       reasons,
+      matchedTopics,
     };
   }
 
@@ -336,11 +369,13 @@ export class PushGate {
   /**
    * 兴趣相关度评分。
    *
-   * 提取内容中的关键词，与 InterestGraph 的 top 兴趣节点匹配。
-   * 返回加权匹配分（0-1）。
-   * InterestGraph 不可用时返回中性分 0.5。
+   * 内容与 InterestGraph 的 top 兴趣节点匹配，返回加权匹配分（0-1）
+   * 及实际命中的节点 ID。
+   * 图谱不可用或尚无判别力时返回中性分 0.5。
    */
-  private async scoreInterestRelevance(content: string): Promise<number> {
+  private async scoreInterestRelevance(
+    content: string,
+  ): Promise<{ score: number; matched: string[] }> {
     try {
       const graph = getInterestGraph();
       if (!graph.isInitialized() && graph.getNodeCount() === 0) {
@@ -348,28 +383,30 @@ export class PushGate {
       }
 
       const nodes = graph.getTopInterestsWithWeights(10, 0.05);
-      if (nodes.length === 0) {
-        return 0.5; // 无兴趣数据，中性
-      }
-
       const contentLower = content.toLowerCase();
+      const matched: string[] = [];
       let matchedWeight = 0;
       let totalWeight = 0;
 
       for (const node of nodes) {
         totalWeight += node.weight;
-        if (contentLower.includes(node.id.toLowerCase())) {
+        if (matchInterest(contentLower, node.id)) {
           matchedWeight += node.weight;
+          matched.push(node.id);
         }
       }
 
-      if (totalWeight === 0) return 0.5;
+      // 只有等权默认种子时，权重占比恒为固定几档，继续打分只会把所有内容
+      // 锁在门外（冷启动死锁）。命中列表仍照常返回——它是反馈归因的依据，
+      // 缺了它点赞无法强化任何节点，图谱将永远无法分化。
+      if (totalWeight === 0 || !graph.isDifferentiated()) {
+        return { score: 0.5, matched };
+      }
 
-      // 匹配到的权重占比
-      return matchedWeight / totalWeight;
+      return { score: matchedWeight / totalWeight, matched };
     } catch (error) {
       logger.warn('兴趣相关度评分失败，返回中性分', { error });
-      return 0.5;
+      return { score: 0.5, matched: [] };
     }
   }
 

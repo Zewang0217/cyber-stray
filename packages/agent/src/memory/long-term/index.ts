@@ -22,6 +22,7 @@ import type {
 } from './types.js';
 import {
   DEFAULT_MEMORY_CONFIG,
+  defaultMemoryBasePath,
   MEMORY_TYPE_PATHS,
   generateMemoryId,
   toSafeFilename,
@@ -45,7 +46,8 @@ export class MemoryStore {
   private jsonIndex: MemoryIndexStore;
 
   constructor(config: Partial<MemoryConfig> = {}) {
-    this.config = { ...DEFAULT_MEMORY_CONFIG, ...config };
+    const basePath = config.basePath ?? defaultMemoryBasePath();
+    this.config = { ...DEFAULT_MEMORY_CONFIG, ...config, basePath };
     // 注入 JSON 索引（getMemoryIndex 单例按 basePath 复用；测试通过
     // _resetMemoryIndex 重置后再 new MemoryStore 以拿到对应 basePath 的实例）
     this.jsonIndex = getMemoryIndex(this.config.basePath);
@@ -665,4 +667,14 @@ export function getMemoryStore(): MemoryStore {
     defaultStore = new MemoryStore();
   }
   return defaultStore;
+}
+
+/**
+ * 重置模块级单例（测试隔离用）
+ *
+ * basePath 在构造时解析成绝对路径，切换 DATA_DIR 后必须重置，
+ * 否则实例仍指向上一个数据目录。
+ */
+export function _resetMemoryStore(): void {
+  defaultStore = null;
 }

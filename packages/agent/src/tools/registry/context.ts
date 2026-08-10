@@ -1,4 +1,5 @@
 import type { AgentState, WanderStep } from '../../types.js';
+import type { BrowserContext } from '../browser/lifecycle.js';
 
 /** ctx.wanderHistory 在单次游荡循环内的最大长度 */
 const MAX_CTX_WANDER_HISTORY = 50;
@@ -19,9 +20,13 @@ export interface ToolContext {
   visitedUrls: string[];        // 访问过的 URL
   spokeTimes: number;           // speak 调用次数
   pendingFeedbackCount: number; // 待处理反馈数量（read_feedback 工具设置）
-  endReason: 'rest' | 'max_steps' | 'low_energy' | 'error';
+  endReason: 'rest' | 'max_steps' | 'low_energy' | 'early_stop' | 'error';
   startTime: number;            // 游荡开始时间（ms）
   searchQueries: SearchRecord[]; // 搜索词归档
+  /** 浏览器上下文（无浏览器时为 null） */
+  browserContext?: BrowserContext | null;
+  /** quality hook 写入：本次 speak 门控实际命中的兴趣话题（反馈归因用，未评估/失败时为 undefined） */
+  matchedTopics?: string[];
 }
 
 /**

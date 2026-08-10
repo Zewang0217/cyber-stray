@@ -19,10 +19,12 @@ import { useTempDataDir } from '../test/helpers.js';
 
 describe('UserProfile', () => {
   let cleanup: () => void;
+  let dataDir: string;
 
   beforeEach(() => {
     const temp = useTempDataDir();
     cleanup = temp.cleanup;
+    dataDir = temp.dataDir;
   });
 
   afterEach(() => {
@@ -48,8 +50,8 @@ describe('UserProfile', () => {
   // ----------------------------------------
 
   it('should throw on corrupted JSON', async () => {
-    await mkdir('data/memory', { recursive: true });
-    await writeFile('data/memory/user-profile.json', 'not-json', 'utf-8');
+    await mkdir(`${dataDir}/memory`, { recursive: true });
+    await writeFile(`${dataDir}/memory/user-profile.json`, 'not-json', 'utf-8');
 
     expect(loadUserProfile()).rejects.toThrow('用户画像解析失败');
   });
@@ -59,10 +61,10 @@ describe('UserProfile', () => {
   // ----------------------------------------
 
   it('should throw on schema mismatch', async () => {
-    await mkdir('data/memory', { recursive: true });
+    await mkdir(`${dataDir}/memory`, { recursive: true });
     // likes 应该是 string[]，给 number 触发 schema 失败
     const invalid = JSON.stringify({ likes: [123], dislikes: [], lastUpdated: 'bad-date' });
-    await writeFile('data/memory/user-profile.json', invalid, 'utf-8');
+    await writeFile(`${dataDir}/memory/user-profile.json`, invalid, 'utf-8');
 
     expect(loadUserProfile()).rejects.toThrow('用户画像 schema 校验失败');
   });
@@ -175,7 +177,7 @@ describe('UserProfile', () => {
   // ----------------------------------------
 
   it('should migrate old feedbackCount to sampleCount', async () => {
-    await mkdir('data/memory', { recursive: true });
+    await mkdir(`${dataDir}/memory`, { recursive: true });
     // 模拟旧格式：有 feedbackCount 但无 sampleCount
     const oldData = {
       likes: ['AI'],
@@ -185,7 +187,7 @@ describe('UserProfile', () => {
       confidence: 0.75,
       lastProfileUpdateAt: null,
     };
-    await writeFile('data/memory/user-profile.json', JSON.stringify(oldData), 'utf-8');
+    await writeFile(`${dataDir}/memory/user-profile.json`, JSON.stringify(oldData), 'utf-8');
 
     const loaded = await loadUserProfile();
     // sampleCount 应从 feedbackCount 迁移

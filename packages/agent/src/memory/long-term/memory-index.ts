@@ -24,6 +24,7 @@ import {
   MEMORY_TYPE_PATHS,
   parseMemoryFrontmatter,
   MemoryJsonIndexSchema,
+  defaultMemoryBasePath,
 } from './types.js';
 
 const logger = consola.withTag('MemoryIndex');
@@ -290,8 +291,8 @@ export class MemoryIndex {
 
 let defaultMemoryIndex: MemoryIndex | null = null;
 
-/** 获取模块级单例（jsonPath/basePath 默认指向 data/memory） */
-export function getMemoryIndex(basePath = 'data/memory'): MemoryIndex {
+/** 获取模块级单例（jsonPath/basePath 默认指向 agent 数据目录下的 memory/） */
+export function getMemoryIndex(basePath = defaultMemoryBasePath()): MemoryIndex {
   if (!defaultMemoryIndex) {
     defaultMemoryIndex = new MemoryIndex(join(basePath, '.index.json'), basePath);
   }

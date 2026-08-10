@@ -1,7 +1,16 @@
 import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+import { fileURLToPath } from 'url';
 import type { AgentConfig, EnergyRecoveryTier } from './types.js';
 
-const CONFIG_PATH = 'data/agent-config.json';
+/**
+ * 数据目录锚点：`packages/agent/data`
+ *
+ * 本文件位于 `packages/agent/src/`，故 `../data` 即包内 data 目录。用
+ * import.meta.url 而非 cwd 推导，保证从仓库根、包目录或 pm2/systemd 等任意
+ * 工作目录启动，读写的都是同一份数据。
+ */
+const AGENT_DATA_ROOT = fileURLToPath(new URL('../data', import.meta.url));
 
 /**
  * 可从配置文件覆盖的行为参数（敏感信息仍从环境变量读取）
@@ -34,6 +43,10 @@ type BehaviorConfig = Pick<
   interests: NonNullable<AgentConfig['interests']>;
   /** Phase 5: 推送价值门控配置 */
   pushGate: NonNullable<AgentConfig['pushGate']>;
+  /** 浏览器探索配置 */
+  browser: NonNullable<AgentConfig['browser']>;
+  /** Hook 系统配置（RFC #59 §4）：disabled 列表 */
+  hooks?: AgentConfig['hooks'];
 };
 
 const defaultBehavior: BehaviorConfig = {
@@ -54,7 +67,7 @@ const defaultBehavior: BehaviorConfig = {
   ] as EnergyRecoveryTier[],
   llmTemperature: 0.8,
   maxSearchResults: 10,
-  maxWanderSteps: 10,
+  maxWanderSteps: 100,
   wanderTemperature: 0.9,
   outputLanguage: 'zh-CN',
   urlCooldownDays: 5,
@@ -69,6 +82,7 @@ const defaultBehavior: BehaviorConfig = {
     decayLambda: 0.1,
     maxWeight: 0.8,
     minInterestCount: 3,
+    maxInterestCount: 20,
     noveltyBudget: 0.15,
     defaultSeeds: ['科技', 'AI', '互联网'],
     minWeight: 0.05,
@@ -93,6 +107,14 @@ const defaultBehavior: BehaviorConfig = {
       maxUrlCount: 5,
     },
   },
+  browser: {
+    enabled: true,
+    warmUpOnStart: true,
+    closeAfterWander: false,
+    timeout: 30000,
+    sessionName: 'cyber-stray',
+    restore: true,
+  },
 };
 
 /**
@@ -104,9 +126,10 @@ const defaultBehavior: BehaviorConfig = {
  * `consolidation` 显式做字段级合并：用户字段覆盖默认，未配字段从默认取。
  */
 function loadBehaviorConfig(): BehaviorConfig {
-  if (existsSync(CONFIG_PATH)) {
+  const configPath = getDataPath('agent-config.json');
+  if (existsSync(configPath)) {
     try {
-      const file = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Partial<BehaviorConfig>;
+      const file = JSON.parse(readFileSync(configPath, 'utf-8')) as Partial<BehaviorConfig>;
       return {
         ...defaultBehavior,
         ...file,
@@ -136,6 +159,11 @@ function loadBehaviorConfig(): BehaviorConfig {
             ...defaultBehavior.pushGate.contentScan,
             ...(file.pushGate?.contentScan ?? {}),
           },
+        },
+        // 浏览器探索配置嵌套合并
+        browser: {
+          ...defaultBehavior.browser,
+          ...(file.browser ?? {}),
         },
       };
     } catch (err) {
@@ -187,6 +215,9 @@ export const config: AgentConfig = {
 
   // Phase 5: 推送价值门控配置
   pushGate: behavior.pushGate,
+
+  // 浏览器探索配置
+  browser: behavior.browser,
 };
 
 /**
@@ -229,11 +260,14 @@ export function validateConfig(): void {
 }
 
 /**
- * 获取数据目录路径
+ * 获取数据文件路径
  *
- * 默认相对于 cwd 的 data/；测试可通过 DATA_DIR 环境变量重定向到临时目录，
- * 避免污染真实数据。env 未设置时与历史行为完全一致。
+ * 默认锚定到 `packages/agent/data`（见 AGENT_DATA_ROOT），与启动时的 cwd 无关；
+ * 测试可通过 DATA_DIR 环境变量重定向到临时目录，避免污染真实数据。
+ *
+ * agent 侧任何数据文件都必须经由此函数取路径，不要再写 `data/xxx` 相对路径——
+ * 那种写法绕过 DATA_DIR 且随 cwd 漂移。
  */
 export function getDataPath(filename: string): string {
-  return `${process.env.DATA_DIR ?? 'data'}/${filename}`;
+  return join(process.env.DATA_DIR ?? AGENT_DATA_ROOT, filename);
 }

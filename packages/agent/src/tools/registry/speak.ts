@@ -4,8 +4,6 @@ import { consola } from '../../logger.js';
 import { config } from '../../config.js';
 import { speak } from '../push/speak.js';
 import { pushWanderStep, type ToolContext } from './context.js';
-import { addVisitedUrl, extractUrl } from '../dedup/url-tracker.js';
-import { getPushGate, type SpeakType as GateSpeakType } from '../../memory/push-gate.js';
 import type { ToolDefinition } from '../tool-manager.js';
 
 const logger = consola.withTag('tool:speak');
@@ -15,9 +13,9 @@ const SPEAK_DESCRIPTION = `分享内容或者碎碎念，表达你的想法。
 **语言要求：** 推送内容应使用 ${config.outputLanguage} 语言。即使你搜索时用了英文/中文，最终分享时应整理为指定语言。
 
 **内容类型：**
-- share：分享链接/资源，建议包含 URL 和简要说明
+- share：分享链接/资源。**必须包含原始 URL**（http/https 开头），附带简要说明。没有 URL 就不要用 share 类型。
 - nonsense：无厘头碎碎念，可以是短句或感叹
-- article：正经文章/评论，可以是长篇分析或观点表达`;
+- article：正经文章/评论，可以是长篇分析或观点表达。如果引用了具体来源，也应附带 URL。`;
 
 /** 发言工具定义 */
 export const speakToolDef: ToolDefinition = {
@@ -38,81 +36,16 @@ export const speakToolDef: ToolDefinition = {
       ctx.stepCount++;
       const stepStart = Date.now();
 
-      // Phase 5: 推送价值门控
-      let gated = false;
-      let gateScore: number | undefined;
-      let gateReasons: string[] | undefined;
-
-      const gate = getPushGate(config.pushGate);
-
-      try {
-        const gateResult = await gate.evaluate(content, type as GateSpeakType);
-
-        if (!gateResult.passed) {
-          gated = true;
-          gateScore = gateResult.score;
-          gateReasons = gateResult.reasons;
-
-          logger.info(`[${ctx.traceId}] TOOL speak 被门控拦截 [type=${type} score=${gateResult.score.toFixed(2)} threshold=${gateResult.threshold.toFixed(2)}]`);
-
-          // 门控拦截时也记录 URL 去重（避免 LLM 反复尝试推同一链接）
-          const url = extractUrl(content);
-          if (url) {
-            await addVisitedUrl(url, content).catch(err => {
-              logger.error('记录门控 URL 失败', { url, error: err });
-            });
-          }
-
-          pushWanderStep(ctx, {
-            timestamp: new Date().toISOString(),
-            tool: 'speak',
-            spoke: content,
-            thought: `[${type}] 内容被门控拦截 (score=${gateResult.score.toFixed(2)})`,
-          });
-
-          return {
-            success: true,
-            pushed: false,
-            gated: true,
-            gateScore: gateResult.score,
-            gateReasons: gateResult.reasons,
-            timestamp: new Date().toISOString(),
-          };
-        }
-
-        gateScore = gateResult.score;
-        gateReasons = gateResult.reasons;
-      } catch (error) {
-        // 门控失败不阻断 speak——默认放行
-        logger.warn(`[${ctx.traceId}] PushGate 评估失败，默认放行`, { error });
-      }
-
-      const result = await speak(content, type);
+// 门控评估在 quality hook 的 beforeToolCall 完成，命中的兴趣话题已写入 ctx.matchedTopics。
+      // 门控拦截由 hook 侧 deny 处理（含 gated 历史留痕），工具 execute 只走放行路径。
+      const result = await speak(content, type, {
+        mood: ctx.state.mood,
+        matchedTopics: ctx.matchedTopics,
+      });
       const elapsed = Date.now() - stepStart;
       ctx.spokeTimes++;
 
-      // 附加门控信息到结果
-      if (gateScore !== undefined) {
-        result.gateScore = gateScore;
-        result.gateReasons = gateReasons;
-      }
-
-      logger.info(`[${ctx.traceId}] TOOL speak [type=${type} len=${content.length} pushed=${result.pushed} gateScore=${gateScore?.toFixed(2) ?? 'N/A'} elapsed=${elapsed}ms]`);
-
-      // 推送成功后记录 URL 到去重系统
-      if (result.pushed) {
-        const url = extractUrl(content);
-        if (url) {
-          await addVisitedUrl(url, content).catch(err => {
-            logger.error('记录推送 URL 失败', { url, error: err });
-          });
-        }
-
-        // Phase 5: 推送后触发阈值校准（异步，best-effort）
-        gate.calibrate().catch(err => {
-          logger.warn('阈值校准失败', { err });
-        });
-      }
+      logger.info(`[${ctx.traceId}] TOOL speak [type=${type} len=${content.length} pushed=${result.pushed} elapsed=${elapsed}ms]`);
 
       pushWanderStep(ctx, {
         timestamp: new Date().toISOString(),

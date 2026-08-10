@@ -323,7 +323,9 @@ describe('loadBehaviorConfig 嵌套合并', () => {
     const consolidation = configMod.config.consolidation;
 
     // expiryDays 用用户值；其余三字段必须从默认取（不 undefined）
-    expect(consolidation).toBeDefined();
+    if (!consolidation) {
+      throw new Error('config.consolidation 缺失，defaultBehavior 未生效');
+    }
     expect(consolidation.expiryDays).toBe(10);
     expect(consolidation.lowImportanceThreshold).toBe(0.2);
     expect(consolidation.mergeMaxAgeDays).toBe(7);

@@ -1,13 +1,15 @@
 import { appendFile, mkdir } from 'fs/promises';
+import { join } from 'path';
 import { consola } from '../../logger.js';
-import { config } from '../../config.js';
+import { config, getDataPath } from '../../config.js';
 import { sendFeishuMessage } from './lark-sender.js';
-import { getInterestGraph } from '../../memory/interest-graph.js';
 import { registerSpeakTopics } from '../../memory/feedback-pipeline.js';
+import { buildSpeakRecord, type SpeakRecord, type SpeakRecordMeta } from './history-record.js';
+import type { Mood } from '../../types.js';
 
 const logger = consola.withTag('speak');
 
-/** speak 工具内容类型。与 src/memory/push-gate.ts 的 SpeakType 同步保持。 */
+/** speak 工具内容类型。与 memory/push-gate.ts 的 SpeakType 同步保持。 */
 export type SpeakType = 'share' | 'nonsense' | 'article';
 
 /** speak 工具入参 */
@@ -31,28 +33,39 @@ export interface SpeakResult {
   error?: string;      // 推送失败时的错误信息
 }
 
-/** 推送历史记录条目 */
-interface SpeakRecord {
-  content: string;
-  type: SpeakType;
-  pushed: boolean;
-  timestamp: string;
-  messageId?: string; // 飞书消息 ID
-}
-
 /**
  * 追加到推送历史记录文件
  */
 async function appendSpeakHistory(record: SpeakRecord): Promise<void> {
   try {
-    await mkdir('data/history', { recursive: true });
-    const filename = `data/history/speaks-${new Date().toISOString().slice(0, 10)}.jsonl`;
+    const historyDir = getDataPath('history');
+    await mkdir(historyDir, { recursive: true });
+const filename = join(historyDir, `speaks-${new Date().toISOString().slice(0, 10)}.jsonl`);
     const line = JSON.stringify(record) + '\n';
     await appendFile(filename, line, 'utf-8');
   } catch (error) {
     // 日志记录失败不影响主流程
     logger.warn('记录推送历史失败', { error });
   }
+}
+
+/**
+ * 记录一条被推送门控拦截的内容
+ *
+ * 门控拦截发生在 speak() 之前，走不到正常的历史写入路径。但"学了什么却没告诉
+ * 主人"同样是需要留痕的信息，仪表盘据此展示"仅学习"状态。
+ */
+export async function recordGatedSpeak(
+  content: string,
+  type: SpeakType,
+  meta: SpeakRecordMeta = {},
+): Promise<void> {
+  await appendSpeakHistory(
+    buildSpeakRecord(content, type, false, new Date().toISOString(), {
+      ...meta,
+      gated: true,
+    }),
+  );
 }
 
 /**
@@ -100,7 +113,11 @@ async function pushToTelegram(content: string): Promise<void> {
  * - lark_channel: 使用 LarkChannel（默认）
  * - webhook: 使用传统 Webhook
  */
-export async function speak(content: string, type: SpeakType): Promise<SpeakResult> {
+export async function speak(
+  content: string,
+  type: SpeakType,
+  meta: { mood?: Mood; gateScore?: number; matchedTopics?: string[] } = {},
+): Promise<SpeakResult> {
   const timestamp = new Date().toISOString();
 
   logger.info('speak 调用', { type, contentLength: content.length });
@@ -173,20 +190,19 @@ export async function speak(content: string, type: SpeakType): Promise<SpeakResu
   }
 
   // 记录到历史文件
-  await appendSpeakHistory({ content, type, pushed, timestamp, messageId });
+  await appendSpeakHistory(
+    buildSpeakRecord(content, type, pushed, timestamp, {
+      messageId,
+      mood: meta.mood,
+      gateScore: meta.gateScore,
+    }),
+  );
 
-  // Phase 3: 注册消息-兴趣映射，供后续反馈强化
-  if (pushed && messageId) {
-    try {
-      const graph = getInterestGraph();
-      const topTopics = graph.getTopInterests(3, 0.05);
-      if (topTopics.length > 0) {
-        registerSpeakTopics(messageId, topTopics);
-      }
-    } catch (error) {
-      // InterestGraph 不可用时静默跳过，不影响 speak 结果
-      logger.warn('注册消息-兴趣映射失败', { error });
-    }
+  // Phase 3: 注册消息-兴趣映射，供后续反馈强化。
+  // 用门控算出的实际命中话题，而非图谱 Top N——后者与内容无关，会导致每次
+  // 反馈等量强化所有节点，权重占比恒定不变，兴趣图谱永远无法分化。
+  if (pushed && messageId && meta.matchedTopics?.length) {
+    registerSpeakTopics(messageId, meta.matchedTopics);
   }
 
   const result: SpeakResult = {

@@ -17,10 +17,11 @@ vi.mock('ai', () => ({
 
 import { generateText } from 'ai';
 import { ReflectionEngine, _resetReflectionEngine } from './engine.js';
-import { getMemoryStore } from '../long-term/index.js';
+import { getMemoryStore, _resetMemoryStore } from '../long-term/index.js';
 import { MemoryStore } from '../long-term/index.js';
 import { _resetInterestGraphCache } from '../interest-graph.js';
 import { useTempDataDir, restoreFetch } from '../../test/helpers.js';
+import { _resetMemoryIndex } from '../long-term/memory-index.js';
 import type { MemoryEntry, Provenance } from '../long-term/types.js';
 
 // ============================================
@@ -40,6 +41,17 @@ function makeObservation(overrides: Partial<MemoryEntry> = {}): MemoryEntry {
     provenance: 'untrusted:web' as Provenance,
     ...overrides,
   };
+}
+
+/** 创建指定类型的测试素材 */
+function makeMaterial(type: MemoryEntry['type'], overrides: Partial<MemoryEntry> = {}): MemoryEntry {
+  return makeObservation({
+    id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    type,
+    summary: `测试${type}`,
+    content: `这是一条测试 ${type} 内容`,
+    ...overrides,
+  });
 }
 
 /** 安装 ai 模块 mock */
@@ -77,6 +89,8 @@ describe('ReflectionEngine', () => {
     process.env.DEEPSEEK_API_KEY = 'test-key';
     _resetReflectionEngine();
     _resetInterestGraphCache();
+    _resetMemoryStore();
+    _resetMemoryIndex();
     store = getMemoryStore();
     engine = new ReflectionEngine();
   });
@@ -87,6 +101,8 @@ describe('ReflectionEngine', () => {
     process.env.DEEPSEEK_API_KEY = savedKey;
     _resetReflectionEngine();
     _resetInterestGraphCache();
+    _resetMemoryStore();
+    _resetMemoryIndex();
   });
 
   // ==========================================
@@ -103,6 +119,71 @@ describe('ReflectionEngine', () => {
     const result = await engine.reflect();
     expect(result.executed).toBe(false);
     await store.saveMemory(makeObservation({ id: 'obs-4', summary: 'web 观察 3', provenance: 'untrusted:web' }));
+  });
+
+  test('没有 observation 时应该用 knowledge / interaction 素材跑起来', async () => {
+    // 游荡期间实际产出的几乎全是这两类，只收 observation 会让反思永远空转
+    await store.saveMemory(makeMaterial('knowledge', { id: 'k-1', summary: '知识 1' }));
+    await store.saveMemory(makeMaterial('knowledge', { id: 'k-2', summary: '知识 2' }));
+    await store.saveMemory(makeMaterial('interaction', { id: 'i-1', summary: '发言 1' }));
+
+    mockGenerateText(async () => ({
+      text: makeReflectionOutput([
+        {
+          title: '跨来源趋势',
+          content: '多条素材都指向同一话题。',
+          sourceIds: ['k-1', 'i-1'],
+          newInterests: [],
+          existingInterestUpdates: [],
+        },
+      ]),
+    }));
+
+    const result = await engine.reflect();
+    expect(result.executed).toBe(true);
+    expect(result.insightsProduced).toBe(1);
+  });
+
+  test('三类素材应该一起喂给 LLM，并在 prompt 中标注类型', async () => {
+    await store.saveMemory(makeMaterial('observation', { id: 'o-1', summary: '观察 1' }));
+    await store.saveMemory(makeMaterial('knowledge', { id: 'k-1', summary: '知识 1' }));
+    await store.saveMemory(makeMaterial('interaction', { id: 'i-1', summary: '发言 1' }));
+
+    let capturedPrompt = '';
+    mockGenerateText(async (opts) => {
+      capturedPrompt = String(opts.prompt);
+      return { text: JSON.stringify({ insights: [], summary: '' }) };
+    });
+
+    const result = await engine.reflect();
+
+    expect(result.executed).toBe(true);
+    expect(capturedPrompt).toContain('o-1');
+    expect(capturedPrompt).toContain('k-1');
+    expect(capturedPrompt).toContain('i-1');
+    expect(capturedPrompt).toContain('对主人的观察');
+    expect(capturedPrompt).toContain('网上读到的内容');
+    expect(capturedPrompt).toContain('自己说过的话');
+  });
+
+  test('素材超出配额时 observation 应优先占额，不被大量 knowledge 挤出', async () => {
+    await store.saveMemory(makeMaterial('observation', { id: 'o-1', summary: '观察 1' }));
+    for (let i = 0; i < 8; i++) {
+      await store.saveMemory(makeMaterial('knowledge', { id: `k-${i}`, summary: `知识 ${i}` }));
+    }
+
+    let capturedPrompt = '';
+    mockGenerateText(async (opts) => {
+      capturedPrompt = String(opts.prompt);
+      return { text: JSON.stringify({ insights: [], summary: '' }) };
+    });
+
+    const limited = new ReflectionEngine({ maxObservations: 3 });
+    const result = await limited.reflect();
+
+    expect(result.executed).toBe(true);
+    expect(capturedPrompt).toContain('o-1');
+    expect(capturedPrompt).toContain('3 条原始素材');
   });
 
   // ==========================================

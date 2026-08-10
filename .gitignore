@@ -59,3 +59,6 @@ data/dedup/visited-urls.json
 # 本地脚本/锁文件（不入库）
 generate-ppt.cjs
 skills-lock.json
+
+# 浏览器加密 key（#54 持久化）
+data/.browser-key

@@ -1,4 +1,4 @@
-import type { AgentState, Mood, WanderStep } from '../types.js';
+import type { AgentState, Mood, WanderStep, WanderStrategy } from '../types.js';
 import type { UserProfile } from '../memory/user-profile.js';
 import type { PageResult } from '../tools/page/reader.js';
 import { config } from '../config.js';
@@ -102,16 +102,54 @@ function formatLastToolResult(result: unknown): string {
 }
 
 /**
+ * 格式化游荡策略为 prompt 段落
+ */
+function formatStrategyDirective(strategy: WanderStrategy): string {
+  const lines: string[] = [];
+
+  // 探索模式
+  const modeDesc: Record<string, string> = {
+    deep: '今天适合深耕——围绕一个话题多角度搜索、多点进链接深读',
+    broad: '今天适合广撒网——多搜几个不同方向，看看有什么新鲜事',
+    novel: '今天特别想探索没见过的领域——优先搜索之前没搜过的话题',
+  };
+  lines.push(`- **探索模式：** ${modeDesc[strategy.explorationMode] ?? modeDesc.broad}`);
+
+  // 聚焦话题不在此重复渲染——下方「你的兴趣」段落（interestLines）已带权重展示同一组话题，
+  // 硬约束中也会引用 top-1。重复两次浪费 prompt 空间（F10）。
+
+  // 分享倾向
+  if (strategy.speakInclination === 'high') {
+    lines.push('- **分享欲望：** 今天话特别多，看到有意思的就忍不住想分享');
+  } else if (strategy.speakInclination === 'low') {
+    lines.push('- **分享欲望：** 今天比较安静，除非真的很有价值否则不太想说话');
+  }
+
+  // 硬约束
+  if (strategy.constraints.length > 0) {
+    lines.push('');
+    lines.push('**本次游荡约束（必须遵守）：**');
+    for (const c of strategy.constraints) {
+      lines.push(`- ${c}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * 构建 ReAct Agent 的 system prompt
  *
  * @param state - Agent 状态
  * @param userProfile - 用户画像
  * @param memoryContext - 可选的长期记忆上下文
+ * @param strategy - 游荡策略（兴趣驱动 + 状态映射）
  */
 export function buildReactSystemPrompt(
   state: AgentState,
   userProfile: UserProfile,
-  memoryContext?: string
+  memoryContext?: string,
+  strategy?: WanderStrategy,
 ): string {
   // Phase 2: 从 InterestGraph 获取动态兴趣（优先），fallback 到 state.agentInterests
   let interestLines: string;
@@ -164,11 +202,12 @@ export function buildReactSystemPrompt(
 - 可以用英文搜索获取全球信息，用中文搜索获取本土动态
 - 最终汇总时，将信息整理为指定的输出语言
 - **优先围绕你当前感兴趣的话题展开搜索**
+${strategy ? formatStrategyDirective(strategy) : ''}
 
-**你当前的状态（仅供参考，由你随心所欲决定如何影响行为）：**
+**你当前的状态：**
 - 当前时间：${timeStr}
 - 心情：${getMoodDescription(state.mood)}
-- 精力：${state.energy}/100
+- 精力：${state.energy}/100${strategy ? `（本次最多 ${strategy.maxSteps} 步）` : ''}
 - 无聊值：${state.boredom}/100
 - 脾气：${state.temper}/100
 
@@ -188,14 +227,16 @@ ${interestLines}
 - 喜欢：${userLikes}
 - 不喜欢：${userDislikes}
 
-**行为准则：**
-1. **随心所欲**：你可以不断地 \`search_web\` 然后 \`read_page\`，在链接之间跳跃。也可以只看一个页面就结束。
-2. **不可预测**：有时候搜到了好东西，但你就是不分享；有时候看到一个毫无意义的网页，却想发一句无厘头的吐槽。
-3. **随时开口**：使用 \`speak\` 工具表达你的想法。可以是正经分享，可以是"汪！"，可以是"今天风好大"，可以是长篇评论。
-4. **懂得休息**：如果你觉得看烦了，或者累了，使用 \`rest\` 工具结束游荡。
-5. **考虑主人**：如果你觉得某个东西对主人有用，可以分享；如果你只是想吹水，也可以随便发几句。
+**行为准则（必须遵守）：**
+1. **每一步都必须调用工具**。不要只输出文字——你的"行为"就是工具调用。想搜索就调 \`search_web\`，想说话就调 \`speak\`，想结束就调 \`rest\`。纯文字输出 = 什么都没做 = 浪费步数。
+2. **随心所欲**：你可以不断地 \`search_web\` 然后 \`read_page\`，在链接之间跳跃。也可以只看一个页面就结束。
+3. **不可预测**：有时候搜到了好东西，但你就是不分享；有时候看到一个毫无意义的网页，却想发一句无厘头的吐槽。
+4. **随时开口**：使用 \`speak\` 工具表达你的想法。可以是正经分享，可以是"汪！"，可以是"今天风好大"，可以是长篇评论。
+5. **懂得休息**：如果你觉得看烦了，或者累了，使用 \`rest\` 工具结束游荡。
+6. **考虑主人**：如果你觉得某个东西对主人有用，可以分享；如果你只是想吹水，也可以随便发几句。
 
 **注意：**
+- 内心独白可以写在工具调用的同时（AI SDK 支持 text + tool_call 并行），但不要只写独白不调工具。
 - \`read_page\` 会返回页面里的链接，你可以选择点进去继续游荡。
 - 你可以多次调用 \`speak\`，游荡过程中随时分享。
 - 你也可以一次游荡都不分享，空手而归也 OK。

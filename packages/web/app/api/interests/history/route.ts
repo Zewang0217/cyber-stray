@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import type { ApiResponse, InterestSnapshot } from "@/lib/types";
+import { dataPath } from "@/lib/data-path";
 
 /**
  * GET /api/interests/history
@@ -20,7 +21,7 @@ export async function GET(
     let snapshots: InterestSnapshot[] = [];
 
     try {
-      const content = await readFile("../data/interest-history.jsonl", "utf-8");
+      const content = await readFile(dataPath("interest-history.jsonl"), "utf-8");
       const lines = content.trim().split("\n").filter(Boolean);
 
       for (const line of lines) {

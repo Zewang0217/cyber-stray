@@ -51,6 +51,24 @@ export interface WanderStep {
   spoke?: string;         // 如果调用了 speak，记录内容
 }
 
+/** 游荡统计结果 */
+export interface WanderResult {
+  steps: number;          // 本次游荡步数
+  durationMs: number;     // 游荡时长（毫秒）
+  spokeTimes: number;     // 调用 speak 的次数
+  visitedUrls: string[];  // 访问过的 URL
+  endReason: 'rest' | 'max_steps' | 'low_energy' | 'early_stop' | 'error';
+}
+
+/** 游荡策略（由兴趣图谱 + 状态生成，注入 prompt） */
+export interface WanderStrategy {
+  focusTopics: string[];
+  explorationMode: 'deep' | 'broad' | 'novel';
+  maxSteps: number;
+  speakInclination: 'high' | 'normal' | 'low';
+  constraints: string[];
+}
+
 // ============================================
 // 搜索与推送相关
 // ============================================
@@ -178,9 +196,26 @@ export interface AgentConfig {
     decayLambda: number;        // 衰减系数（每天）
     maxWeight: number;          // 单兴趣权重上限
     minInterestCount: number;   // 最少兴趣数量
+    maxInterestCount: number;   // 最多兴趣数量
     noveltyBudget: number;      // 探索预算比例（0-1）
     defaultSeeds: string[];       // 默认种子兴趣
     minWeight: number;          // dormancy 阈值
+  };
+
+  /** 浏览器探索配置 */
+  browser?: {
+    /** 是否启用浏览器工具（默认 true） */
+    enabled: boolean;
+    /** Agent 启动时预热浏览器（默认 true） */
+    warmUpOnStart: boolean;
+    /** 游荡结束后关闭浏览器（默认 false，常驻模式） */
+    closeAfterWander: boolean;
+    /** CLI 命令超时毫秒数（默认 30000） */
+    timeout: number;
+    /** agent-browser 会话名称（默认 'cyber-stray'） */
+    sessionName: string;
+    /** 启用 --restore 持久化：cookies + localStorage 跨重启保持（默认 true） */
+    restore: boolean;
   };
 
   // Phase 5: 推送价值门控配置（PUSH-01/02）
@@ -203,6 +238,12 @@ export interface AgentConfig {
       enabled: boolean;
       maxUrlCount: number;
     };
+  };
+
+  // Hook 系统配置（RFC #59 §4）
+  hooks?: {
+    /** 禁用的 hook 名称列表（如 ["quality"]） */
+    disabled?: string[];
   };
 }
 
