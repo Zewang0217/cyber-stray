@@ -250,4 +250,110 @@ describe('PushGate', () => {
 
     expect(longResult.factors.contentQuality).toBeGreaterThan(shortResult.factors.contentQuality);
   });
+
+  // ==========================================
+  // 兴趣图谱未分化（冷启动）
+  // ==========================================
+
+  /** 只保留兴趣维权重的门控，便于直接观察该维度 */
+  function makeInterestOnlyGate() {
+    return new PushGate({
+      ...DEFAULT_PUSH_GATE_CONFIG,
+      weights: { interestRelevance: 1.0, userPreference: 0, contentQuality: 0 },
+    });
+  }
+
+  test('只有未强化的默认种子时，兴趣维应返回中性分', async () => {
+    getInterestGraph().seedDefaults();
+
+    // 旧实现命中 1 个种子得 0.5/1.5 = 0.333，低于默认阈值 0.5 → 冷启动死锁
+    const result = await makeInterestOnlyGate().evaluate('聊聊 AI 的最新进展', 'article');
+
+    expect(result.factors.interestRelevance).toBe(0.5);
+    expect(result.passed).toBe(true);
+  });
+
+  test('未分化时仍应返回真实命中话题，供反馈归因', async () => {
+    getInterestGraph().seedDefaults();
+
+    const result = await makeInterestOnlyGate().evaluate('科技圈都在聊 AI', 'article');
+
+    // 分数中性，但命中列表不能为空——否则点赞无法强化任何节点，图谱永远无法分化
+    expect(result.factors.interestRelevance).toBe(0.5);
+    expect(result.matchedTopics).toContain('AI');
+    expect(result.matchedTopics).toContain('科技');
+    expect(result.matchedTopics).not.toContain('互联网');
+  });
+
+  test('图谱分化后兴趣维应恢复按权重占比打分', async () => {
+    const graph = getInterestGraph();
+    graph.seedDefaults();
+    graph.reinforce('AI', 0.2); // 打破种子间的对称
+
+    const gate = makeInterestOnlyGate();
+    const hit = await gate.evaluate('AI 芯片的最新进展', 'article');
+    const miss = await gate.evaluate('今天午饭吃什么', 'nonsense');
+
+    expect(hit.factors.interestRelevance).not.toBe(0.5);
+    expect(hit.factors.interestRelevance).toBeGreaterThan(miss.factors.interestRelevance);
+    expect(miss.factors.interestRelevance).toBe(0);
+  });
+
+  // ==========================================
+  // 兴趣词匹配：词边界
+  // ==========================================
+
+  test('短 ASCII 兴趣词不应被无关英文内容子串误命中', async () => {
+    const graph = getInterestGraph();
+    graph.seedDefaults();
+    graph.reinforce('AI', 0.1); // 使图谱分化，让占比打分生效
+
+    // said / maintain / plain 都含 "ai" 子串，但与 AI 话题无关
+    const result = await makeInterestOnlyGate().evaluate(
+      'She said we should maintain the plain train rails.',
+      'nonsense',
+    );
+
+    expect(result.matchedTopics).not.toContain('AI');
+    expect(result.factors.interestRelevance).toBe(0);
+  });
+
+  test('独立成词的短 ASCII 兴趣词应正常命中', async () => {
+    const graph = getInterestGraph();
+    graph.seedDefaults();
+    graph.reinforce('AI', 0.1);
+
+    const result = await makeInterestOnlyGate().evaluate(
+      'AI is changing how we write software.',
+      'article',
+    );
+
+    expect(result.matchedTopics).toContain('AI');
+    expect(result.factors.interestRelevance).toBeGreaterThan(0);
+  });
+
+  test('中文兴趣词仍按子串匹配', async () => {
+    const graph = getInterestGraph();
+    graph.seedDefaults();
+    graph.reinforce('AI', 0.1);
+
+    const result = await makeInterestOnlyGate().evaluate('移动互联网的下半场', 'article');
+
+    expect(result.matchedTopics).toContain('互联网');
+  });
+
+  // ==========================================
+  // 命中话题透出
+  // ==========================================
+
+  test('门控禁用时 matchedTopics 应为空数组', async () => {
+    getInterestGraph().seedDefaults();
+    const result = await makeGate({ enabled: false }).evaluate('AI 相关内容', 'article');
+    expect(result.matchedTopics).toEqual([]);
+  });
+
+  test('无兴趣图谱时 matchedTopics 应为空数组', async () => {
+    const result = await makeGate().evaluate('AI 相关内容', 'article');
+    expect(result.matchedTopics).toEqual([]);
+  });
 });

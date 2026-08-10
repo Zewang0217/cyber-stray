@@ -25,6 +25,8 @@ export interface ToolContext {
   searchQueries: SearchRecord[]; // 搜索词归档
   /** 浏览器上下文（无浏览器时为 null） */
   browserContext?: BrowserContext | null;
+  /** quality hook 写入：本次 speak 门控实际命中的兴趣话题（反馈归因用，未评估/失败时为 undefined） */
+  matchedTopics?: string[];
 }
 
 /**

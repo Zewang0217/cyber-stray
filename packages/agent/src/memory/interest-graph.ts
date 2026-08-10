@@ -76,6 +76,7 @@ export interface InterestGraphConfig {
   decayLambda: number;        // 衰减系数（每天）
   maxWeight: number;          // 单兴趣权重上限
   minInterestCount: number;   // 最少兴趣数量
+  maxInterestCount: number;   // 最多兴趣数量，防止反思批量幻觉撑爆图谱
   noveltyBudget: number;      // 探索预算比例（0-1）
   defaultSeeds: string[];       // 默认种子兴趣
   minWeight: number;          //  dormancy 阈值，低于此标记为 dormant
@@ -85,6 +86,7 @@ export const DEFAULT_INTEREST_CONFIG: InterestGraphConfig = {
   decayLambda: 0.1,
   maxWeight: 0.8,
   minInterestCount: 3,
+  maxInterestCount: 20,
   noveltyBudget: 0.15,
   defaultSeeds: ['科技', 'AI', '互联网'],
   minWeight: 0.05,
@@ -299,6 +301,20 @@ export class InterestGraph {
     return this.initialized;
   }
 
+  /**
+   * 图谱是否已产生判别力。
+   *
+   * 只有等权默认种子时，任何基于权重占比的打分都只有固定几档、
+   * 不承载偏好信息。出现以下任一情况即视为已分化：
+   * - 存在非 default 来源的节点（反思或反馈引入的新兴趣）
+   * - 存在被强化过的节点（权重已偏离初始值）
+   */
+  isDifferentiated(): boolean {
+    return this.data.nodes.some(
+      (node) => node.source !== 'default' || node.reinforceCount > 0,
+    );
+  }
+
   // ----------------------------------------
   // 修改
   // ----------------------------------------
@@ -329,11 +345,20 @@ export class InterestGraph {
 
   /**
    * 添加新兴趣。
-   * 检查 novelty 预算：当前总权重 + 新权重 ≤ 1.0 + noveltyBudget。
+   *
+   * novelty 预算的语义是"探索占总注意力的比例"：新兴趣是尚未被验证的猜测，
+   * 初始权重不得超过当前总有效权重的 noveltyBudget 倍，超出部分**钳制**而非拒绝。
+   *
+   * 早期实现按绝对总量设限（总权重 + 新权重 ≤ 1.0 + noveltyBudget），
+   * 而三个种子刚种下时总量就是 1.5 已然超限，导致任何新兴趣都加不进来，
+   * 兴趣图谱只能在种子内部打转。数量膨胀的风险改由 maxInterestCount 承担。
+   *
+   * 节点数少于 minInterestCount 时处于冷启动期，不施加预算。
+   *
    * @param id - 兴趣主题
-   * @param initialWeight - 初始权重
-   * @param source - 来源（Phase 2 用 'default'）
-   * @returns 是否成功（已存在或超预算时返回 false）
+   * @param initialWeight - 期望的初始权重，可能被预算钳低
+   * @param source - 来源
+   * @returns 是否成功（已存在或达到数量上限时返回 false）
    */
   addInterest(id: string, initialWeight: number, source: InterestSource = 'default'): boolean {
     // 已存在则不允许重复添加
@@ -342,34 +367,60 @@ export class InterestGraph {
       return false;
     }
 
-    // Novelty 预算检查：使用有效权重（衰减后）
-    const now = Date.now();
-    const totalEffectiveWeight = this.data.nodes.reduce(
-      (sum, n) => sum + this.computeEffectiveWeight(n, now),
-      0,
-    );
-    if (totalEffectiveWeight + initialWeight > 1.0 + this.config.noveltyBudget) {
-      logger.warn('添加兴趣失败：超出 novelty 预算', {
+    if (this.data.nodes.length >= this.config.maxInterestCount) {
+      logger.warn('添加兴趣失败：已达兴趣数量上限', {
         id,
-        totalEffectiveWeight,
-        initialWeight,
-        budget: this.config.noveltyBudget,
+        nodeCount: this.data.nodes.length,
+        max: this.config.maxInterestCount,
       });
       return false;
+    }
+
+    const weight = this.grantInitialWeight(initialWeight);
+    if (weight < initialWeight) {
+      logger.info('新兴趣权重被 novelty 预算钳制', {
+        id,
+        requested: initialWeight,
+        granted: weight,
+      });
     }
 
     const nowIso = new Date().toISOString();
     this.data.nodes.push({
       id,
-      weight: initialWeight,
+      weight,
       source,
       createdAt: nowIso,
       lastReinforced: nowIso,
       reinforceCount: 0,
     });
 
-    logger.info('新兴趣已添加', { id, weight: initialWeight, source });
+    logger.info('新兴趣已添加', { id, weight, source });
     return true;
+  }
+
+  /** 按 novelty 预算计算新兴趣实际获得的初始权重 */
+  private grantInitialWeight(requested: number): number {
+    const capped = Math.min(requested, this.config.maxWeight);
+
+    // 冷启动期（兴趣尚未凑齐下限）不限制，否则图谱起不来
+    if (this.data.nodes.length < this.config.minInterestCount) {
+      return capped;
+    }
+
+    const now = Date.now();
+    const totalEffectiveWeight = this.data.nodes.reduce(
+      (sum, n) => sum + this.computeEffectiveWeight(n, now),
+      0,
+    );
+
+    // 下限保证新兴趣不会一出生就低于 dormancy 阈值被立刻清理
+    const allowance = Math.max(
+      this.config.minWeight * 2,
+      totalEffectiveWeight * this.config.noveltyBudget,
+    );
+
+    return Math.min(capped, allowance);
   }
 
   /**

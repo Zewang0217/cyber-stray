@@ -196,6 +196,7 @@ export interface AgentConfig {
     decayLambda: number;        // 衰减系数（每天）
     maxWeight: number;          // 单兴趣权重上限
     minInterestCount: number;   // 最少兴趣数量
+    maxInterestCount: number;   // 最多兴趣数量
     noveltyBudget: number;      // 探索预算比例（0-1）
     defaultSeeds: string[];       // 默认种子兴趣
     minWeight: number;          // dormancy 阈值

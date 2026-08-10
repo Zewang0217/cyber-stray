@@ -94,13 +94,14 @@ describe('E2E 闭环验证', () => {
     const added = graph.addInterest('量子计算', 0.3, 'reflection');
     await graph.persist();
 
-    if (added) {
-      const newNode = graph.getNode('量子计算');
-      expect(newNode).toBeDefined();
-      expect(newNode!.source).toBe('reflection');
-      expect(newNode!.weight).toBe(0.3);
-    }
-    // 如果 novelty 预算不足，优雅处理（不抛错）
+    expect(added).toBe(true);
+
+    const newNode = graph.getNode('量子计算');
+    expect(newNode).toBeDefined();
+    expect(newNode!.source).toBe('reflection');
+    // 三个种子共 1.5，novelty 预算 0.15 → 新兴趣初始权重被钳到 0.225，
+    // 后续要靠反馈强化才能长起来
+    expect(newNode!.weight).toBeCloseTo(0.225, 3);
   });
 
   // ==========================================
