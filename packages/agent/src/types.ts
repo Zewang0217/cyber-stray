@@ -111,6 +111,26 @@ export interface Feedback {
 // 配置相关
 // ============================================
 
+/** 每租户敏感信息（SaaS：per-tenant secrets，注入而非进程环境变量） */
+export interface AgentSecrets {
+  /** DeepSeek API key（provider 读取点：secrets 优先，回退 process.env.DEEPSEEK_API_KEY） */
+  deepseekApiKey?: string;
+  /** Tavily API key（等价于 searchApiKey） */
+  tavilyApiKey?: string;
+  /** Exa API key（等价于 exaApiKey） */
+  exaApiKey?: string;
+  /** 飞书 Webhook（等价于 feishuWebhook） */
+  feishuWebhook?: string;
+  /** Telegram Bot Token（等价于 telegramBotToken） */
+  telegramBotToken?: string;
+  /** Telegram Chat ID（等价于 telegramChatId） */
+  telegramChatId?: string;
+  /** 飞书应用 App ID（等价于 larkAppId） */
+  larkAppId?: string;
+  /** 飞书应用 App Secret（等价于 larkAppSecret） */
+  larkAppSecret?: string;
+}
+
 /** 阶梯恢复配置 */
 export interface EnergyRecoveryTier {
   maxEnergy: number;      // 该阶梯的最大能量值（用于判断是否适用此阶梯）
@@ -245,6 +265,9 @@ export interface AgentConfig {
     /** 禁用的 hook 名称列表（如 ["quality"]） */
     disabled?: string[];
   };
+
+  /** 每租户敏感信息（由 loadConfig 注入；单用户模式为空对象，回退环境变量） */
+  secrets?: AgentSecrets;
 }
 
 // ============================================

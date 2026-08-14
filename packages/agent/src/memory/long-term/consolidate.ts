@@ -20,7 +20,7 @@ import { readdir, stat, readFile } from 'fs/promises';
 import { join, basename } from 'path';
 import { existsSync } from 'fs';
 import { consola } from '../../logger.js';
-import { config } from '../../config.js';
+import { getConfig } from '../../config.js';
 
 import {
   DEFAULT_MEMORY_CONFIG,
@@ -137,10 +137,11 @@ export class MemoryConsolidator {
     maxAgeDays?: number;
     minImportance?: number;
   } = {}): Promise<number> {
+    const consolidation = getConfig().consolidation;
     const lowImportanceThreshold =
-      options.minImportance ?? config.consolidation?.lowImportanceThreshold ?? 0.2;
+      options.minImportance ?? consolidation?.lowImportanceThreshold ?? 0.2;
     const maxAgeDays =
-      options.maxAgeDays ?? config.consolidation?.mergeMaxAgeDays ?? 7;
+      options.maxAgeDays ?? consolidation?.mergeMaxAgeDays ?? 7;
     const maxAgeMs = maxAgeDays * DAY_MS;
 
     const { type } = options;
@@ -273,7 +274,7 @@ export class MemoryConsolidator {
    * 索引缺失时回退 Markdown frontmatter（Pitfall 4 兼容旧文件）。
    */
   async cleanupExpired(): Promise<number> {
-    const expiryDays = config.consolidation?.expiryDays ?? 60;
+    const expiryDays = getConfig().consolidation?.expiryDays ?? 60;
     const cutoff = Date.now() - expiryDays * DAY_MS;
     let deletedCount = 0;
     const deletedByType: Record<string, number> = {};
@@ -355,14 +356,12 @@ export class MemoryConsolidator {
   }
 }
 
-let defaultConsolidator: MemoryConsolidator | null = null;
+const consolidatorCache = new Map<string, MemoryConsolidator>();
 
 export function getMemoryConsolidator(store?: MemoryStore): MemoryConsolidator {
-  if (!defaultConsolidator) {
-    defaultConsolidator = new MemoryConsolidator(
-      defaultMemoryBasePath(),
-      store,
-    );
+  const basePath = store?.basePath ?? defaultMemoryBasePath();
+  if (!consolidatorCache.has(basePath)) {
+    consolidatorCache.set(basePath, new MemoryConsolidator(basePath, store));
   }
-  return defaultConsolidator;
+  return consolidatorCache.get(basePath)!;
 }

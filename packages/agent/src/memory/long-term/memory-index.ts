@@ -289,17 +289,17 @@ export class MemoryIndex {
   }
 }
 
-let defaultMemoryIndex: MemoryIndex | null = null;
+const memoryIndexCache = new Map<string, MemoryIndex>();
 
-/** 获取模块级单例（jsonPath/basePath 默认指向 agent 数据目录下的 memory/） */
+/** 获取模块级单例（jsonPath/basePath 默认指向 agent 数据目录下的 memory/；按 basePath 键化，租户隔离） */
 export function getMemoryIndex(basePath = defaultMemoryBasePath()): MemoryIndex {
-  if (!defaultMemoryIndex) {
-    defaultMemoryIndex = new MemoryIndex(join(basePath, '.index.json'), basePath);
+  if (!memoryIndexCache.has(basePath)) {
+    memoryIndexCache.set(basePath, new MemoryIndex(join(basePath, '.index.json'), basePath));
   }
-  return defaultMemoryIndex;
+  return memoryIndexCache.get(basePath)!;
 }
 
 /** 重置模块级单例（测试隔离用） */
 export function _resetMemoryIndex(): void {
-  defaultMemoryIndex = null;
+  memoryIndexCache.clear();
 }

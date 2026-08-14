@@ -37,6 +37,17 @@ vi.mock('../../config.js', () => ({
     },
   },
   getDataPath: (f: string) => `data/${f}`,
+  getConfig: () => ({
+    browser: {
+      enabled: true,
+      warmUpOnStart: true,
+      closeAfterWander: false,
+      timeout: 30000,
+      sessionName: 'cyber-stray',
+      restore: true,
+    },
+  }),
+  getDataRoot: () => 'data',
 }));
 
 vi.mock('../../logger.js', () => ({

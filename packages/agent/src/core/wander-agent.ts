@@ -195,7 +195,9 @@ export class WanderAgent {
 
   private getProvider() {
     if (!this._provider) {
-      const apiKey = process.env.DEEPSEEK_API_KEY;
+      // per-tenant secrets 优先，回退进程环境变量（单用户模式）
+      const apiKey =
+        this.agentConfig.secrets?.deepseekApiKey ?? process.env.DEEPSEEK_API_KEY;
       if (!apiKey) {
         throw new Error('缺少环境变量 DEEPSEEK_API_KEY');
       }

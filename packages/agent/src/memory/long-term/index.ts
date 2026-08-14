@@ -41,6 +41,8 @@ const logger = consola.withTag('MemoryStore');
  */
 export class MemoryStore {
   private config: MemoryConfig;
+  /** 记忆根目录（租户隔离键；consolidator 等按此复用实例） */
+  readonly basePath: string;
   private indexCache: MemoryIndex | null = null;
   /** JSON sidecar 索引（检索走它，O(1) 查表替代 O(N) readdir 全扫） */
   private jsonIndex: MemoryIndexStore;
@@ -48,6 +50,7 @@ export class MemoryStore {
   constructor(config: Partial<MemoryConfig> = {}) {
     const basePath = config.basePath ?? defaultMemoryBasePath();
     this.config = { ...DEFAULT_MEMORY_CONFIG, ...config, basePath };
+    this.basePath = basePath;
     // 注入 JSON 索引（getMemoryIndex 单例按 basePath 复用；测试通过
     // _resetMemoryIndex 重置后再 new MemoryStore 以拿到对应 basePath 的实例）
     this.jsonIndex = getMemoryIndex(this.config.basePath);
@@ -658,15 +661,16 @@ export class MemoryStore {
 }
 
 /**
- * 默认记忆存储实例
+ * 默认记忆存储实例（按 basePath 键化——租户模式同一进程多租户各自持实例）
  */
-let defaultStore: MemoryStore | null = null;
+const storeCache = new Map<string, MemoryStore>();
 
 export function getMemoryStore(): MemoryStore {
-  if (!defaultStore) {
-    defaultStore = new MemoryStore();
+  const basePath = defaultMemoryBasePath();
+  if (!storeCache.has(basePath)) {
+    storeCache.set(basePath, new MemoryStore({ basePath }));
   }
-  return defaultStore;
+  return storeCache.get(basePath)!;
 }
 
 /**
@@ -676,5 +680,5 @@ export function getMemoryStore(): MemoryStore {
  * 否则实例仍指向上一个数据目录。
  */
 export function _resetMemoryStore(): void {
-  defaultStore = null;
+  storeCache.clear();
 }

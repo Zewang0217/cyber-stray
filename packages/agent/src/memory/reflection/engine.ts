@@ -23,7 +23,7 @@
 import { generateText } from 'ai';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { consola } from '../../logger.js';
-import { config } from '../../config.js';
+import { getConfig } from '../../config.js';
 import { getMemoryStore } from '../long-term/index.js';
 import { getInterestGraph } from '../interest-graph.js';
 import type { MemoryEntry, MemoryType } from '../long-term/types.js';
@@ -262,7 +262,8 @@ export class ReflectionEngine {
 
   /** 调用 LLM 反思，返回原始文本 */
   private async callLLM(materials: MemoryEntry[]): Promise<string> {
-    const apiKey = process.env.DEEPSEEK_API_KEY;
+    const cfg = getConfig();
+    const apiKey = cfg.secrets?.deepseekApiKey ?? process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
       throw new Error('缺少环境变量 DEEPSEEK_API_KEY');
     }
@@ -274,7 +275,7 @@ export class ReflectionEngine {
     logger.debug('发起反思 LLM 调用', { materialCount: materials.length });
 
     const result = await generateText({
-      model: provider.chat(config.llmModel),
+      model: provider.chat(cfg.llmModel),
       temperature: 0.4, // 反思需要一致性高于创造性
       system: systemPrompt,
       prompt: userPrompt,
@@ -449,17 +450,18 @@ export class ReflectionEngine {
   }
 }
 
-/** 模块级单例 */
-let defaultEngine: ReflectionEngine | null = null;
+/** 模块级单例（按 cfg 键化——不同配置的引擎实例互不串） */
+const engineCache = new Map<string, ReflectionEngine>();
 
 export function getReflectionEngine(cfg?: Partial<ReflectionConfig>): ReflectionEngine {
-  if (!defaultEngine) {
-    defaultEngine = new ReflectionEngine(cfg);
+  const key = JSON.stringify(cfg ?? {});
+  if (!engineCache.has(key)) {
+    engineCache.set(key, new ReflectionEngine(cfg));
   }
-  return defaultEngine;
+  return engineCache.get(key)!;
 }
 
 /** 重置单例（测试隔离） */
 export function _resetReflectionEngine(): void {
-  defaultEngine = null;
+  engineCache.clear();
 }

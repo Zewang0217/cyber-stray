@@ -1,7 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { consola } from '../../logger.js';
-import { config } from '../../config.js';
+import { getConfig } from '../../config.js';
 import { search, premiumSearch } from '../search/index.js';
 import { pushWanderStep, type ToolContext } from './context.js';
 import type { ToolDefinition } from '../tool-manager.js';
@@ -47,9 +47,10 @@ export const searchWebToolDef: ToolDefinition = {
       const stepStart = Date.now();
 
       try {
+        const maxResults = getConfig().maxSearchResults;
         const results = quality === 'premium'
-          ? await premiumSearch(query, { maxResults: config.maxSearchResults })
-          : await search(query, { adapter: 'duckduckgo', maxResults: config.maxSearchResults });
+          ? await premiumSearch(query, { maxResults })
+          : await search(query, { adapter: 'duckduckgo', maxResults });
 
         const elapsed = Date.now() - stepStart;
 

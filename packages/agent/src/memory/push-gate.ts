@@ -539,16 +539,18 @@ export class PushGate {
 // 单例
 // ============================================
 
-let defaultGate: PushGate | null = null;
+/** 按 cfg 键化（租户模式各租户门控配置独立实例） */
+const gateCache = new Map<string, PushGate>();
 
 export function getPushGate(cfg?: Partial<PushGateConfig>): PushGate {
-  if (!defaultGate) {
-    defaultGate = new PushGate(cfg);
+  const key = JSON.stringify(cfg ?? {});
+  if (!gateCache.has(key)) {
+    gateCache.set(key, new PushGate(cfg));
   }
-  return defaultGate;
+  return gateCache.get(key)!;
 }
 
 /** 重置单例（测试隔离） */
 export function _resetPushGate(): void {
-  defaultGate = null;
+  gateCache.clear();
 }

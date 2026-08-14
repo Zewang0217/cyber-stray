@@ -1,7 +1,7 @@
 import { appendFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { consola } from '../../logger.js';
-import { config, getDataPath } from '../../config.js';
+import { getConfig, getDataPath } from '../../config.js';
 import { sendFeishuMessage } from './lark-sender.js';
 import { registerSpeakTopics } from '../../memory/feedback-pipeline.js';
 import { buildSpeakRecord, type SpeakRecord, type SpeakRecordMeta } from './history-record.js';
@@ -72,8 +72,9 @@ export async function recordGatedSpeak(
  * 推送到 Telegram
  */
 async function pushToTelegram(content: string): Promise<void> {
-  const token = config.telegramBotToken;
-  const chatId = config.telegramChatId;
+  const cfg = getConfig();
+  const token = cfg.telegramBotToken;
+  const chatId = cfg.telegramChatId;
 
   if (!token || !chatId) {
     throw new Error('未配置 TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID');
@@ -141,11 +142,12 @@ export async function speak(
   let pushed = false;
   let messageId: string | undefined;
   const pushErrors: string[] = [];
+  const cfg = getConfig();
 
   // 推送到飞书（根据配置选择方式）
-  if (config.feishu?.pushMode === 'lark_channel') {
+  if (cfg.feishu?.pushMode === 'lark_channel') {
     // LarkChannel 方式
-    if (config.larkAppId && config.larkAppSecret) {
+    if (cfg.larkAppId && cfg.larkAppSecret) {
       try {
         messageId = await sendFeishuMessage(content);
         pushed = true;
@@ -158,7 +160,7 @@ export async function speak(
     } else {
       logger.warn('未配置 LARK_APP_ID/LARK_APP_SECRET，无法使用 LarkChannel');
     }
-  } else if (config.feishuWebhook) {
+  } else if (cfg.feishuWebhook) {
     // Webhook 方式
     try {
       messageId = await sendFeishuMessage(content);
@@ -172,7 +174,7 @@ export async function speak(
   }
 
   // 尝试推送到 Telegram
-  if (config.telegramBotToken && config.telegramChatId) {
+  if (cfg.telegramBotToken && cfg.telegramChatId) {
     try {
       await pushToTelegram(content);
       pushed = true;
@@ -185,7 +187,7 @@ export async function speak(
   }
 
   // 没有配置任何推送渠道时，只记录日志
-  if (!config.feishu?.pushMode && !config.feishuWebhook && (!config.telegramBotToken || !config.telegramChatId)) {
+  if (!cfg.feishu?.pushMode && !cfg.feishuWebhook && (!cfg.telegramBotToken || !cfg.telegramChatId)) {
     logger.info('无推送渠道配置，内容仅记录日志', { content });
   }
 

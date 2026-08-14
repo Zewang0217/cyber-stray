@@ -7,7 +7,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
-import { getDataPath } from '../../../config.js';
+import { getDataPath, getDataRoot } from '../../../config.js';
 import { consola } from '../../../logger.js';
 import { parseSkillFile, type ParsedSkill } from './parser.js';
 
@@ -164,20 +164,22 @@ export class SkillIndex {
   }
 }
 
-// ─── 模块级单例 ───────────────────────────────────────────
+// ─── 模块级单例（按数据根键化，租户隔离）────────────────────────────────
 
-let instance: SkillIndex | null = null;
+const skillIndexCache = new Map<string, SkillIndex>();
 
 /** 获取 SkillIndex 单例（首次调用时扫描） */
 export function getSkillIndex(): SkillIndex {
-  if (!instance) {
-    instance = new SkillIndex(getDataPath('skills'));
+  const root = getDataRoot();
+  if (!skillIndexCache.has(root)) {
+    const instance = new SkillIndex(getDataPath('skills'));
     instance.scan();
+    skillIndexCache.set(root, instance);
   }
-  return instance;
+  return skillIndexCache.get(root)!;
 }
 
 /** 重置单例（测试用） */
 export function _resetSkillIndex(): void {
-  instance = null;
+  skillIndexCache.clear();
 }

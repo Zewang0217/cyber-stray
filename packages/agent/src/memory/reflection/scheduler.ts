@@ -204,18 +204,20 @@ export class ReflectionScheduler {
 // 单例
 // ============================================
 
-let defaultScheduler: ReflectionScheduler | null = null;
+/** 按 statePath 键化——租户模式同一进程多租户各自持实例与状态文件 */
+const schedulerCache = new Map<string, ReflectionScheduler>();
 
 export function getReflectionScheduler(
   cfg?: Partial<ReflectionConfig>,
 ): ReflectionScheduler {
-  if (!defaultScheduler) {
-    defaultScheduler = new ReflectionScheduler(cfg);
+  const statePath = getDataPath(STATE_PATH);
+  if (!schedulerCache.has(statePath)) {
+    schedulerCache.set(statePath, new ReflectionScheduler(cfg));
   }
-  return defaultScheduler;
+  return schedulerCache.get(statePath)!;
 }
 
 /** 重置单例（测试隔离） */
 export function _resetReflectionScheduler(): void {
-  defaultScheduler = null;
+  schedulerCache.clear();
 }

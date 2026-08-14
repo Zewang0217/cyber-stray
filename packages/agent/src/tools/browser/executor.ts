@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { consola } from '../../logger.js';
+import { getConfig } from '../../config.js';
 import type { AgentBrowserEnvelope, BrowserCommandResult, BrowserExecutorOptions } from './types.js';
 
 const logger = consola.withTag('browser:executor');
@@ -174,18 +175,26 @@ export class BrowserExecutor {
   }
 }
 
-// ── 模块级单例 ──────────────────────────────────────────────
+// ── 模块级单例（按会话键化）──────────────────────────────────────────────
 
-let instance: BrowserExecutor | null = null;
+/**
+ * 按 session 键化：warmup 时用租户 config 的 sessionName 建实例（含该租户
+ * 加密 key），工具侧 `getBrowserExecutor()` 解析当前生效配置的同一 session，
+ * 两者命中同一实例。单进程多租户共享同一 session 时浏览器进程本身共享
+ *（浏览器是进程级资源），上下文与 key 仍按租户数据目录隔离。
+ */
+const executorCache = new Map<string, BrowserExecutor>();
 
 export function getBrowserExecutor(options?: BrowserExecutorOptions): BrowserExecutor {
-  if (!instance) {
-    instance = new BrowserExecutor(options);
+  const session =
+    options?.session ?? getConfig().browser?.sessionName ?? DEFAULT_SESSION;
+  if (!executorCache.has(session)) {
+    executorCache.set(session, new BrowserExecutor(options));
   }
-  return instance;
+  return executorCache.get(session)!;
 }
 
 /** 测试隔离：重置单例 */
 export function _resetBrowserExecutor(): void {
-  instance = null;
+  executorCache.clear();
 }
