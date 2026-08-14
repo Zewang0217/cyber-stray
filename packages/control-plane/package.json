@@ -1,0 +1,25 @@
+{
+  "name": "@cyber-stray/control-plane",
+  "version": "0.1.0",
+  "description": "赛博街溜子控制面——pooled 共享服务：认证（Casdoor OIDC）、会话、租户注册。S2 起步，S3 数据模型/计费/调度 API 后续同侧生长。",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "test": "vitest",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4",
+    "jose": "^5"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "bun-types": "^1.3.14",
+    "eslint": "^9",
+    "typescript": "^5",
+    "typescript-eslint": "^8",
+    "vitest": "^3"
+  }
+}

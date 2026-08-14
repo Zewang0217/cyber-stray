@@ -9,6 +9,7 @@ import {
   Terminal,
   Settings,
   Dog,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -94,11 +95,21 @@ export function Sidebar(): React.ReactElement {
         </nav>
 
         {/* 底部状态 */}
-        <div className="pt-4 border-t border-surface">
+        <div className="pt-4 border-t border-surface space-y-3">
           <div className="flex items-center gap-2 text-xs text-subtext font-mono">
             <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
             Agent Online
           </div>
+          {/* S2：登出（控制面清 session） */}
+          <form action="/api/auth/logout" method="POST">
+            <button
+              type="submit"
+              className="w-full flex items-center gap-3 px-4 py-2 rounded-xl text-sm text-subtext hover:text-text hover:bg-surface/50 transition-colors"
+            >
+              <LogOut className="w-5 h-5" />
+              登出
+            </button>
+          </form>
         </div>
       </div>
     </aside>
