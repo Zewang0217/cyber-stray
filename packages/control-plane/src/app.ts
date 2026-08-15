@@ -8,6 +8,7 @@ import type { OidcProvider } from './oidc.js';
 import { createAuthRoutes } from './routes/auth.js';
 import { StateStore } from './state-store.js';
 import { createDataRoutes } from './routes/data.js';
+import { createPetsRoutes } from './routes/pets.js';
 
 export interface AppDeps {
   config: ControlPlaneConfig;
@@ -23,6 +24,9 @@ export function createApp({ config, oidc }: AppDeps): Hono {
 
   // S6：Web 只读数据面（鉴权 + 按会话租户路由）
   app.route('/api', createDataRoutes({ config }));
+
+  // S7：领养旅程（写路径：建宠物行 + 兴趣种子；仍以 session claim 定租户）
+  app.route('/api', createPetsRoutes({ config }));
 
   return app;
 }

@@ -144,8 +144,9 @@ describe('调度器', () => {
     });
     sched = makeScheduler({ maxConcurrent: 2 });
     await addPet('p1', 't1');
-    await addPet('p2', 't1');
-    await addPet('p3', 't1');
+    await addPet('p2', 't2');
+    await getOrCreateTenant(dataDir, 't3');
+    await addPet('p3', 't3');
 
     await sched.runOnce(); // 不 drain：任务在飞
     expect(runner).toHaveBeenCalledTimes(2);

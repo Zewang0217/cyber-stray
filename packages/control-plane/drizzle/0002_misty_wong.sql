@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `pets_tenant_unique` ON `pets` (`tenant_id`);

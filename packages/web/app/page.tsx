@@ -9,6 +9,9 @@ import {
 } from "framer-motion";
 import { useAgentState } from "@/hooks/useAgentState";
 import { useInterestGraph } from "@/hooks/useInterestGraph";
+import { usePets, type Pet } from "@/hooks/usePets";
+import { AdoptionFlow } from "@/components/dashboard/AdoptionFlow";
+import { PetIntro } from "@/components/dashboard/PetIntro";
 import { CircularGauge } from "@/components/dashboard/CircularGauge";
 import { MoodBadge } from "@/components/dashboard/MoodBadge";
 import { StatCard } from "@/components/dashboard/StatCard";
@@ -20,16 +23,19 @@ import { PulseBorder } from "@/components/effects/PulseBorder";
 import { HeroStage } from "@/components/effects/HeroStage";
 
 /**
- * Dashboard 首页
  * Agent 状态总览与核心指标展示
  * 包含 parallax 滚动效果和 staggerChildren 动画编排
  */
 export default function DashboardPage(): React.ReactElement {
     // 1. 默认不显示，避免水合闪烁
     const [showHeroStage, setShowHeroStage] = useState(false);
-    // 2. 增加一个检测状态
     const [isCheckingIntro, setIsCheckingIntro] = useState(true);
+    // S7 领养旅程：领养 → 自我介绍（首推前）→ 仪表盘
+    const [introPet, setIntroPet] = useState<Pet | null>(null);
+    const [introInterests, setIntroInterests] = useState<string[]>([]);
+    const [introRestored, setIntroRestored] = useState(false);
 
+    const { pets, isLoaded: petsLoaded, error: petsError, adopt, adopting } = usePets();
     const { state, isLoading, error } = useAgentState();
     const {
         nodes: interestNodes,
@@ -45,18 +51,75 @@ export default function DashboardPage(): React.ReactElement {
 
     const isBored = state ? state.boredom >= 80 : false;
 
-    // 3. 在客户端挂载时检查 sessionStorage
+    // 刷新后恢复未完成的自我介绍（sessionStorage，点"带它回家"即清除）
     useEffect(() => {
-        const played = sessionStorage.getItem("cyber_intro_played");
-        if (!played) {
-            setShowHeroStage(true); // 只有没播放过，才开启
+      const pending = sessionStorage.getItem("cyber_pet_intro");
+      if (pending && !introPet) {
+        try {
+          const { petId, interests } = JSON.parse(pending) as {
+            petId: string;
+            interests: string[];
+          };
+          const pet = pets.find((p) => p.id === petId);
+          if (pet) {
+            setIntroPet(pet);
+            setIntroInterests(interests);
+          }
+        } catch {
+          sessionStorage.removeItem("cyber_pet_intro");
         }
-        setIsCheckingIntro(false); // 检查完毕
-    }, []);
+      }
+      setIntroRestored(true);
+    }, [pets, introPet]);
+
+    // 3. 在客户端挂载时检查 sessionStorage
 
     // 4. 如果还在检查中，抛出一个纯黑屏防止底部的 Dashboard 提前暴露
-    if (isCheckingIntro) {
+    if (isCheckingIntro || !introRestored) {
         return <div className="fixed inset-0 bg-[#09090b] z-[9999]" />;
+    }
+
+    // S7 领养门：未领养（pets 加载完且为空、且拉取没失败）→ 领养流程（首推前必经）
+    if (petsLoaded && !petsError && pets.length === 0 && !introPet) {
+        return (
+            <>
+                <AnimatePresence>
+                    {showHeroStage && <HeroStage />}
+                </AnimatePresence>
+                <AdoptionFlow
+                    adopting={adopting}
+                    onAdopt={async (input) => {
+                        const pet = await adopt(input);
+                        if (pet) {
+                            setIntroPet(pet);
+                            setIntroInterests(input.interests ?? []);
+                            sessionStorage.setItem(
+                                "cyber_pet_intro",
+                                JSON.stringify({
+                                    petId: pet.id,
+                                    interests: input.interests ?? [],
+                                }),
+                            );
+                        }
+                        return pet;
+                    }}
+                />
+            </>
+        );
+    }
+
+    // S7 自我介绍：领养后、首推前（sessionStorage 持久，刷新可重放）
+    if (introPet) {
+        return (
+            <PetIntro
+                pet={introPet}
+                interests={introInterests}
+                onDone={() => {
+                    sessionStorage.removeItem("cyber_pet_intro");
+                    setIntroPet(null);
+                }}
+            />
+        );
     }
 
     // 5. 修复加载状态的渲染逻辑

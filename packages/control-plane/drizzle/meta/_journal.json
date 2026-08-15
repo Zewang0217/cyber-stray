@@ -15,6 +15,13 @@
       "when": 1786777368283,
       "tag": "0001_bouncy_bushwacker",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786790455067,
+      "tag": "0002_misty_wong",
+      "breakpoints": true
     }
   ]
 }

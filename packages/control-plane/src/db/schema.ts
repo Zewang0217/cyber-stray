@@ -9,12 +9,10 @@
  * 记忆仍在每租户 markdown 数据目录（不迁移——核心价值约束）。
  */
 
-import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 /** 时间戳：unix 毫秒（SQLite 无原生 datetime，integer 跨方言最稳） */
 const now = () => Date.now();
-
-// ─── 租户 ───────────────────────────────────────────────────────────────
 
 export const tenants = sqliteTable('tenants', {
   /** 租户键 = 首登用户的 Casdoor sub（S2 决策；S3 后仍保持一对一） */
@@ -61,7 +59,10 @@ export const pets = sqliteTable('pets', {
   plan: text('plan', { enum: ['free', 'pro', 'byok'] }).notNull().default('free'),
   createdAt: integer('created_at').notNull().$defaultFn(now),
   updatedAt: integer('updated_at').notNull().$defaultFn(now).$onUpdate(() => Date.now()),
-});
+}, (t) => ({
+  /** 1 租户 1 宠物（adopt 原子幂等靠它；S9 多宠再放开） */
+  petsTenantUnique: uniqueIndex('pets_tenant_unique').on(t.tenantId),
+}));
 
 // ─── 账单（预留：S11 双轨定价后启用） ──────────────────────────────────
 
