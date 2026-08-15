@@ -24,11 +24,12 @@ export function useAgentState(): UseAgentStateReturn {
         const res = await fetch("/api/state");
         const json = (await res.json()) as ApiResponse<AgentState>;
 
-        if (!json.success || !json.data) {
+        if (!json.success) {
           throw new Error(json.error ?? "获取状态失败");
         }
 
-        setState(json.data);
+        // data: null = 租户尚未跑过游荡（无 state.json）——空态而非错误
+        setState(json.data ?? null);
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : "未知错误");

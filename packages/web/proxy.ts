@@ -3,9 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 /**
  * 登录墙（S2）：未登录访问跳转 Casdoor 登录。
  *
- * 只查 session cookie 存在性——验签由控制面 /api/auth/me 做（web 是只读消费方，
- * 不持有 CP_SESSION_SECRET）。页面数据本身仍是本地 agent 数据（单用户开发期）；
- * S6 数据路由后页面数据走控制面 API 鉴权。
+ * 只查 session cookie 存在性——验签由控制面做（web 是只读消费方，
+ * 不持有 CP_SESSION_SECRET）。页面数据经 rewrites 走控制面 API（S6：
+ * 鉴权 + 按会话租户路由），本文件只管页面级登录墙。
  */
 // cookie 名的规范定义在 control-plane/src/session.ts（SESSION_COOKIE），改名需两侧同步
 const SESSION_COOKIE = "cs_session";

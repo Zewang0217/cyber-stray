@@ -5,8 +5,9 @@
 import { Hono } from 'hono';
 import type { ControlPlaneConfig } from './config.js';
 import type { OidcProvider } from './oidc.js';
-import { StateStore } from './state-store.js';
 import { createAuthRoutes } from './routes/auth.js';
+import { StateStore } from './state-store.js';
+import { createDataRoutes } from './routes/data.js';
 
 export interface AppDeps {
   config: ControlPlaneConfig;
@@ -19,6 +20,9 @@ export function createApp({ config, oidc }: AppDeps): Hono {
   app.get('/healthz', (c) => c.json({ ok: true }));
 
   app.route('/api/auth', createAuthRoutes({ config, oidc, states: new StateStore() }));
+
+  // S6：Web 只读数据面（鉴权 + 按会话租户路由）
+  app.route('/api', createDataRoutes({ config }));
 
   return app;
 }

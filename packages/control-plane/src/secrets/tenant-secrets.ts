@@ -102,7 +102,7 @@ function withTenantLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
 }
 
 /** tenantId 只允许字母数字短横（uuid 及测试名），排除路径分隔符与 `.`（防注入） */
-const TENANT_ID_RE = /^[a-zA-Z0-9-]{1,64}$/;
+export const TENANT_ID_RE = /^[a-zA-Z0-9-]{1,64}$/;
 
 class TenantSecrets implements TenantSecretsStore {
   constructor(

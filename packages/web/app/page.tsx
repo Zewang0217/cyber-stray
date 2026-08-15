@@ -75,7 +75,7 @@ export default function DashboardPage(): React.ReactElement {
         );
     }
 
-    if (error || !state) {
+    if (error) {
         return (
             <>
                 <AnimatePresence>
@@ -84,10 +84,31 @@ export default function DashboardPage(): React.ReactElement {
                 <div className="spacing-lg flex items-center justify-center min-h-screen">
                     <div className="text-center">
                         <p className="text-danger font-mono mb-2">
-                            ERROR: {error ?? "State unavailable"}
+                            ERROR: {error}
                         </p>
                         <p className="text-subtext text-small">
-                            请确认 Agent 已启动并生成了 data/state.json
+                            数据读取失败，请稍后重试
+                        </p>
+                    </div>
+                </div>
+            </>
+        );
+    }
+
+    if (!state) {
+        // 空态：租户尚未跑过游荡（无 state.json）——引导而非报错
+        return (
+            <>
+                <AnimatePresence>
+                    {showHeroStage && <HeroStage />}
+                </AnimatePresence>
+                <div className="spacing-lg flex items-center justify-center min-h-screen">
+                    <div className="text-center">
+                        <p className="text-text font-mono mb-2">
+                            你的赛博宠物还没有开始游荡
+                        </p>
+                        <p className="text-subtext text-small">
+                            首次游荡后这里会显示它的状态
                         </p>
                     </div>
                 </div>

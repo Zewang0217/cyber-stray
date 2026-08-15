@@ -9,14 +9,31 @@ const nextConfig: NextConfig = {
     root: fileURLToPath(new URL("../..", import.meta.url)),
   },
   async rewrites() {
-    // S2：认证 API 代理到控制面（同域，cookie 归浏览器看到的源）。
-    // 生产同形态：Nginx 反代 /api/auth → 控制面；本地开发指向控制面 dev 端口。
+    // S2/S6：认证 + 数据 API 代理到控制面（同域，cookie 归浏览器看到的源）。
+    // 数据 API 由控制面做鉴权与租户路由——web 是只读消费方，不持有
+    // CP_SESSION_SECRET。生产同形态：Nginx 反代这些前缀 → 控制面。
     const controlPlaneOrigin =
       process.env.CP_ORIGIN ?? "http://localhost:8787";
     return [
       {
         source: "/api/auth/:path*",
         destination: `${controlPlaneOrigin}/api/auth/:path*`,
+      },
+      {
+        source: "/api/state",
+        destination: `${controlPlaneOrigin}/api/state`,
+      },
+      {
+        source: "/api/history",
+        destination: `${controlPlaneOrigin}/api/history`,
+      },
+      {
+        source: "/api/interests",
+        destination: `${controlPlaneOrigin}/api/interests`,
+      },
+      {
+        source: "/api/interests/history",
+        destination: `${controlPlaneOrigin}/api/interests/history`,
       },
     ];
   },
