@@ -51,8 +51,12 @@ export function createAuthRoutes({ config, oidc, states }: AuthDeps): Hono {
       );
     }
 
-    // 首登自动建租户（租户键 = sub；幂等）
-    const { tenantId, created } = await getOrCreateTenant(config.dataDir, user.sub);
+    // 首登自动建租户（租户键 = sub；幂等；name 取 OIDC display name）
+    const { tenantId, created } = await getOrCreateTenant(
+      config.dataDir,
+      user.sub,
+      user.name,
+    );
 
     // 签发控制面 session
     const token = await signSession(

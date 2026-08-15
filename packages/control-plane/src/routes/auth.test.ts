@@ -10,12 +10,15 @@ import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { existsSync } from 'fs';
-import { readFile } from 'fs/promises';
+import { eq } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { createApp, type AppDeps } from '../app.js';
 import { loadConfig } from '../config.js';
 import type { OidcProvider, OidcUser } from '../oidc.js';
 import { tenantDataDir } from '../tenant.js';
+import { getDb, _resetDb } from '../db/client.js';
+import { runMigrations } from '../db/migrate.js';
+import { tenants } from '../db/schema.js';
 
 const SECRET = 'test-session-secret-0123456789abcdef0123456789abcdef';
 
@@ -63,14 +66,17 @@ describe('auth 路由', () => {
   let deps: AppDeps;
   let app: Hono;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     dataDir = mkdtempSync(join(tmpdir(), 'cp-app-'));
     oidc = makeMockOidc();
     deps = { config: makeConfig(dataDir), oidc };
     app = createApp(deps);
+    _resetDb();
+    await runMigrations(dataDir);
   });
 
   afterEach(() => {
+    _resetDb();
     rmSync(dataDir, { recursive: true, force: true });
   });
 
@@ -96,12 +102,11 @@ describe('auth 路由', () => {
     expect(setCookie).toMatch(/cs_session=[^;]+/);
     expect(setCookie).toMatch(/HttpOnly/i);
 
-    // 4. 租户已创建（目录 + 注册表）
+    // 4. 租户已创建（DB 行 + 数据目录）
     expect(existsSync(tenantDataDir(dataDir, 'casdoor-user-42'))).toBe(true);
-    const registry = JSON.parse(
-      await readFile(join(dataDir, 'tenants-registry.json'), 'utf-8'),
-    );
-    expect(registry.tenants['casdoor-user-42'].tenantId).toBe('casdoor-user-42');
+    const db = await getDb(dataDir);
+    const tenant = await db.select().from(tenants).where(eq(tenants.id, 'casdoor-user-42')).get();
+    expect(tenant?.id).toBe('casdoor-user-42');
 
     // 5. /me 带 cookie → 200
     const cookie = setCookie.split(';')[0]!;
@@ -155,10 +160,8 @@ describe('auth 路由', () => {
     const res2 = await app.request(`/api/auth/callback?code=c2&state=${state2}`);
     expect(res2.status).toBe(302);
 
-    // 二次登录后租户注册表仍只有一条
-    const registry = JSON.parse(
-      await readFile(join(dataDir, 'tenants-registry.json'), 'utf-8'),
-    );
-    expect(Object.keys(registry.tenants)).toHaveLength(1);
+    // 二次登录后租户表仍只有一条
+    const db = await getDb(dataDir);
+    expect((await db.select().from(tenants).all()).length).toBe(1);
   });
 });

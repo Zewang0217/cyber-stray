@@ -1,88 +1,79 @@
 /**
- * 租户注册 — S2 决策：租户键 = JWT sub（单用户租户=1 的过渡路径）
+ * 租户注册（S3：SQLite + Drizzle）
  *
- * 首登自动建租户：控制面数据根下 `tenants/<sub>/` 目录 + 注册表 JSON。
- * S3 建控制面 SQLite 后，本模块的数据落点迁入正式关系表，目录结构不变。
+ * 首登自动建租户：控制面 DB 的 tenants + user_tenants 行 + 租户数据目录
+ * `tenants/<sub>/`（agent 的 markdown 数据层，不迁移）。
+ *
+ * 租户键 = Casdoor sub（uuid）。幂等（含并发首登）：tenants 主键冲突即已有，
+ * onConflictDoNothing 原子处理。S2 的 JSON 注册表被 DB 取代，发现残留时归档。
  */
 
-import { mkdir, readFile, rename, writeFile } from 'fs/promises';
+import { mkdir, rename } from 'fs/promises';
 import { join } from 'path';
-
-/** 租户注册表条目 */
-export interface TenantRecord {
-  /** 租户键（= Casdoor sub，S2 决策） */
-  tenantId: string;
-  /** 归属用户（Casdoor sub） */
-  sub: string;
-  createdAt: string;
-}
-
-/** 租户注册表（data/tenants-registry.json） */
-export interface TenantRegistry {
-  tenants: Record<string, TenantRecord>;
-}
-
-function registryPath(dataDir: string): string {
-  return join(dataDir, 'tenants-registry.json');
-}
+import { getDb } from './db/client.js';
+import { tenants, userTenants } from './db/schema.js';
 
 /** 租户数据目录（agent 的 DATA_DIR = 租户键，指向此处） */
 export function tenantDataDir(dataDir: string, tenantId: string): string {
   return join(dataDir, 'tenants', tenantId);
 }
 
-async function readRegistry(dataDir: string): Promise<TenantRegistry> {
-  const path = registryPath(dataDir);
-  let raw: string;
-  try {
-    raw = await readFile(path, 'utf-8');
-  } catch (error) {
-    // 注册表不存在 = 合法空值（首登前）；读取失败则抛（禁止兜底）
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return { tenants: {} };
-    }
-    throw error;
-  }
-  try {
-    return JSON.parse(raw) as TenantRegistry;
-  } catch {
-    // 注册表损坏：不静默丢数据，抛错让调用方处理（禁止兜底）
-    throw new Error(`租户注册表损坏: ${path}`);
-  }
+/** 租户注册结果 */
+export interface TenantResult {
+  tenantId: string;
+  created: boolean;
 }
 
-async function writeRegistry(dataDir: string, registry: TenantRegistry): Promise<void> {
-  const path = registryPath(dataDir);
-  await mkdir(dataDir, { recursive: true });
-  const tmp = `${path}.tmp`;
-  await writeFile(tmp, JSON.stringify(registry, null, 2), 'utf-8');
-  // 原子替换，防并发写半截
-  await rename(tmp, path);
-}
+/** S2 遗留 JSON 注册表（DB 取代后归档，防误读为活状态） */
+const LEGACY_REGISTRY_FILE = 'tenants-registry.json';
 
 /**
- * 首登自动建租户：无则创建（目录 + 注册表条目），有则返回既有。
- * 幂等：重复调用只建一次。
+ * 首登自动建租户：DB 建租户行 + 用户↔租户绑定 + 租户数据目录。
  *
- * @returns created = 本次是否新建
+ * 原子性：tenants + user_tenants 在同一事务；tenants 主键冲突（并发首登/回调
+ * 重放）经 onConflictDoNothing 短路，返回既有租户而非 500。
+ * 幂等：已存在则返回 created:false，不重复建。
  */
 export async function getOrCreateTenant(
   dataDir: string,
   sub: string,
-): Promise<{ tenantId: string; created: boolean }> {
-  const registry = await readRegistry(dataDir);
-  const existing = registry.tenants[sub];
-  if (existing) {
-    return { tenantId: existing.tenantId, created: false };
+  name = sub,
+): Promise<TenantResult> {
+  const db = await getDb(dataDir);
+  await archiveLegacyRegistry(dataDir);
+
+  // 先建数据目录（幂等）；DB 失败留空目录可被下次登录自愈（mkdir 幂等）
+  await mkdir(tenantDataDir(dataDir, sub), { recursive: true });
+
+  const created = await db.transaction(async (tx) => {
+    const result = await tx
+      .insert(tenants)
+      .values({ id: sub, name })
+      .onConflictDoNothing()
+      .run();
+    if (result.rowsAffected === 0) {
+      return false; // 并发下另一请求已建
+    }
+    await tx
+      .insert(userTenants)
+      .values({ userId: sub, tenantId: sub, role: 'owner' })
+      .onConflictDoNothing()
+      .run();
+    return true;
+  });
+
+  return { tenantId: sub, created };
+}
+
+/** 归档 S2 遗留 JSON 注册表（存在则改名 .bak；幂等） */
+async function archiveLegacyRegistry(dataDir: string): Promise<void> {
+  const legacy = join(dataDir, LEGACY_REGISTRY_FILE);
+  try {
+    await rename(legacy, `${legacy}.bak`);
+  } catch (error) {
+    // 文件不存在 = 正常（已归档或从未有过）；其他错误抛（禁止兜底）
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error;
+    }
   }
-
-  const tenantId = sub; // S2：租户键 = sub
-  const record: TenantRecord = { tenantId, sub, createdAt: new Date().toISOString() };
-
-  // 先建目录再写注册表：目录失败不产生幽灵注册
-  await mkdir(tenantDataDir(dataDir, tenantId), { recursive: true });
-  registry.tenants[sub] = record;
-  await writeRegistry(dataDir, registry);
-
-  return { tenantId, created: true };
 }
