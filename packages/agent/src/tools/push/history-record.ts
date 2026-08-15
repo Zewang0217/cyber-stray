@@ -45,6 +45,9 @@ export interface SpeakRecord {
   gateScore?: number;
   /** 推送理由（门控各因子得分，人类可读；S8 推送流展示） */
   gateReasons?: string[];
+  /** 门控命中的兴趣话题（S9 反馈归因持久化——worker 短命进程退出后
+   * 内存 map 即失效，REST 反馈从 speaks 历史按 messageId 反查） */
+  matchedTopics?: string[];
 }
 
 /** 构建记录时的附加信息 */
@@ -55,6 +58,8 @@ export interface SpeakRecordMeta {
   gateScore?: number;
   /** 推送理由（quality hook 评估产出，随记录持久化） */
   gateReasons?: string[];
+  /** 门控命中话题（quality hook 产出；落盘供反馈归因） */
+  matchedTopics?: string[];
 }
 
 /** 去掉 URL、markdown 标记与多余空白 */
@@ -118,5 +123,6 @@ export function buildSpeakRecord(
     ...(meta.gated ? { gated: true } : {}),
     ...(meta.gateScore !== undefined ? { gateScore: meta.gateScore } : {}),
     ...(meta.gateReasons?.length ? { gateReasons: meta.gateReasons } : {}),
+    ...(meta.matchedTopics?.length ? { matchedTopics: meta.matchedTopics } : {}),
   };
 }

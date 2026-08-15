@@ -71,7 +71,7 @@ export async function recordGatedSpeak(
 /**
  * 推送到 Telegram
  */
-async function pushToTelegram(content: string): Promise<void> {
+async function pushToTelegram(content: string): Promise<string> {
   const cfg = getConfig();
   const token = cfg.telegramBotToken;
   const chatId = cfg.telegramChatId;
@@ -98,10 +98,15 @@ async function pushToTelegram(content: string): Promise<void> {
     throw new Error(`Telegram 推送失败: HTTP ${response.status}`);
   }
 
-  const data = (await response.json()) as { ok?: boolean; description?: string };
+  const data = (await response.json()) as {
+    ok?: boolean;
+    description?: string;
+    result?: { message_id?: number };
+  };
   if (!data.ok) {
     throw new Error(`Telegram 推送失败: ${data.description ?? '未知错误'}`);
   }
+  return data.result?.message_id ? String(data.result.message_id) : '';
 }
 
 /**
@@ -181,8 +186,10 @@ export async function speak(
   // 尝试推送到 Telegram
   if (cfg.telegramBotToken && cfg.telegramChatId) {
     try {
-      await pushToTelegram(content);
+      const tgMessageId = await pushToTelegram(content);
       pushed = true;
+      // 飞书未回 ID 或未配置飞书时，用 Telegram message_id 做反馈归因
+      if (!messageId) messageId = tgMessageId || undefined;
       logger.success('Telegram 推送成功');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -203,6 +210,7 @@ export async function speak(
       mood: meta.mood,
       gateScore: meta.gateScore,
       gateReasons: meta.gateReasons,
+      matchedTopics: meta.matchedTopics,
     }),
   );
 

@@ -22,6 +22,13 @@
       "when": 1786790455067,
       "tag": "0002_misty_wong",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786801495636,
+      "tag": "0003_cynical_agent_zero",
+      "breakpoints": true
     }
   ]
 }

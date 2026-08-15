@@ -1,11 +1,15 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useState } from "react";
 import type { PushContent } from "@/lib/types";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, ThumbsUp, ThumbsDown, Flame } from "lucide-react";
+import { useFeedback } from "@/hooks/useFeedback";
 
 interface FeedCardProps {
   item: PushContent;
+  /** 反馈成功后的回调（如刷新兴趣图谱） */
+  onFeedbackDone?: () => void;
 }
 
 /** 推送状态徽标：已推送不额外标记，其余两种需要让主人看出区别 */
@@ -30,9 +34,25 @@ function statusBadge(item: PushContent): { label: string; className: string } | 
  * 每条抓取回来的信息卡片，带瀑布流动画入场
  * 使用语义颜色变量，避免硬编码 rgba
  */
-export function FeedCard({ item }: FeedCardProps): React.ReactElement {
+export function FeedCard({ item, onFeedbackDone }: FeedCardProps): React.ReactElement {
   const badge = statusBadge(item);
+  const { submitted, pending, error, sendFeedback, boostTopic } = useFeedback();
+  const [boosted, setBoosted] = useState(false);
 
+  const handleFeedback = async (type: "like" | "dislike"): Promise<void> => {
+    if (!item.messageId || pending) return;
+    await sendFeedback(type, item.messageId);
+    onFeedbackDone?.();
+  };
+
+  const handleBoost = async (): Promise<void> => {
+    if (!item.matchedTopics?.length || pending || boosted) return;
+    // 成功才置已顶（429/网络失败保留可重试状态，错误文案由 error 呈现）
+    const ok = await boostTopic(item.matchedTopics[0] ?? "");
+    if (!ok) return;
+    setBoosted(true);
+    onFeedbackDone?.();
+  };
   return (
     <motion.div
       className="group p-5 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10 overflow-hidden hover:border-accent/20 transition-colors"
@@ -121,6 +141,53 @@ export function FeedCard({ item }: FeedCardProps): React.ReactElement {
           <span className="text-subtext">
             {new Date(item.timestamp).toLocaleString("zh-CN")}
           </span>
+        </div>
+
+        {/* 反馈动作（S9）：点赞/踩驱动兴趣；顶话题显式要更多（有归因话题才可顶） */}
+        <div className="flex items-center gap-2 mt-3">
+          {item.messageId ? (
+            <>
+              <button
+                type="button"
+                disabled={pending || submitted !== null}
+                onClick={() => void handleFeedback("like")}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors ${
+                  submitted === "like"
+                    ? "bg-success/20 text-success"
+                    : "bg-mantle/40 text-subtext hover:text-text"
+                } disabled:opacity-50`}
+              >
+                <ThumbsUp size={12} />
+                {submitted === "like" ? "已喜欢" : "喜欢"}
+              </button>
+              <button
+                type="button"
+                disabled={pending || submitted !== null}
+                onClick={() => void handleFeedback("dislike")}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors ${
+                  submitted === "dislike"
+                    ? "bg-danger/20 text-danger"
+                    : "bg-mantle/40 text-subtext hover:text-text"
+                } disabled:opacity-50`}
+              >
+                <ThumbsDown size={12} />
+                {submitted === "dislike" ? "已不喜欢" : "不喜欢"}
+              </button>
+            </>
+          ) : null}
+          {item.matchedTopics?.length && item.matchedTopics[0] ? (
+            <button
+              type="button"
+              disabled={pending || boosted}
+              onClick={() => void handleBoost()}
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors bg-accent/10 text-accent hover:bg-accent/20 disabled:opacity-50"
+              title={`顶「${item.matchedTopics[0]}」——告诉它多逛这个方向`}
+            >
+              <Flame size={12} />
+              {boosted ? "已顶" : `顶「${item.matchedTopics[0]}」`}
+            </button>
+          ) : null}
+          {error ? <span className="text-xs text-danger">{error}</span> : null}
         </div>
       </div>
     </motion.div>

@@ -307,7 +307,8 @@ export class PushGate {
         return this.config.threshold;
       }
 
-      const likes = feedbacks.filter((f) => f.type === 'like').length;
+      // boost（顶话题）也是正向信号（S9），计入点赞率分子
+      const likes = feedbacks.filter((f) => f.type === 'like' || f.type === 'boost').length;
       const dislikes = feedbacks.filter((f) => f.type === 'dislike').length;
       const likeRate = likes / total;
       const dislikeRate = dislikes / total;

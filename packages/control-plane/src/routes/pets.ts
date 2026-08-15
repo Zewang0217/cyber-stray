@@ -174,7 +174,7 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       status: 'active',
       lastRunAt: null,
       cooldownUntil: null,
-      // S8 首推闭环：领养即迫不及待——boredom 75 ≥ 就绪阈值 70，下个 tick
+      lastBoostAt: null,
       // 就拉起首轮游荡（首推内容仍过 PushGate，门控理由随推送展示）
       boredom: 75,
       energy: 80,

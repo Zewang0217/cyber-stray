@@ -103,3 +103,21 @@ describe('S8 推送理由', () => {
     expect('gateReasons' in record).toBe(false);
   });
 });
+
+describe('S9 反馈归因持久化', () => {
+  const ts = '2026-08-15T11:00:00.000Z';
+
+  test('matchedTopics 落盘（worker 退出后 REST 反馈可从历史反查归因）', () => {
+    const record = buildSpeakRecord('量子计算新突破', 'article', true, ts, {
+      messageId: 'om-123',
+      matchedTopics: ['量子计算', '科技'],
+    });
+
+    expect(record.matchedTopics).toEqual(['量子计算', '科技']);
+  });
+
+  test('无话题时不写字段（旧记录兼容）', () => {
+    const record = buildSpeakRecord('碎碎念', 'nonsense', true, ts);
+    expect('matchedTopics' in record).toBe(false);
+  });
+});

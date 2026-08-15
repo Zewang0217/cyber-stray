@@ -11,7 +11,7 @@ import { StateStore } from './state-store.js';
 import { createDataRoutes } from './routes/data.js';
 import { createPetsRoutes } from './routes/pets.js';
 import { createEventsRoutes } from './routes/events.js';
-
+import { createFeedbackRoutes } from './routes/feedback.js';
 export interface AppDeps {
   config: ControlPlaneConfig;
   oidc: OidcProvider;
@@ -34,6 +34,9 @@ export function createApp({ config, oidc, bus }: AppDeps): Hono {
 
   // S8：应用内实时（SSE，调度器事件 → 租户浏览器连接）
   app.route('/api', createEventsRoutes({ config, bus }));
+
+  // S9：反馈回路（点赞/踩 + 顶话题节流；spawn agent feedback-cli 复用反馈管道）
+  app.route('/api', createFeedbackRoutes({ config }));
 
   return app;
 }

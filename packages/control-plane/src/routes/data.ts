@@ -247,6 +247,10 @@ function normalizeRecord(raw: Record<string, unknown>): Record<string, unknown> 
     ...(Array.isArray(raw.gateReasons)
       ? { gateReasons: raw.gateReasons.filter((r): r is string => typeof r === 'string') }
       : {}),
+    ...(typeof raw.messageId === 'string' ? { messageId: raw.messageId } : {}),
+    ...(Array.isArray(raw.matchedTopics)
+      ? { matchedTopics: raw.matchedTopics.filter((t): t is string => typeof t === 'string') }
+      : {}),
   };
 }
 

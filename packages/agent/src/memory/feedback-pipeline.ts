@@ -27,6 +27,12 @@ const LIKE_REINFORCE_DELTA = 0.1;
 /** 踩的权重衰减 */
 const DISLIKE_DECAY_DELTA = 0.1;
 
+/** 顶话题强化权重增量（显式"我要更多"——强于点赞） */
+const BOOST_REINFORCE_DELTA = 0.25;
+
+/** 顶话题新节点种子权重（与反馈创建新兴趣一致） */
+const BOOST_SEED_WEIGHT = 0.3;
+
 /** 消息-兴趣主题映射（messageId → 推送时的 Top 兴趣 ID 列表） */
 const messageTopicMap = new Map<string, string[]>();
 
@@ -82,6 +88,7 @@ export async function processFeedback(
   type: 'like' | 'dislike',
   messageId?: string,
   userId?: string,
+  opts: { topics?: string[] } = {},
 ): Promise<FeedbackProcessResult> {
   const result: FeedbackProcessResult = {
     recorded: false,
@@ -100,8 +107,10 @@ export async function processFeedback(
     // 记录失败不阻断后续链路
   }
 
-  // Step 2: 查消息-兴趣主题映射
-  const topics = messageId ? messageTopicMap.get(messageId) : undefined;
+  // Step 2: 归因话题——优先显式传入（S9 REST：worker 退出后内存 map 失效，
+  // 调用方从 speaks 历史 matchedTopics 反查），否则查内存映射
+  const explicitTopics = opts.topics?.filter((t) => t.length > 0);
+  const topics = explicitTopics?.length ? explicitTopics : messageTopicMap.get(messageId ?? '');
   if (topics && topics.length > 0) {
     result.topicsMatched = true;
     result.matchedTopics = topics;
@@ -177,6 +186,69 @@ export async function processFeedback(
     interestReinforced: result.interestReinforced,
   });
 
+  return result;
+}
+
+/**
+ * 顶话题（S9，#76）：显式"我要更多这个方向"。
+ *
+ * 与点赞走同一存储/画像/图谱管道，差异：
+ * - type=boost（节流在控制面按 plan 做，管道本身无限制）
+ * - 强化幅度 BOOST_REINFORCE_DELTA（0.25 > 点赞 0.1）
+ * - 新话题以 source=feedback 入图（种子 0.3）
+ */
+export async function boostTopic(
+  topic: string,
+  userId?: string,
+): Promise<FeedbackProcessResult> {
+  const result: FeedbackProcessResult = {
+    recorded: false,
+    topicsMatched: true,
+    matchedTopics: [topic],
+    profileUpdated: false,
+    interestReinforced: false,
+  };
+
+  // Step 1: 记录（type=boost）
+  try {
+    await recordFeedback({ type: 'boost', userId });
+    result.recorded = true;
+  } catch (error) {
+    logger.error('记录顶话题反馈失败', { error });
+  }
+
+  // Step 2: 画像更新（按 like 语义——正向偏好）
+  try {
+    await updateUserProfileBatch([{ type: 'like', topic }]);
+    result.profileUpdated = true;
+  } catch (error) {
+    logger.error('顶话题更新用户画像失败', { error, topic });
+  }
+
+  // Step 3: 图谱强化（不存在则 feedback 来源入图）
+  try {
+    const graph = getInterestGraph();
+    if (!graph.isInitialized() && graph.getNodeCount() === 0) {
+      await graph.load();
+    }
+    if (!graph.getNode(topic)) {
+      graph.addInterest(topic, BOOST_SEED_WEIGHT, 'feedback');
+    }
+    graph.reinforce(topic, BOOST_REINFORCE_DELTA);
+    result.interestReinforced = true;
+    await graph.persist();
+  } catch (error) {
+    logger.error('顶话题图谱强化失败', { error, topic });
+  }
+
+  // Step 4: 心情（按 like 语义）
+  try {
+    await updateMoodByFeedback('like');
+  } catch (error) {
+    logger.error('顶话题更新心情失败', { error });
+  }
+
+  logger.info('顶话题处理完成', { topic, reinforced: result.interestReinforced });
   return result;
 }
 
