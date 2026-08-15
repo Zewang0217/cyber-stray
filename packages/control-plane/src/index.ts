@@ -9,8 +9,9 @@ import { getDb } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
 import { loadMasterKey } from './secrets/master-key.js';
 import { createEventBus } from './events/bus.js';
-import { DEFAULT_RATES } from './scheduler/propagate.js';
 import { Scheduler } from './scheduler/scheduler.js';
+import { attachPushGateway } from './push/push-gateway.js';
+import { DEFAULT_RATES } from './scheduler/propagate.js';
 import {
   createWorkerRunner,
   stopAllWorkers,
@@ -53,11 +54,14 @@ const scheduler = new Scheduler({
 });
 scheduler.start(config.schedulerIntervalMs);
 
-// 优雅关停：停 tick + 杀在飞 worker（防孤儿并发写租户 state.json）
+// S10：Web Push 分发器（worker_succeeded → 读最新推送 → 系统级通知）
+const detachPushGateway = attachPushGateway({ dataDir: config.dataDir, bus });
+
+// 优雅关停：停 tick + 杀在飞 worker + 卸推送分发（防孤儿并发写租户 state.json）
 const shutdown = () => {
   scheduler.stop();
   stopAllWorkers();
-  process.exit(0);
+  detachPushGateway();
 };
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);

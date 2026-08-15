@@ -1,16 +1,19 @@
 "use client";
-
 import { motion } from "framer-motion";
+import { useWebPush } from "@/hooks/useWebPush";
+import { useChannels } from "@/hooks/useChannels";
 
 /**
  * 设置页面
  * 只读展示当前配置，提示修改需编辑后端 .env
  */
 export default function SettingsPage(): React.ReactElement {
+  const { state: pushState, error: pushError, enable, disable } = useWebPush();
+  const { channels, bindFeishu, unbindFeishu, error: channelError } = useChannels();
+
   return (
     <div className="spacing-lg max-w-6xl mx-auto">
       <motion.div
-        className="mb-8"
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
@@ -110,6 +113,87 @@ export default function SettingsPage(): React.ReactElement {
               <span className="text-subtext text-xs">未配置</span>
             </div>
           </div>
+        </div>
+
+        {/* 系统推送（S10）：Web Push 订阅开关 */}
+        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
+          <h2 className="font-heading text-heading font-bold text-text mb-2">系统推送</h2>
+          <p className="text-small text-subtext mb-4">
+            关掉 App 也能收到它的推送（浏览器系统级通知）
+          </p>
+          {pushState === "unsupported" ? (
+            <p className="text-small text-subtext">当前浏览器不支持系统推送</p>
+          ) : pushState === "denied" ? (
+            <p className="text-small text-danger">
+              通知权限被拒绝——请在浏览器站点设置中允许通知后重试
+            </p>
+          ) : (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={pushState === "subscribing"}
+                onClick={() => void (pushState === "on" ? disable() : enable())}
+                className={`px-4 py-2 rounded-xl text-small font-medium transition-colors ${
+                  pushState === "on"
+                    ? "bg-success/20 text-success"
+                    : "bg-accent text-base font-semibold"
+                } disabled:opacity-50`}
+              >
+                {pushState === "subscribing"
+                  ? "订阅中…"
+                  : pushState === "on"
+                    ? "已开启（点击关闭）"
+                    : "开启系统推送"}
+              </button>
+              {pushError ? <span className="text-small text-danger">{pushError}</span> : null}
+            </div>
+          )}
+        </div>
+
+        {/* 飞书通道（S10）：可选绑定 */}
+        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
+          <h2 className="font-heading text-heading font-bold text-text mb-2">飞书通道（可选）</h2>
+          <p className="text-small text-subtext mb-4">
+            绑定后推送同步发到飞书群机器人（高级用户）
+          </p>
+          {channels?.feishu ? (
+            <div className="flex items-center gap-3">
+              <span className="text-small text-success">已绑定</span>
+              <button
+                type="button"
+                onClick={() => void unbindFeishu()}
+                className="px-3 py-1.5 rounded-xl text-small bg-danger/10 text-danger"
+              >
+                解绑
+              </button>
+            </div>
+          ) : (
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const webhook = new FormData(form).get("webhook");
+                if (typeof webhook === "string") void bindFeishu(webhook);
+                form.reset();
+              }}
+            >
+              <input
+                name="webhook"
+                type="url"
+                required
+                placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/…"
+                className="flex-1 px-3 py-2 rounded-xl bg-surface text-small text-text border border-white/10"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl text-small bg-accent text-base font-semibold"
+              >
+                绑定
+              </button>
+            </form>
+          )}
+          {channelError ? <p className="text-small text-danger mt-2">{channelError}</p> : null}
         </div>
       </motion.div>
 

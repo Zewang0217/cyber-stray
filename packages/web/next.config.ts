@@ -55,6 +55,14 @@ const nextConfig: NextConfig = {
         source: "/api/boost",
         destination: `${controlPlaneOrigin}/api/boost`,
       },
+      {
+        source: "/api/push/:path*",
+        destination: `${controlPlaneOrigin}/api/push/:path*`,
+      },
+      {
+        source: "/api/channels/:path*",
+        destination: `${controlPlaneOrigin}/api/channels/:path*`,
+      },
     ];
   },
 };

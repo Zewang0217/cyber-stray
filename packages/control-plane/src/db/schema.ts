@@ -96,7 +96,36 @@ export const tenantSecrets = sqliteTable('tenant_secrets', {
   updatedAt: integer('updated_at').notNull().$defaultFn(now).$onUpdate(() => Date.now()),
 });
 
-// ─── 类型导出（查询层用） ──────────────────────────────────────────────
+// ─── Web Push 订阅（S10，#77） ─────────────────────────────────────────
+
+export const pushSubscriptions = sqliteTable('push_subscriptions', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  /** 浏览器推送端点（全局唯一；换租户重新订阅则覆盖归属） */
+  endpoint: text('endpoint').notNull().unique(),
+  /** 订阅密钥（加密握手材料，非机密凭证） */
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  /** 该设备上次已通知到的推送时间戳（unix ms；防重复通知） */
+  lastNotifiedAt: integer('last_notified_at'),
+  createdAt: integer('created_at').notNull().$defaultFn(now),
+  updatedAt: integer('updated_at').notNull().$defaultFn(now).$onUpdate(() => Date.now()),
+});
+
+/** VAPID 密钥对（单例行 id=1；首用时生成，跨重启稳定） */
+export const vapidKeys = sqliteTable('vapid_keys', {
+  id: integer('id').primaryKey(),
+  publicKey: text('public_key').notNull(),
+  privateKey: text('private_key').notNull(),
+  createdAt: integer('created_at').notNull().$defaultFn(now),
+});
+
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type NewPushSubscription = typeof pushSubscriptions.$inferInsert;
+export type VapidKey = typeof vapidKeys.$inferSelect;
+
 
 export type Tenant = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;

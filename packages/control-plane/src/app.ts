@@ -12,6 +12,8 @@ import { createDataRoutes } from './routes/data.js';
 import { createPetsRoutes } from './routes/pets.js';
 import { createEventsRoutes } from './routes/events.js';
 import { createFeedbackRoutes } from './routes/feedback.js';
+import { createPushRoutes } from './routes/push.js';
+import { createChannelsRoutes } from './routes/channels.js';
 export interface AppDeps {
   config: ControlPlaneConfig;
   oidc: OidcProvider;
@@ -37,6 +39,12 @@ export function createApp({ config, oidc, bus }: AppDeps): Hono {
 
   // S9：反馈回路（点赞/踩 + 顶话题节流；spawn agent feedback-cli 复用反馈管道）
   app.route('/api', createFeedbackRoutes({ config }));
+
+  // S10：Web Push 订阅管理（公开 vapid-key + 登录态订阅 CRUD）
+  app.route('/api/push', createPushRoutes({ config }));
+
+  // S10：每租户通道绑定（飞书可选；webhook 走 S4 加密，worker 注入）
+  app.route('/api/channels', createChannelsRoutes({ config }));
 
   return app;
 }

@@ -30,6 +30,7 @@ const SECRET_FIELD_BY_NAME: Record<string, string> = {
   deepseek_api_key: 'deepseekApiKey',
   tavily_api_key: 'tavilyApiKey',
   exa_api_key: 'exaApiKey',
+  feishu_webhook: 'feishuWebhook',
 };
 
 /** 注入式 spawn（测试用 fake；真实实现见下方 realSpawn） */
