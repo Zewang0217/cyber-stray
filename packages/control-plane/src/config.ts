@@ -1,7 +1,9 @@
 import { fileURLToPath } from 'url';
 
 /**
- * 控制面配置 — 全部来自环境变量，无配置文件（secrets 不落盘）
+ * 控制面配置 — 来自环境变量；secrets 密文不落明文。
+ * master key：env CP_MASTER_KEY（64 hex）优先，dev 无 env 时自动生成
+ * dataDir/master.key（chmod 600，gitignored）——见 secrets/master-key.ts。
  */
 
 /** 控制面运行配置 */
