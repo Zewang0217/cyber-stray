@@ -85,3 +85,21 @@ describe('buildSpeakRecord', () => {
     expect(record.gateScore).toBe(0.8);
   });
 });
+
+describe('S8 推送理由', () => {
+  const ts = '2026-08-15T10:00:00.000Z';
+
+  test('gateReasons 落盘（推送理由随记录持久化）', () => {
+    const record = buildSpeakRecord('AI 芯片新进展', 'article', true, ts, {
+      gateScore: 0.82,
+      gateReasons: ['兴趣相关度=0.90', '用户偏好=0.80', '内容质量=0.70'],
+    });
+
+    expect(record.gateReasons).toEqual(['兴趣相关度=0.90', '用户偏好=0.80', '内容质量=0.70']);
+  });
+
+  test('无理由时不写字段（旧记录兼容）', () => {
+    const record = buildSpeakRecord('碎碎念', 'nonsense', true, ts);
+    expect('gateReasons' in record).toBe(false);
+  });
+});

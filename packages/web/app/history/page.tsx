@@ -2,14 +2,19 @@
 
 import { motion } from "framer-motion";
 import { useHistory } from "@/hooks/useHistory";
+import { useTenantEvents } from "@/hooks/useTenantEvents";
 import { FeedCard } from "@/components/ui/FeedCard";
 
 /**
  * 历史推送页面
- * 瀑布流展示所有推送内容
+ * 瀑布流展示所有推送内容（S8：SSE 事件触发实时刷新）
  */
 export default function HistoryPage(): React.ReactElement {
-  const { items, isLoading, error } = useHistory();
+  const { connected: realtimeConnected, refreshSignal } = useTenantEvents();
+  const { items, isLoading, error } = useHistory({
+    refreshSignal,
+    realtimeConnected,
+  });
 
   if (isLoading) {
     return (

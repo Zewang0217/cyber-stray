@@ -43,6 +43,8 @@ export interface SpeakRecord {
   gated?: boolean;
   /** 门控评分 */
   gateScore?: number;
+  /** 推送理由（门控各因子得分，人类可读；S8 推送流展示） */
+  gateReasons?: string[];
 }
 
 /** 构建记录时的附加信息 */
@@ -51,6 +53,8 @@ export interface SpeakRecordMeta {
   messageId?: string;
   gated?: boolean;
   gateScore?: number;
+  /** 推送理由（quality hook 评估产出，随记录持久化） */
+  gateReasons?: string[];
 }
 
 /** 去掉 URL、markdown 标记与多余空白 */
@@ -113,5 +117,6 @@ export function buildSpeakRecord(
     ...(meta.mood ? { mood: meta.mood } : {}),
     ...(meta.gated ? { gated: true } : {}),
     ...(meta.gateScore !== undefined ? { gateScore: meta.gateScore } : {}),
+    ...(meta.gateReasons?.length ? { gateReasons: meta.gateReasons } : {}),
   };
 }

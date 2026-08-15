@@ -125,6 +125,8 @@ export interface PushContent {
   pushed?: boolean;
   /** 是否被推送门控拦截（仅学习，没告诉主人） */
   gated?: boolean;
+  /** 推送理由（门控因子得分，S8） */
+  gateReasons?: string[];
 }
 
 // ============================================

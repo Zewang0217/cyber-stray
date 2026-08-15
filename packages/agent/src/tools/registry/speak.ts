@@ -43,6 +43,7 @@ export const speakToolDef: ToolDefinition = {
       // 门控拦截由 hook 侧 deny 处理（含 gated 历史留痕），工具 execute 只走放行路径。
       const result = await speak(content, type, {
         mood: ctx.state.mood,
+        gateReasons: ctx.gateReasons,
         matchedTopics: ctx.matchedTopics,
       });
       const elapsed = Date.now() - stepStart;

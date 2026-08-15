@@ -244,6 +244,9 @@ function normalizeRecord(raw: Record<string, unknown>): Record<string, unknown> 
     ...(type ? { type } : {}),
     ...(typeof raw.pushed === 'boolean' ? { pushed: raw.pushed } : {}),
     ...(raw.gated ? { gated: true } : {}),
+    ...(Array.isArray(raw.gateReasons)
+      ? { gateReasons: raw.gateReasons.filter((r): r is string => typeof r === 'string') }
+      : {}),
   };
 }
 

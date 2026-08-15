@@ -8,6 +8,7 @@ import {
     AnimatePresence,
 } from "framer-motion";
 import { useAgentState } from "@/hooks/useAgentState";
+import { useTenantEvents } from "@/hooks/useTenantEvents";
 import { useInterestGraph } from "@/hooks/useInterestGraph";
 import { usePets, type Pet } from "@/hooks/usePets";
 import { AdoptionFlow } from "@/components/dashboard/AdoptionFlow";
@@ -34,9 +35,13 @@ export default function DashboardPage(): React.ReactElement {
     const [introPet, setIntroPet] = useState<Pet | null>(null);
     const [introInterests, setIntroInterests] = useState<string[]>([]);
     const [introRestored, setIntroRestored] = useState(false);
-
+    // S8 实时：SSE 事件流（worker 生命周期 → 立即刷新状态；断线回落轮询）
+    const { connected: realtimeConnected, refreshSignal } = useTenantEvents();
     const { pets, isLoaded: petsLoaded, error: petsError, adopt, adopting } = usePets();
-    const { state, isLoading, error } = useAgentState();
+    const { state, isLoading, error } = useAgentState({
+        refreshSignal,
+        realtimeConnected,
+    });
     const {
         nodes: interestNodes,
         entropy,
@@ -44,7 +49,7 @@ export default function DashboardPage(): React.ReactElement {
         lastUpdated: interestLastUpdated,
         history: interestHistory,
         collapse,
-    } = useInterestGraph();
+    } = useInterestGraph({ refreshSignal });
     const { scrollY } = useScroll();
     const heroY = useTransform(scrollY, [0, 300], [0, -50]);
     const heroOpacity = useTransform(scrollY, [0, 200], [1, 0.3]);

@@ -43,6 +43,10 @@ const nextConfig: NextConfig = {
         source: "/api/pets",
         destination: `${controlPlaneOrigin}/api/pets`,
       },
+      {
+        source: "/api/events",
+        destination: `${controlPlaneOrigin}/api/events`,
+      },
     ];
   },
 };

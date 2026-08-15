@@ -117,7 +117,12 @@ async function pushToTelegram(content: string): Promise<void> {
 export async function speak(
   content: string,
   type: SpeakType,
-  meta: { mood?: Mood; gateScore?: number; matchedTopics?: string[] } = {},
+  meta: {
+    mood?: Mood;
+    gateScore?: number;
+    gateReasons?: string[];
+    matchedTopics?: string[];
+  } = {},
 ): Promise<SpeakResult> {
   const timestamp = new Date().toISOString();
 
@@ -197,6 +202,7 @@ export async function speak(
       messageId,
       mood: meta.mood,
       gateScore: meta.gateScore,
+      gateReasons: meta.gateReasons,
     }),
   );
 

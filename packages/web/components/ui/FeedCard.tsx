@@ -88,6 +88,22 @@ export function FeedCard({ item }: FeedCardProps): React.ReactElement {
           <p className="text-sm text-accent italic">{item.message}</p>
         </div>
 
+        {/* 推送理由（S8）：门控因子——它为什么觉得主人会感兴趣 */}
+        {item.gateReasons?.length ? (
+          <details className="mb-4 text-xs">
+            <summary className="cursor-pointer text-subtext hover:text-text select-none">
+              为什么推给我？
+            </summary>
+            <ul className="mt-2 space-y-1 pl-3">
+              {item.gateReasons.map((reason) => (
+                <li key={reason} className="text-subtext font-mono list-disc">
+                  {reason}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+
         {/* 底部元信息 */}
         <div className="flex items-center justify-between gap-2 text-xs font-mono">
           <div className="flex items-center gap-2">

@@ -13,6 +13,7 @@ import { existsSync } from 'fs';
 import { eq } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { createApp, type AppDeps } from '../app.js';
+import { createEventBus } from '../events/bus.js';
 import { loadConfig } from '../config.js';
 import type { OidcProvider, OidcUser } from '../oidc.js';
 import { tenantDataDir } from '../tenant.js';
@@ -69,7 +70,7 @@ describe('auth 路由', () => {
   beforeEach(async () => {
     dataDir = mkdtempSync(join(tmpdir(), 'cp-app-'));
     oidc = makeMockOidc();
-    deps = { config: makeConfig(dataDir), oidc };
+    deps = { config: makeConfig(dataDir), oidc, bus: createEventBus() };
     app = createApp(deps);
     _resetDb();
     await runMigrations(dataDir);

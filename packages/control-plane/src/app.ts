@@ -5,17 +5,21 @@
 import { Hono } from 'hono';
 import type { ControlPlaneConfig } from './config.js';
 import type { OidcProvider } from './oidc.js';
+import type { EventBus } from './events/bus.js';
 import { createAuthRoutes } from './routes/auth.js';
 import { StateStore } from './state-store.js';
 import { createDataRoutes } from './routes/data.js';
 import { createPetsRoutes } from './routes/pets.js';
+import { createEventsRoutes } from './routes/events.js';
 
 export interface AppDeps {
   config: ControlPlaneConfig;
   oidc: OidcProvider;
+  /** 事件总线（与调度器共享；SSE 路由消费调度器发布的事件） */
+  bus: EventBus;
 }
 
-export function createApp({ config, oidc }: AppDeps): Hono {
+export function createApp({ config, oidc, bus }: AppDeps): Hono {
   const app = new Hono();
 
   app.get('/healthz', (c) => c.json({ ok: true }));
@@ -27,6 +31,9 @@ export function createApp({ config, oidc }: AppDeps): Hono {
 
   // S7：领养旅程（写路径：建宠物行 + 兴趣种子；仍以 session claim 定租户）
   app.route('/api', createPetsRoutes({ config }));
+
+  // S8：应用内实时（SSE，调度器事件 → 租户浏览器连接）
+  app.route('/api', createEventsRoutes({ config, bus }));
 
   return app;
 }

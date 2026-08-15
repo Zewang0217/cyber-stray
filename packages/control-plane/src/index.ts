@@ -28,10 +28,12 @@ await loadMasterKey(config.dataDir);
 // S5：清扫上次崩溃残留的明文 secrets 临时文件（/tmp cp-secrets-*.json）
 await sweepStaleSecretFiles();
 
-const app = createApp({ config, oidc: createCasdoorOidc(config) });
+// S5/S8：事件总线（调度器发布，SSE 路由消费——同一实例）
+const bus = createEventBus();
+
+const app = createApp({ config, oidc: createCasdoorOidc(config), bus });
 
 // S5：调度器（嵌入控制面进程；无常驻宠物进程，就绪才拉起短命 worker）
-const bus = createEventBus();
 const scheduler = new Scheduler({
   db: () => getDb(config.dataDir),
   dataDir: config.dataDir,
