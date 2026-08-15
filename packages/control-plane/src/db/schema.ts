@@ -52,6 +52,8 @@ export const pets = sqliteTable('pets', {
   status: text('status', { enum: ['active', 'paused'] }).notNull().default('active'),
   /** 调度字段（S5 无聊/精力前推触发）：上次游荡时间，null = 从未跑过 */
   lastRunAt: integer('last_run_at'),
+  /** 调度冷却到期（unix ms，S5 重试超限后冷却；null/过期 = 可调度） */
+  cooldownUntil: integer('cooldown_until'),
   /** 无聊/精力（0-100）：编排状态在此层，记忆仍在 markdown */
   boredom: integer('boredom').notNull().default(30),
   energy: integer('energy').notNull().default(80),

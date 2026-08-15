@@ -22,6 +22,16 @@ export interface ControlPlaneConfig {
   sessionTtlSeconds: number;
   /** 控制面数据根（租户注册表 + tenants/ 目录） */
   dataDir: string;
+  /** 调度器 tick 间隔 ms（0 = 关闭；S5） */
+  schedulerIntervalMs: number;
+  /** 调度器并发上限（2C4G 建议 4） */
+  schedulerMaxConcurrent: number;
+  /** worker 挂死判定 ms */
+  workerTimeoutMs: number;
+  /** worker 失败退避 ms */
+  workerRetryBackoffMs: number;
+  /** 单宠最大重试次数（不含首发） */
+  workerMaxRetries: number;
   /** 登录/登出后跳转的 Web 应用地址 */
   webOrigin: string;
 }
@@ -32,6 +42,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     throw new Error('缺少环境变量 CP_SESSION_SECRET（≥32 字节）');
   }
 
+  const numeric: Array<[keyof ControlPlaneConfig, number]> = [
+    ['schedulerIntervalMs', Number(env.CP_SCHEDULER_INTERVAL_MS ?? 60_000)],
+    ['schedulerMaxConcurrent', Number(env.CP_SCHEDULER_MAX_CONCURRENT ?? 4)],
+    ['workerTimeoutMs', Number(env.CP_WORKER_TIMEOUT_MS ?? 10 * 60_000)],
+    ['workerRetryBackoffMs', Number(env.CP_SCHEDULER_RETRY_BACKOFF_MS ?? 60_000)],
+    ['workerMaxRetries', Number(env.CP_SCHEDULER_MAX_RETRIES ?? 2)],
+  ];
+  for (const [field, value] of numeric) {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`环境变量解析失败：${field} = ${value}（须为非负数字）`);
+    }
+  }
   return {
     port: Number(env.CP_PORT ?? 8787),
     casdoorIssuer: env.CASDOOR_ISSUER ?? 'http://localhost:8000',
@@ -44,5 +66,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     dataDir:
       env.CP_DATA_DIR ?? fileURLToPath(new URL('../data', import.meta.url)),
     webOrigin: env.CP_WEB_ORIGIN ?? 'http://localhost:3000',
+    schedulerIntervalMs: Number(env.CP_SCHEDULER_INTERVAL_MS ?? 60_000),
+    schedulerMaxConcurrent: Number(env.CP_SCHEDULER_MAX_CONCURRENT ?? 4),
+    workerTimeoutMs: Number(env.CP_WORKER_TIMEOUT_MS ?? 10 * 60_000),
+    workerRetryBackoffMs: Number(env.CP_SCHEDULER_RETRY_BACKOFF_MS ?? 60_000),
+    workerMaxRetries: Number(env.CP_SCHEDULER_MAX_RETRIES ?? 2),
   };
 }

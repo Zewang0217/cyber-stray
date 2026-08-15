@@ -8,6 +8,13 @@
       "when": 1786768766041,
       "tag": "0000_flimsy_echo",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786777368283,
+      "tag": "0001_bouncy_bushwacker",
+      "breakpoints": true
     }
   ]
 }
