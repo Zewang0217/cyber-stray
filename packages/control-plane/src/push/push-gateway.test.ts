@@ -17,7 +17,7 @@ import { join } from 'path';
 import { eq } from 'drizzle-orm';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { pushSubscriptions } from '../db/schema.js';
+import { pets, pushSubscriptions } from '../db/schema.js';
 import { getOrCreateTenant, tenantDataDir } from '../tenant.js';
 import { createEventBus, type TenantEvent } from '../events/bus.js';
 import { attachPushGateway, type PushSendFn } from './push-gateway.js';
@@ -150,6 +150,83 @@ describe('push-gateway（Web Push 分发）', () => {
     bus.publish('alice', ev('worker_succeeded', 'alice')); // 无历史文件
     await new Promise((r) => setTimeout(r, 50));
 
+    expect(sent).toHaveLength(0);
+  });
+
+  it('S11 planLimited 记录不可通知（预算/窗口拦下的内容 Web Push 不绕过）', async () => {
+    const bus = createEventBus();
+    unsub = attachPushGateway({ dataDir, bus, sendFn });
+    await seedSubscription('alice', 'https://push.example/a1');
+    await seedSpeaks('alice', {
+      content: '预算外文章',
+      type: 'article',
+      pushed: false,
+      planLimited: true,
+      timestamp: '2026-08-15T12:00:00.000Z',
+      title: '预算外文章',
+      summary: '摘要',
+    });
+
+    bus.publish('alice', ev('worker_succeeded', 'alice'));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(sent).toHaveLength(0);
+  });
+
+  it('S11 推送窗口外不发（pets 行窗口；窗口内正常发）', async () => {
+    const db = await getDb(dataDir);
+    // 窗口 = 当前小时 ±1（必含当前小时）→ 应发
+    const nowHour = new Date().getHours();
+ await db
+      .insert(pets)
+      .values({
+        id: 'pet-alice',
+        tenantId: 'alice',
+        name: '小溜',
+        pushWindowStart: (nowHour + 23) % 24,
+        pushWindowEnd: (nowHour + 1) % 24,
+      })
+      .run();
+
+    const bus = createEventBus();
+    unsub = attachPushGateway({ dataDir, bus, sendFn });
+    await seedSubscription('alice', 'https://push.example/a1');
+    await seedSpeaks('alice', {
+      content: '窗口内内容',
+      type: 'share',
+      timestamp: '2026-08-15T12:00:00.000Z',
+      title: '窗口内内容',
+      summary: '摘要',
+    });
+
+    bus.publish('alice', ev('worker_succeeded', 'alice'));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(sent).toHaveLength(1);
+
+    // 窗口改为绝不含当前小时（start=end+2 的两小时窗，挪到对面）
+    const opposite1 = (nowHour + 6) % 24;
+    const opposite2 = (nowHour + 7) % 24;
+    await db
+      .update(pets)
+      .set({ pushWindowStart: opposite1, pushWindowEnd: opposite2 })
+      .where(eq(pets.tenantId, 'alice'))
+      .run();
+    sent.length = 0;
+    // 重置订阅基线让下一条内容可发
+    await db
+      .update(pushSubscriptions)
+      .set({ lastNotifiedAt: null })
+      .where(eq(pushSubscriptions.endpoint, 'https://push.example/a1'))
+      .run();
+    await seedSpeaks('alice', {
+      content: '窗口外内容',
+      type: 'share',
+      timestamp: '2026-08-15T13:00:00.000Z',
+      title: '窗口外内容',
+      summary: '摘要',
+    });
+
+    bus.publish('alice', ev('worker_succeeded', 'alice'));
+    await new Promise((r) => setTimeout(r, 50));
     expect(sent).toHaveLength(0);
   });
 });

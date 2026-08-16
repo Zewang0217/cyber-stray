@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
-import type { AgentConfig, AgentSecrets, EnergyRecoveryTier } from './types.js';
+import type { AgentConfig, AgentSecrets, EnergyRecoveryTier, PlanExecutionArgs } from './types.js';
 
 /**
  * 数据目录锚点：`packages/agent/data`
@@ -243,10 +243,18 @@ function loadBehaviorConfig(dataDir?: string): BehaviorConfig {
  * - 行为参数：从 data/agent-config.json 读取，失败时用默认值
  * - 敏感信息：secrets 显式注入优先，未注入的字段回退环境变量（单用户模式）
  */
-export function loadConfig(dataDir?: string, secrets?: AgentSecrets): AgentConfig {
+export function loadConfig(
+  dataDir?: string,
+  secrets?: AgentSecrets,
+  planArgs?: PlanExecutionArgs,
+): AgentConfig {
   const behavior = loadBehaviorConfig(dataDir);
   const s = secrets ?? {};
-
+  // BYOK：租户 BYOK 模式下 deepseekApiKey 缺失时**不回退平台 env**——
+  // 平台 token 不能替 BYOK 用户烧（那是付费墙反向漏洞）。缺 key 的游荡
+  // 会在 provider 构造处显式抛错（显式失败优于静默换 key）。
+  const deepseekApiKey =
+    s.deepseekApiKey ?? (planArgs?.plan === 'byok' ? undefined : process.env.DEEPSEEK_API_KEY);
   return {
     ...behavior,
 
@@ -284,8 +292,12 @@ export function loadConfig(dataDir?: string, secrets?: AgentSecrets): AgentConfi
     // 浏览器探索配置
     browser: behavior.browser,
 
-    // per-tenant secrets（provider 读取点：secrets.deepseekApiKey 优先于环境变量）
-    secrets: s,
+    // per-tenant secrets（provider 读取点：secrets.deepseekApiKey 优先于环境变量；
+    // BYOK 缺 key 时为 undefined——provider 构造处显式抛错，不烧平台 token）
+    secrets: { ...s, ...(s.deepseekApiKey ? {} : { deepseekApiKey }) },
+
+    // 套餐执行参数（S11 门控：日预算 + 推送窗口）
+    plan: planArgs,
   };
 }
 
@@ -321,9 +333,14 @@ export function validateConfig(): void {
   const missing: string[] = [];
   const cfg = getConfig();
 
-  const deepseekApiKey = cfg.secrets?.deepseekApiKey ?? process.env.DEEPSEEK_API_KEY;
+  // BYOK：secrets 已在 loadConfig 处理（缺 key 即 undefined），这里不回退
+  // env 校验——否则 BYOK 缺 key 会被平台 env 掩盖
+  const deepseekApiKey =
+    cfg.plan?.plan === 'byok'
+      ? cfg.secrets?.deepseekApiKey
+      : (cfg.secrets?.deepseekApiKey ?? process.env.DEEPSEEK_API_KEY);
   if (!deepseekApiKey) {
-    missing.push('DEEPSEEK_API_KEY');
+    missing.push(cfg.plan?.plan === 'byok' ? 'DEEPSEEK_API_KEY (BYOK 未绑定)' : 'DEEPSEEK_API_KEY');
   }
 
   if (cfg.searchProvider !== 'duckduckgo' && !cfg.searchApiKey) {

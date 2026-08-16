@@ -2,6 +2,7 @@ import { appendFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { consola } from '../../logger.js';
 import { getConfig, getDataPath } from '../../config.js';
+import { localHour, withinPushWindow, countGatePassedToday, todaySpeaksFile } from './push-budget.js';
 import { sendFeishuMessage } from './lark-sender.js';
 import { registerSpeakTopics } from '../../memory/feedback-pipeline.js';
 import { buildSpeakRecord, type SpeakRecord, type SpeakRecordMeta } from './history-record.js';
@@ -40,7 +41,7 @@ async function appendSpeakHistory(record: SpeakRecord): Promise<void> {
   try {
     const historyDir = getDataPath('history');
     await mkdir(historyDir, { recursive: true });
-const filename = join(historyDir, `speaks-${new Date().toISOString().slice(0, 10)}.jsonl`);
+const filename = join(historyDir, todaySpeaksFile());
     const line = JSON.stringify(record) + '\n';
     await appendFile(filename, line, 'utf-8');
   } catch (error) {
@@ -148,11 +149,41 @@ export async function speak(
   if (type === 'share' && !content.includes('http')) {
     logger.warn('share 类型的内容不包含 URL', { content: content.slice(0, 50) });
   }
+  const cfg = getConfig();
+  // S11 套餐门控：日预算 + 推送窗口（控制面注入 plan；未注入 = 单用户
+  // 模式不设限）。只卡"到达主人"，学习照常——超限内容落盘标 planLimited。
+  const plan = cfg.plan;
+  let planLimited = false;
+  if (plan) {
+    const hour = localHour();
+    if (!withinPushWindow(hour, plan.pushWindowStart, plan.pushWindowEnd)) {
+      planLimited = true;
+      logger.info('推送窗口外，内容仅记录', { hour, window: [plan.pushWindowStart, plan.pushWindowEnd] });
+    } else if (plan.pushesPerDay > 0) {
+      const used = await countGatePassedToday(getDataPath(`history/${todaySpeaksFile()}`));
+      if (used >= plan.pushesPerDay) {
+        planLimited = true;
+        logger.info('日推送预算已满，内容仅记录', { used, limit: plan.pushesPerDay });
+      }
+    }
+  }
+  if (planLimited) {
+    await appendSpeakHistory(
+      buildSpeakRecord(content, type, false, timestamp, {
+        ...meta,
+        planLimited: true,
+      }),
+    );
+    return {
+      success: true,
+      pushed: false,
+      timestamp,
+    };
+  }
 
   let pushed = false;
   let messageId: string | undefined;
   const pushErrors: string[] = [];
-  const cfg = getConfig();
 
   // 推送到飞书（根据配置选择方式）
   if (cfg.feishu?.pushMode === 'lark_channel') {

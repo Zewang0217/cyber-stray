@@ -263,9 +263,17 @@ export class ReflectionEngine {
   /** 调用 LLM 反思，返回原始文本 */
   private async callLLM(materials: MemoryEntry[]): Promise<string> {
     const cfg = getConfig();
-    const apiKey = cfg.secrets?.deepseekApiKey ?? process.env.DEEPSEEK_API_KEY;
+    // BYOK：不回退平台 env（config.ts 已挡；这里同规矩再挡）
+    const apiKey =
+      cfg.plan?.plan === 'byok'
+        ? cfg.secrets?.deepseekApiKey
+        : (cfg.secrets?.deepseekApiKey ?? process.env.DEEPSEEK_API_KEY);
     if (!apiKey) {
-      throw new Error('缺少环境变量 DEEPSEEK_API_KEY');
+      throw new Error(
+        cfg.plan?.plan === 'byok'
+          ? 'BYOK 套餐缺少自有 DeepSeek API key（请在设置页绑定）'
+          : '缺少环境变量 DEEPSEEK_API_KEY',
+      );
     }
 
     const provider = createDeepSeek({ apiKey });

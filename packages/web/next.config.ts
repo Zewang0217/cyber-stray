@@ -63,6 +63,10 @@ const nextConfig: NextConfig = {
         source: "/api/channels/:path*",
         destination: `${controlPlaneOrigin}/api/channels/:path*`,
       },
+      {
+        source: "/api/plan/:path*",
+        destination: `${controlPlaneOrigin}/api/plan/:path*`,
+      },
     ];
   },
 };

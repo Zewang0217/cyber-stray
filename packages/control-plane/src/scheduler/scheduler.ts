@@ -28,6 +28,7 @@ import type { ControlDb } from '../db/client.js';
 import { pets } from '../db/schema.js';
 import type { EventBus } from '../events/bus.js';
 import { tenantDataDir } from '../tenant.js';
+import { planLimits } from '../plan/limits.js';
 import {
   propagate,
   isReady,
@@ -39,12 +40,24 @@ import {
 
 export { MINUTE_MS } from './propagate.js';
 
+/** 套餐执行参数（S11：scheduler 从 pet 行带出，runner 透传 worker CLI） */
+export interface PlanJobArgs {
+  plan: 'free' | 'pro' | 'byok';
+  /** 每日推送上限（gate 放行 speak 落盘数） */
+  pushesPerDay: number;
+  /** 推送时间窗（本地小时；null = 全天） */
+  pushWindowStart: number | null;
+  pushWindowEnd: number | null;
+}
+
 /** 一次游荡任务（runner 入参） */
 export interface WorkerJob {
   tenantId: string;
   petId: string;
   /** 租户数据目录（tenants/<sub>/，agent 的 DATA_DIR） */
   dataDir: string;
+  /** 套餐执行参数（S11 门控） */
+  plan: PlanJobArgs;
 }
 
 /** runner 结果：ok = 游荡完成（exit 0） */
@@ -176,7 +189,7 @@ export class Scheduler {
         petId: pet.id,
         at: nowMs,
       });
-      this.launch(pet.id, pet.tenantId, state, dataDir, bus, runner, now, config);
+      this.launch(pet, state, dataDir, bus, runner, now, config);
     }
   }
 
@@ -186,8 +199,7 @@ export class Scheduler {
    * finally 不删新条目，写回/租约变更全部跳过（防过期状态覆盖）。
    */
   private launch(
-    petId: string,
-    tenantId: string,
+    pet: { id: string; tenantId: string; plan: string; pushWindowStart: number | null; pushWindowEnd: number | null },
     state: PropagatedState,
     dataRoot: string,
     bus: EventBus,
@@ -195,6 +207,8 @@ export class Scheduler {
     now: () => number,
     config: SchedulerConfig,
   ): void {
+    const petId = pet.id;
+    const tenantId = pet.tenantId;
     const startedAt = now();
     const gen = ++this.genCounter;
     this.running.set(petId, { startedAt, gen });
@@ -213,6 +227,12 @@ export class Scheduler {
           tenantId,
           petId,
           dataDir: tenantDataDir(dataRoot, tenantId), // 租户目录，非控制面根
+          plan: {
+            plan: (pet.plan === 'pro' || pet.plan === 'byok' ? pet.plan : 'free') as PlanJobArgs['plan'],
+            pushesPerDay: planLimits(pet.plan).pushesPerDay,
+            pushWindowStart: pet.pushWindowStart,
+            pushWindowEnd: pet.pushWindowEnd,
+          },
         });
         if (!result.ok) {
           throw new Error(`worker 退出码 ${result.exitCode}`);

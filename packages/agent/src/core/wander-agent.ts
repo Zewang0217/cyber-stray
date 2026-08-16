@@ -195,11 +195,19 @@ export class WanderAgent {
 
   private getProvider() {
     if (!this._provider) {
-      // per-tenant secrets 优先，回退进程环境变量（单用户模式）
+      // per-tenant secrets 优先，回退进程环境变量（单用户模式）。
+      // BYOK：config.ts 组装时已把回退挡掉（secrets.deepseekApiKey 为
+      // undefined）——这里 ?? env 会重新开漏字口，必须按 plan 再挡一次
       const apiKey =
-        this.agentConfig.secrets?.deepseekApiKey ?? process.env.DEEPSEEK_API_KEY;
+        this.agentConfig.plan?.plan === 'byok'
+          ? this.agentConfig.secrets?.deepseekApiKey
+          : (this.agentConfig.secrets?.deepseekApiKey ?? process.env.DEEPSEEK_API_KEY);
       if (!apiKey) {
-        throw new Error('缺少环境变量 DEEPSEEK_API_KEY');
+        throw new Error(
+          this.agentConfig.plan?.plan === 'byok'
+            ? 'BYOK 套餐缺少自有 DeepSeek API key（请在设置页绑定）'
+            : '缺少环境变量 DEEPSEEK_API_KEY',
+        );
       }
       this._provider = createDeepSeek({ apiKey });
     }

@@ -57,6 +57,9 @@ export const pets = sqliteTable('pets', {
   energy: integer('energy').notNull().default(80),
   /** 套餐（S11 门控：free/pro/byok） */
   plan: text('plan', { enum: ['free', 'pro', 'byok'] }).notNull().default('free'),
+  /** Pro 自定义推送时间窗（本地小时 0-23；null = 全天可推） */
+  pushWindowStart: integer('push_window_start'),
+  pushWindowEnd: integer('push_window_end'),
   createdAt: integer('created_at').notNull().$defaultFn(now),
   updatedAt: integer('updated_at').notNull().$defaultFn(now).$onUpdate(() => Date.now()),
 }, (t) => ({

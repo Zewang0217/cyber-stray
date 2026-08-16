@@ -17,7 +17,7 @@
 import { loadConfig, setTenantContext, type TenantContext } from '../config.js';
 import { loadState } from '../agent/state.js';
 import { WanderAgent } from '../core/wander-agent.js';
-import type { AgentSecrets, WanderResult } from '../types.js';
+import type { AgentSecrets, PlanExecutionArgs, WanderResult } from '../types.js';
 
 /** runOneWander 入参 */
 export interface RunOneWanderOptions {
@@ -27,6 +27,8 @@ export interface RunOneWanderOptions {
   dataDir: string;
   /** per-tenant 敏感信息（控制面解密后注入；未提供的字段回退进程环境变量） */
   secrets?: AgentSecrets;
+  /** 套餐执行参数（S11 门控；未注入 = 单用户模式，不设限） */
+  planArgs?: PlanExecutionArgs;
 }
 
 /**
@@ -36,7 +38,7 @@ export interface RunOneWanderOptions {
  * 重试/告警。租户上下文在 finally 中清除，进程可继续跑下一租户。
  */
 export async function runOneWander(options: RunOneWanderOptions): Promise<WanderResult> {
-  const config = loadConfig(options.dataDir, options.secrets);
+  const config = loadConfig(options.dataDir, options.secrets, options.planArgs);
   const ctx: TenantContext = {
     tenantId: options.tenantId,
     dataDir: options.dataDir,

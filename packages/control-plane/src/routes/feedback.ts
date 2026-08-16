@@ -17,6 +17,7 @@ import { Hono } from 'hono';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
+import { planLimits } from '../plan/limits.js';
 import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
 import { pets, userTenants } from '../db/schema.js';
@@ -29,12 +30,7 @@ const FEEDBACK_CLI = fileURLToPath(
   new URL('../../../agent/src/worker/feedback-cli.ts', import.meta.url),
 );
 
-/** 顶话题节流间隔（ms），按 plan */
-const BOOST_INTERVAL_MS: Record<string, number> = {
-  free: 30 * 24 * 60 * 60 * 1000,
-  pro: 24 * 60 * 60 * 1000,
-  byok: 24 * 60 * 60 * 1000,
-};
+// 顶话题节流间隔：统一策略源（S11 plan/limits.ts）
 
 /** topic 最大长度（字符） */
 const TOPIC_MAX_CHARS = 50;
@@ -197,7 +193,7 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
     // 节流：按 plan 间隔原子占位（check-then-write 横跨 spawn 会开并发窗口，
     // 双击/双标签页可绕过额度）。单条 UPDATE 原子完成"检查间隔 + 记账"，
     // rowsAffected=0 即已被占 → 429 不 spawn；worker 失败时回滚额度。
-    const interval = BOOST_INTERVAL_MS[pet.plan] ?? BOOST_INTERVAL_MS.free!;
+    const interval = planLimits(pet.plan).boostIntervalMs;
     const now = Date.now();
     const cutoff = now - interval;
     const claimed = await db

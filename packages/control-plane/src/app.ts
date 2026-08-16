@@ -14,6 +14,7 @@ import { createEventsRoutes } from './routes/events.js';
 import { createFeedbackRoutes } from './routes/feedback.js';
 import { createPushRoutes } from './routes/push.js';
 import { createChannelsRoutes } from './routes/channels.js';
+import { createPlanRoutes } from './routes/plan.js';
 export interface AppDeps {
   config: ControlPlaneConfig;
   oidc: OidcProvider;
@@ -45,6 +46,9 @@ export function createApp({ config, oidc, bus }: AppDeps): Hono {
 
   // S10：每租户通道绑定（飞书可选；webhook 走 S4 加密，worker 注入）
   app.route('/api/channels', createChannelsRoutes({ config }));
+
+  // S11：套餐门控用户面（切换/限额/推送窗口/BYOK key）
+  app.route('/api/plan', createPlanRoutes({ config }));
 
   return app;
 }

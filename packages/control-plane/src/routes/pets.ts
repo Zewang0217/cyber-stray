@@ -179,6 +179,8 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       boredom: 75,
       energy: 80,
       plan: 'free',
+      pushWindowStart: null,
+      pushWindowEnd: null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };

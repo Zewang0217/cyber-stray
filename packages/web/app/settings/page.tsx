@@ -2,7 +2,7 @@
 import { motion } from "framer-motion";
 import { useWebPush } from "@/hooks/useWebPush";
 import { useChannels } from "@/hooks/useChannels";
-
+import { usePlan } from "@/hooks/usePlan";
 /**
  * 设置页面
  * 只读展示当前配置，提示修改需编辑后端 .env
@@ -10,7 +10,14 @@ import { useChannels } from "@/hooks/useChannels";
 export default function SettingsPage(): React.ReactElement {
   const { state: pushState, error: pushError, enable, disable } = useWebPush();
   const { channels, bindFeishu, unbindFeishu, error: channelError } = useChannels();
-
+  const {
+    plan,
+    error: planError,
+    switchPlan,
+    setPushWindow,
+    clearPushWindow,
+    bindByokKey,
+  } = usePlan();
   return (
     <div className="spacing-lg max-w-6xl mx-auto">
       <motion.div
@@ -194,6 +201,113 @@ export default function SettingsPage(): React.ReactElement {
             </form>
           )}
           {channelError ? <p className="text-small text-danger mt-2">{channelError}</p> : null}
+        </div>
+
+        {/* 套餐（S11）：Plan 门控与节流 */}
+        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
+          <h2 className="font-heading text-heading font-bold text-text mb-2">套餐</h2>
+          <p className="text-small text-subtext mb-4">
+            {plan
+              ? `当前 ${plan.plan.toUpperCase()} · 每日推送上限 ${plan.limits.pushesPerDay} 条`
+              : "加载中…"}
+            。宠物自进化永不设限，套餐只卡「到达主人」的频率。
+          </p>
+          <div className="flex gap-2 mb-4">
+            {(["free", "pro", "byok"] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                disabled={plan?.plan === p}
+                onClick={() => void switchPlan(p)}
+                className={`px-4 py-2 rounded-xl text-small font-semibold ${
+                  plan?.plan === p
+                    ? "bg-accent text-base"
+                    : "bg-surface text-subtext border border-white/10"
+                }`}
+              >
+                {p === "free" ? "免费" : p === "pro" ? "Pro" : "BYOK"}
+              </button>
+            ))}
+          </div>
+
+          {/* 推送窗口（Pro/BYOK） */}
+          {plan && plan.plan !== "free" ? (
+            <form
+              className="flex gap-2 items-center mb-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const s = Number(new FormData(e.currentTarget).get("start"));
+                const en = Number(new FormData(e.currentTarget).get("end"));
+                if (Number.isInteger(s) && Number.isInteger(en)) void setPushWindow(s, en);
+              }}
+            >
+              <span className="text-small text-subtext">推送时间</span>
+              <input
+                name="start"
+                type="number"
+                min={0}
+                max={23}
+                defaultValue={plan.pushWindow?.startHour ?? 9}
+                className="w-16 px-2 py-1.5 rounded-lg bg-surface text-small text-text border border-white/10"
+              />
+              <span className="text-small text-subtext">点到</span>
+              <input
+                name="end"
+                type="number"
+                min={0}
+                max={23}
+                defaultValue={plan.pushWindow?.endHour ?? 22}
+                className="w-16 px-2 py-1.5 rounded-lg bg-surface text-small text-text border border-white/10"
+              />
+              <span className="text-small text-subtext">点</span>
+              <button
+                type="submit"
+                className="px-3 py-1.5 rounded-xl text-small bg-accent text-base font-semibold"
+              >
+                保存
+              </button>
+              {plan.pushWindow ? (
+                <button
+                  type="button"
+                  onClick={() => void clearPushWindow()}
+                  className="px-3 py-1.5 rounded-xl text-small bg-danger/10 text-danger"
+                >
+                  清除
+                </button>
+              ) : null}
+            </form>
+          ) : null}
+
+          {/* BYOK key 绑定 */}
+          {plan?.plan === "byok" ? (
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const key = new FormData(form).get("apiKey");
+                if (typeof key === "string") void bindByokKey(key);
+                form.reset();
+              }}
+            >
+              <input
+                name="apiKey"
+                type="password"
+                required
+                placeholder={
+                  plan.byok.keyBound ? "已绑定（输入新 key 可更换）" : "sk-…（DeepSeek API key）"
+                }
+                className="flex-1 px-3 py-2 rounded-xl bg-surface text-small text-text border border-white/10"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl text-small bg-accent text-base font-semibold"
+              >
+                {plan.byok.keyBound ? "更换" : "绑定"}
+              </button>
+            </form>
+          ) : null}
+          {planError ? <p className="text-small text-danger mt-2">{planError}</p> : null}
         </div>
       </motion.div>
 

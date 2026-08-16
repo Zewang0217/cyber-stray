@@ -17,7 +17,7 @@ import { join } from 'path';
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
 import webpush from 'web-push';
 import { getDb } from '../db/client.js';
-import { pushSubscriptions } from '../db/schema.js';
+import { pets, pushSubscriptions } from '../db/schema.js';
 import { tenantDataDir } from '../tenant.js';
 import { getVapidKeys } from '../routes/push.js';
 import type { EventBus, TenantEvent, TenantEventHandler } from '../events/bus.js';
@@ -54,8 +54,8 @@ export interface PushPayload {
   timestamp: string;
 }
 
-/** 最新一条已推送记录（按 speaks-*.jsonl 倒序扫） */
-async function latestPushedSpeak(
+/** 最新一条可通知记录（gated/planLimited 跳过；按 speaks-*.jsonl 倒序扫） */
+async function latestNotifiableSpeak(
   dataDir: string,
   tenantId: string,
 ): Promise<Record<string, unknown> | null> {
@@ -83,10 +83,15 @@ async function latestPushedSpeak(
       } catch {
         continue;
       }
-      // 可通知 = 门控放行（gated 未标记）。与外部渠道投递解耦：
-      // 纯 PWA 租户（无飞书/TG）pushed 恒 false，但门控放行的内容
-      // 就是它想收到的——Web Push 是默认通道而非渠道镜像（#77）
-      if (record.gated !== true && typeof record.timestamp === 'string') {
+      // 可通知 = 门控放行（gated 未标记）且未被套餐拦下（planLimited 未
+      // 标记）。与外部渠道投递解耦：纯 PWA 租户（无飞书/TG）pushed 恒
+      // false，但门控放行的内容就是它想收到的——Web Push 是默认通道而非
+      // 渠道镜像（#77）；但套餐预算/窗口拦下的内容不能绕道 Web Push（#78）
+      if (
+        record.gated !== true &&
+        record.planLimited !== true &&
+        typeof record.timestamp === 'string'
+      ) {
         return record;
       }
     }
@@ -121,10 +126,30 @@ export function attachPushGateway(deps: PushGatewayDeps): () => void {
       .all();
     if (subs.length === 0) return;
 
-    const latest = await latestPushedSpeak(dataDir, event.tenantId);
+    // S11：planLimited 记录（预算/窗口拦下）不可通知——agent 已判定
+    // "该内容不该到达主人"，Web Push 不能绕过（它是默认通道而非豁免通道）
+    const latest = await latestNotifiableSpeak(dataDir, event.tenantId);
     if (!latest) return;
     const contentAt = new Date(String(latest.timestamp)).getTime();
     if (Number.isNaN(contentAt)) return;
+
+    // S11：Pro 推送窗口（本地小时；pets 行）。窗口外静默不发——
+    // 不回滚 lastNotifiedAt：下次窗口内事件仍会带出这条内容（延后补发）。
+    // 注意与 agent 侧 planLimited 的关系：speak 时已在窗外的内容会被
+    // agent 标 planLimited（永久免打扰，不补发）；这里只兜"speak 在窗内
+    // 放行、事件处理跨出窗口"的竞态（该内容非 planLimited，窗口内补发）。
+    const pet = await db.select().from(pets).where(eq(pets.tenantId, event.tenantId)).get();
+    if (
+      pet?.pushWindowStart !== null &&
+      pet?.pushWindowStart !== undefined &&
+      pet?.pushWindowEnd !== null &&
+      pet?.pushWindowEnd !== undefined
+    ) {
+      const hour = new Date().getHours();
+      const { start, end } = { start: pet.pushWindowStart, end: pet.pushWindowEnd };
+      const inWindow = start === end || (start < end ? hour >= start && hour <= end : hour >= start || hour <= end);
+      if (!inWindow) return;
+    }
 
     const payload: PushPayload = {
       title: '街溜子有新发现',

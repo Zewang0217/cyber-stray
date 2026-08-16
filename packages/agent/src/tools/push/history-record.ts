@@ -41,6 +41,9 @@ export interface SpeakRecord {
   mood?: Mood;
   /** 是否被推送门控拦截（true 表示只学习没推送） */
   gated?: boolean;
+  /** 是否被套餐日预算/时间窗拦下（S11：内容落盘但未推——与 gated 同为
+   * "仅记录"，但原因可区分，供仪表盘解释与 push-gateway 跳过） */
+  planLimited?: boolean;
   /** 门控评分 */
   gateScore?: number;
   /** 推送理由（门控各因子得分，人类可读；S8 推送流展示） */
@@ -55,6 +58,7 @@ export interface SpeakRecordMeta {
   mood?: Mood;
   messageId?: string;
   gated?: boolean;
+  planLimited?: boolean;
   gateScore?: number;
   /** 推送理由（quality hook 评估产出，随记录持久化） */
   gateReasons?: string[];
@@ -121,6 +125,7 @@ export function buildSpeakRecord(
     ...(meta.messageId ? { messageId: meta.messageId } : {}),
     ...(meta.mood ? { mood: meta.mood } : {}),
     ...(meta.gated ? { gated: true } : {}),
+    ...(meta.planLimited ? { planLimited: true } : {}),
     ...(meta.gateScore !== undefined ? { gateScore: meta.gateScore } : {}),
     ...(meta.gateReasons?.length ? { gateReasons: meta.gateReasons } : {}),
     ...(meta.matchedTopics?.length ? { matchedTopics: meta.matchedTopics } : {}),

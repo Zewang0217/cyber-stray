@@ -14,7 +14,7 @@
 
 import { readFileSync } from 'fs';
 import { runOneWander } from './run-one-wander.js';
-import type { AgentSecrets } from '../types.js';
+import type { AgentSecrets, PlanExecutionArgs } from '../types.js';
 
 function parseArg(name: string): string | undefined {
   const idx = process.argv.indexOf(`--${name}`);
@@ -38,7 +38,13 @@ async function main(): Promise<void> {
     secrets = JSON.parse(readFileSync(secretsFile, 'utf-8')) as AgentSecrets;
   }
 
-  const result = await runOneWander({ tenantId, dataDir, secrets });
+  const planArgsRaw = parseArg('plan-args');
+  let planArgs: PlanExecutionArgs | undefined;
+  if (planArgsRaw) {
+    planArgs = JSON.parse(planArgsRaw) as PlanExecutionArgs;
+  }
+
+  const result = await runOneWander({ tenantId, dataDir, secrets, planArgs });
   console.log(JSON.stringify({ ok: true, tenantId, result }));
   process.exit(0);
 }

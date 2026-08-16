@@ -131,6 +131,16 @@ export interface AgentSecrets {
   larkAppSecret?: string;
 }
 
+/** 套餐执行参数（S11 门控：控制面调度器注入；worker 短命进程内存态） */
+export interface PlanExecutionArgs {
+  plan: 'free' | 'pro' | 'byok';
+  /** 每日推送上限（gate 放行 speak 落盘数；0 = 不限） */
+  pushesPerDay: number;
+  /** 推送时间窗（本地小时 0-23；null = 全天可推） */
+  pushWindowStart: number | null;
+  pushWindowEnd: number | null;
+}
+
 /** 阶梯恢复配置 */
 export interface EnergyRecoveryTier {
   maxEnergy: number;      // 该阶梯的最大能量值（用于判断是否适用此阶梯）
@@ -268,6 +278,8 @@ export interface AgentConfig {
 
   /** 每租户敏感信息（由 loadConfig 注入；单用户模式为空对象，回退环境变量） */
   secrets?: AgentSecrets;
+  /** 套餐执行参数（S11 门控：控制面注入；未注入 = 单用户模式不设限） */
+  plan?: PlanExecutionArgs;
 }
 
 // ============================================

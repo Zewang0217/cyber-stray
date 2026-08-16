@@ -43,6 +43,13 @@ describe('worker runner', () => {
       return { exitCode };
     };
 
+  const PLAN_JOB = {
+    plan: 'free' as const,
+    pushesPerDay: 5,
+    pushWindowStart: null,
+    pushWindowEnd: null,
+  };
+
   function makeRunner(spawnFn: SpawnLike) {
     return createWorkerRunner({
       dataDir,
@@ -53,7 +60,7 @@ describe('worker runner', () => {
 
   it('拉起 CLI：args 含 --tenant/--data-dir，退出码透传', async () => {
     const runner = makeRunner(fakeSpawn(0));
-    const result = await runner({ tenantId: 't1', petId: 'p1', dataDir });
+    const result = await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB });
     expect(result).toEqual({ ok: true, exitCode: 0 });
 
     const last = spawned.at(-1);
@@ -65,7 +72,7 @@ describe('worker runner', () => {
 
   it('非零退出码 → ok:false', async () => {
     const runner = makeRunner(fakeSpawn(1));
-    const result = await runner({ tenantId: 't1', petId: 'p1', dataDir });
+    const result = await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB });
     expect(result).toEqual({ ok: false, exitCode: 1 });
   });
 
@@ -88,7 +95,7 @@ describe('worker runner', () => {
       },
     );
 
-    const result = await runner({ tenantId: 't1', petId: 'p1', dataDir });
+    const result = await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB });
     expect(result.ok).toBe(true);
     expect(secretsPath).not.toBe('');
     expect(existsSync(secretsPath)).toBe(false); // 跑完即删
@@ -96,7 +103,7 @@ describe('worker runner', () => {
 
   it('无租户 secrets：不传 --secrets-file（回退平台 env key）', async () => {
     const runner = makeRunner(fakeSpawn(0));
-    await runner({ tenantId: 't1', petId: 'p1', dataDir });
+    await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB });
     const last = spawned.at(-1);
     expect(last?.args).not.toContain('--secrets-file');
   });
@@ -108,7 +115,7 @@ describe('worker runner', () => {
     const runner = makeRunner(async () => {
       throw new Error('spawn ENOENT');
     });
-    const result = await runner({ tenantId: 't1', petId: 'p1', dataDir });
+    const result = await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB });
     expect(result.ok).toBe(false);
 
     // 临时文件无泄漏：dataDir 与系统 tmp 下本 runner 写的 secrets 都应被清理
@@ -122,6 +129,6 @@ describe('worker runner', () => {
     const runner = makeRunner(
       vi.fn(async () => ({ exitCode: 0 })),
     );
-    expect((await runner({ tenantId: 't1', petId: 'p1', dataDir })).ok).toBe(true);
+    expect((await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB })).ok).toBe(true);
   });
 });
