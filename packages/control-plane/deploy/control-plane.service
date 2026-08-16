@@ -1,0 +1,38 @@
+# control-plane systemd unit（生产部署：VPS）
+#
+# 进程模型：控制面嵌入调度器（S5）。worker 是 CP spawn 的短命子进程——
+# KillMode=control-group 保证 CP 被杀/崩溃时整个进程组一起收口（无孤儿
+# worker 残留写租户 state.json），CP 重启后 lease/DB 冷却兜底自愈（S5）。
+#
+# 安装:
+#   sudo cp packages/control-plane/deploy/control-plane.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now control-plane
+#
+# 前置: bun 在 PATH；仓库 clone 到 /opt/cyber-stray；.env 就位（见 deploy.sh）
+# 验证: systemctl status control-plane && curl http://localhost:8787/healthz
+
+[Unit]
+Description=Cyber Stray control plane (API + scheduler + push gateway)
+Documentation=https://github.com/Zewang0217/cyber-stray
+After=network.target casdoor.service
+Wants=casdoor.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/cyber-stray
+ExecStart=/usr/local/bin/bun run packages/control-plane/src/index.ts
+# S12 崩溃自恢复：restart 类策略全开
+Restart=always
+RestartSec=5
+# 进程组收口：CP 退出时杀掉全部在飞 worker（防孤儿写租户数据）
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=30
+# 2C4G 预算：CP 本身 ~100MB，worker 是短命子进程（各 ~200MB 峰值，并发上限 4）
+MemoryHigh=2G
+MemoryMax=3G
+# 环境变量从 EnvironmentFile 注入（secrets 不落 unit 文件明文）
+EnvironmentFile=/opt/cyber-stray/.env
+
+[Install]
+WantedBy=multi-user.target
