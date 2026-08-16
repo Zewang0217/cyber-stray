@@ -177,12 +177,18 @@ export function createDataRoutes({ config }: DataDeps): Hono {
 
     const items: Array<Record<string, unknown>> = [];
     for (const file of files.slice(-50)) {
+      let content: string;
       try {
-        const content = await readFile(join(historyDir, file), 'utf-8');
-        items.push(...parseHistoryJsonl(content));
-      } catch {
-        // 跳过无法读取的文件
+        content = await readFile(join(historyDir, file), 'utf-8');
+      } catch (error) {
+        // 仅 ENOENT（readdir 后被并发清理）合法跳过；其余显式抛（禁兜底）
+        if (!isEnoent(error)) {
+          console.error('[data] history 文件读取失败：', error);
+          return c.json(jsonError('历史记录不可读'), 500);
+        }
+        continue;
       }
+      items.push(...parseHistoryJsonl(content));
     }
     items.sort(
       (a, b) =>

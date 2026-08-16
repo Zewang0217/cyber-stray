@@ -197,6 +197,7 @@ export class Scheduler {
    * 拉起一个短命 worker（fire-and-forget；写回/重试/租约都在这里收口）。
    * gen 令牌：TTL 重认领产生新 gen 后，旧任务不再持有 running 条目——
    * finally 不删新条目，写回/租约变更全部跳过（防过期状态覆盖）。
+   * S5 review 修复：拆分成功写回（handleSuccess）与失败处理（handleFailure）。
    */
   private launch(
     pet: { id: string; tenantId: string; plan: string; pushWindowStart: number | null; pushWindowEnd: number | null },
@@ -227,77 +228,16 @@ export class Scheduler {
           tenantId,
           petId,
           dataDir: tenantDataDir(dataRoot, tenantId), // 租户目录，非控制面根
-          plan: {
-            plan: (pet.plan === 'pro' || pet.plan === 'byok' ? pet.plan : 'free') as PlanJobArgs['plan'],
-            pushesPerDay: planLimits(pet.plan).pushesPerDay,
-            pushWindowStart: pet.pushWindowStart,
-            pushWindowEnd: pet.pushWindowEnd,
-          },
+          plan: this.planArgsFor(pet),
         });
         if (!result.ok) {
           throw new Error(`worker 退出码 ${result.exitCode}`);
         }
         if (!isOwner()) return; // 已被 TTL 重认领：过期结果不写回
-        // 成功：写回 SQLite（前推值扣游荡消耗）
-        const endAt = now();
-        const dbh = await this.deps.db();
-        await dbh
-          .update(pets)
-          .set({
-            lastRunAt: endAt,
-            boredom: Math.max(0, Math.round(state.boredom - WANDER_BOREDOM_RELIEF)),
-            energy: Math.max(0, Math.round(state.energy - WANDER_ENERGY_COST)),
-          })
-          .where(eq(pets.id, petId))
-          .run();
-        this.leases.delete(petId);
-        bus.publish(tenantId, {
-          type: 'worker_succeeded',
-          tenantId,
-          petId,
-          at: endAt,
-        });
+        await this.handleSuccess(petId, tenantId, state, bus, now);
       } catch (error) {
         if (!isOwner()) return; // 已被 TTL 重认领：旧失败不干预新任务
-        // 失败：lease 重试；超限放弃 + DB 冷却
-        const failAt = now();
-        const prior = this.leases.get(petId);
-        const retries = (prior?.retries ?? 0) + 1;
-        if (retries <= config.maxRetries) {
-          this.leases.set(petId, {
-            retries,
-            nextEligibleAt: failAt + config.retryBackoffMs,
-          });
-          bus.publish(tenantId, {
-            type: 'worker_retry',
-            tenantId,
-            petId,
-            at: failAt,
-            detail: error instanceof Error ? error.message : String(error),
-          });
-        } else {
-          this.leases.delete(petId);
-          // DB 冷却（重启安全）：重置前推基线（lastRunAt）+ 落"消耗了就绪"的
-          // 自洽状态（与成功路径同构），三者一致，冷却后从低无聊重新攒
-          const dbh = await this.deps.db();
-          await dbh
-            .update(pets)
-            .set({
-              lastRunAt: failAt,
-              boredom: Math.max(0, Math.round(state.boredom - WANDER_BOREDOM_RELIEF)),
-              energy: Math.max(0, Math.round(state.energy - WANDER_ENERGY_COST)),
-              cooldownUntil: failAt + config.retryBackoffMs,
-            })
-            .where(eq(pets.id, petId))
-            .run();
-          bus.publish(tenantId, {
-            type: 'worker_failed',
-            tenantId,
-            petId,
-            at: failAt,
-            detail: error instanceof Error ? error.message : String(error),
-          });
-        }
+        await this.handleFailure(petId, tenantId, state, bus, now, config, error);
       } finally {
         // 只删自己持有的条目（TTL 重认领后条目属于新任务）
         if (isOwner()) this.running.delete(petId);
@@ -305,6 +245,98 @@ export class Scheduler {
     })();
     this.inFlight.add(task);
     void task.finally(() => this.inFlight.delete(task));
+  }
+
+  /** 套餐执行参数（S11：scheduler 是策略点，runner 机械透传） */
+  private planArgsFor(pet: {
+    plan: string;
+    pushWindowStart: number | null;
+    pushWindowEnd: number | null;
+  }): PlanJobArgs {
+    return {
+      plan: (pet.plan === 'pro' || pet.plan === 'byok' ? pet.plan : 'free') as PlanJobArgs['plan'],
+      pushesPerDay: planLimits(pet.plan).pushesPerDay,
+      pushWindowStart: pet.pushWindowStart,
+      pushWindowEnd: pet.pushWindowEnd,
+    };
+  }
+
+  /** 成功：写回 SQLite（前推值扣游荡消耗）+ 清理租约 + 事件 */
+  private async handleSuccess(
+    petId: string,
+    tenantId: string,
+    state: PropagatedState,
+    bus: EventBus,
+    now: () => number,
+  ): Promise<void> {
+    const endAt = now();
+    const dbh = await this.deps.db();
+    await dbh
+      .update(pets)
+      .set({
+        lastRunAt: endAt,
+        boredom: Math.max(0, Math.round(state.boredom - WANDER_BOREDOM_RELIEF)),
+        energy: Math.max(0, Math.round(state.energy - WANDER_ENERGY_COST)),
+      })
+      .where(eq(pets.id, petId))
+      .run();
+    this.leases.delete(petId);
+    bus.publish(tenantId, {
+      type: 'worker_succeeded',
+      tenantId,
+      petId,
+      at: endAt,
+    });
+  }
+
+  /** 失败：lease 重试；超限放弃 + DB 冷却（重启安全） */
+  private async handleFailure(
+    petId: string,
+    tenantId: string,
+    state: PropagatedState,
+    bus: EventBus,
+    now: () => number,
+    config: SchedulerConfig,
+    error: unknown,
+  ): Promise<void> {
+    const failAt = now();
+    const prior = this.leases.get(petId);
+    const retries = (prior?.retries ?? 0) + 1;
+    if (retries <= config.maxRetries) {
+      this.leases.set(petId, {
+        retries,
+        nextEligibleAt: failAt + config.retryBackoffMs,
+      });
+      bus.publish(tenantId, {
+        type: 'worker_retry',
+        tenantId,
+        petId,
+        at: failAt,
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    this.leases.delete(petId);
+    // DB 冷却：重置前推基线（lastRunAt）+ 落"消耗了就绪"的自洽状态
+    // （与成功路径同构），三者一致，冷却后从低无聊重新攒
+    const dbh = await this.deps.db();
+    await dbh
+      .update(pets)
+      .set({
+        lastRunAt: failAt,
+        boredom: Math.max(0, Math.round(state.boredom - WANDER_BOREDOM_RELIEF)),
+        energy: Math.max(0, Math.round(state.energy - WANDER_ENERGY_COST)),
+        cooldownUntil: failAt + config.retryBackoffMs,
+      })
+      .where(eq(pets.id, petId))
+      .run();
+    bus.publish(tenantId, {
+      type: 'worker_failed',
+      tenantId,
+      petId,
+      at: failAt,
+      detail: error instanceof Error ? error.message : String(error),
+    });
   }
 
   private async findPet(petId: string) {

@@ -79,6 +79,24 @@ describe('push 路由（Web Push 订阅管理）', () => {
     const db = await getDb(dataDir);
     const rows = await db.select().from(vapidKeys).all();
     expect(rows).toHaveLength(1);
+    // S10 review 修复：privateKey 必须信封加密落盘，明文零出现
+    expect(rows[0]?.privateKey).toMatch(/^enc:v1:/);
+    expect(rows[0]?.privateKey).not.toContain(rows[0]?.publicKey);
+    expect(rows[0]?.privateKey).not.toContain('-----BEGIN');
+  });
+
+  it('vapid-key 旧明文行自动迁移为加密存储（读取仍返回明文供 web-push 用）', async () => {
+    const db = await getDb(dataDir);
+    await db
+      .insert(vapidKeys)
+      .values({ id: 1, publicKey: 'legacy-pub', privateKey: 'legacy-plain-private' })
+      .run();
+    const res = await app.request('/api/push/vapid-key');
+    const json = (await res.json()) as { success: boolean; data: { publicKey: string } };
+    expect(json.data.publicKey).toBe('legacy-pub');
+
+    const rows = await db.select().from(vapidKeys).all();
+    expect(rows[0]?.privateKey).toMatch(/^enc:v1:/);
   });
 
   it('POST /api/push/subscribe：建订阅行（归属 session 租户，lastNotifiedAt 种子=now 防追发历史）', async () => {

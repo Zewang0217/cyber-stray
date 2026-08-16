@@ -16,7 +16,8 @@ import webpush from 'web-push';
 import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
 import { pushSubscriptions, vapidKeys, userTenants } from '../db/schema.js';
-import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
+import { TENANT_ID_RE, encryptWith, decryptWith } from '../secrets/tenant-secrets.js';
+import { loadMasterKey } from '../secrets/master-key.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
 
 export interface PushDeps {
@@ -28,9 +29,15 @@ const jsonError = (message: string) => ({ success: false, error: message });
 /** VAPID 单例行 id（首用时生成整对，跨重启稳定） */
 const VAPID_ROW_ID = 1;
 
+/** VAPID privateKey 信封加密前缀（S4 master.key AES-256-GCM；AAD 防跨用途复用） */
+const VAPID_ENC_PREFIX = 'enc:v1:';
+const VAPID_AAD = Buffer.from('vapid:private-key');
+
 /**
  * 取（或生成）VAPID 密钥对。
- * env 显式提供时优先（运维可预生成/轮换）；否则首用时生成存 DB 单例行。
+ * env 显式提供时优先（运维可预生成/轮换）；否则首用时生成、privateKey 经
+ * master.key 信封加密存 DB（S10 review 硬违规修复：无明文 secrets 落盘）。
+ * 旧明文行首次读取自动迁移为加密存储。
  */
 export async function getVapidKeys(
   dataDir: string,
@@ -45,16 +52,33 @@ export async function getVapidKeys(
 
   const existing = await db.select().from(vapidKeys).where(eq(vapidKeys.id, VAPID_ROW_ID)).get();
   if (existing) {
-    return { publicKey: existing.publicKey, privateKey: existing.privateKey };
+    const stored = existing.privateKey;
+    if (stored.startsWith(VAPID_ENC_PREFIX)) {
+      const mk = await loadMasterKey(dataDir);
+      return {
+        publicKey: existing.publicKey,
+        privateKey: decryptWith(mk, stored.slice(VAPID_ENC_PREFIX.length), VAPID_AAD),
+      };
+    }
+    // 旧明文行（S10 前）：迁移为加密存储，读取不暴露明文路径
+    const mk = await loadMasterKey(dataDir);
+    const packed = VAPID_ENC_PREFIX + encryptWith(mk, stored, VAPID_AAD);
+    await db
+      .update(vapidKeys)
+      .set({ privateKey: packed })
+      .where(eq(vapidKeys.id, VAPID_ROW_ID))
+      .run();
+    return { publicKey: existing.publicKey, privateKey: stored };
   }
 
   const generated = webpush.generateVAPIDKeys();
+  const mk = await loadMasterKey(dataDir);
   await db
     .insert(vapidKeys)
     .values({
       id: VAPID_ROW_ID,
       publicKey: generated.publicKey,
-      privateKey: generated.privateKey,
+      privateKey: VAPID_ENC_PREFIX + encryptWith(mk, generated.privateKey, VAPID_AAD),
     })
     .onConflictDoNothing({ target: vapidKeys.id })
     .run();
@@ -62,7 +86,11 @@ export async function getVapidKeys(
   if (!row) {
     throw new Error('VAPID 密钥生成失败'); // 理论不可达：插入后必可读
   }
-  return { publicKey: row.publicKey, privateKey: row.privateKey };
+  const mk2 = await loadMasterKey(dataDir);
+  return {
+    publicKey: row.publicKey,
+    privateKey: decryptWith(mk2, row.privateKey.slice(VAPID_ENC_PREFIX.length), VAPID_AAD),
+  };
 }
 
 /** 鉴权 + 租户校验：401 / 403 / { tenantId }（与 pets.ts 同规矩） */

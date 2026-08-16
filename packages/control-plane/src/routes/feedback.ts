@@ -19,6 +19,7 @@ import { fileURLToPath } from 'url';
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
 import { planLimits } from '../plan/limits.js';
 import type { ControlPlaneConfig } from '../config.js';
+import type { ControlDb } from '../db/client.js';
 import { getDb } from '../db/client.js';
 import { pets, userTenants } from '../db/schema.js';
 import { tenantDataDir } from '../tenant.js';
@@ -166,6 +167,37 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
     return c.json({ success: true, data: worker.data ?? {} });
   });
 
+  /** 节流原子占位：间隔内已占 → { claimed:false, days }；成功 → { claimed:true } */
+  async function claimBoostQuota(
+    db: ControlDb,
+    tenantId: string,
+    plan: string,
+    now: number,
+  ): Promise<{ claimed: boolean; days: number }> {
+    const interval = planLimits(plan).boostIntervalMs;
+    const cutoff = now - interval;
+    const claimed = await db
+      .update(pets)
+      .set({ lastBoostAt: now })
+      .where(
+        and(
+          eq(pets.tenantId, tenantId),
+          or(isNull(pets.lastBoostAt), lt(pets.lastBoostAt, cutoff)),
+        ),
+      )
+      .run();
+    return { claimed: claimed.rowsAffected > 0, days: Math.ceil(interval / (24 * 60 * 60 * 1000)) };
+  }
+
+  /** 回滚占位（worker 失败不消耗额度） */
+  async function rollbackBoostQuota(
+    db: ControlDb,
+    tenantId: string,
+    priorValue: number | null,
+  ): Promise<void> {
+    await db.update(pets).set({ lastBoostAt: priorValue }).where(eq(pets.tenantId, tenantId)).run();
+  }
+
   /** POST /api/boost — 顶话题（按 plan 节流） */
   app.post('/boost', async (c) => {
     const scoped = await scopedTenantId(c.req.raw, config);
@@ -190,25 +222,11 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
       return c.json(jsonError('尚未领养宠物'), 409);
     }
 
-    // 节流：按 plan 间隔原子占位（check-then-write 横跨 spawn 会开并发窗口，
-    // 双击/双标签页可绕过额度）。单条 UPDATE 原子完成"检查间隔 + 记账"，
-    // rowsAffected=0 即已被占 → 429 不 spawn；worker 失败时回滚额度。
-    const interval = planLimits(pet.plan).boostIntervalMs;
-    const now = Date.now();
-    const cutoff = now - interval;
-    const claimed = await db
-      .update(pets)
-      .set({ lastBoostAt: now })
-      .where(
-        and(
-          eq(pets.tenantId, scoped.tenantId),
-          or(isNull(pets.lastBoostAt), lt(pets.lastBoostAt, cutoff)),
-        ),
-      )
-      .run();
-    if (claimed.rowsAffected === 0) {
-      const days = Math.ceil(interval / (24 * 60 * 60 * 1000));
-      return c.json(jsonError(`当前套餐每 ${days} 天可顶一次话题`), 429);
+    // 节流：原子占位（check-then-write 横跨 spawn 会开并发窗口，双击可绕过
+    // 额度）；worker 失败回滚额度（S9 review 修复：exitCode 决定回滚）
+    const claim = await claimBoostQuota(db, scoped.tenantId, pet.plan, Date.now());
+    if (!claim.claimed) {
+      return c.json(jsonError(`当前套餐每 ${claim.days} 天可顶一次话题`), 429);
     }
 
     const worker = await runFeedbackWorker(scoped.tenantId, [
@@ -220,12 +238,7 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
       scoped.tenantId,
     ]);
     if (worker.error) {
-      // worker 失败不消耗额度：回滚到占位前的值
-      await db
-        .update(pets)
-        .set({ lastBoostAt: pet.lastBoostAt })
-        .where(eq(pets.tenantId, scoped.tenantId))
-        .run();
+      await rollbackBoostQuota(db, scoped.tenantId, pet.lastBoostAt);
       return c.json(jsonError(worker.error), 502);
     }
 

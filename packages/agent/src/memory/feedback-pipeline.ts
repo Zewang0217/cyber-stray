@@ -99,13 +99,9 @@ export async function processFeedback(
   };
 
   // Step 1: 记录反馈到 feedback-store
-  try {
-    await recordFeedback({ type, messageId, userId });
-    result.recorded = true;
-  } catch (error) {
-    logger.error('记录反馈失败', { error });
-    // 记录失败不阻断后续链路
-  }
+  // 反馈丢失 = 用户表达未落盘，必须上抛（禁兜底）——否则 HTTP 200 假成功
+  await recordFeedback({ type, messageId, userId });
+  result.recorded = true;
 
   // Step 2: 归因话题——优先显式传入（S9 REST：worker 退出后内存 map 失效，
   // 调用方从 speaks 历史 matchedTopics 反查），否则查内存映射
@@ -133,7 +129,9 @@ export async function processFeedback(
       logger.error('批量更新用户画像失败', { error, type, topics });
     }
 
-    // 3b: 强化/衰减兴趣图谱
+    // 3b: 强化/衰减兴趣图谱——persist 失败必须上抛：兴趣强化是反馈的
+    // 核心承诺（S9 review 硬违规 #2：吞错 → 配额 consumed 但兴趣未强化）。
+    // profile 失败保留容错（反馈已记录、配额已兑现，画像缺失可重算）
     try {
       const graph = getInterestGraph();
       // 确保 graph 已初始化
@@ -167,6 +165,7 @@ export async function processFeedback(
       await graph.persist();
     } catch (error) {
       logger.error('兴趣图谱操作失败', { error, type, topics });
+      throw error;
     }
   }
 
@@ -209,15 +208,12 @@ export async function boostTopic(
     interestReinforced: false,
   };
 
-  // Step 1: 记录（type=boost）
-  try {
-    await recordFeedback({ type: 'boost', userId });
-    result.recorded = true;
-  } catch (error) {
-    logger.error('记录顶话题反馈失败', { error });
-  }
+  // Step 1: 记录（type=boost）——配额语义核心：记录失败必须上抛，
+  // 否则路由按 exit 0 保留 lastBoostAt（配额 consumed 但无任何落盘）
+  await recordFeedback({ type: 'boost', userId });
+  result.recorded = true;
 
-  // Step 2: 画像更新（按 like 语义——正向偏好）
+  // Step 2: 画像更新（按 like 语义——正向偏好）；失败容错（同 processFeedback）
   try {
     await updateUserProfileBatch([{ type: 'like', topic }]);
     result.profileUpdated = true;
@@ -225,7 +221,7 @@ export async function boostTopic(
     logger.error('顶话题更新用户画像失败', { error, topic });
   }
 
-  // Step 3: 图谱强化（不存在则 feedback 来源入图）
+  // Step 3: 图谱强化（不存在则 feedback 来源入图）——persist 失败上抛
   try {
     const graph = getInterestGraph();
     if (!graph.isInitialized() && graph.getNodeCount() === 0) {
@@ -239,6 +235,7 @@ export async function boostTopic(
     await graph.persist();
   } catch (error) {
     logger.error('顶话题图谱强化失败', { error, topic });
+    throw error;
   }
 
   // Step 4: 心情（按 like 语义）

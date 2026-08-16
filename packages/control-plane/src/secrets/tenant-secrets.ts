@@ -51,8 +51,9 @@ export interface TenantSecretsStore {
   forget(): Promise<void>;
 }
 
-/** AES-256-GCM 加密：base64(nonce || tag || ciphertext) */
-function encryptWith(key: Buffer, plaintext: string, aad: Buffer): string {
+/** AES-256-GCM 加密：base64(nonce || tag || ciphertext)。S4 内部原语，导出供
+ * 全局密钥（如 VAPID）复用同一信封——避免各模块重复实现加密 */
+export function encryptWith(key: Buffer, plaintext: string, aad: Buffer): string {
   const nonce = randomBytes(GCM_IV_LEN);
   const cipher = createCipheriv('aes-256-gcm', key, nonce);
   cipher.setAAD(aad);
@@ -61,7 +62,7 @@ function encryptWith(key: Buffer, plaintext: string, aad: Buffer): string {
 }
 
 /** AES-256-GCM 解密（tag 校验失败抛错：密钥不符/数据被篡改/跨租户搬移） */
-function decryptWith(key: Buffer, packed: string, aad: Buffer): string {
+export function decryptWith(key: Buffer, packed: string, aad: Buffer): string {
   const buf = Buffer.from(packed, 'base64');
   if (buf.length < GCM_IV_LEN + GCM_TAG_LEN) {
     throw new Error('secrets 密文格式非法');

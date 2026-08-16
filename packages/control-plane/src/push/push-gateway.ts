@@ -16,8 +16,8 @@ import { readFile, readdir } from 'fs/promises';
 import { join } from 'path';
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
 import webpush from 'web-push';
-import { getDb } from '../db/client.js';
-import { pets, pushSubscriptions } from '../db/schema.js';
+import { getDb, type ControlDb } from '../db/client.js';
+import { pets, pushSubscriptions, type PushSubscription } from '../db/schema.js';
 import { tenantDataDir } from '../tenant.js';
 import { getVapidKeys } from '../routes/push.js';
 import type { EventBus, TenantEvent, TenantEventHandler } from '../events/bus.js';
@@ -117,8 +117,8 @@ export function attachPushGateway(deps: PushGatewayDeps): () => void {
   async function dispatch(event: TenantEvent): Promise<void> {
     if (event.type !== 'worker_succeeded') return;
 
-    // 先查订阅（无订阅的租户连历史都不读）
     const db = await getDb(dataDir);
+    // 先查订阅（无订阅的租户连历史都不读）
     const subs = await db
       .select()
       .from(pushSubscriptions)
@@ -126,45 +126,61 @@ export function attachPushGateway(deps: PushGatewayDeps): () => void {
       .all();
     if (subs.length === 0) return;
 
-    // S11：planLimited 记录（预算/窗口拦下）不可通知——agent 已判定
-    // "该内容不该到达主人"，Web Push 不能绕过（它是默认通道而非豁免通道）
-    const latest = await latestNotifiableSpeak(dataDir, event.tenantId);
+    const latest = await resolveNotifyTarget(db, dataDir, event.tenantId);
     if (!latest) return;
-    const contentAt = new Date(String(latest.timestamp)).getTime();
-    if (Number.isNaN(contentAt)) return;
 
-    // S11：Pro 推送窗口（本地小时；pets 行）。窗口外静默不发——
-    // 不回滚 lastNotifiedAt：下次窗口内事件仍会带出这条内容（延后补发）。
-    // 注意与 agent 侧 planLimited 的关系：speak 时已在窗外的内容会被
-    // agent 标 planLimited（永久免打扰，不补发）；这里只兜"speak 在窗内
-    // 放行、事件处理跨出窗口"的竞态（该内容非 planLimited，窗口内补发）。
-    const pet = await db.select().from(pets).where(eq(pets.tenantId, event.tenantId)).get();
-    if (
-      pet?.pushWindowStart !== null &&
-      pet?.pushWindowStart !== undefined &&
-      pet?.pushWindowEnd !== null &&
-      pet?.pushWindowEnd !== undefined
-    ) {
-      const hour = new Date().getHours();
-      const { start, end } = { start: pet.pushWindowStart, end: pet.pushWindowEnd };
-      const inWindow = start === end || (start < end ? hour >= start && hour <= end : hour >= start || hour <= end);
-      if (!inWindow) return;
-    }
-
-    const payload: PushPayload = {
-      title: '街溜子有新发现',
-      body: typeof latest.title === 'string' && latest.title ? latest.title : '它逛到了有趣的东西',
-      ...(typeof latest.url === 'string' && latest.url ? { url: latest.url } : {}),
-      timestamp: String(latest.timestamp),
-    };
-
-    // VAPID 配置一次；订阅密钥每设备不同，sendNotification 逐个传
     const keys = await getKeys();
     webpush.setVapidDetails('mailto:cyber-stray@localhost', keys.publicKey, keys.privateKey);
+    await notifySubscriptions(db, subs, latest.payload, latest.contentAt, event.tenantId);
+  }
 
+  /**
+   * 解析"本次要通知的内容 + 时间戳"。
+   * S11：planLimited 记录（预算/窗口拦下）不可通知——agent 已判定"该内容
+   * 不该到达主人"，Web Push 不能绕过（默认通道而非豁免通道）；Pro 推送窗口
+   * 竞态（speak 窗内放行、事件处理跨出窗口）→ 不 claim，窗口内补发。
+   */
+  async function resolveNotifyTarget(
+    db: ControlDb,
+    dataDir: string,
+    tenantId: string,
+  ): Promise<{ payload: PushPayload; contentAt: number } | null> {
+    const latest = await latestNotifiableSpeak(dataDir, tenantId);
+    if (!latest) return null;
+    const contentAt = new Date(String(latest.timestamp)).getTime();
+    if (Number.isNaN(contentAt)) return null;
+
+    const pet = await db.select().from(pets).where(eq(pets.tenantId, tenantId)).get();
+    if (pet?.pushWindowStart != null && pet?.pushWindowEnd != null) {
+      const hour = new Date().getHours();
+      const { pushWindowStart: start, pushWindowEnd: end } = pet;
+      const inWindow =
+        start === end || (start < end ? hour >= start && hour <= end : hour >= start || hour <= end);
+      if (!inWindow) return null;
+    }
+
+    return {
+      contentAt,
+      payload: {
+        title: '街溜子有新发现',
+        body: typeof latest.title === 'string' && latest.title ? latest.title : '它逛到了有趣的东西',
+        ...(typeof latest.url === 'string' && latest.url ? { url: latest.url } : {}),
+        timestamp: String(latest.timestamp),
+      },
+    };
+  }
+
+  /** 逐订阅原子占坑 + 发送（跨网络发送的并发窗口由条件 UPDATE 关闭） */
+  async function notifySubscriptions(
+    db: ControlDb,
+    subs: PushSubscription[],
+    payload: PushPayload,
+    contentAt: number,
+    tenantId: string,
+  ): Promise<void> {
     for (const sub of subs) {
-      // 原子占坑去重（check-then-act 横跨网络发送会开并发窗口——多宠
-      // 同 tick 完成时两个 dispatch 都读到旧值、同条内容发两次）：
+      // 原子占坑去重：check-then-act 横跨网络发送会开并发窗口——多宠
+      // 同 tick 完成时两个 dispatch 都读到旧值、同条内容发两次。
       // 条件 UPDATE 一步完成"检查已通知 + 记账"，rowsAffected=0 即跳过
       const claimed = await db
         .update(pushSubscriptions)
@@ -192,7 +208,7 @@ export function attachPushGateway(deps: PushGatewayDeps): () => void {
           // 其他失败（403 VAPID 不匹配/网络等）：回滚占坑让下轮重试，
           // 并留痕——持续故障（如 VAPID 轮换后旧订阅全量 403）不能静默
           console.error(
-            `[push-gateway] 发送失败（${event.tenantId}/${sub.endpoint.slice(-12)}）：`,
+            `[push-gateway] 发送失败（${tenantId}/${sub.endpoint.slice(-12)}）：`,
             error instanceof Error ? error.message : error,
           );
           await db

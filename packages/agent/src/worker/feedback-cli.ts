@@ -147,6 +147,17 @@ async function main(): Promise<void> {
     topic: parseArg('topic'),
     userId: parseArg('user-id'),
   });
+  // S9 review 修复：配额语义以兴趣强化为准——pipeline 未来若回归吞错，
+  // 这里兜底：boost 未强化 / feedback 未记录 = 核心承诺未兑现，exit 1
+  // （控制面路由按 exitCode 回滚 lastBoostAt 配额）
+  if (action === 'boost' && !result.interestReinforced) {
+    console.error(JSON.stringify({ ok: false, error: '兴趣未强化（图谱持久化失败）' }));
+    process.exit(1);
+  }
+  if (action === 'feedback' && !result.recorded) {
+    console.error(JSON.stringify({ ok: false, error: '反馈未记录' }));
+    process.exit(1);
+  }
   console.log(JSON.stringify({ ok: true, result }));
   process.exit(0);
 }

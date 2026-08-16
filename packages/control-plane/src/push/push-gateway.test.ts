@@ -21,6 +21,7 @@ import { pets, pushSubscriptions } from '../db/schema.js';
 import { getOrCreateTenant, tenantDataDir } from '../tenant.js';
 import { createEventBus, type TenantEvent } from '../events/bus.js';
 import { attachPushGateway, type PushSendFn } from './push-gateway.js';
+import webpush from 'web-push';
 
 describe('push-gateway（Web Push 分发）', () => {
   let dataDir: string;
@@ -75,7 +76,15 @@ describe('push-gateway（Web Push 分发）', () => {
 
   it('worker_succeeded → 最新 pushed 推送发通知给本租户订阅', async () => {
     const bus = createEventBus();
-    unsub = attachPushGateway({ dataDir, bus, sendFn });
+    unsub = attachPushGateway({
+      dataDir,
+      bus,
+      sendFn,
+      getKeys: async () => {
+        const g = webpush.generateVAPIDKeys();
+        return { publicKey: g.publicKey, privateKey: g.privateKey };
+      },
+    });
     await seedSubscription('alice', 'https://push.example/a1');
     await seedSubscription('bob', 'https://push.example/b1');
     await seedSpeaks('alice', {
@@ -99,7 +108,15 @@ describe('push-gateway（Web Push 分发）', () => {
 
   it('lastNotifiedAt 去重：内容不晚于上次通知则跳过', async () => {
     const bus = createEventBus();
-    unsub = attachPushGateway({ dataDir, bus, sendFn });
+    unsub = attachPushGateway({
+      dataDir,
+      bus,
+      sendFn,
+      getKeys: async () => {
+        const g = webpush.generateVAPIDKeys();
+        return { publicKey: g.publicKey, privateKey: g.privateKey };
+      },
+    });
     const db = await getDb(dataDir);
     await seedSubscription('alice', 'https://push.example/a1');
     // 上次已通知到现在 → 新内容时间戳早于它
@@ -125,7 +142,15 @@ describe('push-gateway（Web Push 分发）', () => {
     sendFn = async () => {
       throw Object.assign(new Error('gone'), { statusCode: 410 });
     };
-    unsub = attachPushGateway({ dataDir, bus, sendFn });
+    unsub = attachPushGateway({
+      dataDir,
+      bus,
+      sendFn,
+      getKeys: async () => {
+        const g = webpush.generateVAPIDKeys();
+        return { publicKey: g.publicKey, privateKey: g.privateKey };
+      },
+    });
     await seedSubscription('alice', 'https://push.example/dead');
     await seedSpeaks('alice', {
       content: '内容',
@@ -143,7 +168,15 @@ describe('push-gateway（Web Push 分发）', () => {
 
   it('非 worker_succeeded 事件不触发；无 speaks 历史不炸不通知', async () => {
     const bus = createEventBus();
-    unsub = attachPushGateway({ dataDir, bus, sendFn });
+    unsub = attachPushGateway({
+      dataDir,
+      bus,
+      sendFn,
+      getKeys: async () => {
+        const g = webpush.generateVAPIDKeys();
+        return { publicKey: g.publicKey, privateKey: g.privateKey };
+      },
+    });
     await seedSubscription('alice', 'https://push.example/a1');
 
     bus.publish('alice', ev('worker_failed', 'alice'));
@@ -155,7 +188,15 @@ describe('push-gateway（Web Push 分发）', () => {
 
   it('S11 planLimited 记录不可通知（预算/窗口拦下的内容 Web Push 不绕过）', async () => {
     const bus = createEventBus();
-    unsub = attachPushGateway({ dataDir, bus, sendFn });
+    unsub = attachPushGateway({
+      dataDir,
+      bus,
+      sendFn,
+      getKeys: async () => {
+        const g = webpush.generateVAPIDKeys();
+        return { publicKey: g.publicKey, privateKey: g.privateKey };
+      },
+    });
     await seedSubscription('alice', 'https://push.example/a1');
     await seedSpeaks('alice', {
       content: '预算外文章',
@@ -188,7 +229,15 @@ describe('push-gateway（Web Push 分发）', () => {
       .run();
 
     const bus = createEventBus();
-    unsub = attachPushGateway({ dataDir, bus, sendFn });
+    unsub = attachPushGateway({
+      dataDir,
+      bus,
+      sendFn,
+      getKeys: async () => {
+        const g = webpush.generateVAPIDKeys();
+        return { publicKey: g.publicKey, privateKey: g.privateKey };
+      },
+    });
     await seedSubscription('alice', 'https://push.example/a1');
     await seedSpeaks('alice', {
       content: '窗口内内容',

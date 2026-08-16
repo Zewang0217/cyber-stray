@@ -43,6 +43,13 @@
       "when": 1786871453991,
       "tag": "0005_freezing_ego",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786878000000,
+      "tag": "0006_user_tenants_composite_pk",
+      "breakpoints": true
     }
   ]
 }
