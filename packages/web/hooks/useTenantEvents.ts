@@ -34,6 +34,8 @@ interface UseTenantEventsReturn {
    * SSE 稳定时取代定时轮询，SSE 断开时消费方回落到自身轮询兜底。
    */
   refreshSignal: number;
+  /** 最近一次事件(驱动宠物状态动画:游荡/进食/庆祝等) */
+  lastEvent: TenantEvent | null;
 }
 
 /**
@@ -46,6 +48,7 @@ interface UseTenantEventsReturn {
 export function useTenantEvents(): UseTenantEventsReturn {
   const [connected, setConnected] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
+  const [lastEvent, setLastEvent] = useState<TenantEvent | null>(null);
 
   useEffect(() => {
     const source = new EventSource("/api/events");
@@ -55,6 +58,7 @@ export function useTenantEvents(): UseTenantEventsReturn {
     source.onmessage = (ev: MessageEvent<string>) => {
       try {
         const event = JSON.parse(ev.data) as TenantEvent;
+        setLastEvent(event);
         if (REFRESH_EVENT_TYPES.has(event.type)) {
           setRefreshSignal((n) => n + 1);
         }
@@ -66,5 +70,5 @@ export function useTenantEvents(): UseTenantEventsReturn {
     return () => source.close();
   }, []);
 
-  return { connected, refreshSignal };
+  return { connected, refreshSignal, lastEvent };
 }
