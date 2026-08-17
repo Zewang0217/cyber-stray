@@ -78,6 +78,10 @@ const nextConfig: NextConfig = {
         source: "/api/evolution/:path*",
         destination: `${controlPlaneOrigin}/api/evolution/:path*`,
       },
+      {
+        source: "/api/footprint/:path*",
+        destination: `${controlPlaneOrigin}/api/footprint/:path*`,
+      },
     ];
   },
 };

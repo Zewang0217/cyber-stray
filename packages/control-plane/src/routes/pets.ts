@@ -22,7 +22,7 @@ import { join } from 'path';
 import { and, eq } from 'drizzle-orm';
 import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
-import { pets, userTenants, type Pet } from '../db/schema.js';
+import { pets, userTenants, type NewPet } from '../db/schema.js';
 import { tenantDataDir } from '../tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
@@ -140,7 +140,9 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
     }
     const db = await getDb(config.dataDir);
     const rows = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).all();
-    return c.json({ success: true, data: rows });
+    // S14 clean cutover：pets.plan 已废弃（套餐在 tenants），映射掉死列防契约失真
+    const data = rows.map(({ plan: _deprecated, ...pet }) => pet);
+    return c.json({ success: true, data });
   });
 
   /** POST /api/pets/adopt — 领养：建宠物行 + 兴趣种子 */
@@ -167,7 +169,7 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
     // 反过来行先落、种子失败重试会撞 409 且丢用户选的兴趣）
     await seedInterestsIfAbsent(config.dataDir, scoped.tenantId, parsed.interests);
 
-    const pet: Pet = {
+    const pet: NewPet = {
       id: randomUUID(),
       tenantId: scoped.tenantId,
       name: parsed.name,
@@ -178,7 +180,6 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       // 就拉起首轮游荡（首推内容仍过 PushGate，门控理由随推送展示）
       boredom: 75,
       energy: 80,
-      plan: 'free',
       pushWindowStart: null,
       pushWindowEnd: null,
       createdAt: Date.now(),

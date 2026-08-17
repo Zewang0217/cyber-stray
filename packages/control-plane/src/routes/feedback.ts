@@ -21,7 +21,7 @@ import { planLimits } from '../plan/limits.js';
 import type { ControlPlaneConfig } from '../config.js';
 import type { ControlDb } from '../db/client.js';
 import { getDb } from '../db/client.js';
-import { pets, userTenants } from '../db/schema.js';
+import { pets, tenants, userTenants } from '../db/schema.js';
 import { tenantDataDir } from '../tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
@@ -221,10 +221,13 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
     if (!pet) {
       return c.json(jsonError('尚未领养宠物'), 409);
     }
+    // S14：套餐在账号层（tenants.plan）
+    const tenant = await db.select().from(tenants).where(eq(tenants.id, scoped.tenantId)).get();
+    const plan = tenant?.plan ?? 'free';
 
     // 节流：原子占位（check-then-write 横跨 spawn 会开并发窗口，双击可绕过
     // 额度）；worker 失败回滚额度（S9 review 修复：exitCode 决定回滚）
-    const claim = await claimBoostQuota(db, scoped.tenantId, pet.plan, Date.now());
+    const claim = await claimBoostQuota(db, scoped.tenantId, plan, Date.now());
     if (!claim.claimed) {
       return c.json(jsonError(`当前套餐每 ${claim.days} 天可顶一次话题`), 429);
     }

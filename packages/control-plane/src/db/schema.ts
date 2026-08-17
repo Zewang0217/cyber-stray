@@ -19,8 +19,19 @@ export const tenants = sqliteTable('tenants', {
   id: text('id').primaryKey(),
   /** 显示名（默认 = 用户 display name） */
   name: text('name').notNull(),
+  /** 套餐（S14：账号级——迁移自 pets.plan，1 租户 1 宠物下等价） */
+  plan: text('plan', { enum: ['free', 'pro', 'byok'] }).notNull().default('free'),
   createdAt: integer('created_at').notNull().$defaultFn(now),
   updatedAt: integer('updated_at').notNull().$defaultFn(now).$onUpdate(() => Date.now()),
+});
+
+/** 全局管理员（S14 RBAC：身份在 Casdoor、权限在控制面） */
+export const admins = sqliteTable('admins', {
+  /** 管理员 Casdoor sub */
+  sub: text('sub').primaryKey(),
+  /** 授予者 sub（首个 bootstrap 来自 CP_ADMIN_SUBS env 时为 'env'） */
+  grantedBy: text('granted_by').notNull(),
+  createdAt: integer('created_at').notNull().$defaultFn(now),
 });
 
 // ─── 用户 ↔ 租户关系 ────────────────────────────────────────────────────
@@ -132,6 +143,8 @@ export type VapidKey = typeof vapidKeys.$inferSelect;
 
 export type Tenant = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;
+export type Admin = typeof admins.$inferSelect;
+export type NewAdmin = typeof admins.$inferInsert;
 export type UserTenant = typeof userTenants.$inferSelect;
 export type Pet = typeof pets.$inferSelect;
 export type NewPet = typeof pets.$inferInsert;

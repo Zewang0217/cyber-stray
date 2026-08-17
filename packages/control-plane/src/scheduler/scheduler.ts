@@ -25,7 +25,7 @@
 
 import { eq } from 'drizzle-orm';
 import type { ControlDb } from '../db/client.js';
-import { pets } from '../db/schema.js';
+import { pets, tenants } from '../db/schema.js';
 import type { EventBus } from '../events/bus.js';
 import { tenantDataDir } from '../tenant.js';
 import { planLimits } from '../plan/limits.js';
@@ -170,6 +170,9 @@ export class Scheduler {
 
     const dbh = await db();
     const rows = await dbh.select().from(pets).all();
+    // S14：套餐在账号层（tenants.plan）——一次拉租户 plan 映射，避免 N+1
+    const tenantRows = await dbh.select().from(tenants).all();
+    const planByTenant = new Map(tenantRows.map((t) => [t.id, t.plan]));
 
     for (const pet of rows) {
       if (pet.status !== 'active') continue;
@@ -189,7 +192,15 @@ export class Scheduler {
         petId: pet.id,
         at: nowMs,
       });
-      this.launch(pet, state, dataDir, bus, runner, now, config);
+      this.launch(
+        { ...pet, plan: planByTenant.get(pet.tenantId) ?? 'free' },
+        state,
+        dataDir,
+        bus,
+        runner,
+        now,
+        config,
+      );
     }
   }
 

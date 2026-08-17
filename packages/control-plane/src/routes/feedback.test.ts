@@ -58,10 +58,11 @@ describe('feedback 路由（点赞/踩 + 顶话题）', () => {
       lastBoostAt,
       boredom: 30,
       energy: 80,
-      plan,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }).run();
+    // S14：套餐在账号层——plan 夹具写 tenants（pets.plan 已废弃）
+    await db.update(tenants).set({ plan }).where(eq(tenants.id, claims.tenantId)).run();
   }
 
   beforeEach(async () => {

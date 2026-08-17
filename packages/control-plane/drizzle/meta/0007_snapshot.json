@@ -1,9 +1,40 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d309173f-a744-42ae-8600-c9483b05f28c",
-  "prevId": "e8872a70-6c57-41db-905e-5feb399873b6",
+  "id": "9fb7ec7b-2d66-49a4-a9ed-922e91ce6bd5",
+  "prevId": "d309173f-a744-42ae-8600-c9483b05f28c",
   "tables": {
+    "admins": {
+      "name": "admins",
+      "columns": {
+        "sub": {
+          "name": "sub",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "granted_by": {
+          "name": "granted_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "billing": {
       "name": "billing",
       "columns": {
@@ -384,6 +415,14 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "plan": {
+          "name": "plan",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'free'"
         },
         "created_at": {
           "name": "created_at",

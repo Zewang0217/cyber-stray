@@ -18,7 +18,8 @@ import { join } from 'path';
 import { Hono } from 'hono';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { pets } from '../db/schema.js';
+import { pets, tenants } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 import { getOrCreateTenant } from '../tenant.js';
 import { signSession, SESSION_COOKIE } from '../session.js';
 import { createPetsRoutes } from './pets.js';
@@ -84,12 +85,16 @@ describe('pets 路由（领养）', () => {
     expect(res.status).toBe(201);
     const body = (await res.json()) as {
       success: boolean;
-      data: { name: string; tenantId: string; status: string; plan: string };
+      data: { name: string; tenantId: string; status: string };
     };
     expect(body.data.name).toBe('小溜');
     expect(body.data.tenantId).toBe('alice');
     expect(body.data.status).toBe('active');
-    expect(body.data.plan).toBe('free');
+    // S14：套餐在账号层（tenants.plan），宠物行不再暴露 plan 死列
+    expect('plan' in body.data).toBe(false);
+    const db2 = await getDb(dataDir);
+    const tenant = await db2.select().from(tenants).where(eq(tenants.id, 'alice')).get();
+    expect(tenant?.plan).toBe('free');
 
     // 种子落盘：与 agent InterestGraphData schema 兼容
     const seedPath = join(dataDir, 'tenants', 'alice', 'interests.json');

@@ -17,6 +17,7 @@ import { createChannelsRoutes } from './routes/channels.js';
 import { createPlanRoutes } from './routes/plan.js';
 import { createAdminRoutes } from './routes/admin.js';
 import { createEvolutionRoutes } from './routes/evolution.js';
+import { createFootprintRoutes } from './routes/footprint.js';
 export interface AppDeps {
   config: ControlPlaneConfig;
   oidc: OidcProvider;
@@ -57,6 +58,9 @@ export function createApp({ config, oidc, bus }: AppDeps): Hono {
 
   // S13：进化可视化 + 回滚（快照序列/反馈事件/游荡摘要）
   app.route('/api/evolution', createEvolutionRoutes({ config }));
+
+  // S14：游荡足迹（每次 loop 每一步骤）
+  app.route('/api/footprint', createFootprintRoutes({ config }));
 
   return app;
 }

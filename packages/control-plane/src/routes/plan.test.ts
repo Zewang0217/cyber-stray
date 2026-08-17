@@ -10,7 +10,7 @@ import { getOrCreateTenant } from '../tenant.js';
 import { signSession, SESSION_COOKIE } from '../session.js';
 import { loadMasterKey } from '../secrets/master-key.js';
 import { openTenantSecrets } from '../secrets/tenant-secrets.js';
-import { pets } from '../db/schema.js';
+import { pets, tenants } from '../db/schema.js';
 import { createPlanRoutes } from './plan.js';
 
 const SECRET = 'x'.repeat(40);
@@ -70,7 +70,7 @@ describe('plan 路由（S11 套餐管理）', () => {
   it('GET /api/plan：返回当前套餐与限额（含推送窗口）；未领养 → 409', async () => {
     await seedPet('alice');
     const db = await getDb(dataDir);
-    await db.update(pets).set({ plan: 'pro' }).where(eq(pets.tenantId, 'alice')).run();
+    await db.update(tenants).set({ plan: 'pro' }).where(eq(tenants.id, 'alice')).run();
 
     const res = await app.request(await authed('http://x/api/plan'));
     expect(res.status).toBe(200);
@@ -98,7 +98,8 @@ describe('plan 路由（S11 套餐管理）', () => {
 
     const db = await getDb(dataDir);
     const pet = await db.select().from(pets).where(eq(pets.tenantId, 'alice')).get();
-    expect(pet?.plan).toBe('pro');
+    const tenant = await db.select().from(tenants).where(eq(tenants.id, 'alice')).get();
+    expect(tenant?.plan).toBe('pro');
 
     const bad = await app.request(
       await authed('http://x/api/plan', {
@@ -123,7 +124,8 @@ describe('plan 路由（S11 套餐管理）', () => {
     );
     expect(res.status).toBe(200);
     const pet = await db.select().from(pets).where(eq(pets.tenantId, 'alice')).get();
-    expect(pet?.plan).toBe('free');
+    const tenant = await db.select().from(tenants).where(eq(tenants.id, 'alice')).get();
+    expect(tenant?.plan).toBe('free');
     expect(pet?.pushWindowStart).toBeNull();
     expect(pet?.pushWindowEnd).toBeNull();
   });
@@ -131,7 +133,7 @@ describe('plan 路由（S11 套餐管理）', () => {
   it('PUT /api/plan/push-window：pro 设窗口（跨午夜合法）；free → 403；非法小时 → 400', async () => {
     await seedPet('alice');
     const db = await getDb(dataDir);
-    await db.update(pets).set({ plan: 'pro' }).where(eq(pets.tenantId, 'alice')).run();
+    await db.update(tenants).set({ plan: 'pro' }).where(eq(tenants.id, 'alice')).run();
 
     // 跨午夜（22 → 6）是 Pro 明确合法场景
     const res = await app.request(
@@ -164,7 +166,7 @@ describe('plan 路由（S11 套餐管理）', () => {
     expect(oob.status).toBe(400);
 
     // free 无权
-    await db.update(pets).set({ plan: 'free' }).where(eq(pets.tenantId, 'alice')).run();
+    await db.update(tenants).set({ plan: 'free' }).where(eq(tenants.id, 'alice')).run();
     const denied = await app.request(
       await authed('http://x/api/plan/push-window', {
         method: 'PUT',
@@ -193,7 +195,7 @@ describe('plan 路由（S11 套餐管理）', () => {
   it('PUT /api/plan/byok-key：存 S4 加密 deepseek_api_key；非 byok 套餐 → 403', async () => {
     await seedPet('alice');
     const db = await getDb(dataDir);
-    await db.update(pets).set({ plan: 'byok' }).where(eq(pets.tenantId, 'alice')).run();
+    await db.update(tenants).set({ plan: 'byok' }).where(eq(tenants.id, 'alice')).run();
 
     const res = await app.request(
       await authed('http://x/api/plan/byok-key', {
@@ -208,7 +210,7 @@ describe('plan 路由（S11 套餐管理）', () => {
     expect(await store.get('deepseek_api_key')).toBe('sk-byok-test-123');
 
     // 非 byok 套餐拒绝
-    await db.update(pets).set({ plan: 'free' }).where(eq(pets.tenantId, 'alice')).run();
+    await db.update(tenants).set({ plan: 'free' }).where(eq(tenants.id, 'alice')).run();
     const denied = await app.request(
       await authed('http://x/api/plan/byok-key', {
         method: 'PUT',
@@ -221,7 +223,7 @@ describe('plan 路由（S11 套餐管理）', () => {
   it('GET byok 状态：有 key 报 bound，不回显内容', async () => {
     await seedPet('alice');
     const db = await getDb(dataDir);
-    await db.update(pets).set({ plan: 'byok' }).where(eq(pets.tenantId, 'alice')).run();
+    await db.update(tenants).set({ plan: 'byok' }).where(eq(tenants.id, 'alice')).run();
 
     let res = await app.request(await authed('http://x/api/plan'));
     let json = (await res.json()) as { data: { byok: { keyBound: boolean } } };

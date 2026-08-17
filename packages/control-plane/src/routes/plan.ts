@@ -15,7 +15,7 @@ import { Hono } from 'hono';
 import { and, eq } from 'drizzle-orm';
 import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
-import { pets, userTenants } from '../db/schema.js';
+import { pets, tenants, userTenants } from '../db/schema.js';
 import { planLimits, PLAN_VALUES, type PlanValue } from '../plan/limits.js';
 import { openTenantSecrets, TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
@@ -68,14 +68,17 @@ export function createPlanRoutes({ config }: PlanDeps): Hono {
     const db = await getDb(config.dataDir);
     const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
     if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
+    // S14：套餐在账号层（tenants.plan）
+    const tenant = await db.select().from(tenants).where(eq(tenants.id, scoped.tenantId)).get();
+    const plan = tenant?.plan ?? 'free';
 
     const store = await openTenantSecrets(config.dataDir, scoped.tenantId);
     const names = await store.list();
     return c.json({
       success: true,
       data: {
-        plan: pet.plan,
-        limits: planLimits(pet.plan),
+        plan,
+        limits: planLimits(plan),
         pushWindow:
           pet.pushWindowStart !== null && pet.pushWindowEnd !== null
             ? { startHour: pet.pushWindowStart, endHour: pet.pushWindowEnd }
@@ -109,14 +112,14 @@ export function createPlanRoutes({ config }: PlanDeps): Hono {
 
     // 降级清窗口（自定义推送时间是 Pro 权益；BYOK 同 Pro 保留）
     const keepWindow = nextPlan !== 'free';
-    await db
-      .update(pets)
-      .set({
-        plan: nextPlan as PlanValue,
-        ...(keepWindow ? {} : { pushWindowStart: null, pushWindowEnd: null }),
-      })
-      .where(eq(pets.tenantId, scoped.tenantId))
-      .run();
+    await db.update(tenants).set({ plan: nextPlan as PlanValue }).where(eq(tenants.id, scoped.tenantId)).run();
+    if (!keepWindow) {
+      await db
+        .update(pets)
+        .set({ pushWindowStart: null, pushWindowEnd: null })
+        .where(eq(pets.tenantId, scoped.tenantId))
+        .run();
+    }
     return c.json({ success: true, data: { plan: nextPlan } });
   });
 
@@ -143,7 +146,8 @@ export function createPlanRoutes({ config }: PlanDeps): Hono {
     const db = await getDb(config.dataDir);
     const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
     if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
-    if (pet.plan === 'free') {
+    const tenant = await db.select().from(tenants).where(eq(tenants.id, scoped.tenantId)).get();
+    if ((tenant?.plan ?? 'free') === 'free') {
       return c.json(jsonError('自定义推送时间是 Pro 权益'), 403);
     }
 
@@ -193,7 +197,8 @@ export function createPlanRoutes({ config }: PlanDeps): Hono {
     const db = await getDb(config.dataDir);
     const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
     if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
-    if (pet.plan !== 'byok') {
+    const tenant = await db.select().from(tenants).where(eq(tenants.id, scoped.tenantId)).get();
+    if ((tenant?.plan ?? 'free') !== 'byok') {
       return c.json(jsonError('BYOK key 仅 byok 套餐可配置'), 403);
     }
 
