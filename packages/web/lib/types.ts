@@ -125,9 +125,14 @@ export interface PushContent {
   pushed?: boolean;
   /** 是否被推送门控拦截（仅学习，没告诉主人） */
   gated?: boolean;
+  /** 推送理由（门控因子得分，S8） */
+  gateReasons?: string[];
+  /** 渠道消息 ID（S9：点赞/踩按它归因到推送时命中的话题） */
+  messageId?: string;
+  /** 推送时门控命中的兴趣话题（S9：顶话题快捷入口） */
+  matchedTopics?: string[];
 }
 
-// ============================================
 // 用户反馈
 // ============================================
 

@@ -10,6 +10,7 @@
 
 import type { Tool } from 'ai';
 import type { ToolContext } from './registry/context.js';
+import { getConfig } from '../config.js';
 
 /** 工具元信息（用于 Prompt 生成） */
 export interface ToolMetadata {
@@ -37,6 +38,23 @@ export class ToolManager {
   private static registry = new Map<string, ToolDefinition>();
   private static enabledSet = new Set<string>();
   private static initialized = false;
+
+  /**
+   * 浏览器工具是否对当前租户暴露（browser.enabled 主开关）。
+   * 注册是进程级一次的，暴露与否按当前生效配置在 get 时判定。
+   */
+  private static isBrowserExposed(): boolean {
+    return getConfig().browser?.enabled !== false;
+  }
+
+  /** 过滤掉当前配置下禁用的浏览器工具 */
+  private static *visibleDefinitions(): Generator<ToolDefinition> {
+    const exposeBrowser = this.isBrowserExposed();
+    for (const def of this.registry.values()) {
+      if (def.metadata.category === 'browser' && !exposeBrowser) continue;
+      yield def;
+    }
+  }
 
   /**
    * 注册单个工具
@@ -82,7 +100,7 @@ export class ToolManager {
    * 获取所有工具元信息
    */
   static getMetadata(enabledOnly = false): ToolMetadata[] {
-    const all = Array.from(this.registry.values()).map((def) => ({
+    const all = Array.from(this.visibleDefinitions()).map((def) => ({
       ...def.metadata,
       enabled: this.enabledSet.has(def.metadata.name),
     }));
@@ -109,10 +127,11 @@ export class ToolManager {
    * 获取所有工具名称
    */
   static getToolNames(enabledOnly = false): string[] {
+    const visible = Array.from(this.visibleDefinitions()).map((d) => d.metadata.name);
     if (enabledOnly) {
-      return Array.from(this.enabledSet);
+      return visible.filter((name) => this.enabledSet.has(name));
     }
-    return Array.from(this.registry.keys());
+    return visible;
   }
 
   /**
@@ -140,9 +159,9 @@ export class ToolManager {
    */
   static getTools(ctx: ToolContext): Record<string, Tool> {
     const tools: Record<string, Tool> = {};
-    for (const name of this.enabledSet) {
-      const def = this.registry.get(name);
-      if (def) {
+    for (const def of this.visibleDefinitions()) {
+      const name = def.metadata.name;
+      if (this.enabledSet.has(name)) {
         tools[name] = def.createTool(ctx);
       }
     }

@@ -3,30 +3,35 @@ import { TavilyAdapter } from './tavily.js';
 import { ExaAdapter } from './exa.js';
 import type { SearchAdapter, SearchOptions } from './adapter.js';
 import type { SearchResult } from '../../types.js';
-import { config } from '../../config.js';
+import { getConfig } from '../../config.js';
 import { consola } from '../../logger.js';
 
 const logger = consola.withTag('search');
 
-const adapters: Map<string, SearchAdapter> = new Map();
+/** DuckDuckGo 免 key，进程级单例 */
+const duckDuckGo = new DuckDuckGoAdapter();
 
-adapters.set('duckduckgo', new DuckDuckGoAdapter());
-
-if (config.searchApiKey) {
-  adapters.set('tavily', new TavilyAdapter(config.searchApiKey));
-}
-
-if (config.exaApiKey) {
-  adapters.set('exa', new ExaAdapter(config.exaApiKey));
+/**
+ * 按当前生效配置取适配器；未配置 key 的 premium 适配器返回 null（调用方回退）。
+ *
+ * 旧版在模块加载期根据首个 config 建 Tavily/Exa 并缓存——租户模式下会把
+ * 所有租户钉死成首个加载者的 key。改为按调用时配置惰性构造（适配器无状态，
+ * 构造代价可忽略）。
+ */
+function getConfiguredAdapter(name: string): SearchAdapter | null {
+  const cfg = getConfig();
+  if (name === 'tavily') return cfg.searchApiKey ? new TavilyAdapter(cfg.searchApiKey) : null;
+  if (name === 'exa') return cfg.exaApiKey ? new ExaAdapter(cfg.exaApiKey) : null;
+  return duckDuckGo;
 }
 
 function getDefaultAdapter(): SearchAdapter {
-  const name = config.searchProvider || 'duckduckgo';
-  const adapter = adapters.get(name);
+  const name = getConfig().searchProvider || 'duckduckgo';
+  const adapter = getConfiguredAdapter(name);
 
   if (!adapter || !adapter.isAvailable()) {
     logger.warn(`适配器 ${name} 不可用，回退到 DuckDuckGo`);
-    return adapters.get('duckduckgo')!;
+    return duckDuckGo;
   }
 
   return adapter;
@@ -36,14 +41,14 @@ export async function search(
   query: string,
   options?: SearchOptions & { adapter?: 'duckduckgo' | 'tavily' | 'exa' },
 ): Promise<SearchResult[]> {
-  const adapterName = options?.adapter || config.searchProvider || 'duckduckgo';
-  const adapter = adapters.get(adapterName);
+  const cfg = getConfig();
+  const adapterName = options?.adapter || cfg.searchProvider || 'duckduckgo';
+  const adapter = getConfiguredAdapter(adapterName);
 
   if (!adapter || !adapter.isAvailable()) {
     logger.warn(`适配器 ${adapterName} 不可用，回退到 DuckDuckGo`);
-    const fallbackAdapter = adapters.get('duckduckgo')!;
     try {
-      return await fallbackAdapter.search(query, options);
+      return await duckDuckGo.search(query, options);
     } catch (error) {
       logger.error('搜索失败', { adapter: 'duckduckgo', error: String(error) });
       return [];
@@ -53,7 +58,7 @@ export async function search(
   logger.info('执行搜索', {
     adapter: adapter.getName(),
     query,
-    maxResults: options?.maxResults || config.maxSearchResults,
+    maxResults: options?.maxResults || cfg.maxSearchResults,
   });
 
   try {
@@ -78,8 +83,8 @@ export async function premiumSearch(
   query: string,
   options?: SearchOptions,
 ): Promise<SearchResult[]> {
-  const exaAdapter = adapters.get('exa');
-  const tavilyAdapter = adapters.get('tavily');
+  const exaAdapter = getConfiguredAdapter('exa');
+  const tavilyAdapter = getConfiguredAdapter('tavily');
 
   if (!exaAdapter && !tavilyAdapter) {
     logger.warn('premium 搜索无可用适配器（需配置 Exa 或 Tavily API key）');

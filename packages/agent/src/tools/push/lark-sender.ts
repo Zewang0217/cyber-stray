@@ -8,29 +8,33 @@
 
 import { createLarkChannel, type SendResult } from '@larksuiteoapi/node-sdk';
 import { consola } from '../../logger.js';
-import { config } from '../../config.js';
+import { getConfig } from '../../config.js';
 
 const logger = consola.withTag('feishu-sender');
 
-/** LarkChannel 实例（懒加载） */
-let channel: ReturnType<typeof createLarkChannel> | null = null;
+/** LarkChannel 实例（按 appId 键化懒加载——租户各自 secrets 不串实例） */
+const channels = new Map<string, ReturnType<typeof createLarkChannel>>();
 
 /**
  * 获取 LarkChannel 实例
  */
 function getChannel(): ReturnType<typeof createLarkChannel> {
-  if (!channel) {
-    const appId = config.larkAppId;
-    const appSecret = config.larkAppSecret;
+  const cfg = getConfig();
+  const appId = cfg.larkAppId;
+  const appSecret = cfg.larkAppSecret;
 
-    if (!appId || !appSecret) {
-      throw new Error('未配置 LARK_APP_ID/LARK_APP_SECRET，无法使用 LarkChannel');
-    }
+  if (!appId || !appSecret) {
+    throw new Error('未配置 LARK_APP_ID/LARK_APP_SECRET，无法使用 LarkChannel');
+  }
 
-    channel = createLarkChannel({ appId, appSecret });
+  const key = `${appId}:${appSecret}`;
+  let ch = channels.get(key);
+  if (!ch) {
+    ch = createLarkChannel({ appId, appSecret });
+    channels.set(key, ch);
     logger.info('LarkChannel 实例已创建');
   }
-  return channel;
+  return ch;
 }
 
 /**
@@ -40,7 +44,7 @@ function getChannel(): ReturnType<typeof createLarkChannel> {
  * @returns 消息 ID
  */
 async function sendViaLarkChannel(content: string): Promise<string | undefined> {
-  const chatId = config.feishu?.chatId;
+  const chatId = getConfig().feishu?.chatId;
 
   if (!chatId) {
     logger.warn('未配置 feishu.chatId，消息可能无法发送');
@@ -65,14 +69,15 @@ async function sendViaLarkChannel(content: string): Promise<string | undefined> 
  * @returns 消息 ID（Webhook 不返回消息 ID）
  */
 async function sendViaWebhook(content: string, useCard = false): Promise<string | undefined> {
-  const webhook = config.feishuWebhook;
+  const cfg = getConfig();
+  const webhook = cfg.feishuWebhook;
   if (!webhook) {
     throw new Error('未配置 FEISHU_WEBHOOK');
   }
 
   let body: object;
 
-  if (useCard && config.larkAppId && config.larkAppSecret) {
+  if (useCard && cfg.larkAppId && cfg.larkAppSecret) {
     // 使用卡片格式（需要 LarkChannel 的 appId/appSecret）
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 
@@ -124,14 +129,15 @@ async function sendViaWebhook(content: string, useCard = false): Promise<string 
  * @returns 消息 ID
  */
 export async function sendFeishuMessage(content: string): Promise<string | undefined> {
-  const pushMode = config.feishu?.pushMode || 'lark_channel';
+  const cfg = getConfig();
+  const pushMode = cfg.feishu?.pushMode || 'lark_channel';
 
   // 检查 LarkChannel 是否可用
-  const canUseLarkChannel = !!(config.larkAppId && config.larkAppSecret);
+  const canUseLarkChannel = !!(cfg.larkAppId && cfg.larkAppSecret);
 
   if (pushMode === 'lark_channel' && canUseLarkChannel) {
     return sendViaLarkChannel(content);
-  } else if (config.feishuWebhook) {
+  } else if (cfg.feishuWebhook) {
     // 回退到 Webhook
     logger.info('回退到 Webhook 发送方式');
     return sendViaWebhook(content, canUseLarkChannel);
@@ -141,8 +147,11 @@ export async function sendFeishuMessage(content: string): Promise<string | undef
 }
 
 /**
- * 获取 LarkChannel 实例（供外部使用，如发送卡片）
+ * 获取 LarkChannel 实例（供外部使用，如发送卡片）。
+ * 返回当前配置对应的实例；未配置时返回 null。
  */
 export function getLarkChannel(): ReturnType<typeof createLarkChannel> | null {
-  return channel;
+  const cfg = getConfig();
+  if (!cfg.larkAppId || !cfg.larkAppSecret) return null;
+  return getChannel();
 }

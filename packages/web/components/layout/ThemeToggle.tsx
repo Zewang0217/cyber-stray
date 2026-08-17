@@ -1,51 +1,49 @@
 "use client";
 
-import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Moon, Sun } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  THEMES,
+  THEME_STORAGE_KEY,
+  applyTheme,
+  findTheme,
+} from "@/lib/themes";
 
 /**
- * 主题切换按钮
- * 使用 next-themes 实现全局暗/亮模式切换
+ * 主题切换器(图鉴卷循环:日→夜→春→秋)
+ * 数据驱动:主题值全部来自 lib/themes.ts,此处零主题色字面量。
+ * 持久化 localStorage;首帧由 layout 内联脚本应用(无闪烁)。
  */
 export function ThemeToggle(): React.ReactElement {
-  const { setTheme, resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+  const [current, setCurrent] = useState(THEMES[0]!);
 
+  // 挂载时恢复已选主题(内联脚本已应用样式,这里只同步 UI 状态)
   useEffect(() => {
-    setMounted(true);
+    try {
+      const saved = localStorage.getItem(THEME_STORAGE_KEY);
+      setCurrent(findTheme(saved));
+    } catch {
+      // 存储不可用:保持默认
+    }
   }, []);
 
-  // 避免 SSR 闪烁：未挂载时不渲染
-  if (!mounted) {
-    return (
-      <div className="w-9 h-9 rounded-xl bg-surface/50 border border-surface" />
-    );
-  }
-
-  const isDark = resolvedTheme === "dark";
+  const cycle = () => {
+    const next = THEMES[(THEMES.indexOf(current) + 1) % THEMES.length]!;
+    setCurrent(next);
+    applyTheme(next);
+  };
 
   return (
     <motion.button
-      onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="relative p-2 rounded-xl bg-surface/50 border border-surface hover:border-accent/30 transition-colors"
+      onClick={cycle}
+      className="relative px-2 py-1 rounded-sm bg-[var(--c-paper)] border border-[var(--c-engraving-fine)] hover:border-[var(--c-amber)] transition-colors"
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
-      transition={{ type: "spring", stiffness: 400, damping: 25 }}
-      aria-label={isDark ? "切换到亮色模式" : "切换到暗色模式"}
+      transition={{ type: "spring", stiffness: 300, damping: 28 }}
+      aria-label={`切换图鉴卷(当前:${current.label})`}
+      title={current.label}
     >
-      <motion.div
-        initial={false}
-        animate={{ rotate: isDark ? 0 : 180 }}
-        transition={{ type: "spring", stiffness: 400, damping: 25 }}
-      >
-        {isDark ? (
-          <Moon className="w-5 h-5 text-accent" />
-        ) : (
-          <Sun className="w-5 h-5 text-warning" />
-        )}
-      </motion.div>
+      <span className="field-note text-sm text-text leading-none">{current.glyph}</span>
     </motion.button>
   );
 }

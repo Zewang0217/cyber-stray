@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdir } from 'fs/promises';
 import {
   processFeedback,
+  boostTopic,
   registerSpeakTopics,
   getMessageTopicMapSize,
   _clearMessageTopicMap,
@@ -274,4 +275,72 @@ describe('FeedbackPipeline', () => {
     const addedNew = graph.addInterest('生物学', 0.2);
     expect(addedNew).toBe(true);
   });
+});
+
+describe('S9 REST 反馈（持久化归因 + boost）', () => {
+  let cleanup: () => void;
+
+  beforeEach(() => {
+    const temp = useTempDataDir();
+    cleanup = temp.cleanup;
+    _clearMessageTopicMap();
+    _resetInterestGraphCache();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+  // ----------------------------------------
+  // S9 (#76)：REST 反馈 + 顶话题
+  // ----------------------------------------
+
+  it('opts.topics 显式归因：无内存映射也能强化兴趣（worker 短命进程场景）', async () => {
+      await mkdir('data/memory', { recursive: true });
+      const graph = getInterestGraph();
+      graph.addInterest('量子计算', 0.3);
+      const before = graph.getNode('量子计算')!.weight;
+
+      // 不注册内存映射——归因来自 speaks 历史反查（调用方解析）
+      const result = await processFeedback('like', 'om-rest-1', 'user-1', {
+        topics: ['量子计算'],
+      });
+
+      expect(result.recorded).toBe(true);
+      expect(result.topicsMatched).toBe(true);
+      expect(result.interestReinforced).toBe(true);
+      expect(graph.getNode('量子计算')!.weight).toBeGreaterThan(before);
+    });
+
+    it('boostTopic：新话题入图（source=feedback）+ 权重高于点赞强化', async () => {
+      await mkdir('data/memory', { recursive: true });
+      const graph = getInterestGraph();
+
+      const result = await boostTopic('天文摄影', 'user-1');
+
+      expect(result.recorded).toBe(true);
+      expect(result.interestReinforced).toBe(true);
+      const node = graph.getNode('天文摄影');
+      expect(node).toBeDefined();
+      expect(node!.source).toBe('feedback');
+      // 0.3 种子 + 0.25 强化，明显高于单次点赞的 +0.1
+      expect(node!.weight).toBeGreaterThanOrEqual(0.55);
+    });
+
+    it('boostTopic：已有话题只强化不重建，反馈记录 type=boost', async () => {
+      await mkdir('data/memory', { recursive: true });
+      const graph = getInterestGraph();
+      graph.addInterest('量子计算', 0.5);
+      const before = graph.getNode('量子计算')!.weight;
+
+      await boostTopic('量子计算', 'user-1');
+
+      expect(graph.getNode('量子计算')!.weight).toBeGreaterThan(before);
+
+      const { readFile } = await import('fs/promises');
+      const { getDataPath } = await import('../config.js');
+      const store = JSON.parse(await readFile(getDataPath('feedback.json'), 'utf-8')) as {
+        feedbacks: Array<{ type: string }>;
+      };
+      expect(store.feedbacks.some((f) => f.type === 'boost')).toBe(true);
+    });
 });

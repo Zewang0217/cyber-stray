@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { consola } from '../../logger.js';
+import { getConfig, getDataRoot } from '../../config.js';
 import type { AgentBrowserEnvelope, BrowserCommandResult, BrowserExecutorOptions } from './types.js';
 
 const logger = consola.withTag('browser:executor');
@@ -174,18 +175,30 @@ export class BrowserExecutor {
   }
 }
 
-// ── 模块级单例 ──────────────────────────────────────────────
+// ── 模块级单例（按 session + 租户数据根键化）───────────────────────────
 
-let instance: BrowserExecutor | null = null;
+/**
+ * 键 = session + 数据根：warmup 时用租户 config 的 sessionName 建实例
+ * （含该租户加密 key），工具侧 `getBrowserExecutor()` 解析当前生效配置的
+ * 同一 session + 当前数据根，两者命中同一实例。
+ *
+ * S1 review 修复：旧实现只按 session 键化——单进程先后跑租户 A/B（共享
+ * 默认 session 'cyber-stray'）时，B 的 warmup 命中 A 的实例，浏览器数据
+ * 用 A 的 key 加解密（跨租户错位）。数据根入键后每租户独立实例。
+ */
+const executorCache = new Map<string, BrowserExecutor>();
 
 export function getBrowserExecutor(options?: BrowserExecutorOptions): BrowserExecutor {
-  if (!instance) {
-    instance = new BrowserExecutor(options);
+  const session =
+    options?.session ?? getConfig().browser?.sessionName ?? DEFAULT_SESSION;
+  const key = `${session}::${getDataRoot()}`;
+  if (!executorCache.has(key)) {
+    executorCache.set(key, new BrowserExecutor(options));
   }
-  return instance;
+  return executorCache.get(key)!;
 }
 
 /** 测试隔离：重置单例 */
 export function _resetBrowserExecutor(): void {
-  instance = null;
+  executorCache.clear();
 }

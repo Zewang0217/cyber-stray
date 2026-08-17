@@ -8,7 +8,7 @@
 
 import { getBrowserExecutor } from './executor.js';
 import { consola } from '../../logger.js';
-import { config, getDataPath } from '../../config.js';
+import { getConfig, getDataPath, getDataRoot } from '../../config.js';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { dirname } from 'node:path';
@@ -25,11 +25,11 @@ export interface BrowserContext {
   sessionStartTime: string;
 }
 
-/** 模块级浏览器上下文（跨游荡持久） */
-let browserContext: BrowserContext | null = null;
+/** 浏览器上下文（按数据根键化，跨游荡持久；租户各自隔离） */
+const browserContexts = new Map<string, BrowserContext | null>();
 
 export function getBrowserContext(): BrowserContext | null {
-  return browserContext;
+  return browserContexts.get(getDataRoot()) ?? null;
 }
 
 /**
@@ -59,11 +59,12 @@ async function loadOrCreateEncryptionKey(): Promise<string> {
  */
 export async function browserWarmUp(): Promise<BrowserContext | null> {
   try {
-    const restore = config.browser?.restore !== false;
+    const cfg = getConfig().browser;
+    const restore = cfg?.restore !== false;
     const encryptionKey = restore ? await loadOrCreateEncryptionKey() : undefined;
     const executor = getBrowserExecutor({
-      session: config.browser?.sessionName,
-      timeout: config.browser?.timeout,
+      session: cfg?.sessionName,
+      timeout: cfg?.timeout,
       restore,
       encryptionKey,
     });
@@ -72,7 +73,7 @@ export async function browserWarmUp(): Promise<BrowserContext | null> {
       logger.warn('浏览器预热失败，降级为无浏览器模式');
       return null;
     }
-    browserContext = {
+    const context: BrowserContext = {
       enabled: true,
       currentUrl: 'about:blank',
       currentPageTitle: null,
@@ -80,8 +81,9 @@ export async function browserWarmUp(): Promise<BrowserContext | null> {
       recentPages: [],
       sessionStartTime: new Date().toISOString(),
     };
+    browserContexts.set(getDataRoot(), context);
     logger.info('浏览器预热成功');
-    return browserContext;
+    return context;
   } catch (error) {
     logger.warn('浏览器预热异常，降级为无浏览器模式', { error: String(error) });
     return null;
@@ -95,7 +97,7 @@ export async function browserShutdown(): Promise<void> {
   try {
     const executor = getBrowserExecutor();
     await executor.shutdown();
-    browserContext = null;
+    browserContexts.set(getDataRoot(), null);
     logger.info('浏览器已关闭');
   } catch (error) {
     logger.warn('浏览器关闭失败（忽略）', { error: String(error) });
@@ -141,6 +143,7 @@ export function buildBrowserPromptSection(ctx: BrowserContext | null): string {
 export function updateBrowserContext(
   update: Partial<Pick<BrowserContext, 'currentUrl' | 'currentPageTitle' | 'openTabs'>>,
 ): void {
+  const browserContext = getBrowserContext();
   if (!browserContext) return;
   if (update.currentUrl !== undefined) browserContext.currentUrl = update.currentUrl;
   if (update.currentPageTitle !== undefined)
@@ -163,5 +166,5 @@ export function updateBrowserContext(
 
 /** 测试用重置 */
 export function _resetBrowserContext(): void {
-  browserContext = null;
+  browserContexts.clear();
 }

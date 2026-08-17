@@ -18,7 +18,7 @@ function feedbackFilePath(): string {
 }
 
 /** 反馈类型 */
-export type FeedbackType = 'like' | 'dislike';
+export type FeedbackType = 'like' | 'dislike' | 'boost';
 
 /** 单条反馈 */
 export interface Feedback {

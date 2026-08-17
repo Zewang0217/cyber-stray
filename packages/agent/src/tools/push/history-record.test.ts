@@ -85,3 +85,39 @@ describe('buildSpeakRecord', () => {
     expect(record.gateScore).toBe(0.8);
   });
 });
+
+describe('S8 推送理由', () => {
+  const ts = '2026-08-15T10:00:00.000Z';
+
+  test('gateReasons 落盘（推送理由随记录持久化）', () => {
+    const record = buildSpeakRecord('AI 芯片新进展', 'article', true, ts, {
+      gateScore: 0.82,
+      gateReasons: ['兴趣相关度=0.90', '用户偏好=0.80', '内容质量=0.70'],
+    });
+
+    expect(record.gateReasons).toEqual(['兴趣相关度=0.90', '用户偏好=0.80', '内容质量=0.70']);
+  });
+
+  test('无理由时不写字段（旧记录兼容）', () => {
+    const record = buildSpeakRecord('碎碎念', 'nonsense', true, ts);
+    expect('gateReasons' in record).toBe(false);
+  });
+});
+
+describe('S9 反馈归因持久化', () => {
+  const ts = '2026-08-15T11:00:00.000Z';
+
+  test('matchedTopics 落盘（worker 退出后 REST 反馈可从历史反查归因）', () => {
+    const record = buildSpeakRecord('量子计算新突破', 'article', true, ts, {
+      messageId: 'om-123',
+      matchedTopics: ['量子计算', '科技'],
+    });
+
+    expect(record.matchedTopics).toEqual(['量子计算', '科技']);
+  });
+
+  test('无话题时不写字段（旧记录兼容）', () => {
+    const record = buildSpeakRecord('碎碎念', 'nonsense', true, ts);
+    expect('matchedTopics' in record).toBe(false);
+  });
+});

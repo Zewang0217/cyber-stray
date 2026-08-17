@@ -1,0 +1,6 @@
+# 运行时数据（租户注册表 + tenants/ 目录）——不入库
+/data
+
+node_modules/
+coverage/
+*.log

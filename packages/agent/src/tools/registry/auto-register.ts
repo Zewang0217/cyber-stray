@@ -8,7 +8,6 @@
  */
 
 import { ToolManager } from '../tool-manager.js';
-import { config } from '../../config.js';
 import { searchWebToolDef } from './search-web.js';
 import { readPageToolDef } from './read-page.js';
 import { speakToolDef } from './speak.js';
@@ -23,7 +22,11 @@ import { browsePageToolDef } from '../browser/tools/browse-page.js';
 import { browseSnapshotToolDef } from '../browser/tools/browse-snapshot.js';
 import { browseActToolDef } from '../browser/tools/browse-act.js';
 
-/** 浏览器探索工具（browser.enabled = false 时不注册，design.md §3.5 / §6） */
+/**
+ * 浏览器探索工具（全部注册；是否暴露给 LLM 由 ToolManager 按当前生效配置
+ * `browser.enabled` 在 get 时过滤——租户模式下各租户配置不同，注册期一刀切
+ * 会把所有租户钉死成首个加载者的配置，见 design.md §3.5 / §6）
+ */
 const BROWSER_TOOL_DEFINITIONS = [
   browserSkillListToolDef,
   browserSkillLoadToolDef,
@@ -43,7 +46,7 @@ const TOOL_DEFINITIONS = [
   observeUserToolDef,
   readFeedbackToolDef,
   processFeedbackToolDef,
-  ...(config.browser?.enabled !== false ? BROWSER_TOOL_DEFINITIONS : []),
+  ...BROWSER_TOOL_DEFINITIONS,
 ];
 
 /**

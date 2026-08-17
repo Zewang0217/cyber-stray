@@ -1,0 +1,1 @@
+ALTER TABLE `pets` ADD `last_boost_at` integer;
