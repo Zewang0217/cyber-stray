@@ -26,7 +26,7 @@ export default function SettingsPage(): React.ReactElement {
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
       >
         <h1
-          className="font-heading text-hero font-bold text-text"
+          className="font-heading text-hero font-semibold text-text"
           style={{ letterSpacing: "-0.04em" }}
         >
           设置
@@ -43,8 +43,8 @@ export default function SettingsPage(): React.ReactElement {
         transition={{ type: "spring", stiffness: 400, damping: 25, delay: 0.1 }}
       >
         {/* 心跳配置 */}
-        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
-          <h2 className="font-heading text-heading font-bold text-text mb-4">
+        <div className="p-6 paper-card rounded-sm">
+          <h2 className="font-heading text-heading font-semibold text-text mb-4">
             心跳与状态
           </h2>
           <div className="space-y-4 font-mono text-sm">
@@ -72,8 +72,8 @@ export default function SettingsPage(): React.ReactElement {
         </div>
 
         {/* LLM 配置 */}
-        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
-          <h2 className="font-heading text-heading font-bold text-text mb-4">
+        <div className="p-6 paper-card rounded-sm">
+          <h2 className="font-heading text-heading font-semibold text-text mb-4">
             LLM 配置
           </h2>
           <div className="space-y-4 font-mono text-sm">
@@ -89,8 +89,8 @@ export default function SettingsPage(): React.ReactElement {
         </div>
 
         {/* 搜索配置 */}
-        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
-          <h2 className="font-heading text-heading font-bold text-text mb-4">
+        <div className="p-6 paper-card rounded-sm">
+          <h2 className="font-heading text-heading font-semibold text-text mb-4">
             搜索配置
           </h2>
           <div className="space-y-4 font-mono text-sm">
@@ -106,8 +106,8 @@ export default function SettingsPage(): React.ReactElement {
         </div>
 
         {/* 推送配置 */}
-        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
-          <h2 className="font-heading text-heading font-bold text-text mb-4">
+        <div className="p-6 paper-card rounded-sm">
+          <h2 className="font-heading text-heading font-semibold text-text mb-4">
             推送渠道
           </h2>
           <div className="space-y-4 font-mono text-sm">
@@ -123,8 +123,8 @@ export default function SettingsPage(): React.ReactElement {
         </div>
 
         {/* 系统推送（S10）：Web Push 订阅开关 */}
-        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
-          <h2 className="font-heading text-heading font-bold text-text mb-2">系统推送</h2>
+        <div className="p-6 paper-card rounded-sm">
+          <h2 className="font-heading text-heading font-semibold text-text mb-2">系统推送</h2>
           <p className="text-small text-subtext mb-4">
             关掉 App 也能收到它的推送（浏览器系统级通知）
           </p>
@@ -140,7 +140,7 @@ export default function SettingsPage(): React.ReactElement {
                 type="button"
                 disabled={pushState === "subscribing"}
                 onClick={() => void (pushState === "on" ? disable() : enable())}
-                className={`px-4 py-2 rounded-xl text-small font-medium transition-colors ${
+                className={`px-4 py-2 rounded-sm text-small font-medium transition-colors ${
                   pushState === "on"
                     ? "bg-success/20 text-success"
                     : "bg-accent text-base font-semibold"
@@ -158,8 +158,8 @@ export default function SettingsPage(): React.ReactElement {
         </div>
 
         {/* 飞书通道（S10）：可选绑定 */}
-        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
-          <h2 className="font-heading text-heading font-bold text-text mb-2">飞书通道（可选）</h2>
+        <div className="p-6 paper-card rounded-sm">
+          <h2 className="font-heading text-heading font-semibold text-text mb-2">飞书通道（可选）</h2>
           <p className="text-small text-subtext mb-4">
             绑定后推送同步发到飞书群机器人（高级用户）
           </p>
@@ -169,7 +169,7 @@ export default function SettingsPage(): React.ReactElement {
               <button
                 type="button"
                 onClick={() => void unbindFeishu()}
-                className="px-3 py-1.5 rounded-xl text-small bg-danger/10 text-danger"
+                className="px-3 py-1.5 rounded-sm text-small bg-danger/10 text-danger"
               >
                 解绑
               </button>
@@ -190,11 +190,11 @@ export default function SettingsPage(): React.ReactElement {
                 type="url"
                 required
                 placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/…"
-                className="flex-1 px-3 py-2 rounded-xl bg-surface text-small text-text border border-white/10"
+                className="flex-1 px-3 py-2 rounded-sm bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
               />
               <button
                 type="submit"
-                className="px-4 py-2 rounded-xl text-small bg-accent text-base font-semibold"
+                className="px-4 py-2 rounded-sm text-small bg-accent text-base font-semibold"
               >
                 绑定
               </button>
@@ -204,8 +204,8 @@ export default function SettingsPage(): React.ReactElement {
         </div>
 
         {/* 套餐（S11）：Plan 门控与节流 */}
-        <div className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
-          <h2 className="font-heading text-heading font-bold text-text mb-2">套餐</h2>
+        <div className="p-6 paper-card rounded-sm">
+          <h2 className="font-heading text-heading font-semibold text-text mb-2">套餐</h2>
           <p className="text-small text-subtext mb-4">
             {plan
               ? `当前 ${plan.plan.toUpperCase()} · 每日推送上限 ${plan.limits.pushesPerDay} 条`
@@ -219,10 +219,10 @@ export default function SettingsPage(): React.ReactElement {
                 type="button"
                 disabled={plan?.plan === p}
                 onClick={() => void switchPlan(p)}
-                className={`px-4 py-2 rounded-xl text-small font-semibold ${
+                className={`px-4 py-2 rounded-sm text-small font-semibold ${
                   plan?.plan === p
                     ? "bg-accent text-base"
-                    : "bg-surface text-subtext border border-white/10"
+                    : "bg-surface text-subtext border border-[var(--c-engraving-fine)]"
                 }`}
               >
                 {p === "free" ? "免费" : p === "pro" ? "Pro" : "BYOK"}
@@ -248,7 +248,7 @@ export default function SettingsPage(): React.ReactElement {
                 min={0}
                 max={23}
                 defaultValue={plan.pushWindow?.startHour ?? 9}
-                className="w-16 px-2 py-1.5 rounded-lg bg-surface text-small text-text border border-white/10"
+                className="w-16 px-2 py-1.5 rounded-lg bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
               />
               <span className="text-small text-subtext">点到</span>
               <input
@@ -257,12 +257,12 @@ export default function SettingsPage(): React.ReactElement {
                 min={0}
                 max={23}
                 defaultValue={plan.pushWindow?.endHour ?? 22}
-                className="w-16 px-2 py-1.5 rounded-lg bg-surface text-small text-text border border-white/10"
+                className="w-16 px-2 py-1.5 rounded-lg bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
               />
               <span className="text-small text-subtext">点</span>
               <button
                 type="submit"
-                className="px-3 py-1.5 rounded-xl text-small bg-accent text-base font-semibold"
+                className="px-3 py-1.5 rounded-sm text-small bg-accent text-base font-semibold"
               >
                 保存
               </button>
@@ -270,7 +270,7 @@ export default function SettingsPage(): React.ReactElement {
                 <button
                   type="button"
                   onClick={() => void clearPushWindow()}
-                  className="px-3 py-1.5 rounded-xl text-small bg-danger/10 text-danger"
+                  className="px-3 py-1.5 rounded-sm text-small bg-danger/10 text-danger"
                 >
                   清除
                 </button>
@@ -297,11 +297,11 @@ export default function SettingsPage(): React.ReactElement {
                 placeholder={
                   plan.byok.keyBound ? "已绑定（输入新 key 可更换）" : "sk-…（DeepSeek API key）"
                 }
-                className="flex-1 px-3 py-2 rounded-xl bg-surface text-small text-text border border-white/10"
+                className="flex-1 px-3 py-2 rounded-sm bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
               />
               <button
                 type="submit"
-                className="px-4 py-2 rounded-xl text-small bg-accent text-base font-semibold"
+                className="px-4 py-2 rounded-sm text-small bg-accent text-base font-semibold"
               >
                 {plan.byok.keyBound ? "更换" : "绑定"}
               </button>
@@ -313,7 +313,7 @@ export default function SettingsPage(): React.ReactElement {
 
       {/* 提示 */}
       <motion.div
-        className="mt-6 p-4 rounded-xl bg-warning/10 border border-warning/20"
+        className="mt-6 p-4 rounded-sm bg-warning/10 border border-warning/20"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.3 }}

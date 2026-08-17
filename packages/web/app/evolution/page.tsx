@@ -12,12 +12,12 @@ const PAD_R = 20;
 const PAD_T = 24;
 const PAD_B = 46;
 
-/** 颜色：按兴趣 id 稳定分配（哈希取色） */
+/** 颜色:按兴趣 id 稳定分配墨色透明度梯度(Restrained——铜版排线密度语言,不用彩色) */
 function colorFor(id: string): string {
-  const palette = ["#e06c3e", "#2f6fb0", "#2f9e5f", "#b7791f", "#8e44ad", "#c0392b", "#16a085", "#2980b9"];
+  const opacities = [1, 0.78, 0.62, 0.5, 0.4];
   let h = 0;
   for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 997;
-  return palette[h % palette.length]!;
+  return `oklch(0.28 0.02 75 / ${opacities[h % opacities.length]})`;
 }
 
 /** 采集一条兴趣的权重演化序列（含 source 标注） */
@@ -92,7 +92,7 @@ export default function EvolutionPage(): React.ReactElement {
   if (!data) {
     return (
       <div className="spacing-lg max-w-6xl mx-auto">
-        <h1 className="font-heading text-heading font-bold text-text mb-2">进化</h1>
+        <h1 className="font-heading text-heading font-semibold text-text mb-2">进化</h1>
         <p className="text-body text-subtext">加载中…</p>
         {error ? <p className="text-small text-danger mt-2">{error}</p> : null}
       </div>
@@ -106,7 +106,7 @@ export default function EvolutionPage(): React.ReactElement {
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
       >
-        <h1 className="font-heading text-heading font-bold text-text mb-1">进化</h1>
+        <h1 className="font-heading text-heading font-semibold text-text mb-1">进化</h1>
         <p className="text-body text-subtext mb-6">
           宠物兴趣随游荡与反馈的演化轨迹 · {data.summary.totalWanders} 次游荡 ·{" "}
           {data.summary.totalPushes} 次推送 · {data.snapshots.length} 个快照
@@ -115,7 +115,7 @@ export default function EvolutionPage(): React.ReactElement {
 
       {/* 时间线图 */}
       <motion.div
-        className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10 mb-6"
+        className="p-6 paper-card rounded-sm mb-6"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
@@ -127,8 +127,8 @@ export default function EvolutionPage(): React.ReactElement {
               {/* 网格 + Y 轴标签 */}
               {[0, 0.25, 0.5, 0.75, 1].map((w) => (
                 <g key={w}>
-                  <line x1={PAD_L} y1={y(w)} x2={W - PAD_R} y2={y(w)} stroke="rgba(255,255,255,0.08)" />
-                  <text x={PAD_L - 8} y={y(w) + 4} textAnchor="end" fontSize={11} fill="#888">
+                  <line x1={PAD_L} y1={y(w)} x2={W - PAD_R} y2={y(w)} stroke="var(--c-engraving-fine)" strokeOpacity={0.35} />
+                  <text x={PAD_L - 8} y={y(w) + 4} textAnchor="end" fontSize={11} fill="var(--c-faded-ink)">
                     {w.toFixed(2)}
                   </text>
                 </g>
@@ -136,8 +136,8 @@ export default function EvolutionPage(): React.ReactElement {
               {/* X 轴时间刻度 */}
               {ticks(t0, t1).map((t) => (
                 <g key={t}>
-                  <line x1={x(t)} y1={H - PAD_B} x2={x(t)} y2={H - PAD_B + 6} stroke="rgba(255,255,255,0.3)" />
-                  <text x={x(t)} y={H - PAD_B + 20} textAnchor="middle" fontSize={11} fill="#888">
+                  <line x1={x(t)} y1={H - PAD_B} x2={x(t)} y2={H - PAD_B + 6} stroke="var(--c-engraving-fine)" />
+                  <text x={x(t)} y={H - PAD_B + 20} textAnchor="middle" fontSize={11} fill="var(--c-faded-ink)">
                     {formatTime(t)}
                   </text>
                 </g>
@@ -147,7 +147,7 @@ export default function EvolutionPage(): React.ReactElement {
                 const t = new Date(f.timestamp).getTime();
                 if (t < t0 || t > t1) return null;
                 const label = f.type === "boost" ? "▲顶" : f.type === "like" ? "♥赞" : "▼踩";
-                const color = f.type === "boost" ? "#e06c3e" : f.type === "like" ? "#2f9e5f" : "#c0392b";
+                const color = f.type === "boost" ? "var(--c-amber)" : f.type === "like" ? "var(--c-ink)" : "var(--c-faded-ink)";
                 return (
                   <g key={i}>
                     <text x={x(t)} y={H - PAD_B - 8} textAnchor="middle" fontSize={11} fill={color}>
@@ -191,18 +191,18 @@ export default function EvolutionPage(): React.ReactElement {
 
       {/* 快照列表 + 回滚 */}
       <motion.div
-        className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10"
+        className="p-6 paper-card rounded-sm"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
-        <h2 className="font-heading text-heading font-bold text-text mb-3">快照与回滚</h2>
+        <h2 className="font-heading text-heading font-semibold text-text mb-3">快照与回滚</h2>
         <p className="text-small text-subtext mb-4">
           回滚会把兴趣图谱还原到该时刻的权重（不删反馈/记忆记录）。可追溯、可撤销。
         </p>
         <table className="w-full text-small">
           <thead>
-            <tr className="text-left text-subtext border-b border-white/10">
+            <tr className="text-left text-subtext border-b border-[var(--c-engraving-fine)]">
               <th className="py-2 pr-3">时间</th>
               <th className="py-2 pr-3">熵</th>
               <th className="py-2 pr-3">来源</th>
@@ -212,7 +212,7 @@ export default function EvolutionPage(): React.ReactElement {
           </thead>
           <tbody>
             {[...data.snapshots].reverse().map((s) => (
-              <tr key={s.hash} className="border-b border-white/5">
+              <tr key={s.hash} className="border-b border-[var(--c-engraving-fine)]/40">
                 <td className="py-2 pr-3 font-mono text-xs">{formatTime(new Date(s.timestamp).getTime())}</td>
                 <td className="py-2 pr-3">{s.entropy.toFixed(2)}</td>
                 <td className="py-2 pr-3">{s.source === "rollback" ? "回滚点" : "快照"}</td>
@@ -231,14 +231,14 @@ export default function EvolutionPage(): React.ReactElement {
                           setBusy(false);
                           if (ok) setConfirmHash(null);
                         }}
-                        className="px-3 py-1 rounded-xl text-xs font-semibold bg-danger/10 text-danger"
+                        className="px-3 py-1 rounded-sm text-xs font-semibold bg-danger/10 text-danger"
                       >
                         {busy ? "执行中…" : "确认回滚"}
                       </button>
                       <button
                         type="button"
                         onClick={() => setConfirmHash(null)}
-                        className="px-3 py-1 rounded-xl text-xs bg-surface text-subtext border border-white/10"
+                        className="px-3 py-1 rounded-sm text-xs bg-surface text-subtext border border-[var(--c-engraving-fine)]"
                       >
                         取消
                       </button>
@@ -247,7 +247,7 @@ export default function EvolutionPage(): React.ReactElement {
                     <button
                       type="button"
                       onClick={() => setConfirmHash(s.hash)}
-                      className="px-3 py-1 rounded-xl text-xs bg-accent/10 text-accent"
+                      className="px-3 py-1 rounded-sm text-xs bg-[var(--c-amber)]/15 text-[var(--c-amber-ink)]"
                     >
                       回滚到此
                     </button>

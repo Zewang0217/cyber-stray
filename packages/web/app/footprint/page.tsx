@@ -38,11 +38,13 @@ export default function FootprintPage(): React.ReactElement {
     void refresh();
   }, [refresh]);
 
-  // 工具名 → 展示标签 + 颜色
+  // 工具名 → 展示标签;颜色遵循 Restrained:表达(speak)=琥珀生命色,其余=墨色系
   const toolLabel = (tool: string): string =>
     ({ search_web: "搜索", browse_page: "浏览", speak: "表达", reflect: "反思", plan: "计划" })[tool] ?? tool;
   const toolColor = (tool: string): string =>
-    tool === "speak" ? "#e06c3e" : tool === "browse_page" ? "#2f6fb0" : tool === "search_web" ? "#2f9e5f" : "#888";
+    tool === "speak" ? "var(--c-amber)" : "var(--c-ink)";
+  const toolTextColor = (tool: string): string =>
+    tool === "speak" ? "var(--c-amber-ink)" : "var(--c-faded-ink)";
 
   return (
     <div className="spacing-lg max-w-4xl mx-auto">
@@ -51,7 +53,7 @@ export default function FootprintPage(): React.ReactElement {
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
       >
-        <h1 className="font-heading text-heading font-bold text-text mb-1">足迹</h1>
+        <h1 className="font-heading text-heading font-semibold text-text mb-1">足迹</h1>
         <p className="text-body text-subtext mb-6">
           宠物每次游荡的每一个步骤 {steps ? `· 共 ${steps.length} 步` : ""}
         </p>
@@ -61,14 +63,14 @@ export default function FootprintPage(): React.ReactElement {
         <p className="text-body text-subtext">加载中…</p>
       ) : steps.length === 0 ? (
         <motion.div
-          className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10"
+          className="p-6 paper-card rounded-sm"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
         >
           <p className="text-body text-subtext">还没有足迹——宠物游荡后这里会显示每一步。</p>
         </motion.div>
       ) : (
-        <div className="relative pl-6 border-l-2 border-white/10">
+        <div className="relative pl-6 border-l-2 border-[var(--c-engraving-fine)]">
           {steps.map((s, i) => (
             <motion.div
               key={i}
@@ -82,11 +84,14 @@ export default function FootprintPage(): React.ReactElement {
                 className="absolute -left-[30px] top-1.5 w-3 h-3 rounded-full"
                 style={{ background: toolColor(s.tool) }}
               />
-              <div className="p-4 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10">
+              <div className="p-4 paper-card rounded-sm">
                 <div className="flex items-center gap-2 mb-1">
                   <span
-                    className="px-2 py-0.5 rounded-lg text-xs font-bold"
-                    style={{ background: `${toolColor(s.tool)}22`, color: toolColor(s.tool) }}
+                    className="px-2 py-0.5 rounded-sm text-xs font-semibold border"
+                    style={{
+                      borderColor: toolColor(s.tool),
+                      color: toolTextColor(s.tool),
+                    }}
                   >
                     {toolLabel(s.tool)}
                   </span>
@@ -94,7 +99,7 @@ export default function FootprintPage(): React.ReactElement {
                     {new Date(s.timestamp).toLocaleString()}
                   </span>
                   {s.spoke ? (
-                    <span className="text-xs text-accent font-semibold">📣 推送</span>
+                    <span className="text-xs text-[var(--c-amber-ink)] font-semibold">📣 推送</span>
                   ) : null}
                 </div>
                 {s.thought ? (
@@ -105,7 +110,7 @@ export default function FootprintPage(): React.ReactElement {
                     href={s.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-xs text-accent underline break-all"
+                    className="text-xs text-[var(--c-amber-ink)] underline break-all"
                   >
                     {s.url}
                   </a>

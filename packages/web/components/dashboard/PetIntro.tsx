@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import { TypewriterText } from "@/components/ui/TypewriterText";
+import { PetSprite } from "@/components/dashboard/PetSprite";
 import type { Pet } from "@/hooks/usePets";
 
 interface PetIntroProps {
@@ -14,9 +15,10 @@ interface PetIntroProps {
 
 /**
  * 宠物自我介绍（S7）：领养后、首推前展示。
- * 已完成的行渲染为静态文本，只对当前行打字——避免 TypewriterText 的
- * effect 依赖（含内联 onComplete）在父组件重渲染时整段重来。
- * sessionStorage 标记使刷新后仍可看到，直到用户点"带它回家"。
+ * 图鉴世界:新标本在图鉴页上亲自开口,手写旁注逐行浮现(打字机保留)。
+ * 已完成的行渲染为静态文本,只对当前行打字——避免 TypewriterText 的
+ * effect 依赖(含内联 onComplete)在父组件重渲染时整段重来。
+ * sessionStorage 标记使刷新后仍可看到,直到用户点"带它回家"。
  */
 export function PetIntro({ pet, interests, onDone }: PetIntroProps): React.ReactElement {
   const [lineIndex, setLineIndex] = useState(0);
@@ -35,40 +37,42 @@ export function PetIntro({ pet, interests, onDone }: PetIntroProps): React.React
   }, [introLines.length]);
 
   const done = lineIndex >= introLines.length - 1;
-  const headingRef = useRef<HTMLHeadingElement | null>(null);
 
   return (
     <div className="spacing-lg flex items-center justify-center min-h-screen">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-lg glass-card p-10 rounded-2xl"
+        transition={{ type: "spring", stiffness: 300, damping: 28 }}
+        className="w-full max-w-lg paper-card p-10 rounded-sm"
       >
-        <div className="text-5xl mb-6 text-center animate-pulse">🐾</div>
+        {/* 新标本亲自露面:活着的插画 */}
+        <div className="flex justify-center mb-4">
+          <PetSprite size={160} state="welcome" />
+        </div>
+        <p className="field-note text-sm text-subtext text-center italic mb-6">
+          Canis cyberus vagans · 初次见面
+        </p>
         <div className="space-y-3 mb-8 min-h-[12rem]">
           {introLines.slice(0, lineIndex).map((line) => (
-            <p key={line} className="text-text font-mono leading-relaxed">
+            <p key={line} className="field-note text-lg text-[var(--c-faded-ink)] leading-relaxed">
               {line}
             </p>
           ))}
-          <p className="text-text font-mono leading-relaxed">
+          <p className="field-note text-lg text-[var(--c-faded-ink)] leading-relaxed">
             <TypewriterText text={introLines[lineIndex] ?? ''} speed={35} onComplete={advanceLine} />
           </p>
           {done && (
-            <p
-              ref={headingRef}
-              tabIndex={-1}
-              className="text-subtext text-small pt-2"
-            >
-              —— 准备好了吗？
+            <p className="field-note text-base text-subtext pt-2">
+              —— 准备好了吗?
             </p>
           )}
         </div>
         <button
           onClick={onDone}
           autoFocus={done}
-          className="w-full py-3 rounded-lg bg-primary text-white font-medium
-            hover:opacity-90 transition-opacity"
+          className="w-full py-3 rounded-sm bg-[var(--c-ink)] text-[var(--c-paper)] font-heading font-medium
+            hover:shadow-[0_2px_0_0_var(--c-amber)] transition-all"
         >
           带它回家
         </button>

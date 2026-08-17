@@ -17,8 +17,8 @@ export default function AdminPage(): React.ReactElement {
   if (isAdmin === false) {
     return (
       <div className="spacing-lg max-w-6xl mx-auto">
-        <h1 className="font-heading text-heading font-bold text-text mb-2">管理面板</h1>
-        <div className="p-6 rounded-2xl bg-danger/10 border border-danger/20">
+        <h1 className="font-heading text-heading font-semibold text-text mb-2">管理面板</h1>
+        <div className="p-6 rounded-sm bg-danger/10 border border-danger/20">
           <p className="text-sm text-danger">无权限：仅管理员（CP_ADMIN_SUBS 白名单）可访问。</p>
         </div>
       </div>
@@ -28,7 +28,7 @@ export default function AdminPage(): React.ReactElement {
   if (!users) {
     return (
       <div className="spacing-lg max-w-6xl mx-auto">
-        <h1 className="font-heading text-heading font-bold text-text mb-2">管理面板</h1>
+        <h1 className="font-heading text-heading font-semibold text-text mb-2">管理面板</h1>
         <p className="text-body text-subtext">加载中…</p>
         {error ? <p className="text-small text-danger mt-2">{error}</p> : null}
       </div>
@@ -42,7 +42,7 @@ export default function AdminPage(): React.ReactElement {
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
       >
-        <h1 className="font-heading text-heading font-bold text-text mb-1">管理面板</h1>
+        <h1 className="font-heading text-heading font-semibold text-text mb-1">管理面板</h1>
         <p className="text-body text-subtext mb-6">
           全部用户 · 共 {users.length} 人 · {users.filter((u) => u.petId).length} 只有宠物
         </p>
@@ -50,13 +50,13 @@ export default function AdminPage(): React.ReactElement {
 
       {/* 用户列表 */}
       <motion.div
-        className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10 mb-6"
+        className="p-6 paper-card rounded-sm mb-6"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
         <table className="w-full text-small">
           <thead>
-            <tr className="text-left text-subtext border-b border-white/10">
+            <tr className="text-left text-subtext border-b border-[var(--c-engraving-fine)]">
               <th className="py-2 pr-3">用户</th>
               <th className="py-2 pr-3">套餐</th>
               <th className="py-2 pr-3">宠物</th>
@@ -67,7 +67,7 @@ export default function AdminPage(): React.ReactElement {
           </thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.tenantId} className="border-b border-white/5">
+              <tr key={u.tenantId} className="border-b border-[var(--c-engraving-fine)]/40">
                 <td className="py-3 pr-3">
                   <div className="font-semibold">{u.tenantName}</div>
                   <div className="text-xs text-subtext font-mono">{u.tenantId.slice(0, 8)}</div>
@@ -81,7 +81,7 @@ export default function AdminPage(): React.ReactElement {
                     onChange={(e) =>
                       void setPlan(u.tenantId, e.target.value as typeof u.plan)
                     }
-                    className="px-2 py-1 rounded-lg bg-surface text-small text-text border border-white/10"
+                    className="px-2 py-1 rounded-lg bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
                   >
                     <option value="free">free</option>
                     <option value="pro">pro</option>
@@ -115,10 +115,10 @@ export default function AdminPage(): React.ReactElement {
                       onClick={() =>
                         void setPetStatus(u.tenantId, u.petStatus === "active" ? "paused" : "active")
                       }
-                      className={`px-3 py-1 rounded-xl text-xs font-semibold ${
+                      className={`px-3 py-1 rounded-sm text-xs font-semibold ${
                         u.petStatus === "active"
                           ? "bg-danger/10 text-danger"
-                          : "bg-accent/10 text-accent"
+                          : "bg-[var(--c-amber)]/15 text-[var(--c-amber-ink)]"
                       }`}
                     >
                       {u.petStatus === "active" ? "暂停" : "恢复"}
@@ -133,12 +133,12 @@ export default function AdminPage(): React.ReactElement {
 
       {/* 管理员管理（RBAC） */}
       <motion.div
-        className="p-6 rounded-2xl backdrop-blur-xl bg-mantle/[0.05] border border-white/10"
+        className="p-6 paper-card rounded-sm"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
-        <h2 className="font-heading text-heading font-bold text-text mb-2">管理员</h2>
+        <h2 className="font-heading text-heading font-semibold text-text mb-2">管理员</h2>
         <p className="text-small text-subtext mb-4">
           身份在 Casdoor（谁可登录），权限在控制面（能做什么）——管理员可看全部用户、分配套餐、授权他人。
         </p>
@@ -146,7 +146,7 @@ export default function AdminPage(): React.ReactElement {
           {admins?.map((a) => (
             <span
               key={a.sub}
-              className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-surface border border-white/10 text-xs"
+              className="inline-flex items-center gap-2 px-3 py-1 rounded-sm bg-surface border border-[var(--c-engraving-fine)] text-xs"
             >
               <span className="font-mono">{a.sub.slice(0, 12)}</span>
               <span className="text-subtext">
@@ -176,11 +176,11 @@ export default function AdminPage(): React.ReactElement {
             value={grantSub}
             onChange={(e) => setGrantSub(e.target.value)}
             placeholder="输入用户 sub（Casdoor）授予管理员"
-            className="flex-1 px-3 py-2 rounded-xl bg-surface text-small text-text border border-white/10 font-mono"
+            className="flex-1 px-3 py-2 rounded-sm bg-surface text-small text-text border border-[var(--c-engraving-fine)] font-mono"
           />
           <button
             type="submit"
-            className="px-4 py-2 rounded-xl text-small bg-accent text-base font-semibold"
+            className="px-4 py-2 rounded-sm text-small bg-accent text-base font-semibold"
           >
             授权
           </button>

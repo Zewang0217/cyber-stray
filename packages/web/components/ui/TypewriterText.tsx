@@ -44,8 +44,7 @@ export function TypewriterText({
       {displayedText}
       {!isComplete && (
         <span
-          className="inline-block w-[2px] h-[1em] bg-accent ml-0.5 align-middle"
-          style={{ animation: "cursor-blink 1s step-end infinite" }}
+          className="inline-block w-[2px] h-[1em] bg-accent ml-0.5 align-middle animate-cursor-blink"
         />
       )}
     </span>
