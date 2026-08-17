@@ -80,6 +80,11 @@ control.db / casdoor.db 为真实 SQLite 含数据行，非占位文件）。
 
 ## 已知边界
 
+- **PWA/Web Push 需 HTTPS 安全上下文**：Service Worker 注册与 Web Push 订阅要求
+  secure context（HTTPS；localhost 豁免）。本拓扑 unit 内为 HTTP 回环（127.0.0.1），
+  生产必须由 Nginx 终结 TLS（443 → 回环服务），手机/PWA 安装与系统推送才可用。
+  `CASDOOR_REDIRECT_URI` 与 `CP_WEB_ORIGIN` 用对外 https 域名。开发机 localhost
+  访问不受影响（浏览器豁免）。
 - **单实例**：调度器/推送网关嵌入控制面进程，多实例部署前需 DB 级租约（S5 已知限制）。
 - **Nginx TLS 终止**：unit 内为 HTTP（127.0.0.1 回环）；443 由 Nginx 反代，回调
   `CASDOOR_REDIRECT_URI` 用对外 https 域名。

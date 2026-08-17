@@ -70,6 +70,14 @@ const nextConfig: NextConfig = {
         source: "/api/plan/:path*",
         destination: `${controlPlaneOrigin}/api/plan/:path*`,
       },
+      {
+        source: "/api/admin/:path*",
+        destination: `${controlPlaneOrigin}/api/admin/:path*`,
+      },
+      {
+        source: "/api/evolution/:path*",
+        destination: `${controlPlaneOrigin}/api/evolution/:path*`,
+      },
     ];
   },
 };

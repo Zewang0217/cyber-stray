@@ -9,6 +9,8 @@ import {
   Settings,
   Dog,
   LogOut,
+  TrendingUp,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +23,9 @@ interface NavItemConfig {
 const navItems: NavItemConfig[] = [
   { label: "仪表盘", href: "/", icon: Activity },
   { label: "历史推送", href: "/history", icon: History },
+  { label: "进化", href: "/evolution", icon: TrendingUp },
   { label: "设置", href: "/settings", icon: Settings },
+  { label: "管理面板", href: "/admin", icon: ShieldCheck },
 ];
 
 /**

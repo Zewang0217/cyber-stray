@@ -34,6 +34,8 @@ export interface ControlPlaneConfig {
   workerMaxRetries: number;
   /** 登录/登出后跳转的 Web 应用地址 */
   webOrigin: string;
+  /** 运营管理面板：管理员 Casdoor sub 白名单（逗号分隔 env CP_ADMIN_SUBS） */
+  adminSubs: string[];
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneConfig {
@@ -66,6 +68,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     dataDir:
       env.CP_DATA_DIR ?? fileURLToPath(new URL('../data', import.meta.url)),
     webOrigin: env.CP_WEB_ORIGIN ?? 'http://localhost:3000',
+    adminSubs: (env.CP_ADMIN_SUBS ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
     schedulerIntervalMs: Number(env.CP_SCHEDULER_INTERVAL_MS ?? 60_000),
     schedulerMaxConcurrent: Number(env.CP_SCHEDULER_MAX_CONCURRENT ?? 4),
     workerTimeoutMs: Number(env.CP_WORKER_TIMEOUT_MS ?? 10 * 60_000),

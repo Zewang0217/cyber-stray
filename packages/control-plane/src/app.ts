@@ -15,6 +15,8 @@ import { createFeedbackRoutes } from './routes/feedback.js';
 import { createPushRoutes } from './routes/push.js';
 import { createChannelsRoutes } from './routes/channels.js';
 import { createPlanRoutes } from './routes/plan.js';
+import { createAdminRoutes } from './routes/admin.js';
+import { createEvolutionRoutes } from './routes/evolution.js';
 export interface AppDeps {
   config: ControlPlaneConfig;
   oidc: OidcProvider;
@@ -49,6 +51,12 @@ export function createApp({ config, oidc, bus }: AppDeps): Hono {
 
   // S11：套餐门控用户面（切换/限额/推送窗口/BYOK key）
   app.route('/api/plan', createPlanRoutes({ config }));
+
+  // S13：运营管理面板（CP_ADMIN_SUBS 白名单）
+  app.route('/api/admin', createAdminRoutes({ config }));
+
+  // S13：进化可视化 + 回滚（快照序列/反馈事件/游荡摘要）
+  app.route('/api/evolution', createEvolutionRoutes({ config }));
 
   return app;
 }
