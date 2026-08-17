@@ -6,7 +6,6 @@ import { motion } from "framer-motion";
 import {
   Activity,
   History,
-  Terminal,
   Settings,
   Dog,
   LogOut,
@@ -22,7 +21,6 @@ interface NavItemConfig {
 const navItems: NavItemConfig[] = [
   { label: "仪表盘", href: "/", icon: Activity },
   { label: "历史推送", href: "/history", icon: History },
-  { label: "终端日志", href: "/logs", icon: Terminal },
   { label: "设置", href: "/settings", icon: Settings },
 ];
 
