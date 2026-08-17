@@ -21,5 +21,5 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   // 排除静态资源与认证 API 本身（API 由控制面接管）
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|pet/|api/).*)"],
 };
