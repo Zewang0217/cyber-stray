@@ -168,8 +168,8 @@ update() {
 }
 
 case "${1:-}" in
-  install) install "$2" "$3" ;;
-  update) update "$2" "$3" ;;
+  install) install "${2:-}" "${3:-}" ;;
+  update) update "${2:-}" "${3:-}" ;;
   status) status ;;
   uninstall) uninstall ;;
   *) echo "用法: $0 install [--web-tar <path>] | update [--web-tar <path>] | status | uninstall"; exit 2 ;;
