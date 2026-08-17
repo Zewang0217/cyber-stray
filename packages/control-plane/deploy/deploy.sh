@@ -37,8 +37,8 @@ install() {
 
   # 可选参数：CI 产物路径（web standalone tar.gz）
   WEB_TAR=""
-  if [ "${2:-}" = "--web-tar" ]; then
-    WEB_TAR="${3:-}"
+  if [ "${1:-}" = "--web-tar" ]; then
+    WEB_TAR="${2:-}"
     [ -f "$WEB_TAR" ] || { echo "--web-tar 文件不存在: $WEB_TAR"; exit 1; }
   fi
 
@@ -136,8 +136,8 @@ update() {
   require_cmd node
 
   WEB_TAR=""
-  if [ "${2:-}" = "--web-tar" ]; then
-    WEB_TAR="${3:-}"
+  if [ "${1:-}" = "--web-tar" ]; then
+    WEB_TAR="${2:-}"
     [ -n "$WEB_TAR" ] || { echo "--web-tar 需要路径"; exit 1; }
   fi
 
