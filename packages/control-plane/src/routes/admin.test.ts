@@ -118,7 +118,7 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     // 列表（env bootstrap 的 admin-1 也应出现，来源 env）
     let res = await app.request(await authed('http://x/api/admin/admins'));
     expect(res.status).toBe(200);
-    let json = (await res.json()) as { data: Array<{ sub: string }> };
+    const json = (await res.json()) as { data: Array<{ sub: string }> };
     expect(json.data.map((a) => a.sub)).toContain('admin-1');
 
     // 添加新管理员
