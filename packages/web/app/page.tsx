@@ -31,6 +31,11 @@ export default function DashboardPage(): React.ReactElement {
     // 1. 默认不显示，避免水合闪烁
     const [showHeroStage, setShowHeroStage] = useState(false);
     const [isCheckingIntro, setIsCheckingIntro] = useState(true);
+    // S7 修复：isCheckingIntro 原为恒 true（setter 从未调用）→ 黑屏永不
+    // 解除。挂载后置 false，黑屏只挡首帧水合闪烁。
+    useEffect(() => {
+      setIsCheckingIntro(false);
+    }, []);
     // S7 领养旅程：领养 → 自我介绍（首推前）→ 仪表盘
     const [introPet, setIntroPet] = useState<Pet | null>(null);
     const [introInterests, setIntroInterests] = useState<string[]>([]);
