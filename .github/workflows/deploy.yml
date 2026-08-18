@@ -15,7 +15,10 @@ name: CD Deploy
 # 例外:国内服务器从 GitHub 拉 artifact 不可靠,改为本地构建一次)
 
 on:
-  workflow_dispatch: # 先手动;后续改 push/merge main 自动触发
+  # merge main 自动部署;也可手动触发(workflow_dispatch)
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: deploy
