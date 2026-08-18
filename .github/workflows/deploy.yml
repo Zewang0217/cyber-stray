@@ -2,15 +2,17 @@ name: CD Deploy
 
 # 手动触发部署(workflow_dispatch)。
 # 架构(国内服务器适配):
-#   - verify: GitHub-hosted(美国 runner)跑 check + 构建,产物上传 artifact
+#   - verify: GitHub-hosted(美国 runner)跑 check(类型/测试/lint)+ 构建验证
 #   - deploy: 服务器自托管 runner(self-hosted,出站连 GitHub 稳定)
-#     下载产物 → 服务器本地 deploy.sh update(绕开国际入站 SSH 不可靠问题)
+#     本地 checkout + 构建 + deploy.sh update(免 artifact 传输,
+#     服务器到 GitHub artifact 下载端点慢,直连不稳定)
 #
 # 前置:
 #   - 产机一次性:deploy.sh install + 自托管 runner(svc.sh)注册为 self-hosted
 #   - .env 配置 CASDOOR 三件套 / CP_ADMIN_SUBS / LLM keys
 #
-# 产物:web-standalone.tar.gz(Next standalone 完整树)
+# 产物:web standalone 由 deploy job 在服务器本地构建(零编译部署原则的
+# 例外:国内服务器从 GitHub 拉 artifact 不可靠,改为本地构建一次)
 
 on:
   workflow_dispatch: # 先手动;后续改 push/merge main 自动触发
@@ -48,10 +50,34 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Build web (standalone)
+      - name: Build web (standalone, 产物验证)
         run: pnpm -F @cyber-stray/web build
 
-      - name: Package deploy artifact
+  deploy:
+    needs: verify
+    runs-on: self-hosted # 服务器自托管 runner(cyberstray 用户)
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web standalone
+        run: pnpm -F @cyber-stray/web build
+
+      - name: Package artifact
         run: |
           set -euo pipefail
           cd packages/web
@@ -60,30 +86,13 @@ jobs:
           cp -r .next/static dist/app/packages/web/.next/static
           cp -r public dist/app/packages/web/public
           tar -czf ../../web-standalone.tar.gz -C dist .
-        shell: bash
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: web-standalone
-          path: web-standalone.tar.gz
-          retention-days: 14
-
-  deploy:
-    needs: verify
-    runs-on: self-hosted # 服务器自托管 runner(cyberstray 用户)
-    timeout-minutes: 20
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: web-standalone
-          path: /tmp/cd-artifact
 
       - name: Incremental deploy (local deploy.sh update)
         run: |
           set -euo pipefail
           # cyberstray 用户 sudoers 已放行此 deploy.sh(最小权限)
           sudo -n /opt/cyber-stray/packages/control-plane/deploy/deploy.sh update \
-            --web-tar /tmp/cd-artifact/web-standalone.tar.gz
+            --web-tar "${GITHUB_WORKSPACE}/../web-standalone.tar.gz"
 
       - name: Smoke test
         run: |
