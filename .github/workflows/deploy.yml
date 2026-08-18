@@ -72,7 +72,10 @@ jobs:
           cache: pnpm
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        run: |
+          # 国内服务器:依赖走 npmmirror(直连 npmjs 慢)
+          pnpm config set registry https://registry.npmmirror.com
+          pnpm install --frozen-lockfile
 
       - name: Build web standalone
         run: pnpm -F @cyber-stray/web build
