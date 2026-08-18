@@ -1,16 +1,16 @@
 name: CD Deploy
 
-# 手动触发部署(workflow_dispatch)。跑全 check 后构建 standalone,
-# 经 SSH 推到产机:deploy.sh update(解包 web tar + git pull + restart)。
+# 手动触发部署(workflow_dispatch)。
+# 架构(国内服务器适配):
+#   - verify: GitHub-hosted(美国 runner)跑 check + 构建,产物上传 artifact
+#   - deploy: 服务器自托管 runner(self-hosted,出站连 GitHub 稳定)
+#     下载产物 → 服务器本地 deploy.sh update(绕开国际入站 SSH 不可靠问题)
 #
-# 前置(产机一次性,见 packages/control-plane/deploy/README.md):
-#   1) sudo ./deploy.sh install   # 首次全栈
-#   2) Nginx + sslip.io + Let's Encrypt(见 deploy/nginx-sslip.conf 模板)
+# 前置:
+#   - 产机一次性:deploy.sh install + 自托管 runner(svc.sh)注册为 self-hosted
+#   - .env 配置 CASDOOR 三件套 / CP_ADMIN_SUBS / LLM keys
 #
-# Secrets 要求:
-#   DEPLOY_HOST     服务器 IP(如 1.2.3.4)
-#   DEPLOY_USER     SSH 用户名(需 sudo 权限)
-#   DEPLOY_SSH_KEY  SSH 私钥(ed25519,公钥已装进服务器 authorized_keys)
+# 产物:web-standalone.tar.gz(Next standalone 完整树)
 
 on:
   workflow_dispatch: # 先手动;后续改 push/merge main 自动触发
@@ -20,9 +20,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  verify-and-deploy:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -56,40 +56,38 @@ jobs:
           set -euo pipefail
           cd packages/web
           mkdir -p dist
-          # 打包整个 standalone 树(含根 node_modules——packages/web 下的
-          # next 是相对软链指向 standalone 根 .pnpm,只拷 packages/web 会
-          # 悬空 → node server.js MODULE_NOT_FOUND)
           cp -r .next/standalone dist/app
           cp -r .next/static dist/app/packages/web/.next/static
           cp -r public dist/app/packages/web/public
           tar -czf ../../web-standalone.tar.gz -C dist .
         shell: bash
 
-      - name: Deploy via SSH
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-standalone
+          path: web-standalone.tar.gz
+          retention-days: 14
+
+  deploy:
+    needs: verify
+    runs-on: self-hosted # 服务器自托管 runner(cyberstray 用户)
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-standalone
+          path: /tmp/cd-artifact
+
+      - name: Incremental deploy (local deploy.sh update)
         run: |
           set -euo pipefail
-          [ -n "$DEPLOY_HOST" ] || { echo "缺少 secret: DEPLOY_HOST"; exit 1; }
-          [ -n "$DEPLOY_USER" ] || { echo "缺少 secret: DEPLOY_USER"; exit 1; }
-          [ -n "$DEPLOY_SSH_KEY" ] || { echo "缺少 secret: DEPLOY_SSH_KEY"; exit 1; }
+          # cyberstray 用户 sudoers 已放行此 deploy.sh(最小权限)
+          sudo -n /opt/cyber-stray/packages/control-plane/deploy/deploy.sh update \
+            --web-tar /tmp/cd-artifact/web-standalone.tar.gz
 
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
-
-          echo "==> 上传 web 产物"
-          scp $SSH_OPTS web-standalone.tar.gz \
-            "$DEPLOY_USER@$DEPLOY_HOST:/tmp/cyber-stray-web.tar.gz"
-
-          echo "==> 增量更新(源码 + web 产物 + 重启)"
-          ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" \
-            'cd /opt/cyber-stray && sudo -n ./packages/control-plane/deploy/deploy.sh update --web-tar /tmp/cyber-stray-web.tar.gz && rm -f /tmp/cyber-stray-web.tar.gz'
-
-          echo "==> 冒烟验证"
-          ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" \
-            'curl -sf http://localhost:8787/healthz >/dev/null && echo "CP healthz OK" && curl -sfI http://localhost:3000 >/dev/null && echo "Web OK"'
-        shell: bash
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          curl -sf http://localhost:8787/healthz >/dev/null && echo "CP healthz OK"
+          curl -sfI http://localhost:3000 >/dev/null && echo "Web OK"
+          echo "部署完成"
