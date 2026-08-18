@@ -95,7 +95,7 @@ jobs:
           set -euo pipefail
           # cyberstray 用户 sudoers 已放行此 deploy.sh(最小权限)
           sudo -n /opt/cyber-stray/packages/control-plane/deploy/deploy.sh update \
-            --web-tar "${GITHUB_WORKSPACE}/../web-standalone.tar.gz"
+            --web-tar "${GITHUB_WORKSPACE}/web-standalone.tar.gz"
 
       - name: Smoke test
         run: |
