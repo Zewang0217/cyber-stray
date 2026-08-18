@@ -1,0 +1,95 @@
+name: CD Deploy
+
+# 手动触发部署(workflow_dispatch)。跑全 check 后构建 standalone,
+# 经 SSH 推到产机:deploy.sh update(解包 web tar + git pull + restart)。
+#
+# 前置(产机一次性,见 packages/control-plane/deploy/README.md):
+#   1) sudo ./deploy.sh install   # 首次全栈
+#   2) Nginx + sslip.io + Let's Encrypt(见 deploy/nginx-sslip.conf 模板)
+#
+# Secrets 要求:
+#   DEPLOY_HOST     服务器 IP(如 1.2.3.4)
+#   DEPLOY_USER     SSH 用户名(需 sudo 权限)
+#   DEPLOY_SSH_KEY  SSH 私钥(ed25519,公钥已装进服务器 authorized_keys)
+
+on:
+  workflow_dispatch: # 先手动;后续改 push/merge main 自动触发
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  verify-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build web (standalone)
+        run: pnpm -F @cyber-stray/web build
+
+      - name: Package deploy artifact
+        run: |
+          set -euo pipefail
+          cd packages/web
+          mkdir -p dist
+          # 打包整个 standalone 树(含根 node_modules——packages/web 下的
+          # next 是相对软链指向 standalone 根 .pnpm,只拷 packages/web 会
+          # 悬空 → node server.js MODULE_NOT_FOUND)
+          cp -r .next/standalone dist/app
+          cp -r .next/static dist/app/packages/web/.next/static
+          cp -r public dist/app/packages/web/public
+          tar -czf ../../web-standalone.tar.gz -C dist .
+        shell: bash
+
+      - name: Deploy via SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$DEPLOY_HOST" ] || { echo "缺少 secret: DEPLOY_HOST"; exit 1; }
+          [ -n "$DEPLOY_USER" ] || { echo "缺少 secret: DEPLOY_USER"; exit 1; }
+          [ -n "$DEPLOY_SSH_KEY" ] || { echo "缺少 secret: DEPLOY_SSH_KEY"; exit 1; }
+
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
+
+          echo "==> 上传 web 产物"
+          scp $SSH_OPTS web-standalone.tar.gz \
+            "$DEPLOY_USER@$DEPLOY_HOST:/tmp/cyber-stray-web.tar.gz"
+
+          echo "==> 增量更新(源码 + web 产物 + 重启)"
+          ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" \
+            'cd /opt/cyber-stray && sudo -n ./packages/control-plane/deploy/deploy.sh update --web-tar /tmp/cyber-stray-web.tar.gz && rm -f /tmp/cyber-stray-web.tar.gz'
+
+          echo "==> 冒烟验证"
+          ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" \
+            'curl -sf http://localhost:8787/healthz >/dev/null && echo "CP healthz OK" && curl -sfI http://localhost:3000 >/dev/null && echo "Web OK"'
+        shell: bash

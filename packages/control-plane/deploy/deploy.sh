@@ -37,8 +37,8 @@ install() {
 
   # 可选参数：CI 产物路径（web standalone tar.gz）
   WEB_TAR=""
-  if [ "${2:-}" = "--web-tar" ]; then
-    WEB_TAR="${3:-}"
+  if [ "${1:-}" = "--web-tar" ]; then
+    WEB_TAR="${2:-}"
     [ -f "$WEB_TAR" ] || { echo "--web-tar 文件不存在: $WEB_TAR"; exit 1; }
   fi
 
@@ -126,9 +126,51 @@ uninstall() {
   echo "units 已移除；数据保留于 $APP_DIR/data 与 $WEB_DIR（如需删除请手动）"
 }
 
+# CD 增量更新（CI 构建 → 产机零编译）:
+#   sudo ./deploy.sh update [--web-tar /path/to/web-standalone.tar.gz]
+# 1) git pull 源码（CP/agent bun 直跑 TS，无编译）
+# 2) 解包 CI web 产物到 $WEB_DIR
+# 3) 重启 control-plane + web
+update() {
+  require_cmd bun
+  require_cmd node
+
+  WEB_TAR=""
+  if [ "${1:-}" = "--web-tar" ]; then
+    WEB_TAR="${2:-}"
+    [ -n "$WEB_TAR" ] || { echo "--web-tar 需要路径"; exit 1; }
+  fi
+
+  echo "==> [1/3] 更新仓库源码 (CP/agent)"
+  (cd "$APP_DIR" && git pull --ff-only)
+  (cd "$APP_DIR" && pnpm install --frozen-lockfile)
+
+  echo "==> [2/3] 更新 web 产物（CI 构建，产机零编译）"
+  if [ -n "$WEB_TAR" ]; then
+    rm -rf "$WEB_DIR"
+    mkdir -p "$WEB_DIR"
+    tar -xzf "$WEB_TAR" -C "$WEB_DIR"
+    echo "    web 产物已更新: $WEB_DIR ($(du -sh "$WEB_DIR" | cut -f1))"
+  fi
+
+  echo "==> [3/3] 重启服务"
+  systemctl restart control-plane
+  systemctl restart web || {
+    echo "警告: web 重启失败——检查 $WEB_DIR 产物与 web.service"; exit 1
+  }
+
+  echo ""
+  echo "部署完成。验证:"
+  echo "  systemctl status control-plane web"
+  echo "  curl http://localhost:8787/healthz"
+  echo "  curl -I http://localhost:3000"
+  echo "备份: $DEPLOY_DIR/backup.sh"
+}
+
 case "${1:-}" in
-  install) install "$2" "$3" ;;
+  install) install "${2:-}" "${3:-}" ;;
+  update) update "${2:-}" "${3:-}" ;;
   status) status ;;
   uninstall) uninstall ;;
-  *) echo "用法: $0 install [--web-tar <path>] | status | uninstall"; exit 2 ;;
+  *) echo "用法: $0 install [--web-tar <path>] | update [--web-tar <path>] | status | uninstall"; exit 2 ;;
 esac
