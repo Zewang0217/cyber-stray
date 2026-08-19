@@ -333,7 +333,9 @@ describe('InterestGraph', () => {
     const historyContent = await readFile('data/interest-history.jsonl', 'utf-8');
     const lines = historyContent.trim().split('\n');
     expect(lines.length).toBeGreaterThan(0);
-    const snapshot = JSON.parse(lines[lines.length - 1]) as {
+    const lastLine = lines[lines.length - 1];
+    expect(lastLine).toBeTruthy();
+    const snapshot = JSON.parse(lastLine!) as {
       nodes: Array<{ id: string; weight: number }>;
       timestamp: string;
       hash: string;
