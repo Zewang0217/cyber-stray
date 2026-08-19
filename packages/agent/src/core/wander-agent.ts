@@ -44,6 +44,11 @@ const logger = consola.withTag('wander-agent');
 const WANDER_HISTORY_FILE = 'wander-history.json';
 const MAX_WANDER_HISTORY_ENTRIES = 100;
 
+/** 兴趣回灌：已存在兴趣每次游荡的强化增量（0-1 权重域） */
+const WANDER_REINFORCE_DELTA = 0.12;
+/** 兴趣回灌：新话题的初始权重（novelty 预算会钳低） */
+const WANDER_NEW_INTEREST_WEIGHT = 0.2;
+
 export class WanderAgent {
   private emitter = new WanderEventEmitter();
   private hookChain = new HookChain();
@@ -255,6 +260,31 @@ export class WanderAgent {
       recentTopics: this.extractRecentTopics(ctx.wanderHistory, state.recentTopics),
       consecutiveFailures: result.endReason === 'error' ? state.consecutiveFailures + 1 : 0,
     });
+
+    // 兴趣回灌：本次游荡学到的话题 → 图谱强化/新增，persist 触发兴趣快照
+    // （S13 evolution 数据源；失败不阻断游荡结果）
+    await this.reinforceInterestGraph(this.extractRecentTopics(ctx.wanderHistory, []));
+  }
+
+  /** 兴趣回灌：已存在节点强化，新话题加入图谱（来源 reflection） */
+  private async reinforceInterestGraph(topics: string[]): Promise<void> {
+    if (topics.length === 0) return;
+    try {
+      const graph = getInterestGraph();
+      await graph.load();
+      for (const id of topics) {
+        if (id.length > 64) continue; // 过长的 query/URL 不构成稳定兴趣
+        if (graph.getNode(id)) {
+          graph.reinforce(id, WANDER_REINFORCE_DELTA);
+        } else {
+          graph.addInterest(id, WANDER_NEW_INTEREST_WEIGHT, 'reflection');
+        }
+      }
+      await graph.persist();
+      logger.info('兴趣图谱已回灌', { topics: topics.length });
+    } catch (err) {
+      logger.warn('兴趣回灌失败，不影响游荡结果', { error: String(err) });
+    }
   }
 
   /** 从游荡步骤中提取话题关键词，用于去重提示 */
