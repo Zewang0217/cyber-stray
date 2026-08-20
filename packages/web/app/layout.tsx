@@ -1,5 +1,18 @@
 import type { Metadata } from "next";
-import { EB_Garamond, Caveat, IBM_Plex_Mono } from "next/font/google";
+import "@fontsource/eb-garamond/400.css";
+import "@fontsource/eb-garamond/400-italic.css";
+import "@fontsource/eb-garamond/500.css";
+import "@fontsource/eb-garamond/500-italic.css";
+import "@fontsource/eb-garamond/600.css";
+import "@fontsource/eb-garamond/600-italic.css";
+import "@fontsource/caveat/400.css";
+import "@fontsource/caveat/500.css";
+import "@fontsource/caveat/600.css";
+import "@fontsource/caveat/700.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/400-italic.css";
+import "@fontsource/ibm-plex-mono/500.css";
+import "@fontsource/ibm-plex-mono/600.css";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -14,26 +27,8 @@ import { THEMES, THEME_STORAGE_KEY } from "@/lib/themes";
  * STORY: 打开→图鉴里插画活着(idle 证明它活着)→ 状态读数随 tick 被采集者「修订」→ 推送流新贴发现 stagger 进来→ 点推送反馈标注→ 兴趣图谱里宠物自己改的节点带琥珀呼吸光(自进化可见)→ 轻交互插画抬头/摇尾(只改 mood 不改生存)。
  * FIRST VIEWPORT: 图鉴页面(插画活着 + 手写拉丁名 + 采集笔记),下方状态读数行(等宽数字 + 手写注解),中下推送流(stagger reveal),侧/下兴趣图谱(自改节点呼吸光)+ 足迹地图。
  * FORM: 维多利亚自然博物图鉴,用户选定;Restrained 配色(纸/墨/生命色);主题系统=数据驱动(lib/themes.ts),组件零主题色字面量。
+ * FONTS: 本地化 @fontsource(国内服务器构建不依赖 Google Fonts 可达);--font-* 变量定义在 globals.css :root。
  */
-const ebGaramond = EB_Garamond({
-  variable: "--font-eb-garamond",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  style: ["normal", "italic"],
-});
-
-const caveat = Caveat({
-  variable: "--font-caveat",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
-
-const ibmPlexMono = IBM_Plex_Mono({
-  variable: "--font-ibm-plex-mono",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  style: ["normal", "italic"],
-});
 
 export const metadata: Metadata = {
   title: "Cyber Stray | 赛博街溜子",
@@ -57,7 +52,7 @@ export default function RootLayout({
     <html
       lang="zh-CN"
       suppressHydrationWarning
-      className={`${ebGaramond.variable} ${caveat.variable} ${ibmPlexMono.variable} h-full antialiased`}
+      className="h-full antialiased"
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />

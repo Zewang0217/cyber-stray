@@ -42,7 +42,11 @@
   /* ============================================
      Typography
      图鉴衬线 + 手写注解 + 等宽读数
+     字体本地化 @fontsource(layout.tsx import),变量直接指向 font-family 名
      ============================================ */
+  --font-eb-garamond: "EB Garamond";
+  --font-caveat: "Caveat";
+  --font-ibm-plex-mono: "IBM Plex Mono";
   --font-sans: var(--font-eb-garamond), Georgia, "Times New Roman", serif;
   --font-mono: var(--font-ibm-plex-mono), ui-monospace, monospace;
   --font-heading: var(--font-eb-garamond), Georgia, serif;
