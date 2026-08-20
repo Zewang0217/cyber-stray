@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { PersonalityId } from "@cyber-stray/shared";
 import type { ApiResponse } from "@/lib/types";
 
 /** 控制面 pets 行（编排状态；详细字段见 control-plane/src/db/schema.ts） */
@@ -14,6 +15,8 @@ export interface Pet {
   boredom: number;
   energy: number;
   plan: "free" | "pro" | "byok";
+  /** 性格（#90：认领时选择；好奇=默认基准） */
+  personality: PersonalityId;
   /** 作息睡眠窗口（#91，本地小时 0-23；null = 无作息，永不睡眠） */
   sleepStart: number | null;
   sleepEnd: number | null;
@@ -27,7 +30,11 @@ interface UsePetsReturn {
   isLoaded: boolean;
   error: string | null;
   /** 领养（服务端校验；409 = 已有宠物会刷新列表） */
-  adopt: (input: { name: string; interests?: string[] }) => Promise<Pet | null>;
+  adopt: (input: {
+    name: string;
+    interests?: string[];
+    personality?: PersonalityId;
+  }) => Promise<Pet | null>;
   adopting: boolean;
   /** 设置作息（本地小时；跨午夜合法）。成功返回 true */
   setSleepSchedule: (startHour: number, endHour: number) => Promise<boolean>;
@@ -67,7 +74,11 @@ export function usePets(): UsePetsReturn {
   }, [refresh]);
 
   const adopt = useCallback(
-    async (input: { name: string; interests?: string[] }): Promise<Pet | null> => {
+    async (input: {
+      name: string;
+      interests?: string[];
+      personality?: PersonalityId;
+    }): Promise<Pet | null> => {
       setAdopting(true);
       try {
         const res = await fetch("/api/pets/adopt", {

@@ -30,7 +30,7 @@
 
 1. `data.ts:182-186` `/history` 单文件 `catch` 静默吞非 ENOENT 读错误——与 `data.ts` 自身 `isEnoent` 注释「非 ENOENT 必须显式抛」自相矛盾，轻度降级。**最接近违规项**。
 2. `data.ts:143/176` 内联魔法数。
-3. `/interests/history` 与 `/history` 嵌套达 4 层超 guides「缩进≤3 层」——临界，判断题。
+3. `/interests/history` 与 `/history` 嵌套达 4 层（建议 ≤4 层，合规但已达上限）。
 4. `console.error` 读失败日志（合理运行日志）。
 
 **最严重**：`/history` catch 吞非 ENOENT 错误——与文件内注释自相矛盾，属轻度降级（旧 web 路由逐字迁移带来）。

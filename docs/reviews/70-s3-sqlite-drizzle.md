@@ -24,7 +24,7 @@
 - **禁兜底**（guides/index.md）：`db/client.ts` 双驱动懒加载单例无降级；`db/migrate.ts` Postgres 路径直接抛错（不兜底）；`tenant.ts` 从 JSON 注册表迁 SQLite 事务 + `onConflictDoNothing` 幂等 + 归档 `.bak`，损坏 JSON 抛错 → 无违规。
 - **不迁 Postgres 约束**（CONTEXT.md）：schema 无 memory/history/interest 表——编排状态进 SQLite，记忆仍 markdown，符合 spec「记忆仍在 markdown 不迁移」。
 - **安全硬规矩**（CONTEXT.md）：`tenant.ts` 迁移后仍只从 session JWT 取 tenant，未引入信任客户端 header 的路径。
-- **方法/缩进/文档注释**：`db/client.ts`(69行)、`tenant.ts`、`db/migrate.ts` 均 ≤50 行 / ≤3 层；schema 导出表有 JSDoc 注释。
+- **方法/缩进/文档注释**：`db/client.ts`(69行)、`tenant.ts`、`db/migrate.ts` 均远低于建议上限（80 行 / 4 层）；schema 导出表有 JSDoc 注释。
 
 判断题：
 

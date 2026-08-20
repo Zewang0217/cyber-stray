@@ -16,7 +16,7 @@
 
 ## Standards
 
-**1 硬违规 / 6 判断题。**
+**0 硬违规 / 7 判断题。**（注：方法/缩进阈值已于 2026-08-16 从硬红线放宽为建议 ≤80 行 / ≤4 层，原 `launch()` 硬违规降级。）
 
 **通过项**：
 - **无 Redis / 无常驻进程**（CONTEXT.md）：`events/bus.ts` 进程内 Map 总线（非 Redis pub/sub）；scheduler 嵌入控制面 `setInterval` tick，非每宠物常驻 ✓
@@ -25,16 +25,15 @@
 - **禁兜底**：`scheduler.ts:110` `tick().catch` 是文档化的 log-and-continue（调度器不该崩，合理）；`:240` 冷却分支持久化失败状态，非吞；`bus.ts:54` 订阅者隔离 catch 有文档+测试，非掩盖；`worker-runner.ts:136` catch 记录 + 返回 `{ok:false}`，错误经结果契约传播 ✓
 - **魔法值**：并发上限 `schedulerMaxConcurrent=4`、propagate 阈值 `READY_BOREDOM=70`/`READY_ENERGY=40` 等均抽常量 ✓
 
-**硬违规**：
-1. `scheduler/scheduler.ts` `launch()` ~85 行 + 4 层缩进（async IIFE→try→if/else→body），违反 guides/index.md「方法≤50 行 / 缩进≤3 层（Guard Clause 优先）」。该方法把成功写回、重试 lease、DB 冷却、gen 令牌所有权四件事捆在一起。**最严重项**——需拆分为独立方法。
+判断题（方法/缩进阈值放宽为建议后）：
+1. `scheduler/scheduler.ts` `launch()` ~85 行（超建议 80）+ 4 层缩进（合规）——把成功写回、重试 lease、DB 冷却、gen 令牌所有权四件事捆在一起，建议拆分为独立方法。原硬红线已降级，仍是最值得优化的结构项。
 
-判断题：
-1. migration 0001 重建 `user_tenants` 与调度器无关（drizzle 规范化，无害）。
-2. `config.ts` 数值在 return 里重算而非复用（轻微冗余）。
-3. `worker-runner.ts` `createWorkerRunner` 缺直接 JSDoc（模块头覆盖）。
-4. `scheduler.ts:110` tick 失败 log-and-continue（合理）。
-5. 各处 `console.error`/`console.log` 均为运行日志（非调试遗留）。
-6. `bus.ts:54` 订阅者隔离 catch（有测试，非掩盖）。
+2. migration 0001 重建 `user_tenants` 与调度器无关（drizzle 规范化，无害）。
+3. `config.ts` 数值在 return 里重算而非复用（轻微冗余）。
+4. `worker-runner.ts` `createWorkerRunner` 缺直接 JSDoc（模块头覆盖）。
+5. `scheduler.ts:110` tick 失败 log-and-continue（合理）。
+6. 各处 `console.error`/`console.log` 均为运行日志（非调试遗留）。
+7. `bus.ts:54` 订阅者隔离 catch（有测试，非掩盖）。
 
 ## Spec
 
@@ -51,10 +50,9 @@
 **最严重**：无——spec 四准则全部达成，worker 经 S1 入口、lease+gen 令牌+DB 冷却三重兜底完整。
 
 ## 汇总
-
 | 轴 | 硬违规 | 判断题 | 最严重 |
 |---|---|---|---|
-| Standards | **1** | 6 | `scheduler.ts` `launch()` ~85 行 + 4 层缩进（方法≤50/缩进≤3 硬红线） |
+| Standards | 0 | 7 | `launch()` ~85 行超建议 80（原硬红线已降级，仍是最值得优化的结构项） |
 | Spec | 0 | 0 | 无 |
 
-S5 的 Spec 轴满分（四准则全命中，三重兜底完整），但 Standards 轴有唯一硬违规：`launch()` 方法过长+过深，捆绑了写回/重试/冷却/所有权四职责，需拆分。这是纯结构问题，不影响功能正确性。
+S5 的 Spec 轴满分（四准则全命中，三重兜底完整），Standards 轴无硬违规。`launch()` 方法过长捆绑四职责仍是最值得优化的结构项——纯结构问题，不影响功能正确性。

@@ -14,6 +14,7 @@
 
 import { readFileSync } from 'fs';
 import { runOneWander } from './run-one-wander.js';
+import { isPersonalityId, type PersonalityId } from '@cyber-stray/shared';
 import type { AgentSecrets, PlanExecutionArgs } from '../types.js';
 
 function parseArg(name: string): string | undefined {
@@ -27,7 +28,7 @@ async function main(): Promise<void> {
 
   if (!tenantId || !dataDir) {
     console.error(
-      '用法: tsx src/worker/cli.ts --tenant <id> --data-dir <dir> [--secrets-file <path>]',
+      '用法: tsx src/worker/cli.ts --tenant <id> --data-dir <dir> [--secrets-file <path>] [--personality <id>]',
     );
     process.exit(2);
   }
@@ -44,7 +45,18 @@ async function main(): Promise<void> {
     planArgs = JSON.parse(planArgsRaw) as PlanExecutionArgs;
   }
 
-  const result = await runOneWander({ tenantId, dataDir, secrets, planArgs });
+  // #90 性格：控制面注入；非法值显式失败（禁兜底——不会静默变默认性格）
+  const personalityRaw = parseArg('personality');
+  let personality: PersonalityId | undefined;
+  if (personalityRaw !== undefined) {
+    if (!isPersonalityId(personalityRaw)) {
+      console.error(JSON.stringify({ ok: false, tenantId, error: `非法性格: ${personalityRaw}` }));
+      process.exit(2);
+    }
+    personality = personalityRaw;
+  }
+
+  const result = await runOneWander({ tenantId, dataDir, secrets, planArgs, personality });
   console.log(JSON.stringify({ ok: true, tenantId, result }));
   process.exit(0);
 }

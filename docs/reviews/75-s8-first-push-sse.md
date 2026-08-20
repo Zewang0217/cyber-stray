@@ -30,7 +30,7 @@
 
 判断题：
 
-1. `events.ts:51-104` SSE 路由 handler 约 51 行，略超 guides「方法≤50 行」（缩进仍在 3 层内）。**最接近违规项**。
+1. `events.ts:51-104` SSE 路由 handler 约 51 行（建议 ≤80，合规）。
 2. `pets.ts:177-179` `boredom 30→75`（魔法值，注释指向阈值 70）——属「首推闭环」功能点，非 SSE 必要改动，但 commit 消息显式纳入 S8 范围。
 3. 单提交捆绑首推闭环 + 推送理由 + SSE 三个功能点（guides「一个提交 = 一个逻辑单元」边界判断，但 spec #75 本身就是三合一）。
 
@@ -60,7 +60,7 @@
 
 | 轴 | 硬违规 | 判断题 | 最严重 |
 |---|---|---|---|
-| Standards | 0 | 3 | events.ts SSE handler ~51 行略超 50 行 |
+| Standards | 0 | 3 | `pets.ts` boredom 30→75 魔法值（注释指向阈值 70，两处重复） |
 | Spec | 0 | 0（1 轻微超范围，实为正确性修复） | 无 |
 
-S8 是跨三层的高质量切片：首推闭环（boredom 阈值触发）+ 推送理由全链路（agent 产出→落盘→control-plane 透出→web 展示）+ SSE 租户隔离 + 降级轮询，五条准则全命中。agent 侧未引入新违规（catch 块为 S7 既有）。唯一轻微项是 events.ts handler 行数临界。
+S8 是跨三层的高质量切片：首推闭环（boredom 阈值触发）+ 推送理由全链路（agent 产出→落盘→control-plane 透出→web 展示）+ SSE 租户隔离 + 降级轮询，五条准则全命中。agent 侧未引入新违规（catch 块为 S7 既有）。

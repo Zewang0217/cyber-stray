@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   // S12：standalone 产物自包含（.next/standalone 含 server.js + 最小依赖树），
   // 产机只需 node 运行时 + 静态资源——构建在 CI，产机零编译
   output: "standalone",
+  // #90：跨包共享性格注册表（TS 源码直接消费）
+  transpilePackages: ["@cyber-stray/shared"],
   turbopack: {
     // 必须是仓库根而不是本包目录：pnpm 把依赖实体放在仓库根的
     // node_modules/.pnpm，包内 node_modules 只是软链。root 设成本包目录时

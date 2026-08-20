@@ -32,11 +32,13 @@ import { planLimits } from '../plan/limits.js';
 import {
   propagate,
   isReady,
-  WANDER_BOREDOM_RELIEF,
-  WANDER_ENERGY_COST,
+  resolveRates,
+  resolveWanderEffects,
   type PropagationRates,
   type PropagatedState,
+  type WanderEffects,
 } from './propagate.js';
+import type { PersonalityId } from '@cyber-stray/shared';
 import { isSleeping } from './sleep.js';
 
 export { MINUTE_MS } from './propagate.js';
@@ -59,6 +61,8 @@ export interface WorkerJob {
   dataDir: string;
   /** 套餐执行参数（S11 门控） */
   plan: PlanJobArgs;
+  /** 性格（#90：agent 侧探索倾向 + 语气注入；worker CLI --personality） */
+  personality: PersonalityId;
 }
 
 /** runner 结果：ok = 游荡完成（exit 0） */
@@ -80,7 +84,7 @@ export interface SchedulerConfig {
   retryBackoffMs: number;
   /** worker 挂死判定（ms） */
   workerTimeoutMs: number;
-  /** 前推速率 */
+  /** 前推速率基准（DEFAULT_RATES；性格倍率乘在此基准上） */
   rates: PropagationRates;
 }
 
@@ -189,7 +193,8 @@ export class Scheduler {
       if (lease && nowMs < lease.nextEligibleAt) continue; // 退避中
       if (this.running.size >= config.maxConcurrent) break; // 并发上限
 
-      const state = propagate(pet, nowMs, config.rates);
+      // #90 性格：按宠物性格解析速率（好奇=基准，存量行为不变）
+      const state = propagate(pet, nowMs, resolveRates(pet.personality, config.rates));
       if (!isReady(state)) continue;
 
       bus.publish(pet.tenantId, {
@@ -217,7 +222,7 @@ export class Scheduler {
    * S5 review 修复：拆分成功写回（handleSuccess）与失败处理（handleFailure）。
    */
   private launch(
-    pet: { id: string; tenantId: string; plan: string; pushWindowStart: number | null; pushWindowEnd: number | null },
+    pet: { id: string; tenantId: string; plan: string; pushWindowStart: number | null; pushWindowEnd: number | null; personality: PersonalityId },
     state: PropagatedState,
     dataRoot: string,
     bus: EventBus,
@@ -230,6 +235,8 @@ export class Scheduler {
     const startedAt = now();
     const gen = ++this.genCounter;
     this.running.set(petId, { startedAt, gen });
+    // #90：游荡效果按性格解析一次（写回/冷却共用同一组系数，落库一致）
+    const effects = resolveWanderEffects(pet.personality);
     /** 我是否仍是该宠物当前在飞任务的持有者 */
     const isOwner = () => this.running.get(petId)?.gen === gen;
 
@@ -246,15 +253,16 @@ export class Scheduler {
           petId,
           dataDir: tenantDataDir(dataRoot, tenantId), // 租户目录，非控制面根
           plan: this.planArgsFor(pet),
+          personality: pet.personality,
         });
         if (!result.ok) {
           throw new Error(`worker 退出码 ${result.exitCode}`);
         }
         if (!isOwner()) return; // 已被 TTL 重认领：过期结果不写回
-        await this.handleSuccess(petId, tenantId, state, bus, now);
+        await this.handleSuccess(petId, tenantId, state, effects, bus, now);
       } catch (error) {
         if (!isOwner()) return; // 已被 TTL 重认领：旧失败不干预新任务
-        await this.handleFailure(petId, tenantId, state, bus, now, config, error);
+        await this.handleFailure(petId, tenantId, state, effects, bus, now, config, error);
       } finally {
         // 只删自己持有的条目（TTL 重认领后条目属于新任务）
         if (isOwner()) this.running.delete(petId);
@@ -283,6 +291,7 @@ export class Scheduler {
     petId: string,
     tenantId: string,
     state: PropagatedState,
+    effects: WanderEffects,
     bus: EventBus,
     now: () => number,
   ): Promise<void> {
@@ -292,8 +301,8 @@ export class Scheduler {
       .update(pets)
       .set({
         lastRunAt: endAt,
-        boredom: Math.max(0, Math.round(state.boredom - WANDER_BOREDOM_RELIEF)),
-        energy: Math.max(0, Math.round(state.energy - WANDER_ENERGY_COST)),
+        boredom: Math.max(0, Math.round(state.boredom - effects.boredomRelief)),
+        energy: Math.max(0, Math.round(state.energy - effects.energyCost)),
       })
       .where(eq(pets.id, petId))
       .run();
@@ -311,6 +320,7 @@ export class Scheduler {
     petId: string,
     tenantId: string,
     state: PropagatedState,
+    effects: WanderEffects,
     bus: EventBus,
     now: () => number,
     config: SchedulerConfig,
@@ -341,8 +351,8 @@ export class Scheduler {
       .update(pets)
       .set({
         lastRunAt: failAt,
-        boredom: Math.max(0, Math.round(state.boredom - WANDER_BOREDOM_RELIEF)),
-        energy: Math.max(0, Math.round(state.energy - WANDER_ENERGY_COST)),
+        boredom: Math.max(0, Math.round(state.boredom - effects.boredomRelief)),
+        energy: Math.max(0, Math.round(state.energy - effects.energyCost)),
         cooldownUntil: failAt + config.retryBackoffMs,
       })
       .where(eq(pets.id, petId))

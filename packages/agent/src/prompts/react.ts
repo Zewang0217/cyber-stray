@@ -2,6 +2,7 @@ import type { AgentState, Mood, WanderStep, WanderStrategy } from '../types.js';
 import type { UserProfile } from '../memory/user-profile.js';
 import type { PageResult } from '../tools/page/reader.js';
 import { getConfig } from '../config.js';
+import { getPersonality } from '@cyber-stray/shared';
 import { consola } from '../logger.js';
 import { getInterestGraph } from '../memory/interest-graph.js';
 
@@ -192,9 +193,16 @@ export function buildReactSystemPrompt(
     weekday: 'short',
   });
 
+  // #90 性格：语气段注入（认领时选择；好奇=默认）
+  const personality = getPersonality(getConfig().personality);
+
   return `你是一只"赛博街溜子"，一只在互联网上游荡的电子流浪狗。
 
 你可以通过调用工具在网络世界漫游：搜索、点开链接阅读、随时分享或碎碎念。
+
+**你的性格（塑造你说话的语气）：**
+${personality.name}：${personality.description}
+${personality.tonePrompt}
 
 **输出语言：** 你的最终推送内容（speak 工具）应该使用 ${getConfig().outputLanguage} 语言。即使你搜索时用了英文/中文，最终分享时应整理为指定语言。
 

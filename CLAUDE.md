@@ -67,3 +67,17 @@ packages/agent/src/index.ts (入口)
 - **测试**: Vitest v3
 - **终端 UI**: Ink (React for CLI)
 - **前端**: Next.js 16 + Tailwind CSS 4 + Framer Motion + Three.js
+
+## Agent skills
+
+### Issue tracker
+
+Issues 存在 GitHub Issues（仓库 `Zewang0217/cyber-stray`，用 `gh` CLI）；外部贡献者 PR 也作为 triage 请求面。见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+五个默认 triage label：`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`（`wontfix` 已存在，其余按需创建）。见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+Multi-context：根 `CONTEXT-MAP.md` 指向根 `CONTEXT.md`（系统级 SaaS 共享词汇）+ 各包 `CONTEXT.md`（按需由 `/domain-modeling` 创建）。见 `docs/agents/domain.md`。

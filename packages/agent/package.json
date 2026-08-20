@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^2.0.29",
+    "@cyber-stray/shared": "workspace:*",
     "@ai-sdk/openai": "^3.0.53",
     "@larksuiteoapi/node-sdk": "^1.62.1",
     "@mozilla/readability": "^0.6.0",
