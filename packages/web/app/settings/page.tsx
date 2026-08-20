@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useWebPush } from "@/hooks/useWebPush";
 import { useChannels } from "@/hooks/useChannels";
 import { usePlan } from "@/hooks/usePlan";
+import { useWechatStatus } from "@/hooks/useWechatStatus";
 /**
  * 设置页面
  * 只读展示当前配置，提示修改需编辑后端 .env
@@ -18,6 +19,7 @@ export default function SettingsPage(): React.ReactElement {
     clearPushWindow,
     bindByokKey,
   } = usePlan();
+  const { status: wechatStatus } = useWechatStatus();
   return (
     <div className="spacing-lg max-w-6xl mx-auto">
       <motion.div
@@ -201,6 +203,43 @@ export default function SettingsPage(): React.ReactElement {
             </form>
           )}
           {channelError ? <p className="text-small text-danger mt-2">{channelError}</p> : null}
+        </div>
+
+        {/* 微信通道（#97）：扫码即用 + 过期提示 */}
+        <div className="p-6 paper-card rounded-sm">
+          <h2 className="font-heading text-heading font-semibold text-text mb-2">
+            微信通道（可选）
+          </h2>
+          <p className="text-small text-subtext mb-4">
+            扫码绑定后可在微信里和宠物聊天（双向 DM + 每日受限推送）
+          </p>
+          {!wechatStatus ? (
+            <p className="text-small text-subtext">加载中…</p>
+          ) : !wechatStatus.bound ? (
+            <a
+              href="/wechat"
+              className="inline-block px-4 py-2 rounded-sm text-small bg-accent text-base font-semibold"
+            >
+              扫码绑定
+            </a>
+          ) : wechatStatus.status === "expired" ? (
+            <div className="flex items-center gap-3">
+              <span className="text-small text-danger">
+                {wechatStatus.expiredHint ?? "微信通道已过期,发条消息重新激活"}
+              </span>
+              <a
+                href={`/wechat?rebind=${encodeURIComponent(wechatStatus.tenantId ?? "")}`}
+                className="px-3 py-1.5 rounded-sm text-small bg-accent text-base font-semibold"
+              >
+                重新激活
+              </a>
+            </div>
+          ) : (
+            <span className="text-small text-success">
+              已绑定（{wechatStatus.status === "active" ? "活跃中" : "等待激活"}）——
+              在微信里给宠物发条消息开始聊天
+            </span>
+          )}
         </div>
 
         {/* 套餐（S11）：Plan 门控与节流 */}

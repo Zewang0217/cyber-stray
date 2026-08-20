@@ -82,6 +82,11 @@ const nextConfig: NextConfig = {
         source: "/api/footprint/:path*",
         destination: `${controlPlaneOrigin}/api/footprint/:path*`,
       },
+      {
+        // #97：微信通道（扫码即用公开绑定页 + 登录态状态查询）
+        source: "/api/wechat/:path*",
+        destination: `${controlPlaneOrigin}/api/wechat/:path*`,
+      },
     ];
   },
 };
