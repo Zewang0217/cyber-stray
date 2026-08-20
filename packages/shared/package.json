@@ -5,7 +5,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/personality.ts"
+    ".": "./src/personality.ts",
+    "./diary": "./src/diary.ts"
   },
   "scripts": {
     "test": "vitest",

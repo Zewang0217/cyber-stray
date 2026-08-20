@@ -25,12 +25,14 @@ import {
   type WorkerResult,
   type WorkerRunner,
 } from './scheduler.js';
+import type { DiaryJob, DiaryWorkerResult, DiaryRunner } from './diary-runner.js';
 
 describe('调度器', () => {
   let dataDir: string;
   let db: ControlDb;
   let bus: EventBus;
   let runner: Mock<(job: WorkerJob) => Promise<WorkerResult>>;
+  let diaryRunner: Mock<(job: DiaryJob) => Promise<DiaryWorkerResult>>;
   let clock: { now: number };
   let sched: Scheduler;
 
@@ -44,6 +46,9 @@ describe('调度器', () => {
     bus = createEventBus();
     runner = vi.fn(
       async (_job: WorkerJob): Promise<WorkerResult> => ({ ok: true, exitCode: 0 }),
+    );
+    diaryRunner = vi.fn(
+      async (_job: DiaryJob): Promise<DiaryWorkerResult> => ({ ok: true, exitCode: 0 }),
     );
     clock = { now: 10 * MINUTE_MS }; // lastRunAt=0 → elapsed 恰 10 分钟，断言可整
     sched = makeScheduler();
@@ -66,6 +71,7 @@ describe('调度器', () => {
       dataDir,
       bus,
       runner,
+      diaryRunner,
       now: () => clock.now,
       config: {
         maxConcurrent: overrides?.maxConcurrent ?? 4,
@@ -325,6 +331,115 @@ describe('调度器', () => {
       // 写回正常（游荡计数在 worker 侧；调度侧 lastRunAt 前移）
       const pet = await getPet('p1');
       expect(pet?.lastRunAt).toBe(clock.now);
+    });
+  });
+
+  describe('睡前任务触发（#92 日记）', () => {
+    // 以显式本地时间推进时钟，绕开机器 TZ 差异（new Date('...T21:00:00') 本地解析）
+    function setLocal(hhmm: string): void {
+      clock.now = new Date(`2026-08-20T${hhmm}:00`).getTime();
+    }
+
+    it('有作息：睡眠开始触发日记 worker 并更新 lastDiaryDate', async () => {
+      setLocal('21:00'); // 清醒，播种 wasSleeping=false
+      await addPet('pd1', 't1', { sleepStart: 22, sleepEnd: 7, lastRunAt: clock.now });
+      await tick();
+      expect(diaryRunner).not.toHaveBeenCalled();
+
+      await tick(60 * 60 * 1000); // 22:00 睡眠开始 → 触发
+      expect(diaryRunner).toHaveBeenCalledTimes(1);
+      expect(diaryRunner).toHaveBeenCalledWith(
+        expect.objectContaining({
+          petId: 'pd1',
+          tenantId: 't1',
+          date: '2026-08-20',
+          petName: 'pd1',
+          personality: 'curious',
+          diaryStyle: 'personality',
+          pushEnabled: false,
+        }),
+      );
+      const pet = await getPet('pd1');
+      expect(pet?.lastDiaryDate).toBe('2026-08-20');
+    });
+
+    it('睡眠中持续不重复触发（wasSleeping 跳变只在入睡瞬间为 true）', async () => {
+      setLocal('21:00');
+      await addPet('pd2', 't1', { sleepStart: 22, sleepEnd: 7, lastRunAt: clock.now });
+      await tick();
+      await tick(60 * 60 * 1000); // 22:00 触发
+      expect(diaryRunner).toHaveBeenCalledTimes(1);
+      await tick(60 * 60 * 1000); // 23:00 仍在睡 → 不重复
+      await tick(60 * 60 * 1000); // 00:00 跨午夜仍在睡 → 不重复
+      expect(diaryRunner).toHaveBeenCalledTimes(1);
+    });
+
+    it('无作息：固定 23 点触发一次，次日再触发（新的一天）', async () => {
+      setLocal('22:00');
+      await addPet('pd3', 't1', { lastRunAt: clock.now });
+      await tick();
+      expect(diaryRunner).not.toHaveBeenCalled();
+
+      await tick(60 * 60 * 1000); // 23:00 → 触发
+      expect(diaryRunner).toHaveBeenCalledTimes(1);
+      const pet = await getPet('pd3');
+      expect(pet?.lastDiaryDate).toBe('2026-08-20');
+
+      // 同日再 tick 到 23 点不重复（lastDiaryDate === today）
+      await tick(60 * 60 * 1000); // 00:00（次日，但 lastDiaryDate 还是 20 号）
+      // 直接跳到次日晚 23 点
+      clock.now = new Date('2026-08-21T23:00:00').getTime();
+      await tick();
+      expect(diaryRunner).toHaveBeenCalledTimes(2);
+      const pet2 = await getPet('pd3');
+      expect(pet2?.lastDiaryDate).toBe('2026-08-21');
+    });
+
+    it('diaryPushEnabled 透传 pushEnabled；成功后发 diary_generated 事件', async () => {
+      setLocal('21:00');
+      await addPet('pd4', 't1', {
+        sleepStart: 22,
+        sleepEnd: 7,
+        lastRunAt: clock.now,
+        diaryPushEnabled: true,
+      });
+      const events: string[] = [];
+      bus.subscribe('t1', (e) => events.push(e.type));
+      await tick();
+      await tick(60 * 60 * 1000); // 22:00 触发
+      expect(diaryRunner).toHaveBeenCalledWith(expect.objectContaining({ pushEnabled: true }));
+      expect(events).toContain('diary_generated');
+    });
+
+    it('日记 worker 失败：窗口内重试，成功后清除 pending', async () => {
+      setLocal('21:00');
+      await addPet('pd5', 't1', { sleepStart: 22, sleepEnd: 7, lastRunAt: clock.now });
+      diaryRunner.mockResolvedValueOnce({ ok: false, exitCode: 1 }); // 首次失败
+      await tick();
+      await tick(60 * 60 * 1000); // 22:00 首次触发 → 失败
+      expect(diaryRunner).toHaveBeenCalledTimes(1);
+      expect((await getPet('pd5'))?.lastDiaryDate).toBeNull();
+
+      await tick(60 * 60 * 1000); // 23:00 仍在睡 → 重试
+      expect(diaryRunner).toHaveBeenCalledTimes(2);
+      expect((await getPet('pd5'))?.lastDiaryDate).toBe('2026-08-20');
+    });
+
+    it('重启跨午夜：睡眠中段播种不补触发（防多生成一篇）', async () => {
+      // 21:00 入睡，22:00 触发成功
+      setLocal('21:00');
+      await addPet('pd6', 't1', { sleepStart: 22, sleepEnd: 7, lastRunAt: clock.now });
+      await tick();
+      await tick(60 * 60 * 1000);
+      expect(diaryRunner).toHaveBeenCalledTimes(1);
+
+      // 模拟重启：新建 Scheduler（wasSleeping 内存清零），当前 01:00 仍在睡
+      sched.stop();
+      sched = makeScheduler();
+      clock.now = new Date('2026-08-21T01:00:00').getTime();
+      await tick(); // 首次观测播种（跨午夜尾部 → 不补触发）
+      await tick(60 * 60 * 1000); // 02:00 仍在睡，无跳变 → 不触发
+      expect(diaryRunner).toHaveBeenCalledTimes(1);
     });
   });
 });

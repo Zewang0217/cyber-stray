@@ -18,7 +18,9 @@ export interface TenantEvent {
     | 'worker_succeeded'
     | 'worker_retry'
     | 'worker_failed'
-    | 'worker_timeout';
+    | 'worker_timeout'
+    /** #92 日记：睡前任务生成当天日记（Web Push 消费） */
+    | 'diary_generated';
   tenantId: string;
   petId: string;
   /** 事件时刻（unix ms） */

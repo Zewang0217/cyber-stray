@@ -26,6 +26,7 @@ import { pets, userTenants, type NewPet } from '../db/schema.js';
 import { tenantDataDir } from '../tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
+import { isDiaryStyleChoice } from '@cyber-stray/shared/diary';
 
 export interface PetsDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
@@ -262,6 +263,65 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       .where(eq(pets.tenantId, scoped.tenantId))
       .run();
     return c.json({ success: true, data: { cleared: true } });
+  });
+
+  /** PUT /api/pets/diary-style — 设置日记风格（#92；'personality'=跟随性格） */
+  app.put('/pets/diary-style', async (c) => {
+    const scoped = await scopedTenantId(c.req.raw, config);
+    if ('error' in scoped) {
+      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
+    }
+
+    let body: { diaryStyle?: unknown };
+    try {
+      body = (await c.req.json()) as { diaryStyle?: unknown };
+    } catch {
+      return c.json(jsonError('请求体须为 JSON'), 400);
+    }
+    const diaryStyle = body.diaryStyle;
+    if (!isDiaryStyleChoice(diaryStyle)) {
+      return c.json(jsonError('diaryStyle 须为 personality|casual|careful|literary'), 400);
+    }
+
+    const db = await getDb(config.dataDir);
+    const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
+    if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
+
+    await db
+      .update(pets)
+      .set({ diaryStyle })
+      .where(eq(pets.tenantId, scoped.tenantId))
+      .run();
+    return c.json({ success: true, data: { diaryStyle } });
+  });
+
+  /** PUT /api/pets/diary-push — 设置是否推送每日日记（#92，Web Push） */
+  app.put('/pets/diary-push', async (c) => {
+    const scoped = await scopedTenantId(c.req.raw, config);
+    if ('error' in scoped) {
+      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
+    }
+
+    let body: { enabled?: unknown };
+    try {
+      body = (await c.req.json()) as { enabled?: unknown };
+    } catch {
+      return c.json(jsonError('请求体须为 JSON'), 400);
+    }
+    if (typeof body.enabled !== 'boolean') {
+      return c.json(jsonError('enabled 须为 boolean'), 400);
+    }
+
+    const db = await getDb(config.dataDir);
+    const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
+    if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
+
+    await db
+      .update(pets)
+      .set({ diaryPushEnabled: body.enabled })
+      .where(eq(pets.tenantId, scoped.tenantId))
+      .run();
+    return c.json({ success: true, data: { enabled: body.enabled } });
   });
 
   return app;

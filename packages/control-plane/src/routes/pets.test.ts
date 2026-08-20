@@ -318,4 +318,94 @@ describe('pets 路由（领养）', () => {
       expect(bobPet?.sleepEnd).toBeNull();
     });
   });
+
+  describe('日记配置（#92）：PUT /api/pets/diary-style + diary-push', () => {
+    async function seedPet(tenantId: string) {
+      const db = await getDb(dataDir);
+      await db
+        .insert(pets)
+        .values({
+          id: `pet-${tenantId}`,
+          tenantId,
+          name: '小溜',
+          status: 'active',
+          lastRunAt: null,
+          cooldownUntil: null,
+          boredom: 30,
+          energy: 80,
+        })
+        .run();
+    }
+
+    it('未登录：PUT 均 401', async () => {
+      expect((await app.request('/api/pets/diary-style', { method: 'PUT' })).status).toBe(401);
+      expect((await app.request('/api/pets/diary-push', { method: 'PUT' })).status).toBe(401);
+    });
+
+    it('未领养 → 409', async () => {
+      const res = await app.request(
+        await authed('http://x/api/pets/diary-style', {
+          method: 'PUT',
+          body: JSON.stringify({ diaryStyle: 'literary' }),
+        }),
+      );
+      expect(res.status).toBe(409);
+    });
+
+    it('PUT diary-style 设置具体风格，默认 personality 不变', async () => {
+      await seedPet('alice');
+      const db = await getDb(dataDir);
+      // 默认 personality
+      let pet = await db.select().from(pets).where(eq(pets.tenantId, 'alice')).get();
+      expect(pet?.diaryStyle).toBe('personality');
+
+      const res = await app.request(
+        await authed('http://x/api/pets/diary-style', {
+          method: 'PUT',
+          body: JSON.stringify({ diaryStyle: 'literary' }),
+        }),
+      );
+      expect(res.status).toBe(200);
+      pet = await db.select().from(pets).where(eq(pets.tenantId, 'alice')).get();
+      expect(pet?.diaryStyle).toBe('literary');
+    });
+
+    it('PUT diary-style 非法值 / 非 JSON → 400', async () => {
+      await seedPet('alice');
+      const bad = async (body: unknown) =>
+        app.request(
+          await authed('http://x/api/pets/diary-style', {
+            method: 'PUT',
+            body: typeof body === 'string' ? body : JSON.stringify(body),
+          }),
+        );
+      expect((await bad({ diaryStyle: 'grumpy' })).status).toBe(400);
+      expect((await bad('not json')).status).toBe(400);
+    });
+
+    it('PUT diary-push 开关生效', async () => {
+      await seedPet('alice');
+      const db = await getDb(dataDir);
+      let pet = await db.select().from(pets).where(eq(pets.tenantId, 'alice')).get();
+      expect(pet?.diaryPushEnabled).toBe(false);
+
+      const on = await app.request(
+        await authed('http://x/api/pets/diary-push', {
+          method: 'PUT',
+          body: JSON.stringify({ enabled: true }),
+        }),
+      );
+      expect(on.status).toBe(200);
+      pet = await db.select().from(pets).where(eq(pets.tenantId, 'alice')).get();
+      expect(pet?.diaryPushEnabled).toBe(true);
+
+      const bad = await app.request(
+        await authed('http://x/api/pets/diary-push', {
+          method: 'PUT',
+          body: JSON.stringify({ enabled: 'yes' }),
+        }),
+      );
+      expect(bad.status).toBe(400);
+    });
+  });
 });

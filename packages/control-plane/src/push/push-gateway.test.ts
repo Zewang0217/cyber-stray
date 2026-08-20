@@ -186,6 +186,39 @@ describe('push-gateway（Web Push 分发）', () => {
     expect(sent).toHaveLength(0);
   });
 
+  it('#92 diary_generated → 日记 speak 记录（pushed=false, diary=true）经 Web Push 送达', async () => {
+    const bus = createEventBus();
+    unsub = attachPushGateway({
+      dataDir,
+      bus,
+      sendFn,
+      getKeys: async () => {
+        const g = webpush.generateVAPIDKeys();
+        return { publicKey: g.publicKey, privateKey: g.privateKey };
+      },
+    });
+    await seedSubscription('alice', 'https://push.example/a1');
+    // 日记 worker 写的 notifiable 记录：pushed=false（PWA 默认通道）+ diary=true
+    await seedSpeaks('alice', {
+      content: '# 日记 · 2026-08-15\n\n今天发现了量子计算',
+      type: 'article',
+      pushed: false,
+      timestamp: '2026-08-15T23:59:59.000Z',
+      title: '日记 · 2026-08-15',
+      gated: false,
+      planLimited: false,
+      diary: true,
+    });
+
+    bus.publish('alice', ev('diary_generated', 'alice'));
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(sent).toHaveLength(1);
+    const payload = sent[0]?.payload as { title: string; body: string };
+    expect(payload.title).toBe('街溜子有新发现');
+    expect(payload.body).toContain('日记 · 2026-08-15');
+  });
+
   it('S11 planLimited 记录不可通知（预算/窗口拦下的内容 Web Push 不绕过）', async () => {
     const bus = createEventBus();
     unsub = attachPushGateway({
