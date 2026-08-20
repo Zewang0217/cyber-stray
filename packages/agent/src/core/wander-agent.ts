@@ -27,6 +27,7 @@ import { WanderEventEmitter } from './events.js';
 import type { WanderEvent } from './events.js';
 import { wanderLoop } from './wander-loop.js';
 import { computeStrategy } from './strategy.js';
+import { pickFocusTopics } from './personality.js';
 import type { WanderLoopConfig } from './wander-loop.js';
 import { HookChain } from '../hooks/chain.js';
 import type { HookContext } from '../hooks/types.js';
@@ -180,15 +181,17 @@ export class WanderAgent {
 
   /**
    * 生成游荡策略：兴趣图谱 → 聚焦话题，状态 → 行为参数。
-   * 映射规则见 core/strategy.ts（computeStrategy，纯函数可测）。
+   * 映射规则见 core/strategy.ts（computeStrategy，纯函数可测）；
+   * #90 性格探索倾向见 core/personality.ts（pickFocusTopics，纯函数可测）——
+   * 候选取 top-8 再按性格新/旧话题权重混合打分，好奇偏新、慵懒偏熟。
    */
   private buildStrategy(state: AgentState): WanderStrategy {
-    // ─── 兴趣 → 聚焦话题 ───
+    // ─── 兴趣 → 聚焦话题（候选放宽到 8，性格权重定最终 3）───
     let focusTopics: string[] = [];
     try {
       const graph = getInterestGraph();
-      const topInterests = graph.getTopInterestsWithWeights(3, 0.05);
-      focusTopics = topInterests.map((i) => i.id);
+      const candidates = graph.getTopInterestsWithWeights(8, 0.05);
+      focusTopics = pickFocusTopics(candidates, this.agentConfig.personality, 3);
     } catch (err) {
       // InterestGraph 不可用时 fallback 到 state.agentInterests（显式 warn，不静默降级）
       logger.warn('InterestGraph 查询失败，fallback 到 state.agentInterests', { error: String(err) });

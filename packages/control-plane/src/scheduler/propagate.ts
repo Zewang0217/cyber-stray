@@ -8,6 +8,8 @@
 
 export const MINUTE_MS = 60_000;
 
+import { getPersonality, type PersonalityId } from '@cyber-stray/shared';
+
 /** 前推速率（每分钟） */
 export interface PropagationRates {
   /** 无聊上升/分钟 */
@@ -44,6 +46,32 @@ export const READY_ENERGY = 40;
 /** 一轮游荡的效果：解无聊 -50、耗精力 -30 */
 export const WANDER_BOREDOM_RELIEF = 50;
 export const WANDER_ENERGY_COST = 30;
+
+/** 按性格解析前推速率（纯函数；好奇=基准 1.0 → 等于 DEFAULT_RATES，存量行为不回退） */
+export function resolveRates(
+  personality: PersonalityId,
+  base: PropagationRates = DEFAULT_RATES,
+): PropagationRates {
+  const p = getPersonality(personality);
+  return {
+    boredomPerMinute: base.boredomPerMinute * p.rates.boredomPerMinute,
+    energyPerMinute: base.energyPerMinute * p.rates.energyPerMinute,
+  };
+}
+
+/** 游荡效果（性格系数 × 基准常量，取整保持整数落库） */
+export interface WanderEffects {
+  boredomRelief: number;
+  energyCost: number;
+}
+
+export function resolveWanderEffects(personality: PersonalityId): WanderEffects {
+  const p = getPersonality(personality);
+  return {
+    boredomRelief: Math.round(WANDER_BOREDOM_RELIEF * p.wander.boredomRelief),
+    energyCost: Math.round(WANDER_ENERGY_COST * p.wander.energyCost),
+  };
+}
 
 const clamp = (v: number) => Math.min(100, Math.max(0, v));
 

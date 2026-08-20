@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { getPersonality } from "@cyber-stray/shared";
 import { useAgentState } from "@/hooks/useAgentState";
 import { useTenantEvents } from "@/hooks/useTenantEvents";
 import { useInterestGraph } from "@/hooks/useInterestGraph";
@@ -212,7 +213,9 @@ export default function DashboardPage(): React.ReactElement {
                                 {pets[0]?.name ?? "Cyber Stray"}
                             </p>
                             <p className="field-note text-lg text-[var(--c-faded-ink)] mt-0.5">
-                                赛博街溜子
+                                {pets[0]
+                                    ? `${getPersonality(pets[0].personality).name}性格的赛博街溜子`
+                                    : "赛博街溜子"}
                             </p>
                         </div>
                         <div className="engraving-rule" />

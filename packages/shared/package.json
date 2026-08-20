@@ -1,0 +1,18 @@
+{
+  "name": "@cyber-stray/shared",
+  "version": "0.1.0",
+  "description": "赛博街溜子跨包共享契约——性格注册表（认领/行为参数/游荡效果/探索倾向/语气/日记风格单一真相源）",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/personality.ts"
+  },
+  "scripts": {
+    "test": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "vitest": "^3"
+  }
+}

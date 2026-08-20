@@ -64,6 +64,13 @@
       "when": 1787193534601,
       "tag": "0008_wechat_bindings",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1787230299617,
+      "tag": "0010_personality",
+      "breakpoints": true
     }
   ]
 }

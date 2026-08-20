@@ -240,4 +240,39 @@ describe('调度器', () => {
     expect(t1Events).toEqual(['p1']);
     expect(t2Events).toEqual(['p2']);
   });
+
+  describe('性格（#90）：行为参数按性格解析', () => {
+    it('好奇无聊增速快于慵懒：同起点同流逝，好奇就绪、慵懒未就绪（acceptance）', async () => {
+      // 基准 rates 1/1 × 性格倍率：好奇 1.0 → 60+10=70（就绪）；慵懒 0.6 → 60+6=66（未就绪）
+      await addPet('curious-pet', 't1', { personality: 'curious' });
+      await addPet('lazy-pet', 't2', { personality: 'lazy' });
+
+      await tick();
+
+      expect(runner).toHaveBeenCalledTimes(1);
+      expect(runner).toHaveBeenCalledWith(expect.objectContaining({ petId: 'curious-pet' }));
+    });
+
+    it('runner 收到 personality，游荡写回按性格效果（活泼耗能更多）', async () => {
+      await addPet('p1', 't1', { personality: 'playful' });
+      await tick();
+
+      expect(runner).toHaveBeenCalledWith(
+        expect.objectContaining({ petId: 'p1', personality: 'playful' }),
+      );
+      const pet = await getPet('p1');
+      // 前推：60+10×1.25=72.5，60+10×0.9=69；写回扣活泼效果（relief 55 / cost 35）
+      expect(pet?.boredom).toBe(Math.round(72.5 - 55));
+      expect(pet?.energy).toBe(Math.round(69 - 35));
+    });
+
+    it('存量宠物默认好奇 → 写回与改动前一致（relief 50 / cost 30）', async () => {
+      await addPet('p1', 't1'); // 不传 personality：DB 默认 curious
+      await tick();
+      const pet = await getPet('p1');
+      expect(pet?.personality).toBe('curious');
+      expect(pet?.boredom).toBe(60 + 10 - 50);
+      expect(pet?.energy).toBe(60 + 10 - 30);
+    });
+  });
 });

@@ -107,6 +107,7 @@ export function createWorkerRunner(deps: WorkerRunnerDeps): WorkerRunner {
       const args = [AGENT_CLI, '--tenant', job.tenantId, '--data-dir', job.dataDir];
       if (secretsPath) args.push('--secrets-file', secretsPath);
       args.push('--plan-args', JSON.stringify(job.plan));
+      args.push('--personality', job.personality);
       const { exitCode } = await spawnFn(command, args, { timeoutMs: deps.timeoutMs });
       return { ok: exitCode === 0, exitCode };
     } catch (error) {

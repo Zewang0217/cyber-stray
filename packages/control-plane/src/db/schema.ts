@@ -10,6 +10,7 @@
  */
 
 import { sqliteTable, text, integer, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { PERSONALITY_IDS, DEFAULT_PERSONALITY } from '@cyber-stray/shared';
 
 /** 时间戳：unix 毫秒（SQLite 无原生 datetime，integer 跨方言最稳） */
 const now = () => Date.now();
@@ -68,6 +69,10 @@ export const pets = sqliteTable('pets', {
   energy: integer('energy').notNull().default(80),
   /** 套餐（S11 门控：free/pro/byok） */
   plan: text('plan', { enum: ['free', 'pro', 'byok'] }).notNull().default('free'),
+  /** 性格（认领时选择；好奇=基准参数，存量宠物默认 curious 行为不回退） */
+  personality: text('personality', { enum: [...PERSONALITY_IDS] })
+    .notNull()
+    .default(DEFAULT_PERSONALITY),
   /** Pro 自定义推送时间窗（本地小时 0-23；null = 全天可推） */
   pushWindowStart: integer('push_window_start'),
   pushWindowEnd: integer('push_window_end'),

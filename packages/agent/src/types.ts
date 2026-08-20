@@ -2,6 +2,8 @@
  * 赛博街溜子核心类型定义
  */
 
+import type { PersonalityId } from '@cyber-stray/shared';
+
 // ============================================
 // 状态相关
 // ============================================
@@ -181,6 +183,9 @@ export interface AgentConfig {
   // ReAct Loop 配置（新增）
   maxWanderSteps: number;        // 每次游荡最大步数（安全上限）
   wanderTemperature: number;     // 游荡 LLM 温度（高随机性）
+
+  /** 性格（#90：认领时选择；好奇=基准；控制面经 worker CLI 注入，默认好奇） */
+  personality: PersonalityId;
   
   // 搜索配置
   searchProvider: string;
