@@ -37,7 +37,9 @@ export function createAuthRoutes({ config, oidc, states }: AuthDeps): Hono {
     const state = c.req.query('state');
     const entry = state ? states.consume(state) : null;
     if (!state || !entry) {
-      return c.json({ error: 'state 无效或已过期' }, 401);
+      // state 无效/已过期（用户刷新重试等）→ 重新走登录，不裸抛 JSON
+      console.warn(`[auth] callback state 无效（${String(state).slice(0, 8)}…）`);
+      return c.redirect(`${config.webOrigin}/api/auth/login?error=state_invalid`, 302);
     }
 
     let user;
@@ -45,9 +47,9 @@ export function createAuthRoutes({ config, oidc, states }: AuthDeps): Hono {
       user = await oidc.handleCallback(c.req.url, state, entry.nonce, entry.verifier);
     } catch (error) {
       console.error('[auth] OIDC 回调失败', error);
-      return c.json(
-        { error: `OIDC 回调校验失败: ${error instanceof Error ? error.message : String(error)}` },
-        401,
+      return c.redirect(
+        `${config.webOrigin}/api/auth/login?error=oidc_failed`,
+        302,
       );
     }
 
