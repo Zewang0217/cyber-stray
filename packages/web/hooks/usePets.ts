@@ -20,6 +20,10 @@ export interface Pet {
   /** 作息睡眠窗口（#91，本地小时 0-23；null = 无作息，永不睡眠） */
   sleepStart: number | null;
   sleepEnd: number | null;
+  /** 日记风格（#92；'personality' = 跟随性格） */
+  diaryStyle: "personality" | "casual" | "careful" | "literary";
+  /** 是否推送每日日记（#92；Web Push） */
+  diaryPushEnabled: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -40,6 +44,10 @@ interface UsePetsReturn {
   setSleepSchedule: (startHour: number, endHour: number) => Promise<boolean>;
   /** 清除作息（回永不睡眠，与现状一致）。成功返回 true */
   clearSleepSchedule: () => Promise<boolean>;
+  /** 设置日记风格（#92；personality 或具体风格）。成功返回 true */
+  setDiaryStyle: (style: Pet["diaryStyle"]) => Promise<boolean>;
+  /** 设置是否推送每日日记（#92）。成功返回 true */
+  setDiaryPush: (enabled: boolean) => Promise<boolean>;
 }
 
 /**
@@ -107,8 +115,8 @@ export function usePets(): UsePetsReturn {
     [refresh],
   );
 
-  /** 作息变更（#91）：成功刷新宠物行并返回 true */
-  const mutateSleepSchedule = useCallback(
+  /** 宠物配置变更（#91/#92）：PUT/DELETE 后刷新宠物行。成功返回 true */
+  const mutatePetSetting = useCallback(
     async (url: string, body: unknown, failMsg: string): Promise<boolean> => {
       try {
         const res = await fetch(url, {
@@ -134,18 +142,29 @@ export function usePets(): UsePetsReturn {
 
   const setSleepSchedule = useCallback(
     (startHour: number, endHour: number): Promise<boolean> =>
-      mutateSleepSchedule(
+      mutatePetSetting(
         "/api/pets/sleep-schedule",
         { startHour, endHour },
         "作息设置失败",
       ),
-    [mutateSleepSchedule],
+    [mutatePetSetting],
   );
 
   const clearSleepSchedule = useCallback(
-    (): Promise<boolean> =>
-      mutateSleepSchedule("/api/pets/sleep-schedule", null, "作息清除失败"),
-    [mutateSleepSchedule],
+    (): Promise<boolean> => mutatePetSetting("/api/pets/sleep-schedule", null, "作息清除失败"),
+    [mutatePetSetting],
+  );
+
+  const setDiaryStyle = useCallback(
+    (style: Pet["diaryStyle"]): Promise<boolean> =>
+      mutatePetSetting("/api/pets/diary-style", { diaryStyle: style }, "日记风格设置失败"),
+    [mutatePetSetting],
+  );
+
+  const setDiaryPush = useCallback(
+    (enabled: boolean): Promise<boolean> =>
+      mutatePetSetting("/api/pets/diary-push", { enabled }, "日记推送设置失败"),
+    [mutatePetSetting],
   );
 
   return {
@@ -156,5 +175,7 @@ export function usePets(): UsePetsReturn {
     adopting,
     setSleepSchedule,
     clearSleepSchedule,
+    setDiaryStyle,
+    setDiaryPush,
   };
 }

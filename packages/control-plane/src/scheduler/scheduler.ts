@@ -39,9 +39,21 @@ import {
   type WanderEffects,
 } from './propagate.js';
 import type { PersonalityId } from '@cyber-stray/shared';
+import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
 import { isSleeping } from './sleep.js';
+import { DIARY_FALLBACK_HOUR, shouldGenerateDiary } from './diary-schedule.js';
+import type { DiaryRunner } from './diary-runner.js';
 
 export { MINUTE_MS } from './propagate.js';
+
+/** 本地日期字符串（YYYY-MM-DD；日记文件名与按天去重基准） */
+function todayFor(nowMs: number): string {
+  const d = new Date(nowMs);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 /** 套餐执行参数（S11：scheduler 从 pet 行带出，runner 透传 worker CLI） */
 export interface PlanJobArgs {
@@ -94,6 +106,8 @@ export interface SchedulerDeps {
   dataDir: string;
   bus: EventBus;
   runner: WorkerRunner;
+  /** 睡前任务执行器（#92；spawn diary-cli） */
+  diaryRunner: DiaryRunner;
   now: () => number;
   config: SchedulerConfig;
 }
@@ -115,6 +129,12 @@ export class Scheduler {
   private readonly leases = new Map<string, Lease>();
   private readonly inFlight = new Set<Promise<void>>();
   private genCounter = 0;
+  /** #92 日记：在飞睡前任务（petId → startedAt；防同 tick 重复拉起） */
+  private readonly diaryRunning = new Map<string, number>();
+  /** #92 日记：日记到期未完成（petId → 窗口内重试；窗口退出/完成即清） */
+  private readonly diaryPending = new Set<string>();
+  /** #92 日记：每宠上次 tick 是否睡眠中（跨 tick 记忆，检测睡眠开始） */
+  private readonly wasSleeping = new Map<string, boolean>();
   private timer?: ReturnType<typeof setInterval>;
 
   constructor(private readonly deps: SchedulerDeps) {}
@@ -213,7 +233,134 @@ export class Scheduler {
         config,
       );
     }
+
+    // #92 睡前任务：睡眠开始（或无作息固定时刻）触发当天日记。
+    // 与游荡解耦——独立 diaryRunning 在飞集合，不占游荡并发槽。
+    this.runDiaryTriggers(rows, dataDir, nowMs, localHour, todayFor(nowMs));
   }
+
+  /**
+   * 睡前任务触发：对每只 active 宠物按 shouldGenerateDiary 判定，命中则
+   * 拉起 diary-cli 生成当天日记。
+   *
+   * 状态机（跨 tick 记忆）：
+   * - wasSleeping：上次 tick 睡眠态，检测"睡眠开始"跳变
+   * - diaryPending：日记到期未完成（进入睡眠窗口 / 命中固定时刻）；窗口内每
+   *   tick 重试（失败不丢），窗口退出（醒来 / 时刻已过）放弃
+   * - diaryRunning：在飞 worker（防同 tick 重复拉起）
+   * 重启：首次观测播种 wasSleeping（不触发）；若恰在睡眠窗口头部（今天入睡）
+   * 且今天未生成 → 补触发（跨午夜尾部不补，防睡眠中段多生成一篇）。
+   */
+  private runDiaryTriggers(
+    rows: Array<{ id: string; tenantId: string; status: string; name: string; personality: string; diaryStyle: string; diaryPushEnabled: boolean | number; sleepStart: number | null; sleepEnd: number | null; lastDiaryDate: string | null }>,
+    dataRoot: string,
+    nowMs: number,
+    localHour: number,
+    today: string,
+  ): void {
+    for (const pet of rows) {
+      if (pet.status !== 'active') continue;
+
+      const sleepingNow = isSleeping(localHour, pet.sleepStart, pet.sleepEnd);
+      const prevSleeping = this.wasSleeping.get(pet.id);
+
+      if (prevSleeping === undefined) {
+        // 首次观测：播种当前态不触发
+        const seedSleeping = sleepingNow;
+        this.wasSleeping.set(pet.id, seedSleeping);
+        // 恰在睡眠窗口头部（今天入睡）且今天未生成 → 补触发
+        const inHead =
+          pet.sleepStart !== null &&
+          pet.sleepEnd !== null &&
+          sleepingNow &&
+          !(pet.sleepStart > pet.sleepEnd && localHour < pet.sleepEnd);
+        if (inHead && pet.lastDiaryDate !== today) {
+          this.diaryPending.add(pet.id);
+          this.maybeLaunchDiary(pet, dataRoot, today, nowMs);
+        }
+        continue;
+      }
+
+      const wasSleeping = prevSleeping;
+      this.wasSleeping.set(pet.id, sleepingNow);
+
+      // 睡眠窗口（有作息）或固定时刻（无作息）
+      const inWindow = pet.sleepStart !== null ? sleepingNow : localHour === DIARY_FALLBACK_HOUR;
+      const justEntered = pet.sleepStart !== null ? sleepingNow && !wasSleeping : inWindow;
+      if (justEntered) this.diaryPending.add(pet.id);
+      if (!inWindow) this.diaryPending.delete(pet.id); // 窗口退出：放弃（下次窗口再试）
+      if (pet.lastDiaryDate === today) {
+        this.diaryPending.delete(pet.id); // 今天已处理
+        continue;
+      }
+      if (!this.diaryPending.has(pet.id)) continue;
+
+      this.maybeLaunchDiary(pet, dataRoot, today, nowMs);
+    }
+  }
+
+  /** 若不在飞则拉起日记 worker */
+  private maybeLaunchDiary(
+    pet: { id: string; tenantId: string; name: string; personality: string; diaryStyle: string; diaryPushEnabled: boolean | number },
+    dataRoot: string,
+    today: string,
+    nowMs: number,
+  ): void {
+    if (this.diaryRunning.has(pet.id)) return;
+    const petId = pet.id;
+    const tenantId = pet.tenantId;
+    this.diaryRunning.set(petId, nowMs);
+    const diaryStyle = (['casual', 'careful', 'literary', 'personality'] as const).includes(
+      pet.diaryStyle as DiaryStyleChoice,
+    )
+      ? (pet.diaryStyle as DiaryStyleChoice)
+      : 'personality';
+
+    const task = (async () => {
+      try {
+        const result = await this.deps.diaryRunner({
+          tenantId,
+          petId,
+          dataDir: tenantDataDir(dataRoot, tenantId),
+          petName: pet.name,
+          date: today,
+          personality: pet.personality as PersonalityId,
+          diaryStyle,
+          pushEnabled: Boolean(pet.diaryPushEnabled),
+        });
+        if (!result.ok) {
+          throw new Error(`日记 worker 退出码 ${result.exitCode}`);
+        }
+        // 无论生成还是跳过，都记"今天已处理"（无内容天不反复拉起）
+        const dbh = await this.deps.db();
+        await dbh
+          .update(pets)
+          .set({ lastDiaryDate: today })
+          .where(eq(pets.id, petId))
+          .run();
+        this.diaryPending.delete(petId);
+        this.deps.bus.publish(tenantId, {
+          type: 'diary_generated',
+          tenantId,
+          petId,
+          at: nowMs,
+          detail: today,
+        });
+      } catch (error) {
+        console.error(
+          `[scheduler] 睡前任务失败（${tenantId}/${petId}）：`,
+          error instanceof Error ? error.message : error,
+        );
+        // 不置 lastDiaryDate、不清 pending：窗口内下一 tick 重试
+      } finally {
+        this.diaryRunning.delete(petId);
+      }
+    })();
+    this.inFlight.add(task);
+    void task.finally(() => this.inFlight.delete(task));
+  }
+
+
 
   /**
    * 拉起一个短命 worker（fire-and-forget；写回/重试/租约都在这里收口）。

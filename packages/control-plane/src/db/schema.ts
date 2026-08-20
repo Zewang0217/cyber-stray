@@ -11,6 +11,7 @@
 
 import { sqliteTable, text, integer, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { PERSONALITY_IDS, DEFAULT_PERSONALITY } from '@cyber-stray/shared';
+import { DIARY_STYLES, DEFAULT_DIARY_STYLE } from '@cyber-stray/shared/diary';
 
 /** 时间戳：unix 毫秒（SQLite 无原生 datetime，integer 跨方言最稳） */
 const now = () => Date.now();
@@ -79,6 +80,14 @@ export const pets = sqliteTable('pets', {
   /** 作息睡眠时间窗（#91，本地小时 0-23；null = 无作息，永不睡眠；与 pushWindow 同字段模式） */
   sleepStart: integer('sleep_start'),
   sleepEnd: integer('sleep_end'),
+  /** 日记风格选择（#92；'personality' = 跟随性格，默认；或 casual/careful/literary） */
+  diaryStyle: text('diary_style', { enum: ['personality', ...DIARY_STYLES] })
+    .notNull()
+    .default(DEFAULT_DIARY_STYLE),
+  /** 是否推送每日日记（#92；Web Push 送达） */
+  diaryPushEnabled: integer('diary_push_enabled', { mode: 'boolean' }).notNull().default(false),
+  /** 上次生成日记的日期（YYYY-MM-DD；调度器按天去重，睡眠开始触发） */
+  lastDiaryDate: text('last_diary_date'),
   createdAt: integer('created_at').notNull().$defaultFn(now),
   updatedAt: integer('updated_at').notNull().$defaultFn(now).$onUpdate(() => Date.now()),
 }, (t) => ({
