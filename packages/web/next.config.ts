@@ -89,6 +89,11 @@ const nextConfig: NextConfig = {
         source: "/api/wechat/:path*",
         destination: `${controlPlaneOrigin}/api/wechat/:path*`,
       },
+      {
+        // #94：宠物 IP 定制（spec 提交/概念图/确认/素材，Pro/BYOK 专属）
+        source: "/api/petgen/:path*",
+        destination: `${controlPlaneOrigin}/api/petgen/:path*`,
+      },
     ];
   },
 };

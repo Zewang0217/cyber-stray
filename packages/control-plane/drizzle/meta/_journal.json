@@ -85,6 +85,13 @@
       "when": 1787238000000,
       "tag": "0011_diary",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1787236964594,
+      "tag": "0012_pet_gen_tasks",
+      "breakpoints": true
     }
   ]
 }
