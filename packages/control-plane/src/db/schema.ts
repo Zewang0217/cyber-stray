@@ -136,6 +136,40 @@ export const vapidKeys = sqliteTable('vapid_keys', {
   createdAt: integer('created_at').notNull().$defaultFn(now),
 });
 
+// ─── 微信通道绑定（#97：每租户一个 iLink bot，扫码即用） ───────────────
+
+/**
+ * 每租户 iLink bot 身份与通道状态。bot_token 属登录凭证，不入本表——
+ * 走 S4 信封加密（tenant_secrets，键 ilink_bot_token）。租户锚点 =
+ * ilink_user_id（扫码主人的微信身份，pairing 白名单：仅此用户可互动/推送）。
+ */
+export const wechatBindings = sqliteTable('wechat_bindings', {
+  tenantId: text('tenant_id')
+    .primaryKey()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  /** 扫码主人的微信身份（pairing 白名单；重扫后不变） */
+  ilinkUserId: text('ilink_user_id').notNull(),
+  /** 该租户的 bot 账号 ID（每次重扫生成新 bot，行内更新） */
+  ilinkBotId: text('ilink_bot_id').notNull(),
+  /** confirmed 返回的基座 URL（scaned_but_redirect 后可能 ≠ 默认基座） */
+  baseUrl: text('base_url').notNull(),
+  /** paired=已绑定未激活 / active=主人发过消息 / expired=24h 无交互 */
+  status: text('status', { enum: ['paired', 'active', 'expired'] })
+    .notNull()
+    .default('paired'),
+  boundAt: integer('bound_at').notNull().$defaultFn(now),
+  /** 最近一次主人消息时间（unix ms；24h 保鲜判定） */
+  lastInteractionAt: integer('last_interaction_at'),
+  /** 最近一次通道错误（调试/监控用，不回显给客户端） */
+  lastError: text('last_error'),
+  /** getupdates 长轮询游标（重启恢复，防重收/漏收） */
+  getUpdatesBuf: text('get_updates_buf'),
+  /** 推送日账（原子 claim：pushes_date != 今天 时重置计数） */
+  pushesDate: text('pushes_date'),
+  pushesCount: integer('pushes_count').notNull().default(0),
+  updatedAt: integer('updated_at').notNull().$defaultFn(now).$onUpdate(() => Date.now()),
+});
+
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type NewPushSubscription = typeof pushSubscriptions.$inferInsert;
 export type VapidKey = typeof vapidKeys.$inferSelect;
@@ -150,3 +184,5 @@ export type Pet = typeof pets.$inferSelect;
 export type NewPet = typeof pets.$inferInsert;
 export type Billing = typeof billing.$inferSelect;
 export type TenantSecret = typeof tenantSecrets.$inferSelect;
+export type WechatBinding = typeof wechatBindings.$inferSelect;
+export type NewWechatBinding = typeof wechatBindings.$inferInsert;

@@ -20,6 +20,7 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // 排除静态资源与认证 API 本身（API 由控制面接管）
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|pet/|api/).*)"],
+  // 排除静态资源、认证 API 与公开页（API 由控制面接管；#97 微信绑定页是
+  // 扫码即用入口——无 Casdoor 会话也能访问）
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|pet/|api/|wechat/).*)"],
 };

@@ -12,26 +12,18 @@
  */
 
 import { spawn } from 'child_process';
-import { randomBytes } from 'crypto';
-import { chmod, readdir, rm, writeFile } from 'fs/promises';
+import { readdir, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { openTenantSecrets, type TenantSecretsStore } from '../secrets/tenant-secrets.js';
+import { writeSecretsFile, resolveAgentSecrets } from '../secrets/worker-secrets.js';
 import type { WorkerJob, WorkerResult, WorkerRunner } from './scheduler.js';
 
 /** agent 包 CLI 绝对路径（仓库内锚定，无硬编码全路径） */
 const AGENT_CLI = fileURLToPath(
   new URL('../../../agent/src/worker/cli.ts', import.meta.url),
 );
-
-/** secrets store 名 → AgentSecrets 字段（S4 存储名约定） */
-const SECRET_FIELD_BY_NAME: Record<string, string> = {
-  deepseek_api_key: 'deepseekApiKey',
-  tavily_api_key: 'tavilyApiKey',
-  exa_api_key: 'exaApiKey',
-  feishu_webhook: 'feishuWebhook',
-};
 
 /** 注入式 spawn（测试用 fake；真实实现见下方 realSpawn） */
 export type SpawnLike = (
@@ -104,23 +96,6 @@ export interface WorkerRunnerDeps {
   openSecrets?: (dataDir: string, tenantId: string) => Promise<TenantSecretsStore>;
 }
 
-/** 解密租户 secrets → AgentSecrets 对象；无任何项返回 null */
-async function resolveAgentSecrets(
-  open: (dataDir: string, tenantId: string) => Promise<TenantSecretsStore>,
-  dataDir: string,
-  tenantId: string,
-): Promise<Record<string, string> | null> {
-  const store = await open(dataDir, tenantId);
-  const names = await store.list();
-  const secrets: Record<string, string> = {};
-  for (const name of names) {
-    const field = SECRET_FIELD_BY_NAME[name];
-    if (!field) continue;
-    secrets[field] = (await store.get(name)) ?? '';
-  }
-  return Object.keys(secrets).length > 0 ? secrets : null;
-}
-
 export function createWorkerRunner(deps: WorkerRunnerDeps): WorkerRunner {
   const spawnFn = deps.spawnFn ?? realSpawn;
   const command = deps.command ?? process.env.CP_WORKER_CMD ?? 'bun';
@@ -146,18 +121,4 @@ export function createWorkerRunner(deps: WorkerRunnerDeps): WorkerRunner {
       }
     }
   };
-}
-
-/** 有 secrets → 写 0600 临时 JSON（跑完由调用方删）；无 → null */
-async function writeSecretsFile(
-  open: (dataDir: string, tenantId: string) => Promise<TenantSecretsStore>,
-  dataDir: string,
-  tenantId: string,
-): Promise<string | null> {
-  const secrets = await resolveAgentSecrets(open, dataDir, tenantId);
-  if (!secrets) return null;
-  const path = join(tmpdir(), `cp-secrets-${tenantId}-${randomBytes(8).toString('hex')}.json`);
-  await writeFile(path, JSON.stringify(secrets), { mode: 0o600 });
-  await chmod(path, 0o600);
-  return path;
 }

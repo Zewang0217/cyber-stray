@@ -57,6 +57,13 @@
       "when": 1786955328113,
       "tag": "0007_faithful_madripoor",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787193534601,
+      "tag": "0008_wechat_bindings",
+      "breakpoints": true
     }
   ]
 }

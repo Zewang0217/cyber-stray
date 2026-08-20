@@ -18,14 +18,18 @@ import { createPlanRoutes } from './routes/plan.js';
 import { createAdminRoutes } from './routes/admin.js';
 import { createEvolutionRoutes } from './routes/evolution.js';
 import { createFootprintRoutes } from './routes/footprint.js';
+import { createWechatRoutes } from './routes/wechat.js';
+import type { BindingService } from './ilink/binding-service.js';
 export interface AppDeps {
   config: ControlPlaneConfig;
   oidc: OidcProvider;
   /** 事件总线（与调度器共享；SSE 路由消费调度器发布的事件） */
   bus: EventBus;
+  /** 微信绑定状态机（#97；index.ts 构造注入） */
+  wechatBindings?: BindingService;
 }
 
-export function createApp({ config, oidc, bus }: AppDeps): Hono {
+export function createApp({ config, oidc, bus, wechatBindings }: AppDeps): Hono {
   const app = new Hono();
 
   app.get('/healthz', (c) => c.json({ ok: true }));
@@ -61,6 +65,11 @@ export function createApp({ config, oidc, bus }: AppDeps): Hono {
 
   // S14：游荡足迹（每次 loop 每一步骤）
   app.route('/api/footprint', createFootprintRoutes({ config }));
+
+  // #97：微信通道（扫码即用绑定 + 状态；未挂载 bindings 时跳过——单测 app 组装可省略）
+  if (wechatBindings) {
+    app.route('/api/wechat', createWechatRoutes({ config, bindings: wechatBindings }));
+  }
 
   return app;
 }
