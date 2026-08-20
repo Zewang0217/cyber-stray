@@ -354,6 +354,26 @@ export default function SettingsPage(): React.ReactElement {
           {planError ? <p className="text-small text-danger mt-2">{planError}</p> : null}
         </div>
 
+        {/* 宠物 IP 定制（#94）：Pro/BYOK 专属入口；免费用户无入口（平台预置 IP 系列） */}
+        {plan && plan.plan !== "free" ? (
+          <div className="p-6 paper-card rounded-sm">
+            <h2 className="font-heading text-heading font-semibold text-text mb-2">
+              宠物 IP 定制
+            </h2>
+            <p className="text-small text-subtext mb-4">
+              描述你的专属街溜子 → 确认概念图 → 全自动生成 9 种状态的完整素材
+              （四宫格主路径 + 两层质检；每月限 2 套）。确认后的概念图是角色锚点，
+              后续表情包等生成都复用它。
+            </p>
+            <a
+              href="/pet/customize"
+              className="inline-block px-4 py-2 rounded-sm text-small bg-accent text-base font-semibold"
+            >
+              去定制
+            </a>
+          </div>
+        ) : null}
+
         {/* 作息（#91）：宠物睡眠时间段——睡眠期停止游荡，前端展示睡觉 */}
         <div className="p-6 paper-card rounded-sm">
           <h2 className="font-heading text-heading font-semibold text-text mb-2">作息</h2>

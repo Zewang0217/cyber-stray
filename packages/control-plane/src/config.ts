@@ -36,6 +36,16 @@ export interface ControlPlaneConfig {
   webOrigin: string;
   /** 运营管理面板：管理员 Casdoor sub 白名单（逗号分隔 env CP_ADMIN_SUBS） */
   adminSubs: string[];
+  /** DashScope API key（生图 qwen-image + 视觉质检 qwen-vl；#94 生成管线） */
+  dashscopeApiKey: string;
+  /** 生图模型（env CP_DASHSCOPE_IMAGE_MODEL；async 任务 API） */
+  dashscopeImageModel: string;
+  /** 视觉质检模型（env CP_DASHSCOPE_VL_MODEL；语义层 qwen-vl） */
+  dashscopeVlModel: string;
+  /** 宠物 IP 生成月度配额（套/自然月；env CP_PETGEN_MONTHLY_QUOTA，默认 2） */
+  petGenMonthlyQuota: number;
+  /** 生成任务处理器 tick 间隔 ms（0 = 关闭；#94） */
+  petGenIntervalMs: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneConfig {
@@ -50,6 +60,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     ['workerTimeoutMs', Number(env.CP_WORKER_TIMEOUT_MS ?? 10 * 60_000)],
     ['workerRetryBackoffMs', Number(env.CP_SCHEDULER_RETRY_BACKOFF_MS ?? 60_000)],
     ['workerMaxRetries', Number(env.CP_SCHEDULER_MAX_RETRIES ?? 2)],
+    ['petGenMonthlyQuota', Number(env.CP_PETGEN_MONTHLY_QUOTA ?? 2)],
+    ['petGenIntervalMs', Number(env.CP_PETGEN_INTERVAL_MS ?? 5_000)],
   ];
   for (const [field, value] of numeric) {
     if (!Number.isFinite(value) || value < 0) {
@@ -77,5 +89,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     workerTimeoutMs: Number(env.CP_WORKER_TIMEOUT_MS ?? 10 * 60_000),
     workerRetryBackoffMs: Number(env.CP_SCHEDULER_RETRY_BACKOFF_MS ?? 60_000),
     workerMaxRetries: Number(env.CP_SCHEDULER_MAX_RETRIES ?? 2),
+    dashscopeApiKey: env.DASHSCOPE_API_KEY ?? '',
+    dashscopeImageModel: env.CP_DASHSCOPE_IMAGE_MODEL ?? 'wanx2.1-t2i-turbo',
+    dashscopeVlModel: env.CP_DASHSCOPE_VL_MODEL ?? 'qwen-vl-max',
+    petGenMonthlyQuota: Number(env.CP_PETGEN_MONTHLY_QUOTA ?? 2),
+    petGenIntervalMs: Number(env.CP_PETGEN_INTERVAL_MS ?? 5_000),
   };
 }

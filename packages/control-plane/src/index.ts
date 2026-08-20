@@ -21,6 +21,10 @@ import { IlinkClient } from './ilink/client.js';
 import { BindingService } from './ilink/binding-service.js';
 import { WechatPoller } from './ilink/poller.js';
 import { createWechatPushGateway } from './ilink/wechat-gateway.js';
+import { PetGenProcessor } from './petgen/processor.js';
+import { createImageGenerator, createVisionQc } from './petgen/qwen.js';
+import { createSplitter } from './petgen/splitter.js';
+import { createStructureQc } from './petgen/structure-qc.js';
 
 const config = loadConfig();
 
@@ -78,12 +82,35 @@ const scheduler = new Scheduler({
 });
 scheduler.start(config.schedulerIntervalMs);
 
+// #94：宠物 IP 生成任务处理器（异步队列状态机；生图/视觉/切分全部注入，
+// 无 DASHSCOPE_API_KEY 时任务在概念图阶段显式失败——不静默）
+const petGenProcessor = new PetGenProcessor({
+  dataDir: config.dataDir,
+  db: await getDb(config.dataDir),
+  imageGen: createImageGenerator(config.dashscopeApiKey, {
+    model: config.dashscopeImageModel,
+    size: '1024*1024',
+  }),
+  visionQc: createVisionQc(config.dashscopeApiKey, { model: config.dashscopeVlModel }),
+  splitter: createSplitter(),
+  structureQc: createStructureQc(),
+  config: {
+    maxBatchRetries: 2,
+    maxQcRetries: 2,
+    conceptFrame: 512,
+    referenceFrame: 384,
+    gridSize: '1024*1024',
+  },
+});
+petGenProcessor.start(config.petGenIntervalMs);
+
 // S10：Web Push 分发器（worker_succeeded → 读最新推送 → 系统级通知）
 const detachPushGateway = attachPushGateway({ dataDir: config.dataDir, bus });
 
 // 优雅关停：停 tick + 杀在飞 worker + 卸推送分发（防孤儿并发写租户 state.json）
 const shutdown = () => {
   scheduler.stop();
+  petGenProcessor.stop();
   wechatPoller.stop();
   stopAllWorkers();
   detachPushGateway();

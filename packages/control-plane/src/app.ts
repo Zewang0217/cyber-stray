@@ -19,6 +19,7 @@ import { createAdminRoutes } from './routes/admin.js';
 import { createEvolutionRoutes } from './routes/evolution.js';
 import { createFootprintRoutes } from './routes/footprint.js';
 import { createWechatRoutes } from './routes/wechat.js';
+import { createPetGenRoutes } from './routes/petgen.js';
 import type { BindingService } from './ilink/binding-service.js';
 export interface AppDeps {
   config: ControlPlaneConfig;
@@ -70,6 +71,9 @@ export function createApp({ config, oidc, bus, wechatBindings }: AppDeps): Hono 
   if (wechatBindings) {
     app.route('/api/wechat', createWechatRoutes({ config, bindings: wechatBindings }));
   }
+
+  // #94：宠物 IP 自定义生成（Pro/BYOK 专属；任务状态机在 petgen/processor.ts）
+  app.route('/api/petgen', createPetGenRoutes({ config }));
 
   return app;
 }

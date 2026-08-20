@@ -9,7 +9,7 @@
  * 记忆仍在每租户 markdown 数据目录（不迁移——核心价值约束）。
  */
 
-import { sqliteTable, text, integer, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, primaryKey, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 import { PERSONALITY_IDS, DEFAULT_PERSONALITY } from '@cyber-stray/shared';
 
 /** 时间戳：unix 毫秒（SQLite 无原生 datetime，integer 跨方言最稳） */
@@ -178,6 +178,71 @@ export const wechatBindings = sqliteTable('wechat_bindings', {
   updatedAt: integer('updated_at').notNull().$defaultFn(now).$onUpdate(() => Date.now()),
 });
 
+// ─── 宠物 IP 自定义生成任务（#94：Pro/BYOK 专属异步管线） ───────────────
+
+/**
+ * 任务状态机（异步队列，进程内 PetGenProcessor tick 推进）：
+ * spec_submitted → concept_generating → awaiting_confirmation →
+ * generating_states → qc → done | failed。
+ * - awaiting_confirmation 是用户锚点（ADR-0001 参考图锁角色）：确认 →
+ *   generating_states；不满意改 spec → restart（回到 spec_submitted 重出概念图）。
+ * - 生成素材落 data/tenants/<sub>/pet-assets/（manifest + 状态 PNG），
+ *   任务工作目录 data/tenants/<sub>/pet-assets/tasks/<taskId>/ 存中间产物。
+ * - 配额（建议 2 套/月，CP_PETGEN_MONTHLY_QUOTA 可配）：统计当前自然月
+ *   状态=done 的任务数；失败任务不占配额。
+ */
+export const petGenTasks = sqliteTable('pet_gen_tasks', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  /** 状态机状态（推进见 petgen/processor.ts） */
+  status: text('status', {
+    enum: [
+      'spec_submitted',
+      'concept_generating',
+      'awaiting_confirmation',
+      'generating_states',
+      'qc',
+      'done',
+      'failed',
+    ],
+  })
+    .notNull()
+    .default('spec_submitted'),
+  /** 用户 spec 纯文本（1-500 字符） */
+  specText: text('spec_text').notNull(),
+  /** 用户选项 JSON：{ palette?, size?, note? }（可选） */
+  options: text('options'),
+  /** 风格预设 id（PET_STYLE_PRESETS；缺省 chibi-kawaii） */
+  stylePreset: text('style_preset'),
+  /** 概念图路径（相对租户数据目录；awaiting_confirmation 起存在） */
+  conceptPath: text('concept_path'),
+  /** 当前生成策略（quad/nine/per；生成失败的批次按策略阶梯回退） */
+  strategy: text('strategy', { enum: ['quad', 'nine', 'per'] })
+    .notNull()
+    .default('quad'),
+  /** 当前策略连续批次失败计数（≥ maxBatchRetries 且非末级 → 升级策略） */
+  batchRetries: integer('batch_retries').notNull().default(0),
+  /** QC 重试轮数（≥ maxQcRetries 且仍有失败状态 → 整体失败，改 spec 重来） */
+  qcRetries: integer('qc_retries').notNull().default(0),
+  /** 最近一次 QC 结果 JSON：{ [state]: { pass, issues[] } }（失败反馈用） */
+  qcResult: text('qc_result'),
+  /** 待重生成状态 JSON（QC 失败后的单状态重试目标；空 = 全量） */
+  pendingStates: text('pending_states'),
+  /** 概念图生成尝试次数（restart 递增；诊断用） */
+  conceptAttempts: integer('concept_attempts').notNull().default(0),
+  /** 明确失败/停止原因（用户可见） */
+  error: text('error'),
+  /** 完成时间（unix ms；配额按自然月统计 done 任务的 completedAt） */
+  completedAt: integer('completed_at'),
+  createdAt: integer('created_at').notNull().$defaultFn(now),
+  updatedAt: integer('updated_at').notNull().$defaultFn(now).$onUpdate(() => Date.now()),
+}, (t) => ({
+  /** 租户列表查询索引（GET /api/petgen/tasks + 配额统计）；非唯一——同租户多任务 */ 
+  petGenTasksTenantIdx: index('pet_gen_tasks_tenant_idx').on(t.tenantId),
+}));
+
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type NewPushSubscription = typeof pushSubscriptions.$inferInsert;
 export type VapidKey = typeof vapidKeys.$inferSelect;
@@ -194,3 +259,5 @@ export type Billing = typeof billing.$inferSelect;
 export type TenantSecret = typeof tenantSecrets.$inferSelect;
 export type WechatBinding = typeof wechatBindings.$inferSelect;
 export type NewWechatBinding = typeof wechatBindings.$inferInsert;
+export type PetGenTask = typeof petGenTasks.$inferSelect;
+export type NewPetGenTask = typeof petGenTasks.$inferInsert;

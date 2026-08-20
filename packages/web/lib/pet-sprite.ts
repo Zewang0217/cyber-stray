@@ -5,41 +5,22 @@
  * → 每状态一条横排帧条 PNG(public/pet/<state>.png,256px 方帧,透明底)。
  * 重生成素材:改提示词 → qwen-image 出图 → python3 scripts/pet-sheet.py <raw> --grid --states <...> --out public/pet
  * 帧数/时长改了才需要动这里。
+ *
+ * #94：状态注册表（PET_STATES/PetState/PetStateSpec）上移到
+ * @cyber-stray/shared/pet 单一真相源——自定义 IP 生成管线（control-plane）
+ * 与内置素材播放共用同一份契约；此处仅保留心情推导。
  */
 
-export type PetState =
-  | "idle"
-  | "walk"
-  | "joy"
-  | "eat"
-  | "sleep"
-  | "think"
-  | "celebrate"
-  | "grumpy"
-  | "welcome";
+import {
+  PET_STATES,
+  type PetStateSpec,
+  type PetStateId,
+} from '@cyber-stray/shared/pet';
 
-export interface PetStateSpec {
-  /** 帧条文件名(不含扩展名) */
-  file: string;
-  /** 帧数(必须与 PNG 实际帧数一致,否则播放跳帧) */
-  frames: number;
-  /** 一次完整循环时长(秒);呼吸慢,动作快 */
-  dur: number;
-  /** 无障碍描述 */
-  label: string;
-}
+export type PetState = PetStateId;
+export type { PetStateSpec };
 
-export const PET_STATES: Record<PetState, PetStateSpec> = {
-  idle: { file: "idle", frames: 3, dur: 1.6, label: "待机呼吸" },
-  walk: { file: "walk", frames: 3, dur: 0.8, label: "游荡" },
-  joy: { file: "joy", frames: 3, dur: 0.7, label: "开心" },
-  eat: { file: "eat", frames: 3, dur: 0.9, label: "进食" },
-  sleep: { file: "sleep", frames: 3, dur: 2.2, label: "休息" },
-  think: { file: "think", frames: 3, dur: 1.4, label: "思考" },
-  celebrate: { file: "celebrate", frames: 3, dur: 0.65, label: "庆祝" },
-  grumpy: { file: "grumpy", frames: 3, dur: 1.1, label: "不爽" },
-  welcome: { file: "welcome", frames: 3, dur: 0.8, label: "打招呼" },
-};
+export { PET_STATES };
 
 /** 心情 → 展示状态(宠物状态机制映射到可见动画) */
 export function stateForMood(
