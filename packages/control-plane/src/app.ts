@@ -22,6 +22,7 @@ import { createDiaryRoutes } from './routes/diary.js';
 import { createDreamRoutes } from './routes/dream.js';
 import { createWechatRoutes } from './routes/wechat.js';
 import { createPetGenRoutes } from './routes/petgen.js';
+import { createMemeRoutes } from './routes/meme.js';
 import { createPetAssetRoutes } from './routes/pet-assets.js';
 import type { BindingService } from './ilink/binding-service.js';
 export interface AppDeps {
@@ -86,6 +87,9 @@ export function createApp({ config, oidc, bus, wechatBindings }: AppDeps): Hono 
 
   // #95：宠物素材消费（manifest 按租户 + 鉴权素材服务；web 只读消费方）
   app.route('/api', createPetAssetRoutes({ config }));
+
+  // #96：表情包图鉴（agent 生成管线落盘 meme-assets/，这里提供列表/图片/删除）
+  app.route('/api/meme', createMemeRoutes({ config }));
 
   return app;
 }

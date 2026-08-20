@@ -82,6 +82,7 @@ async function main(): Promise<void> {
     personality,
     diaryStyle,
     pushEnabled: isTrue(parseArg('push-enabled')),
+    memeEnabled: isTrue(parseArg('meme-enabled')),
     secrets,
     planArgs,
   });

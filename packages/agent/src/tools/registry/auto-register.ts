@@ -21,6 +21,7 @@ import { browserSkillCreateToolDef } from '../browser/skills/tool-create.js';
 import { browsePageToolDef } from '../browser/tools/browse-page.js';
 import { browseSnapshotToolDef } from '../browser/tools/browse-snapshot.js';
 import { browseActToolDef } from '../browser/tools/browse-act.js';
+import { imageMemeToolDef } from './image-meme.js';
 
 /**
  * 浏览器探索工具（全部注册；是否暴露给 LLM 由 ToolManager 按当前生效配置
@@ -46,6 +47,7 @@ const TOOL_DEFINITIONS = [
   observeUserToolDef,
   readFeedbackToolDef,
   processFeedbackToolDef,
+  imageMemeToolDef,
   ...BROWSER_TOOL_DEFINITIONS,
 ];
 

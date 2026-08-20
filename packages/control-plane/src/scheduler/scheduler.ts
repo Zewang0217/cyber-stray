@@ -110,6 +110,8 @@ export interface SchedulerDeps {
   diaryRunner: DiaryRunner;
   now: () => number;
   config: SchedulerConfig;
+  /** 是否日记写完触发表情包生成（#96；缺省 true） */
+  memeEnabled?: boolean;
 }
 
 /** 失败重试租约（内存；进程重启清零，重试上限由 DB 冷却兜底） */
@@ -135,9 +137,13 @@ export class Scheduler {
   private readonly diaryPending = new Set<string>();
   /** #92 日记：每宠上次 tick 是否睡眠中（跨 tick 记忆，检测睡眠开始） */
   private readonly wasSleeping = new Map<string, boolean>();
+  /** #96 表情包：日记写完是否触发生成（缺省 true） */
+  private readonly memeEnabled: boolean;
   private timer?: ReturnType<typeof setInterval>;
 
-  constructor(private readonly deps: SchedulerDeps) {}
+  constructor(private readonly deps: SchedulerDeps) {
+    this.memeEnabled = deps.memeEnabled ?? true;
+  }
 
   /** 周期启动（intervalMs = 0 不启动，测试/关闭用）。tick 错误 log-and-continue。 */
   start(intervalMs: number): void {
@@ -327,6 +333,7 @@ export class Scheduler {
           personality: pet.personality as PersonalityId,
           diaryStyle,
           pushEnabled: Boolean(pet.diaryPushEnabled),
+          memeEnabled: this.memeEnabled,
         });
         if (!result.ok) {
           throw new Error(`日记 worker 退出码 ${result.exitCode}`);

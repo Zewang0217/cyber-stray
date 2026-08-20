@@ -84,6 +84,7 @@ const scheduler = new Scheduler({
     workerTimeoutMs: config.workerTimeoutMs,
     rates: DEFAULT_RATES,
   },
+  memeEnabled: config.memeEnabled,
 });
 scheduler.start(config.schedulerIntervalMs);
 

@@ -267,4 +267,41 @@ describe('runDiaryWorker 端到端', () => {
     const { getTenantContext } = await import('../config.js');
     expect(getTenantContext()).toBeNull();
   });
+
+  it('#96 日记写完触发表情包：memeEnabled=true 走生成（非致命，失败留痕）', async () => {
+    await seedTodayData(dataDir, '2026-08-20');
+    // 第三次 generateText = 表情包文案（mock 返回非法 JSON → 文案解析失败，
+    // 验证触发链确实走到表情包步骤且不拖垮日记任务）
+    mockNarratives(['日记正文', '梦境正文', '不是合法文案JSON']);
+    const result = await runDiaryWorker({
+      tenantId: 'a',
+      dataDir,
+      petName: '小七',
+      date: '2026-08-20',
+      personality: 'curious',
+      memeEnabled: true,
+    });
+    // 日记与梦境仍成功落盘
+    expect(result.file).toBe(join(dataDir, 'diary', '2026-08-20.md'));
+    expect(result.dreamFile).toBe(join(dataDir, 'diary', 'dreams', '2026-08-20.md'));
+    // 表情包触发链执行了（第三次 generateText 被调用 = 文案生成）
+    expect(generateText).toHaveBeenCalledTimes(3);
+    // 非致命：文案非法 → meme.failed 留痕，不抛错
+    expect(result.meme?.status).toBe('failed');
+    expect(result.meme?.reason).toMatch(/文案生成失败/);
+  });
+
+  it('#96 memeEnabled=false（默认）→ 不触发表情包（只 2 次 generateText）', async () => {
+    await seedTodayData(dataDir, '2026-08-20');
+    mockNarratives(['日记正文', '梦境正文']);
+    const result = await runDiaryWorker({
+      tenantId: 'a',
+      dataDir,
+      petName: '小七',
+      date: '2026-08-20',
+      personality: 'curious',
+    });
+    expect(result.meme).toBeUndefined();
+    expect(generateText).toHaveBeenCalledTimes(2);
+  });
 });

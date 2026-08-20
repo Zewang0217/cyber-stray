@@ -118,6 +118,11 @@ const nextConfig: NextConfig = {
         source: "/api/pet-assets/:path*",
         destination: `${controlPlaneOrigin}/api/pet-assets/:path*`,
       },
+      {
+        // #96：表情包图鉴（列表/图片/删除）
+        source: "/api/meme/:path*",
+        destination: `${controlPlaneOrigin}/api/meme/:path*`,
+      },
     ];
   },
 };
