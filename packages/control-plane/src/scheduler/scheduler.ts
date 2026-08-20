@@ -37,6 +37,7 @@ import {
   type PropagationRates,
   type PropagatedState,
 } from './propagate.js';
+import { isSleeping } from './sleep.js';
 
 export { MINUTE_MS } from './propagate.js';
 
@@ -173,10 +174,15 @@ export class Scheduler {
     // S14：套餐在账号层（tenants.plan）——一次拉租户 plan 映射，避免 N+1
     const tenantRows = await dbh.select().from(tenants).all();
     const planByTenant = new Map(tenantRows.map((t) => [t.id, t.plan]));
+    // #91 真实作息：服务器本地小时（与 pushWindow 语义对齐——窗口小时在
+    // 消费进程本地时区判定）；睡眠中不拉 worker，醒来后下一 tick 自动恢复
+    const localHour = new Date(nowMs).getHours();
 
     for (const pet of rows) {
       if (pet.status !== 'active') continue;
       if (pet.cooldownUntil !== null && nowMs < pet.cooldownUntil) continue; // DB 冷却
+      // 睡眠期跳过游荡（游荡计数不增长）；未设置作息恒 false，与现状一致
+      if (isSleeping(localHour, pet.sleepStart, pet.sleepEnd)) continue;
       if (this.running.has(pet.id)) continue;
 
       const lease = this.leases.get(pet.id);

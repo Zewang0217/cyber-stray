@@ -14,6 +14,9 @@ export interface Pet {
   boredom: number;
   energy: number;
   plan: "free" | "pro" | "byok";
+  /** 作息睡眠窗口（#91，本地小时 0-23；null = 无作息，永不睡眠） */
+  sleepStart: number | null;
+  sleepEnd: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -26,6 +29,10 @@ interface UsePetsReturn {
   /** 领养（服务端校验；409 = 已有宠物会刷新列表） */
   adopt: (input: { name: string; interests?: string[] }) => Promise<Pet | null>;
   adopting: boolean;
+  /** 设置作息（本地小时；跨午夜合法）。成功返回 true */
+  setSleepSchedule: (startHour: number, endHour: number) => Promise<boolean>;
+  /** 清除作息（回永不睡眠，与现状一致）。成功返回 true */
+  clearSleepSchedule: () => Promise<boolean>;
 }
 
 /**
@@ -89,5 +96,54 @@ export function usePets(): UsePetsReturn {
     [refresh],
   );
 
-  return { pets, isLoaded, error, adopt, adopting };
+  /** 作息变更（#91）：成功刷新宠物行并返回 true */
+  const mutateSleepSchedule = useCallback(
+    async (url: string, body: unknown, failMsg: string): Promise<boolean> => {
+      try {
+        const res = await fetch(url, {
+          method: body === null ? "DELETE" : "PUT",
+          headers: { "content-type": "application/json" },
+          body: body === null ? undefined : JSON.stringify(body),
+        });
+        const json = (await res.json()) as ApiResponse<unknown>;
+        if (!json.success) {
+          setError(json.error ?? failMsg);
+          return false;
+        }
+      } catch {
+        setError(failMsg);
+        return false;
+      }
+      setError(null);
+      await refresh();
+      return true;
+    },
+    [refresh],
+  );
+
+  const setSleepSchedule = useCallback(
+    (startHour: number, endHour: number): Promise<boolean> =>
+      mutateSleepSchedule(
+        "/api/pets/sleep-schedule",
+        { startHour, endHour },
+        "作息设置失败",
+      ),
+    [mutateSleepSchedule],
+  );
+
+  const clearSleepSchedule = useCallback(
+    (): Promise<boolean> =>
+      mutateSleepSchedule("/api/pets/sleep-schedule", null, "作息清除失败"),
+    [mutateSleepSchedule],
+  );
+
+  return {
+    pets,
+    isLoaded,
+    error,
+    adopt,
+    adopting,
+    setSleepSchedule,
+    clearSleepSchedule,
+  };
 }
