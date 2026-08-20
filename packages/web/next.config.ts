@@ -109,6 +109,15 @@ const nextConfig: NextConfig = {
         source: "/api/petgen/:path*",
         destination: `${controlPlaneOrigin}/api/petgen/:path*`,
       },
+      {
+        // #95：宠物素材消费（manifest 按租户 + 鉴权素材服务；web 只读消费方）
+        source: "/api/pet/manifest",
+        destination: `${controlPlaneOrigin}/api/pet/manifest`,
+      },
+      {
+        source: "/api/pet-assets/:path*",
+        destination: `${controlPlaneOrigin}/api/pet-assets/:path*`,
+      },
     ];
   },
 };
