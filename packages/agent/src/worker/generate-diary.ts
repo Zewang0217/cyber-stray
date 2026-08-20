@@ -15,7 +15,7 @@
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { getPersonality, type PersonalityId } from '@cyber-stray/shared';
 import { DIARY_STYLE_NAMES, isDiaryStyleChoice, resolveDiaryStylePrompt, type DiaryStyleChoice } from '@cyber-stray/shared/diary';
-import { loadConfig, setTenantContext } from '../config.js';
+import { loadConfig, setTenantContext, getDataPath } from '../config.js';
 import type { AgentSecrets, PlanExecutionArgs } from '../types.js';
 import {
   buildDiaryPrompt,
@@ -33,6 +33,11 @@ import {
   renderDreamMarkdown,
   writeDreamMarkdown,
 } from '../memory/diary/dream-generator.js';
+import { createMemePipelineDeps } from '../meme/factory.js';
+import { createMemeCopyRunner } from '../meme/copy-runner.js';
+import { runMemePipeline } from '../meme/pipeline.js';
+import { conceptExists, conceptPath, createFlattenReference } from '../meme/reference.js';
+import { recordMemeForPush } from '../meme/push.js';
 
 /** runDiaryWorker 入参 */
 export interface DiaryWorkerOptions {
@@ -50,6 +55,8 @@ export interface DiaryWorkerOptions {
   petName: string;
   /** 是否推送日记（开启则写 notifiable speak 记录，Web Push 送达） */
   pushEnabled?: boolean;
+  /** 是否日记写完触发表情包生成（#96；缺省 false——控制面经 CLI 注入开关） */
+  memeEnabled?: boolean;
   /** per-tenant 敏感信息（控制面解密后注入；缺省回退进程 env） */
   secrets?: AgentSecrets;
   /** 套餐执行参数（门控；缺省 = 单用户模式） */
@@ -67,6 +74,12 @@ export interface DiaryWorkerResult {
   file?: string;
   /** 当晚梦境落盘路径（#93：与日记同刻生成；素材 = 兴趣+足迹非空时有值） */
   dreamFile?: string;
+  /** 表情包生成结果（#96：日记写完触发生成；含 status/错误，非致命） */
+  meme?: {
+    status: string;
+    reason?: string;
+    file?: string;
+  };
   /** 是否推送（开启且有内容时 true） */
   pushed?: boolean;
   /** 使用的最终风格 prompt（可观测：不同性格/风格可感知差异） */
@@ -149,6 +162,49 @@ export async function runDiaryWorker(options: DiaryWorkerOptions): Promise<Diary
       dreamFile = await writeDreamMarkdown(date, dreamMarkdown);
     }
 
+    // #96 表情包：日记写完触发生成（睡前任务尾部）。话题取当天兴趣之首
+    // （有则用之，无则用日记第一行标题）。生图/质检失败不致命——表情包是
+    // 增强特性，不能拖垮核心日记任务（与"日记失败重试"解耦，失败留痕不抛）。
+    let meme: DiaryWorkerResult['meme'];
+    if (options.memeEnabled && data.interests.length > 0) {
+      try {
+        const memeDeps = createMemePipelineDeps(options.dataDir);
+        const copyGenerator = createMemeCopyRunner({
+          petName: options.petName,
+          personalityName: personality.name,
+          model,
+        });
+        const topic = data.interests[0] ?? '';
+        let referencePath: string | undefined;
+        if (await conceptExists(options.dataDir)) {
+          const flatten = createFlattenReference();
+          referencePath = await flatten(conceptPath(options.dataDir), getDataPath('meme-assets/.ref'));
+        }
+        const result = await runMemePipeline(
+          memeDeps,
+          { topic, mode: referencePath ? 'ip' : 'abstract', referencePath },
+          copyGenerator,
+        );
+        // 推送补发：过质检且推送开启 → 写 notifiable speak（Web Push 送达）
+        if (result.status === 'recorded' && options.pushEnabled) {
+          await recordMemeForPush(result.meta);
+        }
+        meme =
+          result.status === 'recorded'
+            ? { status: 'recorded', file: result.meta.file }
+            : result.status === 'rejected'
+              ? { status: 'rejected', reason: result.issues.join('；') || '质检未通过' }
+              : result.status === 'skipped'
+                ? { status: 'skipped', reason: result.reason }
+                : { status: 'failed', reason: result.error };
+      } catch (error) {
+        meme = {
+          status: 'failed',
+          reason: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
+
     // 推送：开启则写 notifiable speak 记录（Web Push 经 diary_generated 事件送达）
     let pushed = false;
     if (options.pushEnabled) {
@@ -161,6 +217,7 @@ export async function runDiaryWorker(options: DiaryWorkerOptions): Promise<Diary
       skipped: false,
       file,
       dreamFile,
+      meme,
       pushed,
       stylePrompt: resolveDiaryStylePrompt(styleChoice, personality.diaryStyle),
       personality: personality.name,

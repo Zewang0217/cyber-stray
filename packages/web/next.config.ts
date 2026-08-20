@@ -109,6 +109,11 @@ const nextConfig: NextConfig = {
         source: "/api/petgen/:path*",
         destination: `${controlPlaneOrigin}/api/petgen/:path*`,
       },
+      {
+        // #96：表情包图鉴（列表/图片/删除）
+        source: "/api/meme/:path*",
+        destination: `${controlPlaneOrigin}/api/meme/:path*`,
+      },
     ];
   },
 };

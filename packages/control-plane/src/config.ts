@@ -46,6 +46,8 @@ export interface ControlPlaneConfig {
   petGenMonthlyQuota: number;
   /** 生成任务处理器 tick 间隔 ms（0 = 关闭；#94） */
   petGenIntervalMs: number;
+  /** 是否日记写完触发表情包生成（#96；env CP_MEME_ENABLED，缺省 true） */
+  memeEnabled: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneConfig {
@@ -94,5 +96,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     dashscopeVlModel: env.CP_DASHSCOPE_VL_MODEL ?? 'qwen-vl-max',
     petGenMonthlyQuota: Number(env.CP_PETGEN_MONTHLY_QUOTA ?? 2),
     petGenIntervalMs: Number(env.CP_PETGEN_INTERVAL_MS ?? 5_000),
+    memeEnabled: env.CP_MEME_ENABLED !== 'false',
   };
 }

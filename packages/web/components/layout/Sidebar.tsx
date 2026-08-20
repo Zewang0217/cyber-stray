@@ -12,6 +12,7 @@ import {
   Footprints,
   BookOpen,
   NotebookPen,
+  Sparkles,
   Menu,
   X,
 } from "lucide-react";
@@ -29,6 +30,7 @@ const navItems: NavItemConfig[] = [
   { label: "首页", latin: "Tabula", href: "/", icon: BookOpen },
   { label: "历史推送", latin: "Annotationes", href: "/history", icon: History },
   { label: "日记", latin: "Ephemeris", href: "/diary", icon: NotebookPen },
+  { label: "表情包", latin: "Mimica", href: "/meme", icon: Sparkles },
   { label: "足迹", latin: "Itinerarium", href: "/footprint", icon: Footprints },
   { label: "进化", latin: "Evolutio", href: "/evolution", icon: TrendingUp },
   { label: "设置", latin: "Praefatio", href: "/settings", icon: Settings },

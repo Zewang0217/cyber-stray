@@ -50,6 +50,7 @@ describe('diary runner（#92）', () => {
       personality: 'lazy',
       diaryStyle: 'literary',
       pushEnabled: true,
+      memeEnabled: true,
     };
   }
 
@@ -86,6 +87,13 @@ describe('diary runner（#92）', () => {
   it('pushEnabled=false 不传 --push-enabled', async () => {
     await makeRunner(fakeSpawn(0))({ ...makeJob(), pushEnabled: false });
     expect(spawned[0]!.args).not.toContain('--push-enabled');
+  });
+
+  it('memeEnabled=true 传 --meme-enabled true；false 不传', async () => {
+    await makeRunner(fakeSpawn(0))(makeJob());
+    expect(spawned[0]!.args).toContain('--meme-enabled');
+    await makeRunner(fakeSpawn(0))({ ...makeJob(), memeEnabled: false });
+    expect(spawned[1]!.args).not.toContain('--meme-enabled');
   });
 
   it('非零退出码 → ok:false', async () => {
