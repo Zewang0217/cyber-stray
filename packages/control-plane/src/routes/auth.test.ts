@@ -131,16 +131,18 @@ describe('auth 路由', () => {
     expect(res.status).toBe(401);
   });
 
-  it('callback state 无效/已消费 → 401（防 CSRF 重放）', async () => {
+  it('callback state 无效/已消费 → 302 回登录（防 CSRF 重放）', async () => {
     const res = await app.request('/api/auth/callback?code=x&state=forged-state');
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toContain('/api/auth/login?error=state_invalid');
 
     // 合法 state 只能消费一次
     const loginRes = await app.request('/api/auth/login');
     const state = extractState(loginRes.headers.get('location')!);
     await app.request(`/api/auth/callback?code=mock-code&state=${state}`);
     const replay = await app.request(`/api/auth/callback?code=mock-code&state=${state}`);
-    expect(replay.status).toBe(401);
+    expect(replay.status).toBe(302);
+    expect(replay.headers.get('location')).toContain('/api/auth/login?error=state_invalid');
   });
 
   it('POST /api/auth/logout → 清 cookie + 跳 web', async () => {
