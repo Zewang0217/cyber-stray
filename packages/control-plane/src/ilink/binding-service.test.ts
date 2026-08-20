@@ -268,6 +268,74 @@ describe('绑定状态机', () => {
     expect(status.status).toBe('error');
     expect(status.error).toContain('验证码');
   });
+
+  it('P1 回归：每来源发起限流（超限拒绝，其他来源不受影响）', async () => {
+    dataDir = await setupTestDataDir();
+    const { client } = mockIlinkClient((url) =>
+      url.includes('/get_bot_qrcode')
+        ? { qrcode: 'qr-x', qrcode_img_content: 'https://qr.example/x' }
+        : { status: 'need_verifycode' },
+    );
+    const service = new BindingService({
+      dataDir,
+      client: () => client,
+      startRateLimit: { windowMs: 60_000, maxStarts: 2 },
+      sleepFn: async () => {},
+    });
+    await service.start(undefined, 'ip-1');
+    await service.start(undefined, 'ip-1');
+    await expect(service.start(undefined, 'ip-1')).rejects.toThrow('过于频繁');
+    // 其他来源不受影响
+    const other = await service.start(undefined, 'ip-2');
+    expect(other.sessionId).toBeTruthy();
+  });
+
+  it('P1 回归：会话超龄（ttl+宽限）后回收 → not_found，内存无残留', async () => {
+    vi.useFakeTimers();
+    dataDir = await setupTestDataDir();
+    const { client } = mockIlinkClient((url) =>
+      url.includes('/get_bot_qrcode')
+        ? { qrcode: 'qr-t', qrcode_img_content: 'https://qr.example/t' }
+        : { status: 'wait' },
+    );
+    const service = new BindingService({
+      dataDir,
+      client: () => client,
+      pollIntervalMs: 1000,
+      sessionTtlMs: 1000,
+    });
+    const start = await service.start();
+    // 推进到 ttl + 宽限之后：getStatus 回收会话
+    await vi.advanceTimersByTimeAsync(70_000);
+    const status = service.getStatus(start.sessionId);
+    expect(status.status).toBe('not_found');
+  });
+
+  it('P2 回归：getStatus 视图白名单——不泄露 qrcode 令牌/expectedOwnerId/currentBaseUrl', async () => {
+    dataDir = await setupTestDataDir();
+    const { client } = scriptedFetch([
+      () => ({ qrcode: 'qr-secret-token', qrcode_img_content: 'https://qr.example/1' }),
+      () => ({ status: 'scaned' }),
+      () => CONFIRMED,
+    ]);
+    const service = new BindingService({
+      dataDir,
+      client: () => client,
+      pollIntervalMs: 1,
+      sleepFn: async () => {},
+    });
+    const start = await service.start();
+    await service.waitSettled(start.sessionId);
+    const view = service.getStatus(start.sessionId);
+    expect(view.status).toBe('confirmed');
+    const raw = JSON.stringify(view);
+    expect(raw).not.toContain('qr-secret-token');
+    expect(raw).not.toContain('expectedOwnerId');
+    expect(raw).not.toContain('currentBaseUrl');
+    expect(raw).not.toContain('scannedUserId');
+    expect(view.qrcodeImgUrl).toBe('https://qr.example/1'); // 展示字段保留
+    expect(view.result?.tenantId).toBeTruthy();
+  });
 });
 
 describe('onboarding 幂等', () => {

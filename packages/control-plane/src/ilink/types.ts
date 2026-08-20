@@ -97,6 +97,10 @@ export type IlinkQrStatus =
 
 /** get_qrcode_status 响应（服务端 hold 约 35s 长轮询） */
 export interface IlinkQrStatusResp {
+  /** 错误码（限流 ret=-2 / 会话过期 errcode=-14 等；成功时缺省） */
+  ret?: number;
+  errcode?: number;
+  errmsg?: string;
   status: IlinkQrStatus;
   /** confirmed 时返回：后续 Bearer 凭证 */
   bot_token?: string;

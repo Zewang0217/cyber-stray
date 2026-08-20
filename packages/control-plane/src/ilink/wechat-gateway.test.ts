@@ -208,6 +208,62 @@ describe('微信推送网关（限额/降级/门控）', () => {
     expect(binding?.lastError).toContain('会话失效');
   });
 
+  it('P2 回归：发送失败（非会话失效）→ 退还额度，下次事件可重试', async () => {
+    dataDir = await setupTestDataDir();
+    const tenantId = await seedActiveTenant(dataDir);
+    seedSpeak(dataDir, tenantId, '会失败的内容');
+
+    const bus = createEventBus();
+    const { client } = mockIlinkClient(() => ({ ret: -3, errmsg: 'bad param' }));
+    const gateway = createWechatPushGateway({
+      dataDir,
+      bus,
+      clientFactory: () => client,
+      todayFn: () => '2026-08-20',
+    });
+
+    await expect(gateway.dispatch(workerEvent(tenantId))).rejects.toThrow();
+    const db = await getDb(dataDir);
+    const binding = await db.select().from(wechatBindings).where(eq(wechatBindings.tenantId, tenantId)).get();
+    // 额度已退还：计数归 0（当日键仍在，下次 claim 从 1 起）
+    expect(binding?.pushesCount).toBe(0);
+    expect(binding?.pushesDate).toBe('2026-08-20');
+
+    // 失败后重试仍可扣额成功
+    const { client: ok } = mockIlinkClient(() => ({ ret: 0 }));
+    const gateway2 = createWechatPushGateway({
+      dataDir,
+      bus,
+      clientFactory: () => ok,
+      todayFn: () => '2026-08-20',
+    });
+    const retry = await gateway2.dispatch(workerEvent(tenantId));
+    expect(retry.sent).toBe(true);
+  });
+
+  it('P2 回归：context_token 缺失 → 不 claim 不扣额度', async () => {
+    dataDir = await setupTestDataDir();
+    const tenantId = await seedActiveTenant(dataDir);
+    seedSpeak(dataDir, tenantId, '无 token 内容');
+    // 清空 context_token 缓存（active 态防御性跳过）
+    writeFileSync(join(wechatDataDir(dataDir, tenantId), 'context-tokens.json'), '{}', 'utf8');
+
+    const bus = createEventBus();
+    const { client, calls } = mockIlinkClient(() => ({ ret: 0 }));
+    const gateway = createWechatPushGateway({
+      dataDir,
+      bus,
+      clientFactory: () => client,
+      todayFn: () => '2026-08-20',
+    });
+    const result = await gateway.dispatch(workerEvent(tenantId));
+    expect(result).toEqual({ skipped: true, reason: 'no_token' });
+    expect(calls).toHaveLength(0); // 未发起发送
+    const db = await getDb(dataDir);
+    const binding = await db.select().from(wechatBindings).where(eq(wechatBindings.tenantId, tenantId)).get();
+    expect(binding?.pushesCount).toBe(0); // 未扣额度
+  });
+
   it('事件类型过滤：worker_succeeded 之外忽略', async () => {
     dataDir = await setupTestDataDir();
     const tenantId = await seedActiveTenant(dataDir);

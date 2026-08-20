@@ -16,8 +16,9 @@ import { rmSync } from 'fs';
 import { getDb, _resetDb } from '../db/client.js';
 import { eq } from 'drizzle-orm';
 import { wechatBindings } from '../db/schema.js';
-import { provisionWechatTenant, getBinding } from './bindings.js';
+import { provisionWechatTenant, getBinding, ILINK_BOT_TOKEN_SECRET } from './bindings.js';
 import { readChatHistory, readContextToken } from './chat-history.js';
+import { openTenantSecrets } from '../secrets/tenant-secrets.js';
 import { WechatPoller } from './poller.js';
 import { mockIlinkClient, sentMessages, setupTestDataDir } from './test-helpers.js';
 import type { ReplySpawn } from './reply.js';
@@ -49,6 +50,7 @@ describe('微信互动闭环', () => {
   let dataDir: string;
 
   afterEach(() => {
+    vi.useRealTimers();
     _resetDb();
     rmSync(dataDir, { recursive: true, force: true });
   });
@@ -198,6 +200,50 @@ describe('微信互动闭环', () => {
     expect(binding?.status).toBe('expired');
     // 未发起 getupdates（保鲜判定在拉取前）
     expect(calls).toHaveLength(0);
+  });
+
+  it('P0 回归：start() 复位 stopped，轮询真的跑（循环不被 stop 标志卡死）', async () => {
+    const tenantId = await seedPairedBinding();
+    const { client, calls } = mockIlinkClient(updatesResponder([]));
+    const poller = new WechatPoller({
+      dataDir,
+      clientFactory: () => client,
+      pollIntervalMs: 10,
+    });
+    // 真实定时器：tick 在 20ms 触发 → runOnce → 长轮询循环
+    poller.start(20);
+    // 有界等待 getUpdates 真实发生（无此修复时 start() 后 stopped=true，
+    // 循环直接退出，永远不会有 getupdates 调用）
+    const deadline = Date.now() + 3000;
+    while (!calls.some((c) => c.url.includes('/getupdates')) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(calls.some((c) => c.url.includes('/getupdates'))).toBe(true);
+    poller.stop();
+  });
+
+  it('P1 回归：循环退出（无 bot_token）后 loops 条目清理（finally），自愈不失效', async () => {
+    const tenantId = await seedPairedBinding();
+    // 删掉 bot_token（模拟解绑/secrets 丢失）→ 循环顶层 readBotToken 返回
+    // null → break → finally 清理条目
+    const store = await openTenantSecrets(dataDir, tenantId);
+    await store.delete(ILINK_BOT_TOKEN_SECRET);
+    const { client } = mockIlinkClient(updatesResponder([]));
+    const poller = new WechatPoller({ dataDir, clientFactory: () => client, pollIntervalMs: 5 });
+    await poller.runOnce();
+    expect(poller.loopCount()).toBe(1);
+    const deadline = Date.now() + 3000;
+    while (poller.loopCount() > 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    expect(poller.loopCount()).toBe(0); // 条目已清理（自愈不失效）
+    // 自愈：恢复 token 后下一轮 runOnce 重新拉起
+    await store.set(ILINK_BOT_TOKEN_SECRET, 'v1_bot_token');
+    const { client: c2 } = mockIlinkClient(updatesResponder([]));
+    const poller2 = new WechatPoller({ dataDir, clientFactory: () => c2, pollIntervalMs: 5 });
+    await poller2.runOnce();
+    expect(poller2.loopCount()).toBe(1);
+    poller2.stop();
   });
 
   it('回复 worker 失败（exit 非 0）→ 不发送，绑定记 lastError', async () => {

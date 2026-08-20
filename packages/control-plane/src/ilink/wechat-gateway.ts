@@ -20,6 +20,7 @@ import {
   getBinding,
   isWechatSessionExpired,
   readBotToken,
+  refundPushQuota,
   updateBinding,
   wechatPushLimit,
 } from './bindings.js';
@@ -83,12 +84,9 @@ export function createWechatPushGateway(deps: WechatPushGatewayDeps): WechatPush
 
     const tenant = await db.select().from(tenants).where(eq(tenants.id, event.tenantId)).get();
     const limit = wechatPushLimit(tenant?.plan ?? 'free');
-    const claimed = await claimPushQuota(db, event.tenantId, limit, today());
-    if (!claimed) {
-      // 额度用尽：降级其他已绑通道（飞书/TG/PWA 独立投递，无需此处转发）
-      return { skipped: true, reason: 'quota_exhausted' };
-    }
 
+    // P2 修复：先做前置校验（token/context_token），claim 放到发送前最后一步——
+    // 避免"先扣后发"导致 token 缺失/发送失败也消耗额度（0 送达耗尽）
     const token = await readBotToken(dataDir, event.tenantId);
     if (!token) {
       await updateBinding(db, event.tenantId, { lastError: '缺少 ilink_bot_token' });
@@ -100,17 +98,26 @@ export function createWechatPushGateway(deps: WechatPushGatewayDeps): WechatPush
       return { skipped: true, reason: 'no_token' };
     }
 
+    const claimed = await claimPushQuota(db, event.tenantId, limit, today());
+    if (!claimed) {
+      // 额度用尽：降级其他已绑通道（飞书/TG/PWA 独立投递，无需此处转发）
+      return { skipped: true, reason: 'quota_exhausted' };
+    }
+
     const client = deps.clientFactory(binding.baseUrl, token);
     try {
       await client.sendTextChunked(binding.ilinkUserId, latest.content, { contextToken });
       return { skipped: false, sent: true };
     } catch (error) {
       if (error instanceof IlinkSessionInvalidError) {
+        // 会话失效：保留扣账（该会话本就要重扫激活，额度无意义）并标记 expired
         await updateBinding(db, event.tenantId, {
           status: 'expired',
           lastError: `推送会话失效（${error.message}）`,
         });
       } else {
+        // 其他失败（限流重试耗尽/网络）：退还额度（当日），下次事件重试
+        await refundPushQuota(db, event.tenantId, today());
         await updateBinding(db, event.tenantId, {
           lastError: error instanceof Error ? error.message : String(error),
         });
@@ -144,6 +151,11 @@ export function createWechatPushGateway(deps: WechatPushGatewayDeps): WechatPush
   };
 }
 
+/** 本地日键 YYYY-MM-DD（P3 修复：与 agent 侧 push-budget 的本地日对齐，
+ * 避免 UTC 日键跨时区导致"昨天已扣满"或"今天多推"） */
 function defaultToday(): string {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${month}-${day}`;
 }

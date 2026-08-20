@@ -21,7 +21,7 @@ import {
   provisionWechatTenant,
   type ProvisionResult,
 } from './bindings.js';
-import { ILINK_DEFAULT_BASE_URL, IlinkNetworkError, type IlinkClient } from './client.js';
+import { ILINK_DEFAULT_BASE_URL, IlinkNetworkError, IlinkRateLimitError, type IlinkClient } from './client.js';
 import type { IlinkQrStatusResp } from './types.js';
 
 /** 轮询间隔（两次 get_qrcode_status 之间；服务端本身 hold 35s） */
@@ -30,6 +30,12 @@ const DEFAULT_POLL_INTERVAL_MS = 3_000;
 const DEFAULT_SESSION_TTL_MS = 8 * 60 * 1000;
 /** QR 过期最大刷新次数 */
 const DEFAULT_MAX_QR_REFRESHES = 3;
+/** 会话终态后保留宽限（前端轮询确认读取；之后回收防内存无界） */
+const SESSION_RETENTION_GRACE_MS = 60_000;
+/** 并发绑定会话上限（防刷屏/打爆 iLink 额度） */
+const DEFAULT_MAX_CONCURRENT_SESSIONS = 10;
+/** 每来源发起限流（默认 5 次/10 分钟） */
+const DEFAULT_START_RATE_LIMIT = { windowMs: 10 * 60_000, maxStarts: 5 } as const;
 
 export type BindingSessionStatus =
   | 'wait'
@@ -65,6 +71,10 @@ export interface BindingServiceDeps {
   pollIntervalMs?: number;
   sessionTtlMs?: number;
   maxQrRefreshes?: number;
+  /** 并发绑定会话上限（默认 10；防刷屏/打爆 iLink 额度） */
+  maxConcurrentSessions?: number;
+  /** 每来源发起限流（默认 5 次/10 分钟） */
+  startRateLimit?: { windowMs: number; maxStarts: number };
 }
 
 export interface StartBindingResult {
@@ -86,6 +96,8 @@ export interface BindingStatusView {
 export class BindingService {
   private readonly sessions = new Map<string, BindingSession>();
   private readonly settled = new Map<string, Promise<void>>();
+  /** 每来源发起时间戳（限流滑窗） */
+  private readonly startHistory = new Map<string, number[]>();
   private readonly deps: BindingServiceDeps;
 
   constructor(deps: BindingServiceDeps) {
@@ -99,10 +111,29 @@ export class BindingService {
     return promise;
   }
 
-  /** 发起绑定：取二维码 + 启动后台状态轮询（fire-and-forget） */
-  async start(tenantId?: string): Promise<StartBindingResult> {
+  /**
+   * 发起绑定：限流 + 并发上限 + 取二维码 + 启动后台状态轮询（fire-and-forget）。
+   * clientKey 来自路由（x-forwarded-for；缺省 'unknown'）——公开端点防刷屏。
+   */
+  async start(tenantId?: string, clientKey = 'unknown'): Promise<StartBindingResult> {
     const { dataDir, client } = this.deps;
     const now = this.deps.now ?? Date.now;
+    const nowMs = now();
+    this.sweep(nowMs);
+
+    // P1 限流：每来源滑窗内次数上限（公开端点防打爆 iLink 扫码额度）
+    const limit = this.deps.startRateLimit ?? DEFAULT_START_RATE_LIMIT;
+    const history = this.startHistory.get(clientKey) ?? [];
+    const recent = history.filter((t) => nowMs - t < limit.windowMs);
+    if (recent.length >= limit.maxStarts) {
+      throw new Error('发起过于频繁,请稍后再试');
+    }
+    recent.push(nowMs);
+    this.startHistory.set(clientKey, recent);
+    if (this.sessions.size >= (this.deps.maxConcurrentSessions ?? DEFAULT_MAX_CONCURRENT_SESSIONS)) {
+      throw new Error('当前绑定会话过多,请稍后再试');
+    }
+
     const db = await getDb(dataDir);
     const existing = tenantId ? await getBinding(db, tenantId) : undefined;
 
@@ -113,7 +144,7 @@ export class BindingService {
       id: randomUUID(),
       qrcode: resp.qrcode,
       qrcodeImgUrl: resp.qrcode_img_content,
-      startedAt: now(),
+      startedAt: nowMs,
       status: 'wait',
       currentBaseUrl: ILINK_DEFAULT_BASE_URL,
       refreshCount: 0,
@@ -125,15 +156,24 @@ export class BindingService {
       session.error = error instanceof Error ? error.message : String(error);
     });
     this.settled.set(session.id, loop);
-    return { sessionId: session.id, qrcodeImgUrl: resp.qrcode_img_content, expiresAt: now() + (this.deps.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS) };
+    return { sessionId: session.id, qrcodeImgUrl: resp.qrcode_img_content, expiresAt: nowMs + (this.deps.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS) };
   }
 
-  /** 前端轮询状态（confirmed 返回 result；过期/错误返回明确原因） */
+  /**
+   * 前端轮询状态（confirmed 返回 result；过期/错误返回明确原因）。
+   * P2：手工构造视图只挑白名单字段——不泄露 qrcode 令牌/scannedUserId/
+   * expectedOwnerId（主人微信身份）/currentBaseUrl/refreshCount。
+   */
   getStatus(sessionId: string): BindingStatusView {
     const session = this.sessions.get(sessionId);
     if (!session) return { status: 'not_found' };
     const now = this.deps.now ?? Date.now;
     const ttl = this.deps.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS;
+    // 超时（ttl + 宽限）→ 回收会话，防内存无界
+    if (now() - session.startedAt > ttl + SESSION_RETENTION_GRACE_MS) {
+      this.evictSession(sessionId);
+      return { status: 'not_found' };
+    }
     // 只对进行中状态做读取侧过期判定；终态（expired/error/confirmed）不覆盖
     if (
       (session.status === 'wait' || session.status === 'scaned') &&
@@ -142,7 +182,29 @@ export class BindingService {
       session.status = 'expired';
       session.error = '二维码已过期,请重新生成';
     }
-    return { ...session, status: session.status };
+    return {
+      status: session.status,
+      sessionId: session.id,
+      qrcodeImgUrl: session.qrcodeImgUrl,
+      expiresAt: session.startedAt + ttl,
+      ...(session.error ? { error: session.error } : {}),
+      ...(session.result ? { result: session.result } : {}),
+    };
+  }
+
+  /** 回收超龄会话（start/getStatus 时兜底清扫） */
+  private sweep(nowMs: number): void {
+    const ttl = this.deps.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS;
+    for (const [id, session] of this.sessions) {
+      if (nowMs - session.startedAt > ttl + SESSION_RETENTION_GRACE_MS) {
+        this.evictSession(id);
+      }
+    }
+  }
+
+  private evictSession(sessionId: string): void {
+    this.sessions.delete(sessionId);
+    this.settled.delete(sessionId);
   }
 
   /** 后台轮询循环（start 拉起；终态/超时退出） */
@@ -163,9 +225,10 @@ export class BindingService {
       try {
         resp = await ilink.getQrcodeStatus(session.qrcode, { baseUrlOverride: session.currentBaseUrl });
       } catch (error) {
-        // 网络/网关错误视为 wait 继续轮询（openclaw 同策略）
-        if (error instanceof IlinkNetworkError) {
-          await sleep(pollIntervalMs);
+        // 网络/网关/限流错误视为 wait 继续轮询（openclaw 同策略；P3：ret=-2
+        // 限流不再被当 wait 空转——客户端已分类，这里退避后继续）
+        if (error instanceof IlinkNetworkError || error instanceof IlinkRateLimitError) {
+          await sleep(pollIntervalMs * 3);
           continue;
         }
         throw error;

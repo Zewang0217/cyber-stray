@@ -69,14 +69,17 @@ export function createWechatRoutes({ config, bindings }: WechatRoutesDeps): Hono
       return c.json(jsonError('tenantId 非法'), 400);
     }
 
+    // 公开端点限流键：反代透传的客户端 IP（缺省 'unknown' 全局兜底）
+    const clientKey = c.req.raw.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
     try {
-      const result = await bindings.start(tenantId as string | undefined);
+      const result = await bindings.start(tenantId as string | undefined, clientKey);
       return c.json({ success: true, data: result });
     } catch (error) {
-      return c.json(
-        jsonError(`获取二维码失败: ${error instanceof Error ? error.message : String(error)}`),
-        502,
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('过于频繁') || message.includes('会话过多')) {
+        return c.json(jsonError(message), 429);
+      }
+      return c.json(jsonError(`获取二维码失败: ${message}`), 502);
     }
   });
 

@@ -94,6 +94,25 @@ export async function updateBinding(
   await db.update(wechatBindings).set(patch).where(eq(wechatBindings.tenantId, tenantId)).run();
 }
 
+/** 退还一条推送额度（发送失败时；仅当日计数，防跨天误扣） */
+export async function refundPushQuota(
+  db: ControlDb,
+  tenantId: string,
+  today: string,
+): Promise<void> {
+  await db
+    .update(wechatBindings)
+    .set({ pushesCount: sql`${wechatBindings.pushesCount} - 1` })
+    .where(
+      and(
+        eq(wechatBindings.tenantId, tenantId),
+        eq(wechatBindings.pushesDate, today),
+        sql`${wechatBindings.pushesCount} > 0`,
+      ),
+    )
+    .run();
+}
+
 /**
  * 原子 claim 一条推送额度（单条条件 UPDATE，防并发 dispatch 双计）：
  * - pushesDate != 今天 → 重置计数为 1（跨天首条）

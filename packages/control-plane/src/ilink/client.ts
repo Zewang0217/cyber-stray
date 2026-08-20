@@ -264,7 +264,14 @@ export class IlinkClient {
     let endpoint = `${opts.baseUrlOverride ?? this.baseUrl}/ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qrcode)}`;
     if (opts.verifyCode) endpoint += `&verify_code=${encodeURIComponent(opts.verifyCode)}`;
     const { json } = await this.request(endpoint, { method: 'GET' }, { timeoutMs: this.longPollTimeoutMs, token: undefined });
-    return json as IlinkQrStatusResp;
+    const resp = json as IlinkQrStatusResp;
+    // P3 修复：状态轮询同样按 ret/errcode 分类——ret=-2 限流抛 IlinkRateLimitError
+    // （调用方退避继续），-14/unknown error 抛会话失效，不再被当作 wait 空转
+    const errcode = resp.errcode ?? resp.ret;
+    if (errcode !== undefined && errcode !== 0) {
+      assertSuccess(errcode, resp.errmsg);
+    }
+    return resp;
   }
 
   // ─── 3. 长轮询收消息（游标 get_updates_buf 原样带回） ─────────────

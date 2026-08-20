@@ -61,6 +61,8 @@ export class WechatPoller {
   start(intervalMs: number): void {
     this.stop();
     if (intervalMs <= 0) return;
+    // P0 修复：stop() 置位了 stopped，启动前必须复位，否则在飞循环全部直接退出
+    this.stopped = false;
     this.timer = setInterval(() => {
       this.runOnce().catch((error: unknown) => {
         console.error('[wechat-poller] tick 失败：', error instanceof Error ? error.message : error);
@@ -165,58 +167,63 @@ export class WechatPoller {
     const nowMs = now ?? Date.now;
     let backoffMs = 0;
 
-    const entry = this.loops.get(tenantId);
-    while (entry?.active && !this.stopped) {
-      const db = await getDb(dataDir);
-      const binding = await getBinding(db, tenantId);
-      if (!binding) break; // 解绑 = 停轮询
+    // P1 修复：整个循环体包 try/finally——任何退出路径（break/异常/stop）
+    // 都清理 loops 条目，防租户残留 {active:true} 永久停止（自愈失效）
+    try {
+      const entry = this.loops.get(tenantId);
+      while (entry?.active && !this.stopped) {
+        const db = await getDb(dataDir);
+        const binding = await getBinding(db, tenantId);
+        if (!binding) break; // 解绑 = 停轮询
 
-      // 保鲜维护：24h 无交互 → expired（仍继续轮询等"重新打招呼"激活）
-      if (isWechatSessionExpired(binding, nowMs())) {
-        await updateBinding(db, tenantId, { status: 'expired' });
-      }
-
-      const token = await readBotToken(dataDir, tenantId);
-      if (!token) break;
-      const client = clientFactory(binding.baseUrl, token);
-
-      try {
-        const resp = await client.getUpdates({ getUpdatesBuf: binding.getUpdatesBuf ?? undefined });
-        if (resp.get_updates_buf) {
-          await updateBinding(db, tenantId, { getUpdatesBuf: resp.get_updates_buf });
+        // 保鲜维护：24h 无交互 → expired（仍继续轮询等"重新打招呼"激活）
+        if (isWechatSessionExpired(binding, nowMs())) {
+          await updateBinding(db, tenantId, { status: 'expired' });
         }
-        for (const message of resp.msgs ?? []) {
-          await this.processMessage({ tenantId, client, message });
-        }
-        backoffMs = 0;
-      } catch (error) {
-        if (error instanceof IlinkSessionInvalidError) {
-          // bot_token 级失效：标记 expired + 长退避继续轮询（hermes：暂停
-          // 10 分钟而非停死；主人重新打招呼可自愈）
-          await updateBinding(db, tenantId, {
-            status: 'expired',
-            lastError: `轮询会话失效（${error.message}）`,
-          });
-          backoffMs = maxBackoffMs;
+
+        const token = await readBotToken(dataDir, tenantId);
+        if (!token) break;
+        const client = clientFactory(binding.baseUrl, token);
+
+        try {
+          const resp = await client.getUpdates({ getUpdatesBuf: binding.getUpdatesBuf ?? undefined });
+          if (resp.get_updates_buf) {
+            await updateBinding(db, tenantId, { getUpdatesBuf: resp.get_updates_buf });
+          }
+          for (const message of resp.msgs ?? []) {
+            await this.processMessage({ tenantId, client, message });
+          }
+          backoffMs = 0;
+        } catch (error) {
+          if (error instanceof IlinkSessionInvalidError) {
+            // bot_token 级失效：标记 expired + 长退避继续轮询（hermes：暂停
+            // 10 分钟而非停死；主人重新打招呼可自愈）
+            await updateBinding(db, tenantId, {
+              status: 'expired',
+              lastError: `轮询会话失效（${error.message}）`,
+            });
+            backoffMs = maxBackoffMs;
+            await sleep(backoffMs);
+            continue;
+          }
+          if (error instanceof IlinkRateLimitError) {
+            backoffMs = backoffMs === 0 ? errorBackoffMs : Math.min(backoffMs * 3, maxBackoffMs);
+            console.warn(`[wechat-poller] 限流退避 ${backoffMs}ms（${tenantId}）`);
+          } else {
+            backoffMs = errorBackoffMs;
+            console.error(
+              `[wechat-poller] 轮询错误（${tenantId}）：`,
+              error instanceof Error ? error.message : error,
+            );
+          }
           await sleep(backoffMs);
           continue;
         }
-        if (error instanceof IlinkRateLimitError) {
-          backoffMs = backoffMs === 0 ? errorBackoffMs : Math.min(backoffMs * 3, maxBackoffMs);
-          console.warn(`[wechat-poller] 限流退避 ${backoffMs}ms（${tenantId}）`);
-        } else {
-          backoffMs = errorBackoffMs;
-          console.error(
-            `[wechat-poller] 轮询错误（${tenantId}）：`,
-            error instanceof Error ? error.message : error,
-          );
-        }
-        await sleep(backoffMs);
-        continue;
+        await sleep(pollIntervalMs);
       }
-      await sleep(pollIntervalMs);
+    } finally {
+      this.loops.delete(tenantId);
     }
-    this.loops.delete(tenantId);
   }
 
   /** 在飞租户数（可观测/测试） */
