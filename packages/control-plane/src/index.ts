@@ -17,6 +17,7 @@ import {
   stopAllWorkers,
   sweepStaleSecretFiles,
 } from './scheduler/worker-runner.js';
+import { createDiaryRunner, stopAllDiaryWorkers } from './scheduler/diary-runner.js';
 import { IlinkClient } from './ilink/client.js';
 import { BindingService } from './ilink/binding-service.js';
 import { WechatPoller } from './ilink/poller.js';
@@ -71,6 +72,10 @@ const scheduler = new Scheduler({
     dataDir: config.dataDir,
     timeoutMs: config.workerTimeoutMs,
   }),
+  diaryRunner: createDiaryRunner({
+    dataDir: config.dataDir,
+    timeoutMs: config.workerTimeoutMs,
+  }),
   now: () => Date.now(),
   config: {
     maxConcurrent: config.schedulerMaxConcurrent,
@@ -113,6 +118,7 @@ const shutdown = () => {
   petGenProcessor.stop();
   wechatPoller.stop();
   stopAllWorkers();
+  stopAllDiaryWorkers();
   detachPushGateway();
   detachWechatGateway();
 };

@@ -21,7 +21,7 @@ export default function SettingsPage(): React.ReactElement {
     bindByokKey,
   } = usePlan();
   const { status: wechatStatus } = useWechatStatus();
-  const { pets, setSleepSchedule, clearSleepSchedule, error: petsError } = usePets();
+  const { pets, setSleepSchedule, clearSleepSchedule, setDiaryStyle, setDiaryPush, error: petsError } = usePets();
   const sleepPet = pets[0] ?? null;
   const hasSleepSchedule =
     sleepPet !== null && sleepPet.sleepStart !== null && sleepPet.sleepEnd !== null;
@@ -427,6 +427,63 @@ export default function SettingsPage(): React.ReactElement {
                 </button>
               ) : null}
             </form>
+          )}
+          {petsError ? <p className="text-small text-danger mt-2">{petsError}</p> : null}
+        </div>
+
+        {/* 日记（#92）：风格选择 + 每日推送开关 */}
+        <div className="p-6 paper-card rounded-sm">
+          <h2 className="font-heading text-heading font-semibold text-text mb-2">日记</h2>
+          <p className="text-small text-subtext mb-4">
+            宠物每天睡前生成一篇性格化日记。风格可自定义（默认跟随宠物性格），可开启每日推送。
+          </p>
+          {!sleepPet ? (
+            <p className="text-small text-subtext">尚未领养宠物</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex gap-2 items-center">
+                <span className="text-small text-subtext">风格</span>
+                {(
+                  [
+                    { value: "personality", label: "随性格" },
+                    { value: "casual", label: "随意" },
+                    { value: "careful", label: "认真" },
+                    { value: "literary", label: "文艺" },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    disabled={sleepPet.diaryStyle === opt.value}
+                    onClick={() => void setDiaryStyle(opt.value)}
+                    className={`px-3 py-1.5 rounded-sm text-small font-semibold ${
+                      sleepPet.diaryStyle === opt.value
+                        ? "bg-accent text-base"
+                        : "bg-surface text-subtext border border-[var(--c-engraving-fine)]"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-small text-subtext">每日推送</span>
+                <button
+                  type="button"
+                  onClick={() => void setDiaryPush(!sleepPet.diaryPushEnabled)}
+                  className={`px-4 py-2 rounded-sm text-small font-semibold ${
+                    sleepPet.diaryPushEnabled
+                      ? "bg-accent text-base"
+                      : "bg-surface text-subtext border border-[var(--c-engraving-fine)]"
+                  }`}
+                >
+                  {sleepPet.diaryPushEnabled ? "已开启（点击关闭）" : "开启"}
+                </button>
+                <span className="text-xs text-subtext">
+                  {sleepPet.diaryPushEnabled ? "日记生成后推送给你" : "仅生成，不推送"}
+                </span>
+              </div>
+            </div>
           )}
           {petsError ? <p className="text-small text-danger mt-2">{petsError}</p> : null}
         </div>

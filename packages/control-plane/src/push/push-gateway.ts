@@ -117,7 +117,8 @@ export function attachPushGateway(deps: PushGatewayDeps): () => void {
   };
 
   async function dispatch(event: TenantEvent): Promise<void> {
-    if (event.type !== 'worker_succeeded') return;
+    // 游荡完成 或 #92 睡前任务生成日记 → 都可能产生了新的可通知内容
+    if (event.type !== 'worker_succeeded' && event.type !== 'diary_generated') return;
 
     const db = await getDb(dataDir);
     // 先查订阅（无订阅的租户连历史都不读）

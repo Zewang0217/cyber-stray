@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     ".": "./src/personality.ts",
-    "./pet": "./src/pet.ts"
+    "./pet": "./src/pet.ts",
+    "./diary": "./src/diary.ts"
   },
   "scripts": {
     "test": "vitest",
