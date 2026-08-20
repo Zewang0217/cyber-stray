@@ -49,6 +49,11 @@ const nextConfig: NextConfig = {
         destination: `${controlPlaneOrigin}/api/pets`,
       },
       {
+        // #91/#93：作息/日记风格等宠物子路径设置（sleep-schedule / diary-style / diary-push）
+        source: "/api/pets/:path*",
+        destination: `${controlPlaneOrigin}/api/pets/:path*`,
+      },
+      {
         source: "/api/events",
         destination: `${controlPlaneOrigin}/api/events`,
       },
@@ -83,6 +88,16 @@ const nextConfig: NextConfig = {
       {
         source: "/api/footprint/:path*",
         destination: `${controlPlaneOrigin}/api/footprint/:path*`,
+      },
+      {
+        // #92：日记（睡前任务生成；列表/单篇）
+        source: "/api/diary/:path*",
+        destination: `${controlPlaneOrigin}/api/diary/:path*`,
+      },
+      {
+        // #93：梦境（与日记同刻预生成；列表/单篇）
+        source: "/api/dream/:path*",
+        destination: `${controlPlaneOrigin}/api/dream/:path*`,
       },
       {
         // #97：微信通道（扫码即用公开绑定页 + 登录态状态查询）

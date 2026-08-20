@@ -31,3 +31,14 @@ export function stateForMood(
   if (mood === "lazy") return "sleep";
   return "idle";
 }
+
+/** 拍拍回应类型（#93 睡眠期轻互动）：哼唧（不醒、不打断梦境）| 开心 */
+export type PatResponse = "hum" | "joy";
+
+/**
+ * 拍拍回应判定（#93）：睡眠期轻互动 = 哼唧回应，**不改展示状态**（不醒、
+ * 不打断梦境）；清醒 = 开心。纯展示层决策——不触发任何真实状态变更。
+ */
+export function patResponse(sleeping: boolean): PatResponse {
+  return sleeping ? "hum" : "joy";
+}

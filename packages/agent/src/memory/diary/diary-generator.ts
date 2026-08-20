@@ -211,7 +211,8 @@ export async function writeDiaryMarkdown(date: string, content: string): Promise
   return fullPath;
 }
 
-async function writeFileAtomic(tmp: string, dest: string, content: string): Promise<void> {
+/** 原子写（tmp + rename；#93 梦境复用同一实现，故导出） */
+export async function writeFileAtomic(tmp: string, dest: string, content: string): Promise<void> {
   await writeFile(tmp, content, 'utf-8');
   await rename(tmp, dest);
 }

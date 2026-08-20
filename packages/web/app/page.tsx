@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { getPersonality } from "@cyber-stray/shared";
 import { useAgentState } from "@/hooks/useAgentState";
@@ -217,12 +218,25 @@ export default function DashboardPage(): React.ReactElement {
                                 state={sleeping ? "sleep" : undefined}
                                 size={240}
                                 pattable
+                                sleeping={sleeping}
                                 event={lastEvent}
                             />
                         </div>
-                        <p className="field-note text-sm text-subtext italic">
-                            {sleeping ? "睡眠中 · 在窝里休息" : "实时观察中 · 拍拍它"}
-                        </p>
+                        <div className="flex flex-col items-center gap-1.5">
+                            <p className="field-note text-sm text-subtext italic">
+                                {sleeping ? "睡眠中 · 在窝里休息" : "实时观察中 · 拍拍它"}
+                            </p>
+                            {/* #93 梦境入口：仅睡眠期展示（isSleeping 判定，有作息配置才可能为真；
+                                无作息租户 = 无梦境入口，issue 注记留作后续彩蛋）。 */}
+                            {sleeping && (
+                                <Link
+                                    href="/dream"
+                                    className="field-note text-sm text-[var(--c-amber)] hover:text-text transition-colors"
+                                >
+                                    查看今晚的梦
+                                </Link>
+                            )}
+                        </div>
                     </div>
 
                     {/* 右:采集笔记(手写拉丁名 + 状态) */}

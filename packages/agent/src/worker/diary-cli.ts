@@ -7,7 +7,8 @@
  *     [--push-enabled true] [--secrets-file <path>] [--plan-args <json>]
  *
  * 由控制面调度器在睡眠开始时 spawn（同 runOneWander worker 模式）。
- * 读当天足迹/新兴趣/主人反馈 → 性格化日记 markdown → 落盘 diary/YYYY-MM-DD.md。
+ * 读当天足迹/新兴趣/主人反馈 → 性格化日记 markdown → 落盘 diary/YYYY-MM-DD.md；
+ * 同刻生成当晚梦境 → 独立文件 diary/dreams/YYYY-MM-DD.md（#93，result.dreamFile）。
  *
  * 退出码：0 = 完成（或今天无事跳过）；1 = 失败；2 = 参数错误。
  * stdout 一行 JSON（{ ok, tenantId, result }）；失败时 stderr 一行 JSON。

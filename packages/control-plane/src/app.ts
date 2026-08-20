@@ -19,6 +19,7 @@ import { createAdminRoutes } from './routes/admin.js';
 import { createEvolutionRoutes } from './routes/evolution.js';
 import { createFootprintRoutes } from './routes/footprint.js';
 import { createDiaryRoutes } from './routes/diary.js';
+import { createDreamRoutes } from './routes/dream.js';
 import { createWechatRoutes } from './routes/wechat.js';
 import { createPetGenRoutes } from './routes/petgen.js';
 import type { BindingService } from './ilink/binding-service.js';
@@ -70,6 +71,9 @@ export function createApp({ config, oidc, bus, wechatBindings }: AppDeps): Hono 
 
   // #92：日记（睡前任务生成；列表/单篇，租户隔离）
   app.route('/api/diary', createDiaryRoutes({ config }));
+
+  // #93：梦境（与日记同刻预生成；列表/单篇，租户隔离）
+  app.route('/api/dream', createDreamRoutes({ config }));
 
   // #97：微信通道（扫码即用绑定 + 状态；未挂载 bindings 时跳过——单测 app 组装可省略）
   if (wechatBindings) {

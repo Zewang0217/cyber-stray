@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { PET_STATES, stateForMood, type PetState } from "@/lib/pet-sprite";
+import { PET_STATES, patResponse, stateForMood, type PetState } from "@/lib/pet-sprite";
 
 /**
  * PetSprite - 会动的宠物插画(signature interaction)
@@ -51,6 +51,8 @@ interface PetSpriteProps {
   event?: PetEvent | null;
   /** 可拍拍(变成按钮;纯展示场景 false) */
   pattable?: boolean;
+  /** 睡眠期（#93）：拍拍 → 哼唧/翻身回应，不醒、不打断梦境、不改展示状态 */
+  sleeping?: boolean;
 }
 
 export function PetSprite({
@@ -59,8 +61,10 @@ export function PetSprite({
   state,
   event = null,
   pattable = false,
+  sleeping = false,
 }: PetSpriteProps): React.ReactElement {
   const [patted, setPatted] = useState(false);
+  const [humming, setHumming] = useState(false);
   const [flash, setFlash] = useState<{ state: PetState; until: number } | null>(null);
   const [frameIdx, setFrameIdx] = useState(0);
 
@@ -104,8 +108,14 @@ export function PetSprite({
   }, [active]);
 
   const pat = () => {
-    setPatted(true);
-    setTimeout(() => setPatted(false), 1600);
+    // #93 睡眠期轻互动：哼唧回应（纯展示层，不触发任何状态变更）
+    if (patResponse(sleeping) === "hum") {
+      setHumming(true);
+      setTimeout(() => setHumming(false), 1800);
+    } else {
+      setPatted(true);
+      setTimeout(() => setPatted(false), 1600);
+    }
   };
 
   const spec = PET_STATES[active];
@@ -127,9 +137,24 @@ export function PetSprite({
         className="pet-player relative cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-amber)] rounded-sm"
         style={playerStyle}
         whileTap={{ scale: 0.96 }}
+        animate={humming ? { rotate: [-4, 4, -2, 0] } : { rotate: 0 }}
         transition={{ type: "spring", stiffness: 300, damping: 22 }}
-        aria-label={`拍拍宠物(当前:${spec.label})`}
-      />
+        aria-label={
+          sleeping
+            ? `拍拍宠物(睡眠中,哼唧回应:${spec.label})`
+            : `拍拍宠物(当前:${spec.label})`
+        }
+      >
+        {humming ? (
+          <span
+            role="status"
+            aria-live="polite"
+            className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-sm bg-[var(--c-paper)] border border-[var(--c-engraving-fine)] px-2 py-0.5 text-xs text-text"
+          >
+            哼唧…
+          </span>
+        ) : null}
+      </motion.button>
     );
   }
 

@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { readFile, access } from 'fs/promises';
+import { readFile, access, mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { mkdirSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
@@ -38,6 +38,22 @@ function mockNarrative(text: string): { prompts: string[] } {
     return { text };
   });
   return { prompts };
+}
+
+/**
+ * 让 generateText 按调用顺序返回多段叙述（#93：日记 + 梦境两次调用）。
+ * 返回 { texts, prompts }：texts = 实际返回的叙述序列，prompts = 收到的 prompt 序列。
+ */
+function mockNarratives(texts: string[]): { texts: string[]; prompts: string[] } {
+  const prompts: string[] = [];
+  const returned: string[] = [];
+  (generateText as ReturnType<typeof vi.fn>).mockImplementation(async (opts: { prompt?: string }) => {
+    prompts.push(opts.prompt ?? '');
+    const text = texts[returned.length] ?? '';
+    returned.push(text);
+    return { text };
+  });
+  return { texts: returned, prompts };
 }
 
 async function fileExists(path: string): Promise<boolean> {
@@ -141,6 +157,78 @@ describe('runDiaryWorker 端到端', () => {
     expect(result.skipped).toBe(true);
     expect(await fileExists(join(dataDir, 'diary', '2026-08-20.md'))).toBe(false);
     expect(generateText).not.toHaveBeenCalled();
+  });
+
+  it('与日记同刻生成梦境：dreamFile 落盘 diary/dreams/YYYY-MM-DD.md（独立文件）', async () => {
+    await seedTodayData(dataDir, '2026-08-20');
+    mockNarratives(['日记正文', '我梦见自己变成了一束量子光。']);
+
+    const result = await runDiaryWorker({
+      tenantId: 'a',
+      dataDir,
+      petName: '小七',
+      date: '2026-08-20',
+      personality: 'curious',
+    });
+
+    expect(result.skipped).toBe(false);
+    expect(result.dreamFile).toBe(join(dataDir, 'diary', 'dreams', '2026-08-20.md'));
+    const dreamMd = await readFile(join(dataDir, 'diary', 'dreams', '2026-08-20.md'), 'utf-8');
+    expect(dreamMd).toContain('# 梦境 · 2026-08-20');
+    expect(dreamMd).toContain('我梦见自己变成了一束量子光。');
+    // 日记与梦境两个独立文件
+    const diaryMd = await readFile(join(dataDir, 'diary', '2026-08-20.md'), 'utf-8');
+    expect(diaryMd).toContain('# 日记 · 2026-08-20');
+    expect(diaryMd).toContain('日记正文');
+  });
+
+  it('梦境 prompt 基于当天真实兴趣/足迹（输入 → 输出关联，非通用文本）', async () => {
+    await seedTodayData(dataDir, '2026-08-20');
+    const { prompts } = mockNarratives(['日记正文', '梦境正文']);
+
+    await runDiaryWorker({
+      tenantId: 'a',
+      dataDir,
+      petName: '小七',
+      date: '2026-08-20',
+      personality: 'curious',
+    });
+
+    // 第二次 generateText 调用 = 梦境 prompt；必须包含当天种子数据
+    expect(prompts).toHaveLength(2);
+    const dreamPrompt = prompts[1]!;
+    expect(dreamPrompt).toContain('量子计算');
+    expect(dreamPrompt).toContain('搜索(量子计算)');
+    // 梦境 prompt 是抽象联想指令（非日记复述）
+    expect(dreamPrompt).toMatch(/抽象联想重构/);
+    expect(dreamPrompt).not.toContain('写一篇日记');
+  });
+
+  it('仅反馈无兴趣/足迹 → 日记生成但当晚无梦（不生成梦境文件）', async () => {
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(
+      join(dataDir, 'feedback.json'),
+      JSON.stringify({
+        feedbacks: [
+          { id: 'f1', type: 'like', messageId: 'm1', timestamp: '2026-08-20T12:00:00Z', status: 'processed' },
+        ],
+        lastUpdated: '2026-08-20T12:00:00Z',
+      }),
+    );
+    mockNarratives(['只有反馈的日记']);
+
+    const result = await runDiaryWorker({
+      tenantId: 'a',
+      dataDir,
+      petName: '小七',
+      date: '2026-08-20',
+      personality: 'curious',
+    });
+
+    expect(result.skipped).toBe(false);
+    expect(result.file).toBe(join(dataDir, 'diary', '2026-08-20.md'));
+    expect(result.dreamFile).toBeUndefined();
+    expect(await fileExists(join(dataDir, 'diary', 'dreams', '2026-08-20.md'))).toBe(false);
   });
 
   it('pushEnabled → 写 notifiable speak 记录', async () => {
