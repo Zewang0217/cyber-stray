@@ -22,6 +22,7 @@ import { createDiaryRoutes } from './routes/diary.js';
 import { createDreamRoutes } from './routes/dream.js';
 import { createWechatRoutes } from './routes/wechat.js';
 import { createPetGenRoutes } from './routes/petgen.js';
+import { createPetAssetRoutes } from './routes/pet-assets.js';
 import type { BindingService } from './ilink/binding-service.js';
 export interface AppDeps {
   config: ControlPlaneConfig;
@@ -82,6 +83,9 @@ export function createApp({ config, oidc, bus, wechatBindings }: AppDeps): Hono 
 
   // #94：宠物 IP 自定义生成（Pro/BYOK 专属；任务状态机在 petgen/processor.ts）
   app.route('/api/petgen', createPetGenRoutes({ config }));
+
+  // #95：宠物素材消费（manifest 按租户 + 鉴权素材服务；web 只读消费方）
+  app.route('/api', createPetAssetRoutes({ config }));
 
   return app;
 }

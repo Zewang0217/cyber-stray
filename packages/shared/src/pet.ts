@@ -130,3 +130,22 @@ export function getPetStateSpec(state: PetStateId | string): PetStateSpec {
   }
   return spec;
 }
+
+/**
+ * 自定义 IP manifest（#94 生成管线产出，落在租户 pet-assets/manifest.json；
+ * #95 消费侧读取）。契约与 #94 finalize 写入形状对齐——只读消费，不改契约。
+ */
+export interface PetAssetManifest {
+  version: number;
+  generatedAt: string;
+  /** 生成时采用的 spec（specText / options / stylePreset） */
+  spec?: {
+    specText: string;
+    options?: { palette?: string; size?: string; note?: string };
+    stylePreset?: PetPresetId;
+  };
+  /** 概念图文件名（相对 pet-assets/） */
+  concept: string;
+  /** 状态表：每状态素材规格（自定义 IP = 单帧 frames:1 + 播放器程序微动画） */
+  states: Record<PetStateId, PetStateSpec>;
+}
