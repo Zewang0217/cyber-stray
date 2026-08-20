@@ -203,4 +203,119 @@ describe('pets 路由（领养）', () => {
     const body = (await bobList.json()) as { data: unknown[] };
     expect(body.data).toHaveLength(0);
   });
+
+  describe('作息（#91）：PUT/DELETE /api/pets/sleep-schedule', () => {
+    async function seedPet(tenantId: string) {
+      const db = await getDb(dataDir);
+      await db
+        .insert(pets)
+        .values({
+          id: `pet-${tenantId}`,
+          tenantId,
+          name: '小溜',
+          status: 'active',
+          lastRunAt: null,
+          cooldownUntil: null,
+          boredom: 30,
+          energy: 80,
+        })
+        .run();
+    }
+
+    it('未登录：PUT/DELETE 均 401', async () => {
+      expect(
+        (await app.request('/api/pets/sleep-schedule', { method: 'PUT' })).status,
+      ).toBe(401);
+      expect(
+        (await app.request('/api/pets/sleep-schedule', { method: 'DELETE' })).status,
+      ).toBe(401);
+    });
+
+    it('未领养 → 409', async () => {
+      const res = await app.request(
+        await authed('http://x/api/pets/sleep-schedule', {
+          method: 'PUT',
+          body: JSON.stringify({ startHour: 22, endHour: 7 }),
+        }),
+      );
+      expect(res.status).toBe(409);
+    });
+
+    it('PUT 设置作息（跨午夜合法），GET /api/pets 透出字段', async () => {
+      await seedPet('alice');
+      const res = await app.request(
+        await authed('http://x/api/pets/sleep-schedule', {
+          method: 'PUT',
+          body: JSON.stringify({ startHour: 22, endHour: 7 }),
+        }),
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { success: boolean; data: { startHour: number; endHour: number } };
+      expect(body.success).toBe(true);
+      expect(body.data).toEqual({ startHour: 22, endHour: 7 });
+
+      const db = await getDb(dataDir);
+      const pet = await db.select().from(pets).where(eq(pets.tenantId, 'alice')).get();
+      expect(pet?.sleepStart).toBe(22);
+      expect(pet?.sleepEnd).toBe(7);
+
+      // GET /api/pets 透出作息字段（前端设置页/展示用）
+      const list = await app.request(await authed('http://x/api/pets'));
+      const listBody = (await list.json()) as {
+        data: Array<{ sleepStart: number | null; sleepEnd: number | null }>;
+      };
+      expect(listBody.data[0]?.sleepStart).toBe(22);
+      expect(listBody.data[0]?.sleepEnd).toBe(7);
+    });
+
+    it('非法小时 / start==end / 非 JSON → 400', async () => {
+      await seedPet('alice');
+      const bad = async (body: unknown) =>
+        app.request(
+          await authed('http://x/api/pets/sleep-schedule', {
+            method: 'PUT',
+            body: typeof body === 'string' ? body : JSON.stringify(body),
+          }),
+        );
+
+      expect((await bad({ startHour: 24, endHour: 7 })).status).toBe(400);
+      expect((await bad({ startHour: 22, endHour: -1 })).status).toBe(400);
+      expect((await bad({ startHour: 22.5, endHour: 7 })).status).toBe(400);
+      expect((await bad({ startHour: 9, endHour: 9 })).status).toBe(400); // 空窗口
+      expect((await bad('not json')).status).toBe(400);
+    });
+
+    it('DELETE 清除作息（回永不睡眠，与现状一致）', async () => {
+      await seedPet('alice');
+      const db = await getDb(dataDir);
+      await db
+        .update(pets)
+        .set({ sleepStart: 22, sleepEnd: 7 })
+        .where(eq(pets.tenantId, 'alice'))
+        .run();
+
+      const res = await app.request(
+        await authed('http://x/api/pets/sleep-schedule', { method: 'DELETE' }),
+      );
+      expect(res.status).toBe(200);
+      const pet = await db.select().from(pets).where(eq(pets.tenantId, 'alice')).get();
+      expect(pet?.sleepStart).toBeNull();
+      expect(pet?.sleepEnd).toBeNull();
+    });
+
+    it('租户隔离：alice 设作息不影响 bob 的宠物行', async () => {
+      await seedPet('alice');
+      await seedPet('bob');
+      await app.request(
+        await authed('http://x/api/pets/sleep-schedule', {
+          method: 'PUT',
+          body: JSON.stringify({ startHour: 22, endHour: 7 }),
+        }),
+      );
+      const db = await getDb(dataDir);
+      const bobPet = await db.select().from(pets).where(eq(pets.tenantId, 'bob')).get();
+      expect(bobPet?.sleepStart).toBeNull();
+      expect(bobPet?.sleepEnd).toBeNull();
+    });
+  });
 });

@@ -76,6 +76,9 @@ export const pets = sqliteTable('pets', {
   /** Pro 自定义推送时间窗（本地小时 0-23；null = 全天可推） */
   pushWindowStart: integer('push_window_start'),
   pushWindowEnd: integer('push_window_end'),
+  /** 作息睡眠时间窗（#91，本地小时 0-23；null = 无作息，永不睡眠；与 pushWindow 同字段模式） */
+  sleepStart: integer('sleep_start'),
+  sleepEnd: integer('sleep_end'),
   createdAt: integer('created_at').notNull().$defaultFn(now),
   updatedAt: integer('updated_at').notNull().$defaultFn(now).$onUpdate(() => Date.now()),
 }, (t) => ({

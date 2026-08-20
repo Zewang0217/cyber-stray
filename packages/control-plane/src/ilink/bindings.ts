@@ -290,6 +290,8 @@ async function adoptDefaultPet(dataDir: string, tenantId: string): Promise<strin
       energy: 80,
       pushWindowStart: null,
       pushWindowEnd: null,
+      sleepStart: null,
+      sleepEnd: null,
     })
     .onConflictDoNothing({ target: pets.tenantId })
     .run();

@@ -16,7 +16,7 @@
 
 ## Standards
 
-**3 硬违规 / 4 判断题。** 硬违规最多的一片。
+**1 硬违规 / 6 判断题。**（注：方法/缩进阈值已于 2026-08-16 从硬红线放宽为建议 ≤80 行 / ≤4 层，原 dispatch()/push.ts 嵌套两项硬违规降级。）
 
 通过项：
 
@@ -29,15 +29,15 @@
 硬违规：
 
 1. **`schema.ts:121` VAPID `privateKey` 明文存 SQLite**（单例行 `id=1` 跨租户共享签名私钥）——违反「无明文 secrets 落盘」安全红线。虽非 per-tenant DEK 包裹的 secret，但仍是 ECDSA 签名私钥，应至少文件权限保护或信封加密。**最严重项**。
-2. **`push-gateway.ts` `dispatch()` ~75 行 + 5 层嵌套**——违反 guides/index.md「方法≤50 行 / 缩进≤3 层」。
-3. **`push.ts` subscribe handler 4-5 层嵌套**——违反 guides/index.md「缩进≤3 层」。
 
 判断题：
 
-1. `push-gateway.ts:83` JSON 坏行 `catch continue` 吞错（单条坏行跳过，非整体掩盖，可接受但临界）。
-2. `push-gateway.ts` `latestPushedSpeak` 5 层嵌套（同硬违规 #2 范围）。
-3. `console.*` 均为运行日志（`bus.ts:54`/`push-gateway.ts:108/169`/`worker-runner.ts:67/137`）。
-4. 魔法文案/邮箱地址字面量未抽常量。
+1. `push-gateway.ts` `dispatch()` ~75 行（建议 ≤80，合规）+ 5 层嵌套（超建议 4 层）——原硬红线已降级，仍建议拆分降层。
+2. `push.ts` subscribe handler 4-5 层嵌套（建议 ≤4 层，4 层合规、5 层临界）——原硬红线已降级。
+3. `push-gateway.ts:83` JSON 坏行 `catch continue` 吞错（单条坏行跳过，非整体掩盖，可接受但临界）。
+4. `push-gateway.ts` `latestPushedSpeak` 5 层嵌套（同判断题 #1 范围）。
+5. `console.*` 均为运行日志（`bus.ts:54`/`push-gateway.ts:108/169`/`worker-runner.ts:67/137`）。
+6. 魔法文案/邮箱地址字面量未抽常量。
 
 ## Spec
 
@@ -63,7 +63,7 @@
 
 | 轴 | 硬违规 | 判断题 | 最严重 |
 |---|---|---|---|
-| Standards | **3** | 4 | VAPID privateKey 明文存 SQLite（无明文 secrets 落盘红线） |
+| Standards | **1** | 6 | VAPID privateKey 明文存 SQLite（无明文 secrets 落盘红线） |
 | Spec | 0 硬缺失 | 2 实现有误 + 1 疑点 | 推送网关未统一读 S4 解密凭证（架构偏离 spec 描述） |
 
 两轴部分重叠：VAPID 私钥明文既是 Standards 硬违规（无明文落盘）也是 Spec 实现有误（spec 意图推送网关统一管凭证）。修复优先级：①VAPID 私钥至少文件权限保护或信封加密；②`push-gateway.ts` `dispatch()` 拆分降层；③评估飞书投递是否应收归推送网关统一管（架构对齐 spec）。

@@ -28,7 +28,7 @@
 判断题：
 
 1. `config.ts` / `next.config.ts`：魔法值散落三处未抽常量——`8787`、`localhost:3000`、`localhost:8000`。**唯一字面违反 guides「无魔法值」红线**。
-2. `oidc.ts` `handleCallback` ~48-50 行，临界 guides「方法≤50 行」。
+2. `oidc.ts` `handleCallback` ~48-50 行（建议 ≤80，合规）。
 3. `index.ts:12` 启动 banner `console.log`——非调试遗留，属合理运行日志。
 4. `pnpm-lock.yaml` `supports-color` peer 移除 churn 与 S2 无关（最小变更噪音）。
 

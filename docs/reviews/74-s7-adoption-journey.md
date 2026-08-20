@@ -28,14 +28,14 @@
 
 判断题：
 
-1. `pets.ts` adopt handler ~52 行略超 guides「方法≤50 行」。**最接近违规项**。
+1. `pets.ts` adopt handler ~52 行（建议 ≤80，合规）。
 2. `boredom:30`/`energy:80` 内联魔数重复 DB 默认值（schema.ts 与 pets.ts 两处）。
 3. 校验阈值 `32`/`12`/`24`（名字长度等）硬编码。
-4. `AdoptionFlow.tsx` JSX 嵌套 5-6 层（guides「缩进≤3 层」针对控制流，不适用展示层，判断题）。
+4. `AdoptionFlow.tsx` JSX 嵌套 5-6 层（超建议 4 层；「缩进」规则本针对控制流，展示层 JSX 临界）。
 5. `createPetsRoutes` 无内联 JSDoc（文件头注释覆盖）。
 6. 客户端 `SUGGESTED_INTERESTS` 与服务端默认兴趣常量重复，有漂移风险。
 
-**最严重**：adopt handler 略超 50 行 + 跨包默认兴趣常量重复——均非阻断。
+**最严重**：跨包默认兴趣常量重复（漂移风险）+ boredom/energy 魔数重复——均非阻断。
 
 ## Spec
 
@@ -59,7 +59,7 @@
 
 | 轴 | 硬违规 | 判断题 | 最严重 |
 |---|---|---|---|
-| Standards | 0 | 6 | adopt handler ~52 行超 50 行 + 跨包默认兴趣常量重复 |
+| Standards | 0 | 6 | 跨包默认兴趣常量重复（漂移风险） |
 | Spec | **1 硬缺失** | 1 实现有误 | AC4 前端租户上下文注入缺失 + plan 门控脚手架缺失 |
 
 S7 的核心旅程（领养→自我介绍）功能完整且有测试，但 Spec 轴有两个真实缺口：①前端未主动拉取 `/me` 注入租户上下文（AC4 半边）；②spec「plan 门控脚手架」完全缺失（adopt 硬编码 free）。后者是 spec 明确要求项，建议在 S8 前补齐 plan 门控脚手架，否则 S11 双轨定价时没有接入点。
