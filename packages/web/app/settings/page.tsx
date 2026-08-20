@@ -4,9 +4,10 @@ import { useWebPush } from "@/hooks/useWebPush";
 import { useChannels } from "@/hooks/useChannels";
 import { usePlan } from "@/hooks/usePlan";
 import { useWechatStatus } from "@/hooks/useWechatStatus";
+import { usePets } from "@/hooks/usePets";
 /**
  * 设置页面
- * 只读展示当前配置，提示修改需编辑后端 .env
+ * 只读展示当前配置，提示修改需编辑后端 .env 文件
  */
 export default function SettingsPage(): React.ReactElement {
   const { state: pushState, error: pushError, enable, disable } = useWebPush();
@@ -20,6 +21,10 @@ export default function SettingsPage(): React.ReactElement {
     bindByokKey,
   } = usePlan();
   const { status: wechatStatus } = useWechatStatus();
+  const { pets, setSleepSchedule, clearSleepSchedule, error: petsError } = usePets();
+  const sleepPet = pets[0] ?? null;
+  const hasSleepSchedule =
+    sleepPet !== null && sleepPet.sleepStart !== null && sleepPet.sleepEnd !== null;
   return (
     <div className="spacing-lg max-w-6xl mx-auto">
       <motion.div
@@ -347,6 +352,63 @@ export default function SettingsPage(): React.ReactElement {
             </form>
           ) : null}
           {planError ? <p className="text-small text-danger mt-2">{planError}</p> : null}
+        </div>
+
+        {/* 作息（#91）：宠物睡眠时间段——睡眠期停止游荡，前端展示睡觉 */}
+        <div className="p-6 paper-card rounded-sm">
+          <h2 className="font-heading text-heading font-semibold text-text mb-2">作息</h2>
+          <p className="text-small text-subtext mb-4">
+            设置宠物的睡眠时间段（本地时区，跨午夜合法）。睡眠期宠物停止游荡，前端展示睡觉状态。
+          </p>
+          {!sleepPet ? (
+            <p className="text-small text-subtext">尚未领养宠物</p>
+          ) : (
+            <form
+              className="flex gap-2 items-center"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const s = Number(new FormData(e.currentTarget).get("start"));
+                const en = Number(new FormData(e.currentTarget).get("end"));
+                if (Number.isInteger(s) && Number.isInteger(en)) void setSleepSchedule(s, en);
+              }}
+            >
+              <span className="text-small text-subtext">睡眠</span>
+              <input
+                name="start"
+                type="number"
+                min={0}
+                max={23}
+                defaultValue={sleepPet.sleepStart ?? 22}
+                className="w-16 px-2 py-1.5 rounded-lg bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
+              />
+              <span className="text-small text-subtext">点到</span>
+              <input
+                name="end"
+                type="number"
+                min={0}
+                max={23}
+                defaultValue={sleepPet.sleepEnd ?? 7}
+                className="w-16 px-2 py-1.5 rounded-lg bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
+              />
+              <span className="text-small text-subtext">点</span>
+              <button
+                type="submit"
+                className="px-3 py-1.5 rounded-sm text-small bg-accent text-base font-semibold"
+              >
+                保存
+              </button>
+              {hasSleepSchedule ? (
+                <button
+                  type="button"
+                  onClick={() => void clearSleepSchedule()}
+                  className="px-3 py-1.5 rounded-sm text-small bg-danger/10 text-danger"
+                >
+                  清除
+                </button>
+              ) : null}
+            </form>
+          )}
+          {petsError ? <p className="text-small text-danger mt-2">{petsError}</p> : null}
         </div>
       </motion.div>
 

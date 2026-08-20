@@ -6,6 +6,7 @@ import { useAgentState } from "@/hooks/useAgentState";
 import { useTenantEvents } from "@/hooks/useTenantEvents";
 import { useInterestGraph } from "@/hooks/useInterestGraph";
 import { usePets, type Pet } from "@/hooks/usePets";
+import { isSleeping } from "@/lib/sleep";
 import { AdoptionFlow } from "@/components/dashboard/AdoptionFlow";
 import { PetIntro } from "@/components/dashboard/PetIntro";
 import { PetSprite } from "@/components/dashboard/PetSprite";
@@ -33,6 +34,18 @@ export default function DashboardPage(): React.ReactElement {
     const { refreshSignal, lastEvent } = useTenantEvents();
     const { pets, isLoaded: petsLoaded, error: petsError, adopt, adopting } = usePets();
     const { state, isLoading, error } = useAgentState({ refreshSignal });
+    // #91 真实作息：前端按作息时间判定睡眠展示（浏览器本地时区）。
+    // 每分钟刷新一次，保证跨睡眠边界（如 7:00 醒来）自动切换。
+    const [localHour, setLocalHour] = useState(() => new Date().getHours());
+    useEffect(() => {
+      const id = window.setInterval(() => setLocalHour(new Date().getHours()), 60_000);
+      return () => window.clearInterval(id);
+    }, []);
+    const sleeping = isSleeping(
+      localHour,
+      pets[0]?.sleepStart ?? null,
+      pets[0]?.sleepEnd ?? null,
+    );
     const {
         nodes: interestNodes,
         entropy,
@@ -187,8 +200,8 @@ export default function DashboardPage(): React.ReactElement {
                     {/* 左:会动的铜版画插画 */}
                     <div className="flex flex-col items-center gap-4">
                         <div className="relative">
-                            {/* 生命色光晕(示能:它活着) */}
-                            {isBored && (
+                            {/* 生命色光晕(示能:它活着);睡眠期不发光 */}
+                            {isBored && !sleeping && (
                                 <div
                                     className="absolute inset-0 rounded-full pointer-events-none"
                                     style={{
@@ -198,10 +211,16 @@ export default function DashboardPage(): React.ReactElement {
                                     }}
                                 />
                             )}
-                            <PetSprite mood={state.mood} size={240} pattable event={lastEvent} />
+                            <PetSprite
+                                mood={state.mood}
+                                state={sleeping ? "sleep" : undefined}
+                                size={240}
+                                pattable
+                                event={lastEvent}
+                            />
                         </div>
                         <p className="field-note text-sm text-subtext italic">
-                            实时观察中 · 拍拍它
+                            {sleeping ? "睡眠中 · 在窝里休息" : "实时观察中 · 拍拍它"}
                         </p>
                     </div>
 

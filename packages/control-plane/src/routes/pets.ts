@@ -61,6 +61,11 @@ async function scopedTenantId(
 
 const jsonError = (message: string) => ({ success: false, error: message });
 
+/** 有效小时（0-23 整数；作息与 pushWindow 同为本地小时） */
+function validHour(v: unknown): v is number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 23;
+}
+
 /** adopt 请求体 */
 interface AdoptBody {
   name?: unknown;
@@ -182,6 +187,8 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       energy: 80,
       pushWindowStart: null,
       pushWindowEnd: null,
+      sleepStart: null,
+      sleepEnd: null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -202,6 +209,59 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
     }
 
     return c.json({ success: true, data: pet }, 201);
+  });
+
+  /** PUT /api/pets/sleep-schedule — 设置作息（#91，本地小时；跨午夜合法） */
+  app.put('/pets/sleep-schedule', async (c) => {
+    const scoped = await scopedTenantId(c.req.raw, config);
+    if ('error' in scoped) {
+      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
+    }
+
+    let body: { startHour?: unknown; endHour?: unknown };
+    try {
+      body = (await c.req.json()) as { startHour?: unknown; endHour?: unknown };
+    } catch {
+      return c.json(jsonError('请求体须为 JSON'), 400);
+    }
+    if (!validHour(body.startHour) || !validHour(body.endHour)) {
+      return c.json(jsonError('startHour/endHour 须为 0-23 整数'), 400);
+    }
+    if (body.startHour === body.endHour) {
+      return c.json(jsonError('startHour 不能等于 endHour（空窗口）'), 400);
+    }
+
+    const db = await getDb(config.dataDir);
+    const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
+    if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
+
+    await db
+      .update(pets)
+      .set({ sleepStart: body.startHour, sleepEnd: body.endHour })
+      .where(eq(pets.tenantId, scoped.tenantId))
+      .run();
+    return c.json({
+      success: true,
+      data: { startHour: body.startHour, endHour: body.endHour },
+    });
+  });
+
+  /** DELETE /api/pets/sleep-schedule — 清除作息（回永不睡眠，与现状一致） */
+  app.delete('/pets/sleep-schedule', async (c) => {
+    const scoped = await scopedTenantId(c.req.raw, config);
+    if ('error' in scoped) {
+      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
+    }
+    const db = await getDb(config.dataDir);
+    const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
+    if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
+
+    await db
+      .update(pets)
+      .set({ sleepStart: null, sleepEnd: null })
+      .where(eq(pets.tenantId, scoped.tenantId))
+      .run();
+    return c.json({ success: true, data: { cleared: true } });
   });
 
   return app;

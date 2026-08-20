@@ -240,4 +240,56 @@ describe('调度器', () => {
     expect(t1Events).toEqual(['p1']);
     expect(t2Events).toEqual(['p2']);
   });
+
+  describe('真实作息（#91）：睡眠期不拉 worker', () => {
+    /** 当前本地小时（与调度器判定同源，测试时区无关） */
+    const localHour = () => new Date(clock.now).getHours();
+
+    it('未设置作息（默认兼容）：行为与现状一致，照常拉起', async () => {
+      await addPet('p1', 't1');
+      await tick();
+      expect(runner).toHaveBeenCalledOnce();
+      expect(runner).toHaveBeenCalledWith(expect.objectContaining({ petId: 'p1' }));
+    });
+
+    it('睡眠中（窗口覆盖当前小时）不拉 worker，即使就绪', async () => {
+      // 窗口 [h, h+1) 恒覆盖当前小时 h（跨午夜自动成立）
+      await addPet('p1', 't1', { sleepStart: localHour(), sleepEnd: (localHour() + 1) % 24 });
+      await tick();
+      expect(runner).not.toHaveBeenCalled();
+      expect(sched.runningCount()).toBe(0);
+    });
+
+    it('窗口不覆盖当前小时 → 照常拉起', async () => {
+      // 窗口 [h+1, h+2) 恒不覆盖 h（h=22 时跨午夜 [23,0) 也不含 22）
+      await addPet('p1', 't1', { sleepStart: (localHour() + 1) % 24, sleepEnd: (localHour() + 2) % 24 });
+      await tick();
+      expect(runner).toHaveBeenCalledOnce();
+    });
+
+    it('跨午夜窗口：当前小时在窗内 → 不拉 worker', async () => {
+      const h = localHour();
+      // 跨午夜窗口（start > end）且包含当前小时：h=0 用 [22,6)，其余用 [h, h-1)
+      const sleepStart = h === 0 ? 22 : h;
+      const sleepEnd = h === 0 ? 6 : (h + 23) % 24;
+      await addPet('p1', 't1', { sleepStart, sleepEnd });
+      await tick();
+      expect(runner).not.toHaveBeenCalled();
+    });
+
+    it('睡眠期结束自动恢复：清作息后下一 tick 照常游荡', async () => {
+      await addPet('p1', 't1', { sleepStart: localHour(), sleepEnd: (localHour() + 1) % 24 });
+      await tick();
+      expect(runner).not.toHaveBeenCalled();
+
+      // 醒来：清除作息 → 下一 tick 恢复
+      await db.update(pets).set({ sleepStart: null, sleepEnd: null }).where(eq(pets.id, 'p1')).run();
+      await tick();
+      expect(runner).toHaveBeenCalledOnce();
+      expect(runner).toHaveBeenCalledWith(expect.objectContaining({ petId: 'p1' }));
+      // 写回正常（游荡计数在 worker 侧；调度侧 lastRunAt 前移）
+      const pet = await getPet('p1');
+      expect(pet?.lastRunAt).toBe(clock.now);
+    });
+  });
 });
