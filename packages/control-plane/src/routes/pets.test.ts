@@ -85,11 +85,13 @@ describe('pets 路由（领养）', () => {
     expect(res.status).toBe(201);
     const body = (await res.json()) as {
       success: boolean;
-      data: { name: string; tenantId: string; status: string };
+      data: { name: string; tenantId: string; status: string; personality: string };
     };
     expect(body.data.name).toBe('小溜');
     expect(body.data.tenantId).toBe('alice');
     expect(body.data.status).toBe('active');
+    // #90：认领时可选性格；未传默认 curious
+    expect(body.data.personality).toBe('curious');
     // S14：套餐在账号层（tenants.plan），宠物行不再暴露 plan 死列
     expect('plan' in body.data).toBe(false);
     const db2 = await getDb(dataDir);
@@ -112,6 +114,26 @@ describe('pets 路由（领养）', () => {
     expect(listBody.data).toHaveLength(1);
     const db = await getDb(dataDir);
     expect((await db.select().from(pets).all()).length).toBe(1);
+  });
+
+  it('adopt 传 personality=lazy：落库并返回；非法值 400', async () => {
+    const res = await app.request(
+      await authed('http://x/api/pets/adopt', {
+        method: 'POST',
+        body: JSON.stringify({ name: '小懒', personality: 'lazy' }),
+      }),
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { data: { personality: string } };
+    expect(body.data.personality).toBe('lazy');
+
+    const bad = await app.request(
+      await authed('http://x/api/pets/adopt', {
+        method: 'POST',
+        body: JSON.stringify({ name: '坏蛋', personality: 'angry' }),
+      }),
+    );
+    expect(bad.status).toBe(400);
   });
 
   it('adopt 无 interests：默认种子（科技/AI/互联网）', async () => {

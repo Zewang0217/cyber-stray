@@ -488,18 +488,6 @@ export default function SettingsPage(): React.ReactElement {
           {petsError ? <p className="text-small text-danger mt-2">{petsError}</p> : null}
         </div>
       </motion.div>
-
-      {/* 提示 */}
-      <motion.div
-        className="mt-6 p-4 rounded-sm bg-warning/10 border border-warning/20"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.3 }}
-      >
-        <p className="text-sm text-warning">
-          提示：以上配置仅作展示。如需修改，请编辑项目根目录下的 .env 文件并重启 Agent。
-        </p>
-      </motion.div>
     </div>
   );
 }
