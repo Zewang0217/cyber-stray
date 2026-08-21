@@ -27,6 +27,11 @@ import { tenantDataDir } from '../tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
 import { isDiaryStyleChoice } from '@cyber-stray/shared/diary';
+import {
+  DEFAULT_PERSONALITY,
+  isPersonalityId,
+  type PersonalityId,
+} from '@cyber-stray/shared';
 
 export interface PetsDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
@@ -71,12 +76,14 @@ function validHour(v: unknown): v is number {
 interface AdoptBody {
   name?: unknown;
   interests?: unknown;
+  /** 性格（#90；可选，默认 DEFAULT_PERSONALITY） */
+  personality?: unknown;
 }
 
-/** 校验 adopt 入参；返回 { name, interests } 或错误消息 */
+/** 校验 adopt 入参；返回 { name, interests, personality } 或错误消息 */
 function parseAdoptBody(
   body: AdoptBody,
-): { name: string; interests: string[] } | { invalid: string } {
+): { name: string; interests: string[]; personality: PersonalityId } | { invalid: string } {
   const name = body.name;
   if (typeof name !== 'string' || name.trim().length === 0 || name.length > 32) {
     return { invalid: 'name 必填（1-32 字符）' };
@@ -93,7 +100,14 @@ function parseAdoptBody(
     }
     interests = body.interests;
   }
-  return { name: name.trim(), interests };
+  let personality: PersonalityId = DEFAULT_PERSONALITY;
+  if (body.personality !== undefined) {
+    if (!isPersonalityId(body.personality)) {
+      return { invalid: 'personality 须为 curious|playful|lazy|steady' };
+    }
+    personality = body.personality;
+  }
+  return { name: name.trim(), interests, personality };
 }
 
 /**
@@ -190,6 +204,8 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       pushWindowEnd: null,
       sleepStart: null,
       sleepEnd: null,
+      // #90：认领时选择性格（默认好奇；影响行为参数/语气/日记风格）
+      personality: parsed.personality,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };

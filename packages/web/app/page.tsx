@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { getPersonality } from "@cyber-stray/shared";
+import { getPersonality, DEFAULT_PERSONALITY } from "@cyber-stray/shared";
 import { useAgentState } from "@/hooks/useAgentState";
 import { useTenantEvents } from "@/hooks/useTenantEvents";
 import { useInterestGraph } from "@/hooks/useInterestGraph";
@@ -247,7 +247,7 @@ export default function DashboardPage(): React.ReactElement {
                             </p>
                             <p className="field-note text-lg text-[var(--c-faded-ink)] mt-0.5">
                                 {pets[0]
-                                    ? `${getPersonality(pets[0].personality).name}性格的赛博街溜子`
+                                    ? `${getPersonality(pets[0].personality ?? DEFAULT_PERSONALITY).name}性格的赛博街溜子`
                                     : "赛博街溜子"}
                             </p>
                         </div>
