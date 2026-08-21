@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { useWebPush } from "@/hooks/useWebPush";
 import { useChannels } from "@/hooks/useChannels";
@@ -21,6 +22,7 @@ export default function SettingsPage(): React.ReactElement {
     bindByokKey,
   } = usePlan();
   const { status: wechatStatus } = useWechatStatus();
+  const [sleepSaved, setSleepSaved] = useState(false);
   const { pets, setSleepSchedule, clearSleepSchedule, setDiaryStyle, setDiaryPush, error: petsError } = usePets();
   const sleepPet = pets[0] ?? null;
   const hasSleepSchedule =
@@ -389,7 +391,12 @@ export default function SettingsPage(): React.ReactElement {
                 e.preventDefault();
                 const s = Number(new FormData(e.currentTarget).get("start"));
                 const en = Number(new FormData(e.currentTarget).get("end"));
-                if (Number.isInteger(s) && Number.isInteger(en)) void setSleepSchedule(s, en);
+                if (Number.isInteger(s) && Number.isInteger(en)) {
+                  void setSleepSchedule(s, en).then(() => {
+                    setSleepSaved(true);
+                    window.setTimeout(() => setSleepSaved(false), 2000);
+                  });
+                }
               }}
             >
               <span className="text-small text-subtext">睡眠</span>
@@ -429,6 +436,9 @@ export default function SettingsPage(): React.ReactElement {
             </form>
           )}
           {petsError ? <p className="text-small text-danger mt-2">{petsError}</p> : null}
+          {sleepSaved ? (
+            <p className="text-small text-[var(--c-amber)] mt-2">已保存 — 睡眠期宠物停止游荡并展示睡觉状态</p>
+          ) : null}
         </div>
 
         {/* 日记（#92）：风格选择 + 每日推送开关 */}
