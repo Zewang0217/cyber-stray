@@ -99,13 +99,13 @@ function WechatBindPageInner(): React.ReactElement {
               </p>
               {qrcodeImgUrl ? (
                 <div className="flex justify-center mb-6">
-                  {/* qrcode_img_content 是可扫码的完整 URL，直接 <img> 展示 */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  {/* qrcodeImgUrl 是腾讯 liteapp 的 JS 渲染页面（非图片），须 iframe 嵌入；
+                      直接 <img> 会因 content-type=text/html 破图不显示 */}
+                  <iframe
                     src={qrcodeImgUrl}
-                    alt="微信扫码绑定二维码"
-                    width={256}
-                    height={256}
+                    title="微信扫码绑定二维码"
+                    width={260}
+                    height={260}
                     className="rounded-sm border border-[var(--c-engraving-fine)]"
                   />
                 </div>
