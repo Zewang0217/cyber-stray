@@ -65,3 +65,23 @@ describe('buildReactSystemPrompt 性格语气注入', () => {
     }
   });
 });
+
+describe('buildReactSystemPrompt 猫人设（#114 切片 1）', () => {
+  let cleanup: () => void;
+
+  beforeEach(() => {
+    ({ cleanup } = useTempDataDir());
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  test('自称电子流浪猫,不再有电子流浪狗/汪!', async () => {
+    const profile = await loadUserProfile();
+    const prompt = buildReactSystemPrompt(makeState(), profile);
+    expect(prompt).toContain('电子流浪猫');
+    expect(prompt).not.toContain('电子流浪狗');
+    expect(prompt).not.toContain('汪！');
+  });
+});
