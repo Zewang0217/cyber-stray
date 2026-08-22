@@ -6,6 +6,8 @@ import { useChannels } from "@/hooks/useChannels";
 import { usePlan } from "@/hooks/usePlan";
 import { useWechatStatus } from "@/hooks/useWechatStatus";
 import { usePets } from "@/hooks/usePets";
+import { CatchphraseEditor } from "@/components/dashboard/CatchphraseEditor";
+
 /**
  * 设置页面
  * 只读展示当前配置，提示修改需编辑后端 .env 文件
@@ -23,7 +25,7 @@ export default function SettingsPage(): React.ReactElement {
   } = usePlan();
   const { status: wechatStatus } = useWechatStatus();
   const [sleepSaved, setSleepSaved] = useState(false);
-  const { pets, setSleepSchedule, clearSleepSchedule, setDiaryStyle, setDiaryPush, error: petsError } = usePets();
+  const { pets, setSleepSchedule, clearSleepSchedule, setDiaryStyle, setDiaryPush, setCatchphrases, error: petsError } = usePets();
   const sleepPet = pets[0] ?? null;
   const hasSleepSchedule =
     sleepPet !== null && sleepPet.sleepStart !== null && sleepPet.sleepEnd !== null;
@@ -497,6 +499,9 @@ export default function SettingsPage(): React.ReactElement {
           )}
           {petsError ? <p className="text-small text-danger mt-2">{petsError}</p> : null}
         </div>
+
+        {/* 口头禅编辑（#114 切片 6） */}
+        <CatchphraseEditor pet={sleepPet} onSave={(list) => setCatchphrases(list)} />
       </motion.div>
     </div>
   );

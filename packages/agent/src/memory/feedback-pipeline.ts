@@ -18,9 +18,14 @@ import { recordFeedback } from './feedback-store.js';
 import { updateUserProfileBatch, type ProfileUpdateEntry } from './user-profile.js';
 import { getInterestGraph } from './interest-graph.js';
 import { updateMoodByFeedback } from '../agent/state.js';
+import {
+  CATCHPHRASE_WEIGHT_FLOOR,
+  getPersonality,
+  type Catchphrase,
+} from '@cyber-stray/shared';
+import { getConfig } from '../config.js';
 
 const logger = consola.withTag('FeedbackPipeline');
-
 /** 点赞强化权重增量 */
 const LIKE_REINFORCE_DELTA = 0.1;
 
@@ -69,10 +74,36 @@ export interface FeedbackProcessResult {
   topicsMatched: boolean;
   /** 匹配到的兴趣主题 */
   matchedTopics: string[];
+  /** 本次 speak 用到的口头禅文本（#114 归因；未匹配为空数组） */
+  matchedCatchphrases: string[];
+  /** 归因调整后的口头禅集合（#114：CP 写回 pets.catchphrases；无归因为 null） */
+  catchphrasesUpdated: Catchphrase[] | null;
   /** 画像是否已更新 */
   profileUpdated: boolean;
   /** 兴趣是否已强化 */
   interestReinforced: boolean;
+}
+
+/** 口头禅权重归因增量（± 同兴趣图谱 LIKE/DISLIKE 增量） */
+const CATCHPHRASE_DELTA = 0.1;
+
+/**
+ * 口头禅权重归因（#114 纯函数）：like ↑ / dislike ↓，下限 CATCHPHRASE_WEIGHT_FLOOR
+ * （防被踩到消失，ADR 0005）。matched 外的条目原样保留。
+ */
+export function applyCatchphraseFeedback(
+  current: Catchphrase[],
+  type: 'like' | 'dislike',
+  matched: string[],
+): Catchphrase[] {
+  if (matched.length === 0) return current;
+  const matchedSet = new Set(matched);
+  return current.map((c) => {
+    if (!matchedSet.has(c.text)) return c;
+    const next =
+      type === 'like' ? c.weight + CATCHPHRASE_DELTA : c.weight - CATCHPHRASE_DELTA;
+    return { ...c, weight: Math.max(CATCHPHRASE_WEIGHT_FLOOR, Number(next.toFixed(4))) };
+  });
 }
 
 /**
@@ -88,12 +119,14 @@ export async function processFeedback(
   type: 'like' | 'dislike',
   messageId?: string,
   userId?: string,
-  opts: { topics?: string[] } = {},
+  opts: { topics?: string[]; catchphrases?: string[] } = {},
 ): Promise<FeedbackProcessResult> {
   const result: FeedbackProcessResult = {
     recorded: false,
     topicsMatched: false,
     matchedTopics: [],
+    matchedCatchphrases: [],
+    catchphrasesUpdated: null,
     profileUpdated: false,
     interestReinforced: false,
   };
@@ -115,6 +148,16 @@ export async function processFeedback(
     logger.debug('反馈未匹配到兴趣主题（可能是旧消息或映射已清理）', { messageId });
   }
 
+  // Step 2b（#114）：口头禅归因——调用方从 speaks 历史反查传入命中文本；
+  // 权重调整结果经 result 返回，由控制面写回 pets.catchphrases（DB 唯一写者）
+  const matchedPhrases = (opts.catchphrases ?? []).filter((t) => t.length > 0);
+  if (matchedPhrases.length > 0) {
+    const cfg = getConfig();
+    const current = cfg.catchphrases ?? getPersonality(cfg.personality).catchphrases;
+    result.matchedCatchphrases = matchedPhrases;
+    result.catchphrasesUpdated = applyCatchphraseFeedback(current, type, matchedPhrases);
+    logger.info('反馈归因口头禅', { type, messageId, matchedPhrases });
+  }
   // Step 3: 更新用户画像 + 兴趣图谱
   if (topics && topics.length > 0) {
     // 3a: 批量更新用户画像（一次 I/O）
@@ -204,6 +247,8 @@ export async function boostTopic(
     recorded: false,
     topicsMatched: true,
     matchedTopics: [topic],
+    matchedCatchphrases: [],
+    catchphrasesUpdated: null,
     profileUpdated: false,
     interestReinforced: false,
   };

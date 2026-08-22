@@ -22,8 +22,10 @@ import type { ControlPlaneConfig } from '../config.js';
 import type { ControlDb } from '../db/client.js';
 import { getDb } from '../db/client.js';
 import { pets, tenants, userTenants } from '../db/schema.js';
-import { tenantDataDir } from '../tenant.js';
+import type { Catchphrase } from '@cyber-stray/shared';
+import { appendCatchphraseHistory } from '../catchphrase-history.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
+import { tenantDataDir } from '../tenant.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
 
 /** agent feedback CLI 绝对路径（仓库内锚定，与 worker-runner 的 AGENT_CLI 同模式） */
@@ -160,9 +162,35 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
       messageId,
       '--user-id',
       scoped.tenantId,
+      // #114：宠物当前口头禅集合——归因权重要落在真实集合上
+      //（不传则 worker 回退性格默认组，归因落空）
+      ...(pet.catchphrases ? ['--catchphrases', pet.catchphrases] : []),
     ]);
     if (worker.error) {
       return c.json(jsonError(worker.error), 502);
+    }
+
+    // #114 口头禅归因写回：worker 结果带出调整后集合 → pets.catchphrases
+    // （DB 唯一写者是 CP）+ 演化历史；失败仅记日志（反馈本体已成功）
+    const workerResult = worker.data as
+      | { catchphrasesUpdated?: Catchphrase[] | null }
+      | undefined;
+    if (workerResult?.catchphrasesUpdated) {
+      try {
+        const updated = workerResult.catchphrasesUpdated;
+        await db
+          .update(pets)
+          .set({ catchphrases: JSON.stringify(updated), updatedAt: Date.now() })
+          .where(eq(pets.tenantId, scoped.tenantId))
+          .run();
+        await appendCatchphraseHistory(
+          tenantDataDir(config.dataDir, scoped.tenantId),
+          'feedback',
+          updated,
+        );
+      } catch (error) {
+        console.error(`[feedback] 口头禅写回失败（${scoped.tenantId}）：`, error);
+      }
     }
     return c.json({ success: true, data: worker.data ?? {} });
   });

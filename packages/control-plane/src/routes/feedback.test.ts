@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync, readFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
@@ -245,5 +245,127 @@ describe('feedback 路由（点赞/踩 + 顶话题）', () => {
       const req = await authed('http://x/api/boost', { method: 'POST', body: JSON.stringify({ topic }) });
       expect((await app.request(req)).status).toBe(400);
     }
+  });
+});
+
+describe('feedback 口头禅归因写回（#114 切片 5）', () => {
+  let dataDir: string;
+  let app: Hono;
+
+  beforeEach(async () => {
+    dataDir = mkdtempSync(join(tmpdir(), 'cp-feedback-cp-'));
+    _resetDb();
+    await runMigrations(dataDir);
+    await getOrCreateTenant(dataDir, 'alice');
+  });
+
+  afterEach(() => {
+    _resetDb();
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  async function authed(url: string, init: RequestInit = {}): Promise<Request> {
+    const token = await signSession({ sub: 'alice', tenantId: 'alice' }, SECRET);
+    const headers = new Headers(init.headers);
+    headers.set('cookie', `${SESSION_COOKIE}=${token}`);
+    headers.set('content-type', 'application/json');
+    return new Request(url, { ...init, headers });
+  }
+
+  async function seedPetWithCatchphrases(stored: string | null): Promise<void> {
+    const db = await getDb(dataDir);
+    await db.insert(pets).values({
+      id: 'pet-alice',
+      tenantId: 'alice',
+      name: '小喵',
+      status: 'active',
+      lastRunAt: null,
+      cooldownUntil: null,
+      lastBoostAt: null,
+      boredom: 30,
+      energy: 80,
+      catchphrases: stored,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }).run();
+  }
+
+  function spawnReturning(result: unknown) {
+    const spawnFn = async (): Promise<{ exitCode: number; stdout: string }> => ({
+      exitCode: 0,
+      stdout: JSON.stringify({ ok: true, result }),
+    });
+    return spawnFn;
+  }
+
+  it('worker 带 catchphrasesUpdated → 写回 DB + 演化历史 reason=feedback', async () => {
+    await seedPetWithCatchphrases(
+      JSON.stringify([{ text: '喵。', weight: 1 }, { text: '呼噜…', weight: 1 }]),
+    );
+    app = new Hono();
+    const config = { dataDir, sessionSecret: SECRET } as Parameters<
+      typeof createFeedbackRoutes
+    >[0]['config'];
+    app.route('/api', createFeedbackRoutes({ config, spawnFn: spawnReturning({
+      recorded: true,
+      topicsMatched: false,
+      matchedTopics: [],
+      matchedCatchphrases: ['喵。'],
+      catchphrasesUpdated: [{ text: '喵。', weight: 1.1 }, { text: '呼噜…', weight: 1 }],
+      profileUpdated: false,
+      interestReinforced: false,
+    }) }));
+
+    const res = await app.request(
+      await authed('http://x/api/feedback', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'like', messageId: 'om-1' }),
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    const db = await getDb(dataDir);
+    const pet = await db.select().from(pets).where(eq(pets.tenantId, 'alice')).get();
+    expect(JSON.parse(pet!.catchphrases!)).toEqual([
+      { text: '喵。', weight: 1.1 },
+      { text: '呼噜…', weight: 1 },
+    ]);
+
+    const historyPath = join(dataDir, 'tenants', 'alice', 'catchphrase-history.jsonl');
+    const entry = JSON.parse(readFileSync(historyPath, 'utf-8').trim().split('\n')[0]!) as {
+      reason: string;
+      catchphrases: Array<{ text: string; weight: number }>;
+    };
+    expect(entry.reason).toBe('feedback');
+    expect(entry.catchphrases[0]!.weight).toBeCloseTo(1.1);
+  });
+
+  it('worker 无归因（catchphrasesUpdated=null）→ 不写回', async () => {
+    await seedPetWithCatchphrases(JSON.stringify([{ text: '喵。', weight: 1 }]));
+    app = new Hono();
+    const config = { dataDir, sessionSecret: SECRET } as Parameters<
+      typeof createFeedbackRoutes
+    >[0]['config'];
+    app.route('/api', createFeedbackRoutes({ config, spawnFn: spawnReturning({
+      recorded: true,
+      topicsMatched: false,
+      matchedTopics: [],
+      matchedCatchphrases: [],
+      catchphrasesUpdated: null,
+      profileUpdated: false,
+      interestReinforced: false,
+    }) }));
+
+    const res = await app.request(
+      await authed('http://x/api/feedback', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'dislike', messageId: 'om-2' }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const db = await getDb(dataDir);
+    const pet = await db.select().from(pets).where(eq(pets.tenantId, 'alice')).get();
+    expect(pet!.updatedAt).toBe(pet!.createdAt); // 未触碰
+    expect(existsSync(join(dataDir, 'tenants', 'alice', 'catchphrase-history.jsonl'))).toBe(false);
   });
 });

@@ -50,6 +50,8 @@ interface UsePetsReturn {
   setDiaryStyle: (style: Pet["diaryStyle"]) => Promise<boolean>;
   /** 设置是否推送每日日记（#92）。成功返回 true */
   setDiaryPush: (enabled: boolean) => Promise<boolean>;
+  /** 编辑口头禅集合（#114；至少 1 条）。成功返回 true */
+  setCatchphrases: (catchphrases: Catchphrase[]) => Promise<boolean>;
 }
 
 /**
@@ -170,6 +172,13 @@ export function usePets(): UsePetsReturn {
     [mutatePetSetting],
   );
 
+  /** 编辑口头禅集合（#114；至少 1 条，服务端校验）。成功返回 true */
+  const setCatchphrases = useCallback(
+    (catchphrases: Catchphrase[]): Promise<boolean> =>
+      mutatePetSetting("/api/pets/catchphrases", { catchphrases }, "口头禅保存失败"),
+    [mutatePetSetting],
+  );
+
   return {
     pets,
     isLoaded,
@@ -180,5 +189,7 @@ export function usePets(): UsePetsReturn {
     clearSleepSchedule,
     setDiaryStyle,
     setDiaryPush,
+    setCatchphrases,
   };
 }
+

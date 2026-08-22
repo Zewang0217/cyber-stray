@@ -449,5 +449,40 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
     return c.json({ success: true, data: result });
   });
 
+  /** PUT /api/pets/catchphrases — 编辑口头禅集合（#114 切片 6；至少 1 条） */
+  app.put('/pets/catchphrases', async (c) => {
+    const scoped = await scopedTenantId(c.req.raw, config);
+    if ('error' in scoped) {
+      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
+    }
+
+    let body: { catchphrases?: unknown };
+    try {
+      body = (await c.req.json()) as { catchphrases?: unknown };
+    } catch {
+      return c.json(jsonError('请求体须为 JSON'), 400);
+    }
+    const parsed = parseCatchphraseList(body.catchphrases);
+    if (typeof parsed === 'string') {
+      return c.json(jsonError(parsed), 400);
+    }
+
+    const db = await getDb(config.dataDir);
+    const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
+    if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
+
+    await db
+      .update(pets)
+      .set({ catchphrases: JSON.stringify(parsed), updatedAt: Date.now() })
+      .where(eq(pets.tenantId, scoped.tenantId))
+      .run();
+    await appendCatchphraseHistory(
+      tenantDataDir(config.dataDir, scoped.tenantId),
+      'settings',
+      parsed,
+    );
+    return c.json({ success: true, data: { catchphrases: parsed } });
+  });
+
   return app;
 }
