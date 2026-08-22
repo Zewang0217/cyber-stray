@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  CATCHPHRASE_LIST_MAX,
+  CATCHPHRASE_TEXT_MAX,
   listPersonalities,
   DEFAULT_PERSONALITY,
   type Catchphrase,
@@ -24,8 +26,6 @@ const PERSONALITIES = listPersonalities();
 
 /** "换一批"上限（含首次共 4 次请求；ADR 0005 限流防成本滥用） */
 const MAX_BATCH = 3;
-/** 口头禅集合上限（与服务端 parseCatchphraseList 一致） */
-const CATCHPHRASE_MAX = 6;
 
 interface AdoptionFlowProps {
   adopting: boolean;
@@ -141,18 +141,18 @@ export function AdoptionFlow({ adopting, onAdopt }: AdoptionFlowProps): React.Re
     setCatchphraseList((prev) =>
       prev.some((c) => c.text === text)
         ? prev.filter((c) => c.text !== text)
-        : prev.length >= CATCHPHRASE_MAX ? prev : [...prev, { text, weight: 1 }],
+        : prev.length >= CATCHPHRASE_LIST_MAX ? prev : [...prev, { text, weight: 1 }],
     );
   };
 
   const addCustomPhrase = () => {
     const text = customPhrase.trim();
-    if (text.length === 0 || text.length > 24) {
-      setError("口头禅需要 1-24 个字符");
+    if (text.length === 0 || text.length > CATCHPHRASE_TEXT_MAX) {
+      setError(`口头禅需要 1-${CATCHPHRASE_TEXT_MAX} 个字符`);
       return;
     }
-    if (catchphraseList.length >= CATCHPHRASE_MAX) {
-      setError(`最多 ${CATCHPHRASE_MAX} 条口头禅`);
+    if (catchphraseList.length >= CATCHPHRASE_LIST_MAX) {
+      setError(`最多 ${CATCHPHRASE_LIST_MAX} 条口头禅`);
       return;
     }
     if (!catchphraseList.some((c) => c.text === text)) {
@@ -374,7 +374,7 @@ export function AdoptionFlow({ adopting, onAdopt }: AdoptionFlowProps): React.Re
                   {phraseCandidates.exhausted ? "换一批(次数用完啦)" : `换一批(${phraseCandidates.batch}/3)`}
                 </button>
                 <span className="text-xs text-subtext">
-                  已选 {catchphraseList.length}/{CATCHPHRASE_MAX}
+                  已选 {catchphraseList.length}/{CATCHPHRASE_LIST_MAX}
                 </span>
               </div>
               <div className="flex gap-2 mb-4">
@@ -383,7 +383,7 @@ export function AdoptionFlow({ adopting, onAdopt }: AdoptionFlowProps): React.Re
                   onChange={(e) => setCustomPhrase(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addCustomPhrase()}
                   placeholder="也可以自己教它一句"
-                  maxLength={24}
+                  maxLength={CATCHPHRASE_TEXT_MAX}
                   className="flex-1 px-4 py-2 rounded-sm bg-[var(--c-paper)] border border-[var(--c-engraving-fine)]
                     text-text placeholder:text-subtext focus:outline-none focus:border-[var(--c-amber)] text-small"
                 />

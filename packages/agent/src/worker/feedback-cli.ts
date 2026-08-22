@@ -57,16 +57,6 @@ export async function resolveTopicsFromHistory(
   return topics.length > 0 ? topics : null;
 }
 
-/** 按 messageId 反查该 speak 用过的口头禅文本（#114 归因；无记录/未命中 null） */
-export async function resolveCatchphrasesFromHistory(
-  dataDir: string,
-  messageId: string,
-): Promise<string[] | null> {
-  const record = await findSpeakRecord(dataDir, messageId);
-  const phrases = record?.matchedCatchphrases ?? [];
-  return phrases.length > 0 ? phrases : null;
-}
-
 /** speaks 历史按 messageId 反查整条记录（归因数据的持久化入口；一次扫描供双投影） */
 export async function findSpeakRecord(
   dataDir: string,

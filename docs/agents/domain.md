@@ -38,7 +38,7 @@ This is a pnpm monorepo with **multi-context** domain docs — a root `CONTEXT-M
 - **Root `CONTEXT.md`** exists — SaaS shared vocabulary + locked decisions (from issue #42 RFC). It is the system-wide glossary.
 - **`CONTEXT-MAP.md`** — created by this setup, pointing at the contexts below.
 - **Per-package `CONTEXT.md`** — **not yet created** for any package. They are created lazily by the `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) when terms or decisions actually get resolved for that package. Do not create empty stubs upfront.
-- **`docs/adr/`** — not yet present at root or in any package. Created lazily by `/domain-modeling` when the first ADR is written.
+- **`docs/adr/`** — 系统级 ADR（现有：0005 口头禅系统）；包级 `packages/<pkg>/docs/adr/` 由 `/domain-modeling` 按需创建。
 
 If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront.
 
