@@ -2,7 +2,7 @@
  * 赛博街溜子核心类型定义
  */
 
-import type { PersonalityId } from '@cyber-stray/shared';
+import type { Catchphrase, PersonalityId } from '@cyber-stray/shared';
 
 // ============================================
 // 状态相关
@@ -186,7 +186,8 @@ export interface AgentConfig {
 
   /** 性格（#90：认领时选择；好奇=基准；控制面经 worker CLI 注入，默认好奇） */
   personality: PersonalityId;
-  
+  /** 口头禅（#114：worker CLI 注入的当前有效集合；缺省 = 性格默认组） */
+  catchphrases?: Catchphrase[];
   // 搜索配置
   searchProvider: string;
   searchApiKey: string;     // Tavily API key

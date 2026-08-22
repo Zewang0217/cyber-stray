@@ -18,7 +18,7 @@ import { loadConfig, setTenantContext, type TenantContext } from '../config.js';
 import { loadState } from '../agent/state.js';
 import { WanderAgent } from '../core/wander-agent.js';
 import type { AgentSecrets, PlanExecutionArgs, WanderResult } from '../types.js';
-import type { PersonalityId } from '@cyber-stray/shared';
+import type { Catchphrase, PersonalityId } from '@cyber-stray/shared';
 
 /** runOneWander 入参 */
 export interface RunOneWanderOptions {
@@ -32,6 +32,8 @@ export interface RunOneWanderOptions {
   planArgs?: PlanExecutionArgs;
   /** 性格（#90：探索倾向 + 语气注入；未注入 = 好奇，行为不回退） */
   personality?: PersonalityId;
+  /** 口头禅（#114：当前有效集合；未注入 = 性格默认组） */
+  catchphrases?: Catchphrase[];
 }
 
 /**
@@ -41,7 +43,7 @@ export interface RunOneWanderOptions {
  * 重试/告警。租户上下文在 finally 中清除，进程可继续跑下一租户。
  */
 export async function runOneWander(options: RunOneWanderOptions): Promise<WanderResult> {
-  const config = loadConfig(options.dataDir, options.secrets, options.planArgs, options.personality);
+  const config = loadConfig(options.dataDir, options.secrets, options.planArgs, options.personality, options.catchphrases);
   const ctx: TenantContext = {
     tenantId: options.tenantId,
     dataDir: options.dataDir,

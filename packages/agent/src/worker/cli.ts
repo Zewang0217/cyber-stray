@@ -14,7 +14,7 @@
 
 import { readFileSync } from 'fs';
 import { runOneWander } from './run-one-wander.js';
-import { isPersonalityId, type PersonalityId } from '@cyber-stray/shared';
+import { isPersonalityId, parseCatchphraseList, type Catchphrase, type PersonalityId } from '@cyber-stray/shared';
 import type { AgentSecrets, PlanExecutionArgs } from '../types.js';
 
 function parseArg(name: string): string | undefined {
@@ -56,7 +56,26 @@ async function main(): Promise<void> {
     personality = personalityRaw;
   }
 
-  const result = await runOneWander({ tenantId, dataDir, secrets, planArgs, personality });
+  // #114 口头禅：控制面注入 JSON（pets.catchphrases 列原样）；非法值显式失败
+  const catchphrasesRaw = parseArg('catchphrases');
+  let catchphrases: Catchphrase[] | undefined;
+  if (catchphrasesRaw !== undefined) {
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(catchphrasesRaw);
+    } catch {
+      console.error(JSON.stringify({ ok: false, tenantId, error: '--catchphrases 须为 JSON 数组' }));
+      process.exit(2);
+    }
+    const parsed = parseCatchphraseList(parsedJson);
+    if (typeof parsed === 'string') {
+      console.error(JSON.stringify({ ok: false, tenantId, error: parsed }));
+      process.exit(2);
+    }
+    catchphrases = parsed;
+  }
+
+  const result = await runOneWander({ tenantId, dataDir, secrets, planArgs, personality, catchphrases });
   console.log(JSON.stringify({ ok: true, tenantId, result }));
   process.exit(0);
 }

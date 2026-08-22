@@ -108,6 +108,7 @@ export function createWorkerRunner(deps: WorkerRunnerDeps): WorkerRunner {
       if (secretsPath) args.push('--secrets-file', secretsPath);
       args.push('--plan-args', JSON.stringify(job.plan));
       args.push('--personality', job.personality);
+      if (job.catchphrases !== undefined) args.push('--catchphrases', job.catchphrases);
       const { exitCode } = await spawnFn(command, args, { timeoutMs: deps.timeoutMs });
       return { ok: exitCode === 0, exitCode };
     } catch (error) {
