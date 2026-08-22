@@ -29,9 +29,13 @@ import { resolveTenantFromRequest } from '../request-tenant.js';
 import { isDiaryStyleChoice } from '@cyber-stray/shared/diary';
 import {
   DEFAULT_PERSONALITY,
+  getPersonality,
   isPersonalityId,
+  parseCatchphraseList,
+  type Catchphrase,
   type PersonalityId,
 } from '@cyber-stray/shared';
+import { appendCatchphraseHistory } from '../catchphrase-history.js';
 
 export interface PetsDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
@@ -78,12 +82,19 @@ interface AdoptBody {
   interests?: unknown;
   /** 性格（#90；可选，默认 DEFAULT_PERSONALITY） */
   personality?: unknown;
+  /** 口头禅（#114；可选，默认 = 所选性格的默认组） */
+  catchphrases?: unknown;
 }
 
-/** 校验 adopt 入参；返回 { name, interests, personality } 或错误消息 */
+/** 校验 adopt 入参；返回 { name, interests, personality, catchphrases } 或错误消息 */
 function parseAdoptBody(
   body: AdoptBody,
-): { name: string; interests: string[]; personality: PersonalityId } | { invalid: string } {
+): {
+  name: string;
+  interests: string[];
+  personality: PersonalityId;
+  catchphrases: Catchphrase[];
+} | { invalid: string } {
   const name = body.name;
   if (typeof name !== 'string' || name.trim().length === 0 || name.length > 32) {
     return { invalid: 'name 必填（1-32 字符）' };
@@ -107,7 +118,24 @@ function parseAdoptBody(
     }
     personality = body.personality;
   }
-  return { name: name.trim(), interests, personality };
+  let catchphrases: Catchphrase[];
+  if (body.catchphrases === undefined) {
+    catchphrases = getPersonality(personality).catchphrases;
+  } else {
+    const parsed = parseCatchphraseList(body.catchphrases);
+    if (typeof parsed === 'string') return { invalid: parsed };
+    catchphrases = parsed;
+  }
+  return { name: name.trim(), interests, personality, catchphrases };
+}
+
+/** DB catchphrases 列（JSON 字符串）→ 有效集合；NULL → 性格默认组 */
+function parseStoredCatchphrases(
+  stored: string | null,
+  personality: string,
+): Catchphrase[] {
+  if (stored === null) return getPersonality(personality).catchphrases;
+  return JSON.parse(stored) as Catchphrase[];
 }
 
 /**
@@ -160,8 +188,12 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
     }
     const db = await getDb(config.dataDir);
     const rows = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).all();
-    // S14 clean cutover：pets.plan 已废弃（套餐在 tenants），映射掉死列防契约失真
-    const data = rows.map(({ plan: _deprecated, ...pet }) => pet);
+    // S14 clean cutover：pets.plan 已废弃（套餐在 tenants），映射掉死列防契约失真。
+    // #114：catchphrases 列 NULL（存量宠物）→ 性格默认组（有效集合始终可见）
+    const data = rows.map(({ plan: _deprecated, catchphrases: stored, ...pet }) => ({
+      ...pet,
+      catchphrases: parseStoredCatchphrases(stored, pet.personality),
+    }));
     return c.json({ success: true, data });
   });
 
@@ -188,6 +220,12 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
     // 种子先行（非 EEXIST 失败时残留无害：重试的 wx 写会 EEXIST 复用；
     // 反过来行先落、种子失败重试会撞 409 且丢用户选的兴趣）
     await seedInterestsIfAbsent(config.dataDir, scoped.tenantId, parsed.interests);
+    // #114：口头禅演化历史先行（insert 冲突 409 时多一行无害 trace）
+    await appendCatchphraseHistory(
+      tenantDataDir(config.dataDir, scoped.tenantId),
+      'adopt',
+      parsed.catchphrases,
+    );
 
     const pet: NewPet = {
       id: randomUUID(),
@@ -206,6 +244,8 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       sleepEnd: null,
       // #90：认领时选择性格（默认好奇；影响行为参数/语气/日记风格）
       personality: parsed.personality,
+      // #114：口头禅（默认 = 性格默认组；显式存 JSON 而非 NULL，演化起点可追溯）
+      catchphrases: JSON.stringify(parsed.catchphrases),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -222,10 +262,23 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
         .from(pets)
         .where(eq(pets.tenantId, scoped.tenantId))
         .get();
-      return c.json({ success: false, error: '已有宠物', data: existing }, 409);
+      if (!existing) return c.json(jsonError('已有宠物'), 409);
+      const { catchphrases: stored, ...rest } = existing;
+      return c.json(
+        {
+          success: false,
+          error: '已有宠物',
+          data: { ...rest, catchphrases: parseStoredCatchphrases(stored, existing.personality) },
+        },
+        409,
+      );
     }
 
-    return c.json({ success: true, data: pet }, 201);
+    const { catchphrases: _storedJson, ...petView } = pet;
+    return c.json(
+      { success: true, data: { ...petView, catchphrases: parsed.catchphrases } },
+      201,
+    );
   });
 
   /** PUT /api/pets/sleep-schedule — 设置作息（#91，本地小时；跨午夜合法） */

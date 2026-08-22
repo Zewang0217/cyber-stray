@@ -41,6 +41,51 @@ export interface PersonalityExploration {
   familiarity: number;
 }
 
+/** 口头禅条目（#114：宠物个性第三维度；权重供说话倾向与反馈归因） */
+export interface Catchphrase {
+  /** 口头禅文本（纯文字不带 emoji——emoji 交 LLM 自然发挥） */
+  text: string;
+  /** 相对权重（≥ CATCHPHRASE_WEIGHT_FLOOR；反馈归因 ± 调整） */
+  weight: number;
+}
+
+/** 口头禅集合约束（adopt/settings 入参校验的单一真相源） */
+export const CATCHPHRASE_LIST_MAX = 6;
+export const CATCHPHRASE_TEXT_MAX = 24;
+/** 权重下限（防某条被踩到消失，ADR 0005） */
+export const CATCHPHRASE_WEIGHT_FLOOR = 0.05;
+
+/**
+ * 解析口头禅入参（adopt / settings 共用校验）。
+ * 合法返回规范化列表（text 去首尾空白）；非法返回错误消息（中文，直接作 400 body）。
+ */
+export function parseCatchphraseList(value: unknown): Catchphrase[] | string {
+  if (!Array.isArray(value) || value.length === 0) {
+    return 'catchphrases 须为非空数组';
+  }
+  if (value.length > CATCHPHRASE_LIST_MAX) {
+    return `catchphrases 最多 ${CATCHPHRASE_LIST_MAX} 条`;
+  }
+  const out: Catchphrase[] = [];
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null) {
+      return 'catchphrases 每条须为 { text, weight } 对象';
+    }
+    const { text, weight } = item as { text?: unknown; weight?: unknown };
+    if (typeof text !== 'string' || text.trim().length === 0 || text.length > CATCHPHRASE_TEXT_MAX) {
+      return `catchphrases.text 须为 1-${CATCHPHRASE_TEXT_MAX} 字符的非空文本`;
+    }
+    if (
+      typeof weight !== 'number' || !Number.isFinite(weight) ||
+      weight < CATCHPHRASE_WEIGHT_FLOOR || weight > 10
+    ) {
+      return `catchphrases.weight 须为 ${CATCHPHRASE_WEIGHT_FLOOR}-10 的数字`;
+    }
+    out.push({ text: text.trim(), weight });
+  }
+  return out;
+}
+
 /** 性格注册条目 */
 export interface PersonalityProfile {
   id: PersonalityId;
@@ -60,6 +105,8 @@ export interface PersonalityProfile {
   exploration: PersonalityExploration;
   /** 语气 prompt 段（注入 agent system prompt） */
   tonePrompt: string;
+  /** 默认口头禅组（#114；认领未自选时的取值，与 tonePrompt 并列的单一真相源） */
+  catchphrases: Catchphrase[];
   /** 日记风格（#92 日记系统使用；本期只留字段） */
   diaryStyle: string;
   /** 梦境风格（#92 梦境系统使用；本期只留字段） */
@@ -82,6 +129,12 @@ export const PERSONALITIES: Record<PersonalityId, PersonalityProfile> = {
       '说话带着好奇与疑问，喜欢把发现讲得鲜活、带点发现的兴奋。',
     diaryStyle: '记录当天发现的趣闻与新兴趣，带着"原来如此"的惊叹语气',
     dreamStyle: '把白天的兴趣碎片联想成奇妙的探索梦',
+    /** 默认口头禅（#114 ADR 0005） */
+    catchphrases: [
+      { text: '咪?这是什么呀', weight: 1 },
+      { text: '喵——让我看看', weight: 1 },
+      { text: '咦?有意思', weight: 1 },
+    ],
   },
   playful: {
     id: 'playful',
@@ -97,6 +150,12 @@ export const PERSONALITIES: Record<PersonalityId, PersonalityProfile> = {
       '喜欢用轻松俏皮的口气，时不时皮一下。',
     diaryStyle: '用欢脱的笔调记录一天，爱开玩笑和夸张',
     dreamStyle: '热闹跳跃的冒险梦，到处撒欢',
+    /** 默认口头禅（#114 ADR 0005） */
+    catchphrases: [
+      { text: '喵喵喵!', weight: 1 },
+      { text: '喵呜——冲!', weight: 1 },
+      { text: '快来看快来看', weight: 1 },
+    ],
   },
   lazy: {
     id: 'lazy',
@@ -112,6 +171,12 @@ export const PERSONALITIES: Record<PersonalityId, PersonalityProfile> = {
       '带点"随便啦"的随性，但偶尔冒出一句有意思的吐槽。',
     diaryStyle: '慢悠悠地记几笔，随性带点吐槽',
     dreamStyle: '安静慵懒的梦，偶尔翻个身继续睡',
+    /** 默认口头禅（#114 ADR 0005） */
+    catchphrases: [
+      { text: '呼噜…', weight: 1 },
+      { text: '喵…(打个哈欠)', weight: 1 },
+      { text: '嗯…再说吧', weight: 1 },
+    ],
   },
   steady: {
     id: 'steady',
@@ -127,6 +192,12 @@ export const PERSONALITIES: Record<PersonalityId, PersonalityProfile> = {
       '关注事实多于情绪，像个安静可靠的老朋友。',
     diaryStyle: '平实清晰的流水账，重点在事实与观察',
     dreamStyle: '沉稳的、有逻辑的联想梦',
+    /** 默认口头禅（#114 ADR 0005） */
+    catchphrases: [
+      { text: '喵。', weight: 1 },
+      { text: '嗯,知道了', weight: 1 },
+      { text: '此事值得一记', weight: 1 },
+    ],
   },
 };
 
