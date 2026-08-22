@@ -284,3 +284,84 @@ describe('分块发送 sendTextChunked', () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe('网络瞬时错误重试 + 长轮询连接隔离（#117）', () => {
+  const BASE2 = BASE;
+
+  /** 首次抛、后续按 handler 的 fetch（模拟 socket closed 后重试成功） */
+  function makeFlakyFetch(handlers: Array<() => unknown>) {
+    let n = 0;
+    const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+    const fetchFn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const h = Object.fromEntries(
+        Object.entries((init?.headers as Record<string, string>) ?? {}).map(([k, v]) => [k, String(v)]),
+      );
+      calls.push({ url: String(url), headers: h });
+      const result = handlers[Math.min(n++, handlers.length - 1)]!();
+      if (result instanceof Error) throw result;
+      const text = typeof result === 'string' ? result : JSON.stringify(result);
+      return new Response(text, { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    return { fetchFn: fetchFn as unknown as typeof fetch, calls };
+  }
+
+  const socketClosed = () => Object.assign(new TypeError('The socket connection was closed unexpectedly.'), { code: 'ECONNRESET' });
+
+  it('读端点（get_bot_qrcode）：首次网络错误 → 即时重试成功，fetch 2 次', async () => {
+    const { fetchFn, calls } = makeFlakyFetch([
+      socketClosed,
+      () => ({ qrcode: 'qr-1', qrcode_img_content: 'https://qr/1', ret: 0 }),
+    ]);
+    const client = new IlinkClient({ baseUrl: BASE2, fetchFn });
+    const resp = await client.getBotQrcode();
+    expect(resp.qrcode).toBe('qr-1');
+    expect(calls).toHaveLength(2);
+  });
+
+  it('读端点：持续网络错误 → 抛 IlinkNetworkError，只重试 1 次（共 2 次 fetch）', async () => {
+    const { fetchFn, calls } = makeFlakyFetch([socketClosed, socketClosed]);
+    const client = new IlinkClient({ baseUrl: BASE2, fetchFn });
+    await expect(client.getBotQrcode()).rejects.toThrow(IlinkNetworkError);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('超时（TimeoutError）→ 不重试，抛超时消息', async () => {
+    const { fetchFn, calls } = makeFlakyFetch([
+      () => Object.assign(new Error('timeout'), { name: 'TimeoutError' }),
+    ]);
+    const client = new IlinkClient({ baseUrl: BASE2, fetchFn });
+    await expect(client.getBotQrcode()).rejects.toThrow(/请求超时/);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('写端点（sendmessage）网络错误 → 不重试（防重复发送）', async () => {
+    const { fetchFn, calls } = makeFlakyFetch([socketClosed]);
+    const client = new IlinkClient({ baseUrl: BASE2, fetchFn, rateLimitRetries: 0 });
+    await expect(client.sendMessage('u1', 'hi')).rejects.toThrow(IlinkNetworkError);
+    expect(calls).toHaveLength(1);
+  });
+
+  // 运行时依赖说明：Connection: close 防连接池污染的机制在 Node undici
+  // （生产 CP 运行时，Node 22 实测：头会发送且关闭的 socket 不回收入池）下
+  // 成立。本测试只断言客户端意图（fetch init 含该头）；wire 行为依赖
+  // undici 对禁止头的处理，升级 Node 主版本时需复核（review MINOR #2）。
+  it('长轮询（getupdates）请求头带 Connection: close；普通请求不带', async () => {
+    const ok = () => ({ ret: 0, item_list: [] });
+    const longPoll = makeFlakyFetch([ok]);
+    const lp = new IlinkClient({ baseUrl: BASE2, fetchFn: longPoll.fetchFn, longPollTimeoutMs: 500 });
+    await lp.getUpdates();
+    expect(longPoll.calls[0]!.headers['Connection']).toBe('close');
+
+    const normal = makeFlakyFetch([ok]);
+    const nc = new IlinkClient({ baseUrl: BASE2, fetchFn: normal.fetchFn });
+    await nc.getConfig();
+    expect(normal.calls[0]!.headers['Connection']).toBeUndefined();
+  });
+
+  it('长轮询状态（get_qrcode_status）同样带 Connection: close', async () => {
+    const { fetchFn, calls } = makeFlakyFetch([() => ({ ret: 0, status: 'wait' })]);
+    const client = new IlinkClient({ baseUrl: BASE2, fetchFn, longPollTimeoutMs: 500 });
+    await client.getQrcodeStatus('qr-x');
+    expect(calls[0]!.headers['Connection']).toBe('close');
+  });
+});

@@ -247,7 +247,7 @@ export class IlinkClient {
     const { json } = await this.request(
       `${this.baseUrl}/ilink/bot/get_bot_qrcode?bot_type=${encodeURIComponent(botType)}`,
       { method: 'POST', body },
-      { timeoutMs: this.requestTimeoutMs, token: undefined },
+      { timeoutMs: this.requestTimeoutMs, token: undefined, retryNetworkError: true },
     );
     const resp = json as IlinkQrStartResp;
     if (!resp.qrcode || !resp.qrcode_img_content) {
@@ -263,7 +263,11 @@ export class IlinkClient {
   ): Promise<IlinkQrStatusResp> {
     let endpoint = `${opts.baseUrlOverride ?? this.baseUrl}/ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qrcode)}`;
     if (opts.verifyCode) endpoint += `&verify_code=${encodeURIComponent(opts.verifyCode)}`;
-    const { json } = await this.request(endpoint, { method: 'GET' }, { timeoutMs: this.longPollTimeoutMs, token: undefined });
+    const { json } = await this.request(
+      endpoint,
+      { method: 'GET', headers: { Connection: 'close' } },
+      { timeoutMs: this.longPollTimeoutMs, token: undefined, retryNetworkError: true },
+    );
     const resp = json as IlinkQrStatusResp;
     // P3 修复：状态轮询同样按 ret/errcode 分类——ret=-2 限流抛 IlinkRateLimitError
     // （调用方退避继续），-14/unknown error 抛会话失效，不再被当作 wait 空转
@@ -280,8 +284,8 @@ export class IlinkClient {
     const timeoutMs = opts.longPollTimeoutMs ?? this.longPollTimeoutMs;
     const { json } = await this.request(
       `${this.baseUrl}/ilink/bot/getupdates`,
-      { method: 'POST', body },
-      { timeoutMs },
+      { method: 'POST', body, headers: { Connection: 'close' } },
+      { timeoutMs, retryNetworkError: true },
     );
     const resp = json as IlinkGetUpdatesResp;
     // 长轮询也可能带错误码（-2 限流 / -14 会话过期）——与 sendmessage 同分类
@@ -345,7 +349,7 @@ export class IlinkClient {
     const { json } = await this.request(
       `${this.baseUrl}/ilink/bot/getconfig`,
       { method: 'POST', body: { base_info: this.baseInfo() } },
-      { timeoutMs: this.requestTimeoutMs },
+      { timeoutMs: this.requestTimeoutMs, retryNetworkError: true },
     );
     const resp = json as IlinkGetConfigResp;
     assertSuccess(resp.ret, resp.errmsg);
@@ -368,7 +372,7 @@ export class IlinkClient {
     const { json } = await this.request(
       `${this.baseUrl}/ilink/bot/getuploadurl`,
       { method: 'POST', body: { base_info: this.baseInfo(), ...req } },
-      { timeoutMs: this.requestTimeoutMs },
+      { timeoutMs: this.requestTimeoutMs, retryNetworkError: true },
     );
     const resp = json as IlinkGetUploadUrlResp;
     assertSuccess(resp.ret, resp.errmsg);
@@ -437,27 +441,52 @@ export class IlinkClient {
   /**
    * 统一请求入口：构建头 → fetch → 非 2xx 抛 IlinkNetworkError → JSON 解析。
    * 注入 fetchFn 的测试由此断言 URL/头/body。
+   *
+   * #117 网络健壮性：
+   * - retryNetworkError（幂等读 + 两个已接受的 at-least-once 端点）：
+   *   fetch 层瞬时网络错误（socket closed / ECONNRESET，非超时）→ 即时
+   *   重试 1 次——服务端断连属可恢复瞬态；超时不重试（服务端 hold 或网络
+   *   持续差，重试浪费）；写端点（sendmessage/sendtyping/uploadCdn）不开
+   *   （防重复发送）。
+   *   at-least-once 说明：get_bot_qrcode/getuploadurl 是服务端分配资源的
+   *   POST，重试存在「首请求已处理但响应丢失 → 重试重复分配」窗口。已接受：
+   *   孤儿 QR 会话会过期、首个二维码从未展示；孤儿上传 URL 无害。#117 的
+   *   目标场景（绑定入口 socket closed）正是 get_bot_qrcode，重试收益 >> 副作用。
+   * - Connection: close（长轮询端点由调用方带头）：35s hold 后 iLink 服务端
+   *   关闭 socket，undici 连接池若保留 stale 连接，后续请求复用即报
+   *   socket closed——显式关闭连接防回池污染。
    */
   private async request(
     url: string,
     init: { method: string; body?: unknown; headers?: Record<string, string> },
-    opts: { timeoutMs: number; token?: string; parseJson?: boolean },
+    opts: { timeoutMs: number; token?: string; parseJson?: boolean; retryNetworkError?: boolean },
   ): Promise<ParsedJson> {
     const parseJson = opts.parseJson ?? true;
-    let response: Response;
-    try {
-      response = await this.fetchFn(url, {
-        method: init.method,
-        headers: { ...this.headers(opts.token), ...init.headers },
-        body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
-        signal: AbortSignal.timeout(opts.timeoutMs),
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (error instanceof Error && error.name === 'TimeoutError') {
-        throw new IlinkNetworkError(`iLink 请求超时（${opts.timeoutMs}ms）`);
+    const attempts = opts.retryNetworkError ? 2 : 1;
+    let response: Response | undefined;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        response = await this.fetchFn(url, {
+          method: init.method,
+          headers: { ...this.headers(opts.token), ...init.headers },
+          body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+          // 每次尝试新 signal：abort 过的 signal 不能复用于新 fetch
+          signal: AbortSignal.timeout(opts.timeoutMs),
+        });
+        break;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const isTimeout = error instanceof Error && error.name === 'TimeoutError';
+        if (isTimeout || attempt === attempts - 1) {
+          throw new IlinkNetworkError(
+            isTimeout ? `iLink 请求超时（${opts.timeoutMs}ms）` : `iLink 网络错误: ${message}`,
+          );
+        }
+        // 瞬时网络错误：继续循环做第 2 次尝试（即时，无退避）
       }
-      throw new IlinkNetworkError(`iLink 网络错误: ${message}`);
+    }
+    if (!response) {
+      throw new IlinkNetworkError('iLink 请求失败（重试后仍无响应）');
     }
     if (!response.ok) {
       throw new IlinkNetworkError(`iLink HTTP ${response.status} ${response.statusText}`);
