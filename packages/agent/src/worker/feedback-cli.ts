@@ -175,12 +175,19 @@ async function main(): Promise<void> {
     console.error('--type 必须是 like 或 dislike');
     process.exit(2);
   }
-
-  // #114：控制面注入宠物当前口头禅集合（JSON 数组）
+  // #114：控制面注入宠物当前口头禅集合（JSON 数组）；与 wander cli.ts
+  // 同样的 JSON.parse 防护——非 JSON 显式 exit 2 而非静默降级为英文 502
   const catchphrasesRaw = parseArg('catchphrases');
   let catchphrases: Catchphrase[] | undefined;
   if (catchphrasesRaw !== undefined) {
-    const parsed = parseCatchphraseList(JSON.parse(catchphrasesRaw));
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(catchphrasesRaw);
+    } catch {
+      console.error(JSON.stringify({ ok: false, error: '--catchphrases 须为 JSON 数组' }));
+      process.exit(2);
+    }
+    const parsed = parseCatchphraseList(parsedJson);
     if (typeof parsed === 'string') {
       console.error(JSON.stringify({ ok: false, error: parsed }));
       process.exit(2);

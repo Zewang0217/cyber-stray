@@ -3,7 +3,8 @@
  * InterestTimeline 测试（#115 进化页折线图可读性）
  *
  * 契约：
- * - buildSeries：按最新权重降序；快照缺节点记 0；latest/source 取最后一次出现
+ * - buildSeries：按最新权重降序；后诞生兴趣从首次出现起记点（缺节点不画 0——
+ *   防幽灵零点拖垮动态 Y 轴）；latest/source 取最后一次出现
  * - yDomain：数据 min-max 留 12% 边且夹在 [0,1]；全等退化时对称放大；空数据回 [0,1]
  * - clusterFeedbacks：近距事件聚一面旗且**按类型**计数；远距分开；范围外丢弃
  * - 渲染：>TOP_N 条默认只画 TOP_N 条 + "查看全部"可展开；图例点击钉住高亮（线加粗）
@@ -59,9 +60,14 @@ describe('buildSeries（#115 P0 前置）', () => {
     expect(ai.source).toBe('feedback');
   });
 
-  it('后诞生的兴趣在早期快照中是 0 权重点', () => {
+  it('后诞生的兴趣从首次出现起记点——早期快照缺节点不画 0（防幽灵零点拖垮动态 Y 轴）', () => {
     const series = buildSeries([snapshot(0, [{ id: 'a', weight: 1 }]), snapshot(30, [{ id: 'a', weight: 1 }, { id: 'b', weight: 0.4 }])]);
-    expect(series.find((s) => s.id === 'b')!.points.map((p) => p.w)).toEqual([0, 0.4]);
+    const b = series.find((s) => s.id === 'b')!;
+    expect(b.points.map((p) => p.w)).toEqual([0.4]);
+    // 幽灵零点不进 yDomain：仅真实出现的点参与 min-max
+    const { min, max } = yDomain(b.points);
+    expect(min).toBeGreaterThan(0);
+    expect(max).toBeGreaterThanOrEqual(0.4);
   });
 });
 

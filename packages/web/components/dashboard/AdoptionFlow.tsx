@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   listPersonalities,
@@ -60,16 +60,28 @@ async function fetchCandidates(body: {
 /**
  * 候选选择器：3 候选点选 + "换一批"（限 3 次,超限禁用）。
  * name 步单选（填入输入框）；catchphrase 步多选进集合。
+ *
+ * active 闸门：仅当前步骤显示时才发请求——catchphrase 候选依赖 name，
+ * 若 name 在起名步每敲一字就触发 LLM（旧 bug），既烧钱又有乱序覆盖。
+ * requestId：丢弃过期响应（"换一批"/步骤切换后旧 LLM 返回不覆盖新候选）。
  */
-function useCandidates(step: "name" | "catchphrase", deps: { name?: string; personality?: PersonalityId } = {}) {
+function useCandidates(
+  step: "name" | "catchphrase",
+  active: boolean,
+  deps: { name?: string; personality?: PersonalityId } = {},
+) {
   const [candidates, setCandidates] = useState<string[]>([]);
   const [batch, setBatch] = useState(0);
   const [loading, setLoading] = useState(false);
+  const reqId = useRef(0);
 
   const load = useCallback(
     async (nextBatch: number) => {
+      const id = ++reqId.current;
       setLoading(true);
       const out = await fetchCandidates({ step, batch: nextBatch, ...deps });
+      // 过期响应（步骤切换/换一批后发起新请求）→ 丢弃,不覆盖新候选
+      if (id !== reqId.current) return;
       if (out) setCandidates(out);
       setLoading(false);
     },
@@ -79,9 +91,10 @@ function useCandidates(step: "name" | "catchphrase", deps: { name?: string; pers
   );
 
   useEffect(() => {
+    if (!active) return;
     void load(0);
     setBatch(0);
-  }, [load]);
+  }, [load, active]);
 
   const refresh = () => {
     if (batch >= MAX_BATCH || loading) return;
@@ -115,8 +128,8 @@ export function AdoptionFlow({ adopting, onAdopt }: AdoptionFlowProps): React.Re
   const [interests, setInterests] = useState<string[]>(DEFAULT_INTERESTS);
   const [error, setError] = useState<string | null>(null);
 
-  const nameCandidates = useCandidates("name");
-  const phraseCandidates = useCandidates("catchphrase", { name, personality });
+  const nameCandidates = useCandidates("name", step === "name");
+  const phraseCandidates = useCandidates("catchphrase", step === "catchphrase", { name, personality });
 
   const toggleInterest = (topic: string) => {
     setInterests((prev) =>

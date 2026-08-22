@@ -58,13 +58,14 @@ export function buildSeries(snapshots: EvolutionSnapshot[]): Series[] {
     let source = "default";
     for (const s of snapshots) {
       const node = s.nodes.find((n: SnapshotNode) => n.id === id);
+      // 兴趣首次出现的快照才记点——之前快照缺节点不该画 0(否则动态 Y 轴
+      // min 被幽灵零点拉到 0,动态范围退化为 [0,max],#115 目标失效)
+      if (!node) continue;
       const t = new Date(s.timestamp).getTime();
-      const w = node?.weight ?? 0;
+      const w = node.weight;
       points.push({ t, w });
-      if (node) {
-        latest = w;
-        source = node.source;
-      }
+      latest = w;
+      source = node.source;
     }
     series.push({ id, color: colorFor(id), points, latest, source });
   }
