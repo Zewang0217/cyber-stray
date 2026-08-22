@@ -24,6 +24,8 @@ import { createWechatRoutes } from './routes/wechat.js';
 import { createPetGenRoutes } from './routes/petgen.js';
 import { createMemeRoutes } from './routes/meme.js';
 import { createPetAssetRoutes } from './routes/pet-assets.js';
+import { resolveTenantFromRequest } from './request-tenant.js';
+import { logger } from './logger.js';
 import type { BindingService } from './ilink/binding-service.js';
 export interface AppDeps {
   config: ControlPlaneConfig;
@@ -36,6 +38,28 @@ export interface AppDeps {
 
 export function createApp({ config, oidc, bus, wechatBindings }: AppDeps): Hono {
   const app = new Hono();
+
+  // #116 统一错误处理：未捕获异常 → 结构化日志（路径/方法/租户/耗时/栈）+
+  // 统一 JSON 500。路由层 catch 不再吞错——至少 logger.error 后回错误响应。
+  app.onError(async (err, c) => {
+    const startedAt = performance.now();
+    let tenantId: string | null = null;
+    try {
+      const session = await resolveTenantFromRequest(c.req.raw, config.sessionSecret);
+      tenantId = session?.tenantId ?? null;
+    } catch {
+      // session 解析失败不影响主错误记录（不吞错但也不双写失败）
+    }
+    logger.error('未捕获异常', {
+      path: c.req.path,
+      method: c.req.method,
+      tenantId,
+      durationMs: Number((performance.now() - startedAt).toFixed(1)),
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return c.json({ success: false, error: '服务器内部错误' }, 500);
+  });
 
   app.get('/healthz', (c) => c.json({ ok: true }));
 

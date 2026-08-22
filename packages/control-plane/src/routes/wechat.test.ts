@@ -8,8 +8,8 @@
  * - GET /api/wechat/status（登录态）→ bound/status/expiredHint
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
@@ -21,6 +21,7 @@ import { loadMasterKey } from '../secrets/master-key.js';
 import { BindingService } from '../ilink/binding-service.js';
 import { scriptedFetch, setupTestDataDir } from '../ilink/test-helpers.js';
 import { createWechatRoutes } from './wechat.js';
+import { initLogger, getLogFilePath, _resetLogger } from '../logger.js';
 
 const SECRET = 'x'.repeat(40);
 
@@ -157,5 +158,83 @@ describe('wechat 路由', () => {
     expect(json.data.bound).toBe(true);
     expect(json.data.status).toBe('expired');
     expect(json.data.expiredHint).toContain('重新激活');
+  });
+});
+
+describe('绑定失败可追查（#116）', () => {
+  let dataDir: string;
+  let app: Hono;
+
+  beforeEach(async () => {
+    dataDir = mkdtempSync(join(tmpdir(), 'cp-wechat-log-'));
+    initLogger(dataDir);
+    // start 抛网络错误（模拟生产 socket closed）
+    const failing = {
+      start: vi.fn(async () => {
+        throw new Error('iLink 网络错误: The socket connection was closed unexpectedly.');
+      }),
+      getStatus: vi.fn(),
+    } as unknown as BindingService;
+
+    app = new Hono();
+    const config = { dataDir, sessionSecret: SECRET } as Parameters<
+      typeof createWechatRoutes
+    >[0]['config'];
+    app.route('/api/wechat', createWechatRoutes({ config, bindings: failing }));
+  });
+
+  afterEach(() => {
+    _resetLogger();
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it('start 抛错 → 502 + 日志行含 clientKey/endpoint/error（不再静默吞错）', async () => {
+    const res = await app.request('/api/wechat/bind/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.7' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(502);
+    expect(((await res.json()) as { error: string }).error).toContain('获取二维码失败');
+
+    const path = getLogFilePath();
+    expect(path).not.toBeNull();
+    const lines = readFileSync(path!, 'utf-8').trim().split('\n').filter(Boolean);
+    const entry = JSON.parse(lines[lines.length - 1]!) as Record<string, unknown>;
+    expect(entry.level).toBe('error');
+    expect(entry.message).toBe('绑定发起失败');
+    expect(entry.data).toMatchObject({
+      clientKey: '203.0.113.7',
+      endpoint: 'get_bot_qrcode',
+      tenantId: null,
+      error: 'iLink 网络错误: The socket connection was closed unexpectedly.',
+    });
+  });
+
+  it('限流错误 → 429 + 同样记日志（429 分支不吞错）', async () => {
+    const failing = {
+      start: vi.fn(async () => {
+        throw new Error('发起过于频繁,请稍后再试');
+      }),
+      getStatus: vi.fn(),
+    } as unknown as BindingService;
+    const app2 = new Hono();
+    const config = { dataDir, sessionSecret: SECRET } as Parameters<
+      typeof createWechatRoutes
+    >[0]['config'];
+    app2.route('/api/wechat', createWechatRoutes({ config, bindings: failing }));
+
+    const res = await app2.request('/api/wechat/bind/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(429);
+    const path = getLogFilePath();
+    const lines = readFileSync(path!, 'utf-8').trim().split('\n').filter(Boolean);
+    const entry = JSON.parse(lines[lines.length - 1]!) as Record<string, unknown>;
+    expect(entry.level).toBe('error');
+    expect(entry.message).toBe('绑定发起失败');
+    expect((entry.data as Record<string, unknown>).error).toContain('过于频繁');
   });
 });

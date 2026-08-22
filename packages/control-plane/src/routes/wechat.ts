@@ -22,6 +22,7 @@ import { getBinding } from '../ilink/bindings.js';
 import type { BindingService } from '../ilink/binding-service.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
+import { logger } from '../logger.js';
 
 export interface WechatRoutesDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
@@ -76,6 +77,14 @@ export function createWechatRoutes({ config, bindings }: WechatRoutesDeps): Hono
       return c.json({ success: true, data: result });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // #116：公开端点的失败必须可追查——clientKey（来源 IP）是唯一归属线索
+      logger.error('绑定发起失败', {
+        clientKey,
+        endpoint: 'get_bot_qrcode',
+        tenantId: tenantId ?? null,
+        error: message,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       if (message.includes('过于频繁') || message.includes('会话过多')) {
         return c.json(jsonError(message), 429);
       }
