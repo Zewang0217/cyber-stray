@@ -26,8 +26,12 @@ import { PetGenProcessor } from './petgen/processor.js';
 import { createImageGenerator, createVisionQc } from './petgen/qwen.js';
 import { createSplitter } from './petgen/splitter.js';
 import { createStructureQc } from './petgen/structure-qc.js';
+import { initLogger } from './logger.js';
 
 const config = loadConfig();
+
+// #116：结构化日志（stdout JSON → journald + dataDir/logs/*.jsonl）
+initLogger(config.dataDir);
 
 // S3：启动时应用 SQLite 迁移（幂等；Postgres 切换需按 pg dialect 重生成迁移）
 await runMigrations(config.dataDir);

@@ -1,93 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { useEvolution, type EvolutionSnapshot, type SnapshotNode } from "@/hooks/useEvolution";
+import { useEvolution } from "@/hooks/useEvolution";
+import { InterestTimeline, formatTime } from "@/components/dashboard/InterestTimeline";
 
-/** 时间线宽度 */
-const W = 880;
-const H = 340;
-const PAD_L = 60;
-const PAD_R = 20;
-const PAD_T = 24;
-const PAD_B = 46;
-
-/** 颜色:按兴趣 id 稳定分配墨色透明度梯度(Restrained——铜版排线密度语言,不用彩色) */
-function colorFor(id: string): string {
-  const opacities = [1, 0.78, 0.62, 0.5, 0.4];
-  let h = 0;
-  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 997;
-  return `oklch(0.28 0.02 75 / ${opacities[h % opacities.length]})`;
-}
-
-/** 采集一条兴趣的权重演化序列（含 source 标注） */
-interface SeriesPoint {
-  t: number;
-  w: number;
-}
-interface Series {
-  id: string;
-  color: string;
-  points: SeriesPoint[];
-  latest: number;
-  source: string;
-}
-
-function buildSeries(snapshots: EvolutionSnapshot[]): Series[] {
-  const ids = new Set<string>();
-  for (const s of snapshots) for (const n of s.nodes) ids.add(n.id);
-  const series: Series[] = [];
-  for (const id of ids) {
-    const points: SeriesPoint[] = [];
-    let latest = 0;
-    let source = "default";
-    for (const s of snapshots) {
-      const node = s.nodes.find((n: SnapshotNode) => n.id === id);
-      const t = new Date(s.timestamp).getTime();
-      const w = node?.weight ?? 0;
-      points.push({ t, w });
-      if (node) {
-        latest = w;
-        source = node.source;
-      }
-    }
-    series.push({ id, color: colorFor(id), points, latest, source });
-  }
-  return series.sort((a, b) => b.latest - a.latest);
-}
-
-/** 时间轴刻度（最多 5 个） */
-function ticks(t0: number, t1: number): number[] {
-  if (t0 === t1) return [t0];
-  const n = 5;
-  return Array.from({ length: n }, (_, i) => t0 + ((t1 - t0) * i) / (n - 1));
-}
-
-function formatTime(t: number): string {
-  const d = new Date(t);
-  return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
+/** 快照表兴趣列:前 N 个 + 折叠计数,完整列表进 title 浮层(#115) */
+const TABLE_INTEREST_N = 5;
 
 /**
  * 进化页（S13）：兴趣权重随游荡/反馈的时间线图 + 快照列表 + 回滚。
+ * 时间线图渲染(动态 Y 轴/top-N/图例交互/反馈事件带)见 InterestTimeline。
  */
 export default function EvolutionPage(): React.ReactElement {
   const { data, error, rollback } = useEvolution();
   const [confirmHash, setConfirmHash] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const series = useMemo(() => (data ? buildSeries(data.snapshots) : []), [data]);
-
-  const { t0, t1 } = useMemo(() => {
-    if (!data?.snapshots.length) return { t0: 0, t1: 1 };
-    const a = new Date(data.snapshots[0]!.timestamp).getTime();
-    const b = new Date(data.snapshots[data.snapshots.length - 1]!.timestamp).getTime();
-    return { t0: a, t1: b === a ? a + 1 : b };
-  }, [data]);
-  const span = Math.max(t1 - t0, 1);
-
-  const x = (t: number) => PAD_L + ((t - t0) / span) * (W - PAD_L - PAD_R);
-  const y = (w: number) => H - PAD_B - w * (H - PAD_T - PAD_B);
 
   if (!data) {
     return (
@@ -119,73 +47,10 @@ export default function EvolutionPage(): React.ReactElement {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        {series.length === 0 ? (
+        {data.snapshots.length === 0 ? (
           <p className="text-body text-subtext">还没有进化快照——宠物游荡并产生兴趣变化后这里会显示时间线。</p>
         ) : (
-          <>
-            <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
-              {/* 网格 + Y 轴标签 */}
-              {[0, 0.25, 0.5, 0.75, 1].map((w) => (
-                <g key={w}>
-                  <line x1={PAD_L} y1={y(w)} x2={W - PAD_R} y2={y(w)} stroke="var(--c-engraving-fine)" strokeOpacity={0.35} />
-                  <text x={PAD_L - 8} y={y(w) + 4} textAnchor="end" fontSize={11} fill="var(--c-faded-ink)">
-                    {w.toFixed(2)}
-                  </text>
-                </g>
-              ))}
-              {/* X 轴时间刻度 */}
-              {ticks(t0, t1).map((t) => (
-                <g key={t}>
-                  <line x1={x(t)} y1={H - PAD_B} x2={x(t)} y2={H - PAD_B + 6} stroke="var(--c-engraving-fine)" />
-                  <text x={x(t)} y={H - PAD_B + 20} textAnchor="middle" fontSize={11} fill="var(--c-faded-ink)">
-                    {formatTime(t)}
-                  </text>
-                </g>
-              ))}
-              {/* 反馈事件标注（底部小标记） */}
-              {data.feedbacks.map((f, i) => {
-                const t = new Date(f.timestamp).getTime();
-                if (t < t0 || t > t1) return null;
-                const label = f.type === "boost" ? "▲顶" : f.type === "like" ? "♥赞" : "▼踩";
-                const color = f.type === "boost" ? "var(--c-amber)" : f.type === "like" ? "var(--c-ink)" : "var(--c-faded-ink)";
-                return (
-                  <g key={i}>
-                    <text x={x(t)} y={H - PAD_B - 8} textAnchor="middle" fontSize={11} fill={color}>
-                      {label}
-                    </text>
-                    <line x1={x(t)} y1={H - PAD_B - 12} x2={x(t)} y2={H - PAD_B} stroke={color} strokeWidth={1} strokeDasharray="2 2" />
-                  </g>
-                );
-              })}
-              {/* 兴趣权重线 */}
-              {series.map((s) => (
-                <g key={s.id}>
-                  <polyline
-                    points={s.points.map((p) => `${x(p.t)},${y(p.w)}`).join(" ")}
-                    fill="none"
-                    stroke={s.color}
-                    strokeWidth={2.5}
-                    strokeLinejoin="round"
-                  />
-                  {s.points.map((p, i) => (
-                    <circle key={i} cx={x(p.t)} cy={y(p.w)} r={3} fill={s.color} opacity={0.7} />
-                  ))}
-                  {/* 图例 */}
-                  <text
-                    x={W - PAD_R}
-                    y={PAD_T + 14 * series.indexOf(s)}
-                    textAnchor="end"
-                    fontSize={12}
-                    fontWeight={700}
-                    fill={s.color}
-                  >
-                    {s.id} {s.latest.toFixed(2)}
-                    {s.source === "feedback" ? " · 由你顶起" : ""}
-                  </text>
-                </g>
-              ))}
-            </svg>
-          </>
+          <InterestTimeline snapshots={data.snapshots} feedbacks={data.feedbacks} />
         )}
       </motion.div>
 
@@ -211,50 +76,56 @@ export default function EvolutionPage(): React.ReactElement {
             </tr>
           </thead>
           <tbody>
-            {[...data.snapshots].reverse().map((s) => (
-              <tr key={s.hash} className="border-b border-[var(--c-engraving-fine)]/40">
-                <td className="py-2 pr-3 font-mono text-xs">{formatTime(new Date(s.timestamp).getTime())}</td>
-                <td className="py-2 pr-3">{s.entropy.toFixed(2)}</td>
-                <td className="py-2 pr-3">{s.source === "rollback" ? "回滚点" : "快照"}</td>
-                <td className="py-2 pr-3 text-subtext">
-                  {s.nodes.map((n) => `${n.id}:${n.weight.toFixed(2)}`).join(" · ")}
-                </td>
-                <td className="py-2">
-                  {confirmHash === s.hash ? (
-                    <span className="flex gap-2">
+            {[...data.snapshots].reverse().map((s) => {
+              const shown = s.nodes.slice(0, TABLE_INTEREST_N);
+              const rest = s.nodes.length - shown.length;
+              const full = s.nodes.map((n) => `${n.id}:${n.weight.toFixed(2)}`).join(" · ");
+              return (
+                <tr key={s.hash} className="border-b border-[var(--c-engraving-fine)]/40">
+                  <td className="py-2 pr-3 font-mono text-xs">{formatTime(new Date(s.timestamp).getTime())}</td>
+                  <td className="py-2 pr-3">{s.entropy.toFixed(2)}</td>
+                  <td className="py-2 pr-3">{s.source === "rollback" ? "回滚点" : "快照"}</td>
+                  <td className="py-2 pr-3 text-subtext" title={full}>
+                    {shown.map((n) => `${n.id}:${n.weight.toFixed(2)}`).join(" · ")}
+                    {rest > 0 ? ` …+${rest}` : ""}
+                  </td>
+                  <td className="py-2">
+                    {confirmHash === s.hash ? (
+                      <span className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={async () => {
+                            setBusy(true);
+                            const ok = await rollback(s.hash);
+                            setBusy(false);
+                            if (ok) setConfirmHash(null);
+                          }}
+                          className="px-3 py-1 rounded-sm text-xs font-semibold bg-danger/10 text-danger"
+                        >
+                          {busy ? "执行中…" : "确认回滚"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmHash(null)}
+                          className="px-3 py-1 rounded-sm text-xs bg-surface text-subtext border border-[var(--c-engraving-fine)]"
+                        >
+                          取消
+                        </button>
+                      </span>
+                    ) : (
                       <button
                         type="button"
-                        disabled={busy}
-                        onClick={async () => {
-                          setBusy(true);
-                          const ok = await rollback(s.hash);
-                          setBusy(false);
-                          if (ok) setConfirmHash(null);
-                        }}
-                        className="px-3 py-1 rounded-sm text-xs font-semibold bg-danger/10 text-danger"
+                        onClick={() => setConfirmHash(s.hash)}
+                        className="px-3 py-1 rounded-sm text-xs bg-[var(--c-amber)]/15 text-[var(--c-amber-ink)]"
                       >
-                        {busy ? "执行中…" : "确认回滚"}
+                        回滚到此
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmHash(null)}
-                        className="px-3 py-1 rounded-sm text-xs bg-surface text-subtext border border-[var(--c-engraving-fine)]"
-                      >
-                        取消
-                      </button>
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmHash(s.hash)}
-                      className="px-3 py-1 rounded-sm text-xs bg-[var(--c-amber)]/15 text-[var(--c-amber-ink)]"
-                    >
-                      回滚到此
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         {error ? <p className="text-small text-danger mt-3">{error}</p> : null}

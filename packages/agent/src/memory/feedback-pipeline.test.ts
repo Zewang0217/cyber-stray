@@ -12,8 +12,10 @@ import {
   boostTopic,
   registerSpeakTopics,
   getMessageTopicMapSize,
+  applyCatchphraseFeedback,
   _clearMessageTopicMap,
 } from './feedback-pipeline.js';
+import type { Catchphrase } from '@cyber-stray/shared';
 import { getInterestGraph, _resetInterestGraphCache } from './interest-graph.js';
 import { loadUserProfile, saveUserProfile } from './user-profile.js';
 import { useTempDataDir } from '../test/helpers.js';
@@ -343,4 +345,59 @@ describe('S9 REST 反馈（持久化归因 + boost）', () => {
       };
       expect(store.feedbacks.some((f) => f.type === 'boost')).toBe(true);
     });
+});
+
+describe('口头禅反馈归因（#114 切片 5）', () => {
+  let cleanup: () => void;
+
+  beforeEach(() => {
+    ({ cleanup } = useTempDataDir());
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('applyCatchphraseFeedback：点赞 ↑、踩 ↓、下限 0.05 封底、未命中原样保留', () => {
+    const current: Catchphrase[] = [
+      { text: '喵。', weight: 1 },
+      { text: '呼噜…', weight: 0.08 },
+      { text: '此事值得一记', weight: 2 },
+    ];
+    // 点赞:权重↑
+    const liked = applyCatchphraseFeedback(current, 'like', ['喵。']);
+    expect(liked[0]!.weight).toBeCloseTo(1.1);
+    expect(liked[1]!.weight).toBeCloseTo(0.08); // 未命中不动
+    expect(liked[2]!.weight).toBe(2);
+    // 踩:0.08 - 0.1 < 0.05 → 封底 0.05(不消失)
+    const disliked = applyCatchphraseFeedback(current, 'dislike', ['呼噜…']);
+    expect(disliked[1]!.weight).toBe(0.05);
+    // 连续踩到极低后再踩仍 ≥ 0.05
+    const floored = applyCatchphraseFeedback(disliked, 'dislike', ['呼噜…']);
+    expect(floored[1]!.weight).toBe(0.05);
+    // 空命中返回原集合
+    expect(applyCatchphraseFeedback(current, 'like', [])).toBe(current);
+  });
+
+  it('processFeedback：带 catchphrases 归因 → 结果带出调整后集合（供 CP 写回）', async () => {
+    await mkdir('data/memory', { recursive: true });
+    const result = await processFeedback('like', 'om-cp-1', 'user-1', {
+      topics: ['科技'],
+      catchphrases: ['喵——让我看看'],
+    });
+    expect(result.matchedCatchphrases).toEqual(['喵——让我看看']);
+    expect(result.catchphrasesUpdated).not.toBeNull();
+    const hit = result.catchphrasesUpdated!.find((c) => c.text === '喵——让我看看');
+    // 默认配置(好奇组)该口头禅权重 1 → 点赞 1.1
+    expect(hit!.weight).toBeCloseTo(1.1);
+    // 未命中的默认组条目原样保留
+    expect(result.catchphrasesUpdated!.find((c) => c.text === '咪?这是什么呀')!.weight).toBe(1);
+  });
+
+  it('processFeedback：无 catchphrases 归因 → catchphrasesUpdated=null', async () => {
+    await mkdir('data/memory', { recursive: true });
+    const result = await processFeedback('dislike', 'om-cp-2', 'user-1', { topics: ['科技'] });
+    expect(result.matchedCatchphrases).toEqual([]);
+    expect(result.catchphrasesUpdated).toBeNull();
+  });
 });

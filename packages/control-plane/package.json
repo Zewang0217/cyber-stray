@@ -13,6 +13,7 @@
   "dependencies": {
     "@cyber-stray/shared": "workspace:*",
     "@libsql/client": "^0.17.4",
+    "consola": "^3.4.2",
     "drizzle-orm": "^0.45.2",
     "hono": "^4",
     "jose": "^5",
@@ -20,6 +21,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/node": "^20",
     "@types/pg": "^8.21.0",
     "@types/web-push": "^3.6.4",

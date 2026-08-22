@@ -74,6 +74,8 @@ export const pets = sqliteTable('pets', {
   personality: text('personality', { enum: [...PERSONALITY_IDS] })
     .notNull()
     .default(DEFAULT_PERSONALITY),
+  /** 口头禅集合（#114；JSON 序列化 Catchphrase[]；NULL = 性格默认组——存量宠物不迁移） */
+  catchphrases: text('catchphrases'),
   /** Pro 自定义推送时间窗（本地小时 0-23；null = 全天可推） */
   pushWindowStart: integer('push_window_start'),
   pushWindowEnd: integer('push_window_end'),

@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
-import { DEFAULT_PERSONALITY, isPersonalityId, type PersonalityId } from '@cyber-stray/shared';
+import { DEFAULT_PERSONALITY, getPersonality, isPersonalityId, type Catchphrase, type PersonalityId } from '@cyber-stray/shared';
 import type { AgentConfig, AgentSecrets, EnergyRecoveryTier, PlanExecutionArgs } from './types.js';
 
 /**
@@ -244,12 +244,15 @@ function loadBehaviorConfig(dataDir?: string): BehaviorConfig {
  * - 行为参数：从 data/agent-config.json 读取，失败时用默认值
  * - 敏感信息：secrets 显式注入优先，未注入的字段回退环境变量（单用户模式）
  * - 性格：控制面 worker CLI 注入（认领时选择）；缺省好奇（基准，行为不回退）
+ * - 口头禅（#114）：worker CLI 注入（认领/反馈归因后的当前有效集合）；
+ *   缺省 = 性格默认组（与 CP parseStoredCatchphrases 同语义）
  */
 export function loadConfig(
   dataDir?: string,
   secrets?: AgentSecrets,
   planArgs?: PlanExecutionArgs,
   personality?: PersonalityId,
+  catchphrases?: Catchphrase[],
 ): AgentConfig {
   const behavior = loadBehaviorConfig(dataDir);
   // 禁兜底：显式传入的非法性格抛错（CLI/控制面传错宁可失败，不静默换默认）
@@ -301,7 +304,8 @@ export function loadConfig(
 
     // 性格（#90：探索倾向 + 语气注入；默认好奇=基准）
     personality: personality ?? DEFAULT_PERSONALITY,
-
+    // 口头禅（#114：未注入 = 性格默认组；prompt 固定段末尾注入）
+    catchphrases: catchphrases ?? getPersonality(personality ?? DEFAULT_PERSONALITY).catchphrases,
     // per-tenant secrets（provider 读取点：secrets.deepseekApiKey 优先于环境变量；
     // BYOK 缺 key 时为 undefined——provider 构造处显式抛错，不烧平台 token）
     secrets: { ...s, ...(s.deepseekApiKey ? {} : { deepseekApiKey }) },

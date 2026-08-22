@@ -51,6 +51,13 @@ export interface SpeakRecord {
   /** 门控命中的兴趣话题（S9 反馈归因持久化——worker 短命进程退出后
    * 内存 map 即失效，REST 反馈从 speaks 历史按 messageId 反查） */
   matchedTopics?: string[];
+  /** 本次 speak 用到的口头禅文本（#114 反馈归因：按内容包含扫描落盘，
+   * 反馈时按 messageId 反查做权重归因；同 matchedTopics 的持久化模式）。
+   * 取舍（review P4）：存文本而非 catchphraseId——LLM 自由发挥 speak，
+   * 无法结构化标记用了哪条，文本包含扫描是唯一务实方案；副作用是设置页
+   * 改写口头禅文案后，旧 speak 点赞按文本找不到条目 → 归因静默跳过
+   * （权重不更新，不误归因、不报错）。 */
+  matchedCatchphrases?: string[];
 }
 
 /** 构建记录时的附加信息 */
@@ -64,6 +71,8 @@ export interface SpeakRecordMeta {
   gateReasons?: string[];
   /** 门控命中话题（quality hook 产出；落盘供反馈归因） */
   matchedTopics?: string[];
+  /** 命中的口头禅（speak 内容包含扫描；落盘供反馈归因） */
+  matchedCatchphrases?: string[];
 }
 
 /** 去掉 URL、markdown 标记与多余空白 */
@@ -129,5 +138,6 @@ export function buildSpeakRecord(
     ...(meta.gateScore !== undefined ? { gateScore: meta.gateScore } : {}),
     ...(meta.gateReasons?.length ? { gateReasons: meta.gateReasons } : {}),
     ...(meta.matchedTopics?.length ? { matchedTopics: meta.matchedTopics } : {}),
+    ...(meta.matchedCatchphrases?.length ? { matchedCatchphrases: meta.matchedCatchphrases } : {}),
   };
 }

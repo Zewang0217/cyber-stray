@@ -75,6 +75,8 @@ export interface WorkerJob {
   plan: PlanJobArgs;
   /** 性格（#90：agent 侧探索倾向 + 语气注入；worker CLI --personality） */
   personality: PersonalityId;
+  /** 口头禅（#114：当前有效集合 → worker CLI --catchphrases；undefined = agent 侧性格默认组） */
+  catchphrases?: string;
 }
 
 /** runner 结果：ok = 游荡完成（exit 0） */
@@ -376,7 +378,7 @@ export class Scheduler {
    * S5 review 修复：拆分成功写回（handleSuccess）与失败处理（handleFailure）。
    */
   private launch(
-    pet: { id: string; tenantId: string; plan: string; pushWindowStart: number | null; pushWindowEnd: number | null; personality: PersonalityId },
+    pet: { id: string; tenantId: string; plan: string; pushWindowStart: number | null; pushWindowEnd: number | null; personality: PersonalityId; catchphrases?: string | null },
     state: PropagatedState,
     dataRoot: string,
     bus: EventBus,
@@ -408,6 +410,7 @@ export class Scheduler {
           dataDir: tenantDataDir(dataRoot, tenantId), // 租户目录，非控制面根
           plan: this.planArgsFor(pet),
           personality: pet.personality,
+          catchphrases: pet.catchphrases ?? undefined,
         });
         if (!result.ok) {
           throw new Error(`worker 退出码 ${result.exitCode}`);

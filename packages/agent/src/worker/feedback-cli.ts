@@ -20,6 +20,7 @@
 import { readdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import { loadConfig, setTenantContext } from '../config.js';
+import { parseCatchphraseList, type Catchphrase } from '@cyber-stray/shared';
 import { processFeedback, boostTopic } from '../memory/feedback-pipeline.js';
 import type { FeedbackProcessResult } from '../memory/feedback-pipeline.js';
 
@@ -35,6 +36,9 @@ export interface FeedbackWorkerOptions {
   /** action=boost：要顶的话题 */
   topic?: string;
   userId?: string;
+  /** 宠物当前口头禅集合 JSON（#114：控制面从 pets 行注入——归因权重要落在
+   * 真实集合上,不传则 loadConfig 回退性格默认组） */
+  catchphrases?: Catchphrase[];
 }
 
 /**
@@ -48,6 +52,16 @@ export async function resolveTopicsFromHistory(
   dataDir: string,
   messageId: string,
 ): Promise<string[] | null> {
+  const record = await findSpeakRecord(dataDir, messageId);
+  const topics = record?.matchedTopics ?? [];
+  return topics.length > 0 ? topics : null;
+}
+
+/** speaks 历史按 messageId 反查整条记录（归因数据的持久化入口；一次扫描供双投影） */
+export async function findSpeakRecord(
+  dataDir: string,
+  messageId: string,
+): Promise<{ matchedTopics?: string[]; matchedCatchphrases?: string[] } | null> {
   const historyDir = join(dataDir, 'history');
   let files: string[];
   try {
@@ -74,10 +88,14 @@ export async function resolveTopicsFromHistory(
         continue; // 单行损坏跳过
       }
       if (record.messageId !== messageId) continue;
-      const topics = Array.isArray(record.matchedTopics)
-        ? record.matchedTopics.filter((t): t is string => typeof t === 'string' && t.length > 0)
-        : [];
-      return topics.length > 0 ? topics : null;
+      return {
+        matchedTopics: Array.isArray(record.matchedTopics)
+          ? record.matchedTopics.filter((t): t is string => typeof t === 'string' && t.length > 0)
+          : [],
+        matchedCatchphrases: Array.isArray(record.matchedCatchphrases)
+          ? record.matchedCatchphrases.filter((t): t is string => typeof t === 'string' && t.length > 0)
+          : [],
+      };
     }
   }
   return null;
@@ -97,11 +115,21 @@ export async function runFeedbackWorker(options: FeedbackWorkerOptions): Promise
     if (!options.messageId) {
       throw new Error('action=feedback 需要 --message-id');
     }
-    // 归因优先走持久化历史（worker 进程无内存映射）
-    const topics = (await resolveTopicsFromHistory(dataDir, options.messageId)) ?? undefined;
-    setTenantContext({ tenantId: 'feedback-worker', dataDir, config: loadConfig(dataDir) });
+    // 归因优先走持久化历史（worker 进程无内存映射）；单次扫描取整条记录再拆投影
+    const record = await findSpeakRecord(dataDir, options.messageId);
+    const topics = (record?.matchedTopics?.length ? record.matchedTopics : undefined) ?? undefined;
+    const matchedPhrases =
+      (record?.matchedCatchphrases?.length ? record.matchedCatchphrases : undefined) ?? undefined;
+    setTenantContext({
+      tenantId: 'feedback-worker',
+      dataDir,
+      config: loadConfig(dataDir, undefined, undefined, undefined, options.catchphrases),
+    });
     try {
-      return await processFeedback(options.type, options.messageId, options.userId, { topics });
+      return await processFeedback(options.type, options.messageId, options.userId, {
+        topics,
+        catchphrases: matchedPhrases,
+      });
     } finally {
       setTenantContext(null);
     }
@@ -138,6 +166,25 @@ async function main(): Promise<void> {
     console.error('--type 必须是 like 或 dislike');
     process.exit(2);
   }
+  // #114：控制面注入宠物当前口头禅集合（JSON 数组）；与 wander cli.ts
+  // 同样的 JSON.parse 防护——非 JSON 显式 exit 2 而非静默降级为英文 502
+  const catchphrasesRaw = parseArg('catchphrases');
+  let catchphrases: Catchphrase[] | undefined;
+  if (catchphrasesRaw !== undefined) {
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(catchphrasesRaw);
+    } catch {
+      console.error(JSON.stringify({ ok: false, error: '--catchphrases 须为 JSON 数组' }));
+      process.exit(2);
+    }
+    const parsed = parseCatchphraseList(parsedJson);
+    if (typeof parsed === 'string') {
+      console.error(JSON.stringify({ ok: false, error: parsed }));
+      process.exit(2);
+    }
+    catchphrases = parsed;
+  }
 
   const result = await runFeedbackWorker({
     dataDir,
@@ -146,6 +193,7 @@ async function main(): Promise<void> {
     messageId: parseArg('message-id'),
     topic: parseArg('topic'),
     userId: parseArg('user-id'),
+    catchphrases,
   });
   // S9 review 修复：配额语义以兴趣强化为准——pipeline 未来若回归吞错，
   // 这里兜底：boost 未强化 / feedback 未记录 = 核心承诺未兑现，exit 1

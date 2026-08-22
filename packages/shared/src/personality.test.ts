@@ -15,6 +15,8 @@ import {
   getPersonality,
   isPersonalityId,
   listPersonalities,
+  parseCatchphraseList,
+  CATCHPHRASE_WEIGHT_FLOOR,
   type PersonalityId,
   type PersonalityProfile,
 } from './personality.js';
@@ -30,7 +32,7 @@ const REQUIRED_KEYS = [
   'wander',
   'exploration',
   'tonePrompt',
-  'diaryStyle',
+  'catchphrases',
   'dreamStyle',
 ] as const;
 
@@ -116,5 +118,43 @@ describe('性格注册表', () => {
     const p: PersonalityProfile = getPersonality(DEFAULT_PERSONALITY);
     const id: PersonalityId = p.id;
     expect(id).toBe('curious');
+  });
+});
+
+describe('口头禅（#114 切片 2）', () => {
+  it('每性格默认组 3-6 条、纯文字（无 emoji）、权重 ≥ 下限', () => {
+    for (const id of PERSONALITY_IDS) {
+      const list = getPersonality(id).catchphrases;
+      expect(list.length).toBeGreaterThanOrEqual(3);
+      expect(list.length).toBeLessThanOrEqual(6);
+      for (const c of list) {
+        expect(c.text.length).toBeGreaterThan(0);
+        expect(c.weight).toBeGreaterThanOrEqual(CATCHPHRASE_WEIGHT_FLOOR);
+        // 纯文字不带 emoji（ADR 0005：emoji 交 LLM 自然发挥）
+        expect(c.text).toMatch(/^[\p{Script=Han}\p{P}\p{S}a-zA-Z0-9\s?！!…—()·]+$/u);
+      }
+    }
+  });
+
+  it('parseCatchphraseList：合法输入规范化（trim），非法输入给 400 消息', () => {
+    const ok = parseCatchphraseList([
+      { text: ' 喵。 ', weight: 1 },
+      { text: '嗯,知道了', weight: 0.5 },
+    ]);
+    expect(ok).toEqual([
+      { text: '喵。', weight: 1 },
+      { text: '嗯,知道了', weight: 0.5 },
+    ]);
+    expect(typeof parseCatchphraseList([])).toBe('string');
+    expect(typeof parseCatchphraseList('not-array')).toBe('string');
+    expect(typeof parseCatchphraseList([{ text: '', weight: 1 }])).toBe('string');
+    expect(typeof parseCatchphraseList([{ text: 'x'.repeat(25), weight: 1 }])).toBe('string');
+    expect(typeof parseCatchphraseList([{ text: '喵', weight: -1 }])).toBe('string');
+    expect(typeof parseCatchphraseList([{ text: '喵', weight: 0.01 }])).toBe('string');
+    expect(
+      typeof parseCatchphraseList(
+        Array.from({ length: 7 }, () => ({ text: '喵', weight: 1 })),
+      ),
+    ).toBe('string');
   });
 });

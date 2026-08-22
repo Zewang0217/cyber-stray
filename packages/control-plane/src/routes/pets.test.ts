@@ -22,6 +22,7 @@ import { pets, tenants } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { getOrCreateTenant } from '../tenant.js';
 import { signSession, SESSION_COOKIE } from '../session.js';
+import { getPersonality } from '@cyber-stray/shared';
 import { createPetsRoutes } from './pets.js';
 
 const SECRET = 'x'.repeat(40);
@@ -429,5 +430,117 @@ describe('pets 路由（领养）', () => {
       );
       expect(bad.status).toBe(400);
     });
+  });
+});
+
+describe('adopt 口头禅（#114 切片 2）', () => {
+  let dataDir: string;
+  let app: Hono;
+
+  beforeEach(async () => {
+    dataDir = mkdtempSync(join(tmpdir(), 'cp-pets-cp-'));
+    _resetDb();
+    await runMigrations(dataDir);
+    await getOrCreateTenant(dataDir, 'alice');
+    app = new Hono();
+    const config = { dataDir, sessionSecret: SECRET } as Parameters<
+      typeof createPetsRoutes
+    >[0]['config'];
+    app.route('/api', createPetsRoutes({ config }));
+  });
+
+  afterEach(() => {
+    _resetDb();
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  async function authed(url: string, init: RequestInit = {}): Promise<Request> {
+    const token = await signSession({ sub: 'alice', tenantId: 'alice' }, SECRET);
+    const headers = new Headers(init.headers);
+    headers.set('cookie', `${SESSION_COOKIE}=${token}`);
+    headers.set('content-type', 'application/json');
+    return new Request(url, { ...init, headers });
+  }
+
+  it('带 catchphrases：落库 JSON + 演化历史 jsonl + GET 回显', async () => {
+    const res = await app.request(
+      await authed('http://x/api/pets/adopt', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: '小喵',
+          personality: 'playful',
+          catchphrases: [
+            { text: '喵呜——冲!', weight: 2 },
+            { text: '上钩啦', weight: 0.5 },
+          ],
+        }),
+      }),
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      data: { catchphrases: Array<{ text: string; weight: number }> };
+    };
+    expect(body.data.catchphrases).toEqual([
+      { text: '喵呜——冲!', weight: 2 },
+      { text: '上钩啦', weight: 0.5 },
+    ]);
+
+    // 落库：DB 列存 JSON 字符串
+    const db = await getDb(dataDir);
+    const row = await db.select().from(pets).where(eq(pets.tenantId, 'alice')).get();
+    expect(JSON.parse(row!.catchphrases!)).toEqual([
+      { text: '喵呜——冲!', weight: 2 },
+      { text: '上钩啦', weight: 0.5 },
+    ]);
+
+    // 演化历史：catchphrase-history.jsonl 一行 reason=adopt
+    const historyPath = join(dataDir, 'tenants', 'alice', 'catchphrase-history.jsonl');
+    expect(existsSync(historyPath)).toBe(true);
+    const lines = readFileSync(historyPath, 'utf-8').trim().split('\n');
+    expect(lines).toHaveLength(1);
+    const entry = JSON.parse(lines[0]!) as {
+      reason: string;
+      catchphrases: Array<{ text: string }>;
+    };
+    expect(entry.reason).toBe('adopt');
+    expect(entry.catchphrases.map((c) => c.text)).toEqual(['喵呜——冲!', '上钩啦']);
+
+    // GET /api/pets 回显有效集合
+    const list = await app.request(await authed('http://x/api/pets'));
+    const listBody = (await list.json()) as {
+      data: Array<{ catchphrases: Array<{ text: string }> }>;
+    };
+    expect(listBody.data[0]!.catchphrases.map((c) => c.text)).toEqual(['喵呜——冲!', '上钩啦']);
+  });
+
+  it('不带 catchphrases：默认 = 所选性格默认组', async () => {
+    const res = await app.request(
+      await authed('http://x/api/pets/adopt', {
+        method: 'POST',
+        body: JSON.stringify({ name: '小稳', personality: 'steady' }),
+      }),
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      data: { catchphrases: Array<{ text: string }> };
+    };
+    expect(body.data.catchphrases).toEqual(getPersonality('steady').catchphrases);
+  });
+
+  it('非法 catchphrases 400：空数组 / 超长文本 / 负权重 / 非对象', async () => {
+    for (const bad of [
+      [],
+      [{ text: 'x'.repeat(25), weight: 1 }],
+      [{ text: '喵', weight: -1 }],
+      ['喵'],
+    ]) {
+      const res = await app.request(
+        await authed('http://x/api/pets/adopt', {
+          method: 'POST',
+          body: JSON.stringify({ name: '坏', catchphrases: bad }),
+        }),
+      );
+      expect(res.status).toBe(400);
+    }
   });
 });

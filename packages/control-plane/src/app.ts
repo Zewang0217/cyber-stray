@@ -4,6 +4,13 @@
 
 import { Hono } from 'hono';
 import type { ControlPlaneConfig } from './config.js';
+
+/** 请求级上下文变量（#116 review P1：onError 读入口中间件记录的请求开始时刻） */
+declare module 'hono' {
+  interface ContextVariableMap {
+    startedAt: number;
+  }
+}
 import type { OidcProvider } from './oidc.js';
 import type { EventBus } from './events/bus.js';
 import { createAuthRoutes } from './routes/auth.js';
@@ -24,6 +31,8 @@ import { createWechatRoutes } from './routes/wechat.js';
 import { createPetGenRoutes } from './routes/petgen.js';
 import { createMemeRoutes } from './routes/meme.js';
 import { createPetAssetRoutes } from './routes/pet-assets.js';
+import { resolveTenantFromRequest } from './request-tenant.js';
+import { logger } from './logger.js';
 import type { BindingService } from './ilink/binding-service.js';
 export interface AppDeps {
   config: ControlPlaneConfig;
@@ -36,6 +45,37 @@ export interface AppDeps {
 
 export function createApp({ config, oidc, bus, wechatBindings }: AppDeps): Hono {
   const app = new Hono();
+
+  // 请求计时起点（#116 review P1）：在入口中间件记录，onError 读回真实耗时
+  app.use('*', async (c, next) => {
+    c.set('startedAt', performance.now());
+    await next();
+  });
+
+  // #116 统一错误处理：未捕获异常 → 结构化日志（路径/方法/租户/耗时/栈）+
+  // 统一 JSON 500。路由层 catch 不再吞错——至少 logger.error 后回错误响应。
+  app.onError(async (err, c) => {
+    const startedAt = c.get('startedAt') as number | undefined;
+    let tenantId: string | null = null;
+    try {
+      const session = await resolveTenantFromRequest(c.req.raw, config.sessionSecret);
+      tenantId = session?.tenantId ?? null;
+    } catch {
+      // session 解析失败不影响主错误记录（不吞错但也不双写失败）
+    }
+    logger.error('未捕获异常', {
+      path: c.req.path,
+      method: c.req.method,
+      tenantId,
+      durationMs:
+        startedAt !== undefined
+          ? Number((performance.now() - startedAt).toFixed(1))
+          : undefined,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return c.json({ success: false, error: '服务器内部错误' }, 500);
+  });
 
   app.get('/healthz', (c) => c.json({ ok: true }));
 

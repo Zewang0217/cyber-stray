@@ -234,6 +234,12 @@ export async function speak(
     logger.info('无推送渠道配置，内容仅记录日志', { content });
   }
 
+  // #114 反馈归因：内容包含扫描命中的口头禅（LLM 自由发挥，文本包含即
+  // 视为用过——粗粒度但可解释；落盘供反馈时按 messageId 反查）
+  const matchedCatchphrases = (cfg.catchphrases ?? [])
+    .filter((c) => content.includes(c.text))
+    .map((c) => c.text);
+
   // 记录到历史文件
   await appendSpeakHistory(
     buildSpeakRecord(content, type, pushed, timestamp, {
@@ -242,6 +248,7 @@ export async function speak(
       gateScore: meta.gateScore,
       gateReasons: meta.gateReasons,
       matchedTopics: meta.matchedTopics,
+      matchedCatchphrases,
     }),
   );
 

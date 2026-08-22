@@ -29,9 +29,15 @@ import { resolveTenantFromRequest } from '../request-tenant.js';
 import { isDiaryStyleChoice } from '@cyber-stray/shared/diary';
 import {
   DEFAULT_PERSONALITY,
+  getPersonality,
   isPersonalityId,
+  parseCatchphraseList,
+  type Catchphrase,
   type PersonalityId,
 } from '@cyber-stray/shared';
+import { openTenantSecrets } from '../secrets/tenant-secrets.js';
+import { appendCatchphraseHistory } from '../catchphrase-history.js';
+import { generateCandidates } from '../adoption/candidates.js';
 
 export interface PetsDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
@@ -78,12 +84,19 @@ interface AdoptBody {
   interests?: unknown;
   /** 性格（#90；可选，默认 DEFAULT_PERSONALITY） */
   personality?: unknown;
+  /** 口头禅（#114；可选，默认 = 所选性格的默认组） */
+  catchphrases?: unknown;
 }
 
-/** 校验 adopt 入参；返回 { name, interests, personality } 或错误消息 */
+/** 校验 adopt 入参；返回 { name, interests, personality, catchphrases } 或错误消息 */
 function parseAdoptBody(
   body: AdoptBody,
-): { name: string; interests: string[]; personality: PersonalityId } | { invalid: string } {
+): {
+  name: string;
+  interests: string[];
+  personality: PersonalityId;
+  catchphrases: Catchphrase[];
+} | { invalid: string } {
   const name = body.name;
   if (typeof name !== 'string' || name.trim().length === 0 || name.length > 32) {
     return { invalid: 'name 必填（1-32 字符）' };
@@ -107,7 +120,24 @@ function parseAdoptBody(
     }
     personality = body.personality;
   }
-  return { name: name.trim(), interests, personality };
+  let catchphrases: Catchphrase[];
+  if (body.catchphrases === undefined) {
+    catchphrases = getPersonality(personality).catchphrases;
+  } else {
+    const parsed = parseCatchphraseList(body.catchphrases);
+    if (typeof parsed === 'string') return { invalid: parsed };
+    catchphrases = parsed;
+  }
+  return { name: name.trim(), interests, personality, catchphrases };
+}
+
+/** DB catchphrases 列（JSON 字符串）→ 有效集合；NULL → 性格默认组 */
+function parseStoredCatchphrases(
+  stored: string | null,
+  personality: string,
+): Catchphrase[] {
+  if (stored === null) return getPersonality(personality).catchphrases;
+  return JSON.parse(stored) as Catchphrase[];
 }
 
 /**
@@ -160,8 +190,12 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
     }
     const db = await getDb(config.dataDir);
     const rows = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).all();
-    // S14 clean cutover：pets.plan 已废弃（套餐在 tenants），映射掉死列防契约失真
-    const data = rows.map(({ plan: _deprecated, ...pet }) => pet);
+    // S14 clean cutover：pets.plan 已废弃（套餐在 tenants），映射掉死列防契约失真。
+    // #114：catchphrases 列 NULL（存量宠物）→ 性格默认组（有效集合始终可见）
+    const data = rows.map(({ plan: _deprecated, catchphrases: stored, ...pet }) => ({
+      ...pet,
+      catchphrases: parseStoredCatchphrases(stored, pet.personality),
+    }));
     return c.json({ success: true, data });
   });
 
@@ -188,6 +222,12 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
     // 种子先行（非 EEXIST 失败时残留无害：重试的 wx 写会 EEXIST 复用；
     // 反过来行先落、种子失败重试会撞 409 且丢用户选的兴趣）
     await seedInterestsIfAbsent(config.dataDir, scoped.tenantId, parsed.interests);
+    // #114：口头禅演化历史先行（insert 冲突 409 时多一行无害 trace）
+    await appendCatchphraseHistory(
+      tenantDataDir(config.dataDir, scoped.tenantId),
+      'adopt',
+      parsed.catchphrases,
+    );
 
     const pet: NewPet = {
       id: randomUUID(),
@@ -206,6 +246,8 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       sleepEnd: null,
       // #90：认领时选择性格（默认好奇；影响行为参数/语气/日记风格）
       personality: parsed.personality,
+      // #114：口头禅（默认 = 性格默认组；显式存 JSON 而非 NULL，演化起点可追溯）
+      catchphrases: JSON.stringify(parsed.catchphrases),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -222,10 +264,23 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
         .from(pets)
         .where(eq(pets.tenantId, scoped.tenantId))
         .get();
-      return c.json({ success: false, error: '已有宠物', data: existing }, 409);
+      if (!existing) return c.json(jsonError('已有宠物'), 409);
+      const { catchphrases: stored, ...rest } = existing;
+      return c.json(
+        {
+          success: false,
+          error: '已有宠物',
+          data: { ...rest, catchphrases: parseStoredCatchphrases(stored, existing.personality) },
+        },
+        409,
+      );
     }
 
-    return c.json({ success: true, data: pet }, 201);
+    const { catchphrases: _storedJson, ...petView } = pet;
+    return c.json(
+      { success: true, data: { ...petView, catchphrases: parsed.catchphrases } },
+      201,
+    );
   });
 
   /** PUT /api/pets/sleep-schedule — 设置作息（#91，本地小时；跨午夜合法） */
@@ -338,6 +393,92 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       .where(eq(pets.tenantId, scoped.tenantId))
       .run();
     return c.json({ success: true, data: { enabled: body.enabled } });
+  });
+
+  /**
+   * POST /api/pets/adoption-candidates — 起名/口头禅步的 3 候选（#114 切片 3）。
+   * LLM 一次返回；失败降级本地模板（仍 200，领养不阻塞）。API key：
+   * 租户 BYOK secret 优先，平台 env 兜底（与 agent worker 同规则）。
+   */
+  app.post('/pets/adoption-candidates', async (c) => {
+    const scoped = await scopedTenantId(c.req.raw, config);
+    if ('error' in scoped) {
+      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
+    }
+
+    let body: { step?: unknown; name?: unknown; personality?: unknown; batch?: unknown };
+    try {
+      body = await c.req.json() as typeof body;
+    } catch {
+      return c.json(jsonError('请求体须为 JSON'), 400);
+    }
+    if (body.step !== 'name' && body.step !== 'catchphrase') {
+      return c.json(jsonError('step 须为 name|catchphrase'), 400);
+    }
+    if (body.step === 'catchphrase' && (typeof body.name !== 'string' || body.name.length === 0)) {
+      return c.json(jsonError('catchphrase 步需要 name（候选依赖宠物名）'), 400);
+    }
+    if (
+      body.step === 'catchphrase' &&
+      (typeof body.personality !== 'string' || !isPersonalityId(body.personality))
+    ) {
+      return c.json(jsonError('catchphrase 步需要合法 personality'), 400);
+    }
+    if (body.batch !== undefined && (typeof body.batch !== 'number' || body.batch < 0 || body.batch > 3)) {
+      return c.json(jsonError('batch 须为 0-3 的数字（换一批每步限 3 次）'), 400);
+    }
+
+    // API key：租户 secret 优先，env 兜底（review S1：secrets 读取失败显式抛错
+    // ——禁兜底，平台 key 不能替 BYOK 租户静默代付 LLM 成本）
+    let apiKey = process.env.DEEPSEEK_API_KEY ?? '';
+    const store = await openTenantSecrets(config.dataDir, scoped.tenantId);
+    apiKey = (await store.get('deepseek_api_key')) ?? apiKey;
+
+    const result = await generateCandidates(
+      {
+        step: body.step,
+        name: typeof body.name === 'string' ? body.name : undefined,
+        personality: typeof body.personality === 'string' ? body.personality : undefined,
+        batch: typeof body.batch === 'number' ? body.batch : 0,
+      },
+      apiKey,
+    );
+    return c.json({ success: true, data: result });
+  });
+
+  /** PUT /api/pets/catchphrases — 编辑口头禅集合（#114 切片 6；至少 1 条） */
+  app.put('/pets/catchphrases', async (c) => {
+    const scoped = await scopedTenantId(c.req.raw, config);
+    if ('error' in scoped) {
+      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
+    }
+
+    let body: { catchphrases?: unknown };
+    try {
+      body = (await c.req.json()) as { catchphrases?: unknown };
+    } catch {
+      return c.json(jsonError('请求体须为 JSON'), 400);
+    }
+    const parsed = parseCatchphraseList(body.catchphrases);
+    if (typeof parsed === 'string') {
+      return c.json(jsonError(parsed), 400);
+    }
+
+    const db = await getDb(config.dataDir);
+    const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
+    if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
+
+    await db
+      .update(pets)
+      .set({ catchphrases: JSON.stringify(parsed), updatedAt: Date.now() })
+      .where(eq(pets.tenantId, scoped.tenantId))
+      .run();
+    await appendCatchphraseHistory(
+      tenantDataDir(config.dataDir, scoped.tenantId),
+      'settings',
+      parsed,
+    );
+    return c.json({ success: true, data: { catchphrases: parsed } });
   });
 
   return app;
