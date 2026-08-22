@@ -540,7 +540,7 @@ describe('adopt 口头禅（#114 切片 2）', () => {
           body: JSON.stringify({ name: '坏', catchphrases: bad }),
         }),
       );
-      expect(res.status).toBe(400, JSON.stringify(bad));
+      expect(res.status).toBe(400);
     }
   });
 });

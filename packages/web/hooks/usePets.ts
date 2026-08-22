@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { PersonalityId } from "@cyber-stray/shared";
+import type { Catchphrase, PersonalityId } from "@cyber-stray/shared";
 import type { ApiResponse } from "@/lib/types";
 
 /** 控制面 pets 行（编排状态；详细字段见 control-plane/src/db/schema.ts） */
@@ -17,7 +17,8 @@ export interface Pet {
   plan: "free" | "pro" | "byok";
   /** 性格（#90：认领时选择；好奇=默认基准） */
   personality: PersonalityId;
-  /** 作息睡眠窗口（#91，本地小时 0-23；null = 无作息，永不睡眠） */
+  /** 口头禅集合（#114；GET 映射后始终为数组——NULL 列服务端已转性格默认组） */
+  catchphrases: Catchphrase[];
   sleepStart: number | null;
   sleepEnd: number | null;
   /** 日记风格（#92；'personality' = 跟随性格） */
@@ -38,6 +39,7 @@ interface UsePetsReturn {
     name: string;
     interests?: string[];
     personality?: PersonalityId;
+    catchphrases?: Catchphrase[];
   }) => Promise<Pet | null>;
   adopting: boolean;
   /** 设置作息（本地小时；跨午夜合法）。成功返回 true */
@@ -86,6 +88,7 @@ export function usePets(): UsePetsReturn {
       name: string;
       interests?: string[];
       personality?: PersonalityId;
+      catchphrases?: Catchphrase[];
     }): Promise<Pet | null> => {
       setAdopting(true);
       try {

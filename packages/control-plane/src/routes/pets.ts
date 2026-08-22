@@ -35,7 +35,9 @@ import {
   type Catchphrase,
   type PersonalityId,
 } from '@cyber-stray/shared';
+import { openTenantSecrets } from '../secrets/tenant-secrets.js';
 import { appendCatchphraseHistory } from '../catchphrase-history.js';
+import { generateCandidates } from '../adoption/candidates.js';
 
 export interface PetsDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
@@ -391,6 +393,60 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       .where(eq(pets.tenantId, scoped.tenantId))
       .run();
     return c.json({ success: true, data: { enabled: body.enabled } });
+  });
+
+  /**
+   * POST /api/pets/adoption-candidates — 起名/口头禅步的 3 候选（#114 切片 3）。
+   * LLM 一次返回；失败降级本地模板（仍 200，领养不阻塞）。API key：
+   * 租户 BYOK secret 优先，平台 env 兜底（与 agent worker 同规则）。
+   */
+  app.post('/pets/adoption-candidates', async (c) => {
+    const scoped = await scopedTenantId(c.req.raw, config);
+    if ('error' in scoped) {
+      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
+    }
+
+    let body: { step?: unknown; name?: unknown; personality?: unknown; batch?: unknown };
+    try {
+      body = await c.req.json() as typeof body;
+    } catch {
+      return c.json(jsonError('请求体须为 JSON'), 400);
+    }
+    if (body.step !== 'name' && body.step !== 'catchphrase') {
+      return c.json(jsonError('step 须为 name|catchphrase'), 400);
+    }
+    if (body.step === 'catchphrase' && (typeof body.name !== 'string' || body.name.length === 0)) {
+      return c.json(jsonError('catchphrase 步需要 name（候选依赖宠物名）'), 400);
+    }
+    if (
+      body.step === 'catchphrase' &&
+      (typeof body.personality !== 'string' || !isPersonalityId(body.personality))
+    ) {
+      return c.json(jsonError('catchphrase 步需要合法 personality'), 400);
+    }
+    if (body.batch !== undefined && (typeof body.batch !== 'number' || body.batch < 0 || body.batch > 3)) {
+      return c.json(jsonError('batch 须为 0-3 的数字（换一批每步限 3 次）'), 400);
+    }
+
+    // API key：租户 secret 优先，env 兜底；无 key → generateCandidates 直接降级
+    let apiKey = process.env.DEEPSEEK_API_KEY ?? '';
+    try {
+      const store = await openTenantSecrets(config.dataDir, scoped.tenantId);
+      apiKey = (await store.get('deepseek_api_key')) ?? apiKey;
+    } catch (error) {
+      console.error('[adoption-candidates] 读取租户 secrets 失败，用平台 key：', error);
+    }
+
+    const result = await generateCandidates(
+      {
+        step: body.step,
+        name: typeof body.name === 'string' ? body.name : undefined,
+        personality: typeof body.personality === 'string' ? body.personality : undefined,
+        batch: typeof body.batch === 'number' ? body.batch : 0,
+      },
+      apiKey,
+    );
+    return c.json({ success: true, data: result });
   });
 
   return app;
