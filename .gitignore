@@ -15,7 +15,7 @@ dist/
 .agents/
 
 # Generated data
-data/feedback.json
+data/
 
 # 环境变量（包含敏感信息）
 .env
@@ -55,6 +55,11 @@ AGENTS.md
 
 # 运行态数据（dev 跑产生，不入库）
 data/dedup/visited-urls.json
+
+# 运行时产物/误入文件（不入库）
+bun.lock
+web-standalone.tar.gz
+.claude/skills/
 
 # 本地脚本/锁文件（不入库）
 generate-ppt.cjs
