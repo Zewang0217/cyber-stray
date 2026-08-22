@@ -10,6 +10,7 @@
  */
 
 import { getPersonality, isPersonalityId, type PersonalityId } from '@cyber-stray/shared';
+import { logger } from '../logger.js';
 
 /** 候选步（性格/兴趣步无需 AI——注册表固定 4 型/纯自选） */
 export type CandidateStep = 'name' | 'catchphrase';
@@ -148,8 +149,12 @@ export async function generateCandidates(
     if (!candidates) return { candidates: fallbackCandidates(req), source: 'fallback' };
     return { candidates, source: 'llm' };
   } catch (error) {
-    // 网络错误/超时/JSON 解析异常 → 降级（ADR：领养不阻塞）；留 stderr 痕迹可查
-    console.error(`[adoption-candidates] LLM 失败降级本地模板: ${String(req.step)}`, error);
+    // 网络错误/超时/JSON 解析异常 → 降级（ADR：领养不阻塞）；结构化日志落盘
+    logger.error('LLM 候选失败降级本地模板', {
+      step: req.step,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return { candidates: fallbackCandidates(req), source: 'fallback' };
   }
 }

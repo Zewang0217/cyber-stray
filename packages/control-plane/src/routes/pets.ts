@@ -428,14 +428,11 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       return c.json(jsonError('batch 须为 0-3 的数字（换一批每步限 3 次）'), 400);
     }
 
-    // API key：租户 secret 优先，env 兜底；无 key → generateCandidates 直接降级
+    // API key：租户 secret 优先，env 兜底（review S1：secrets 读取失败显式抛错
+    // ——禁兜底，平台 key 不能替 BYOK 租户静默代付 LLM 成本）
     let apiKey = process.env.DEEPSEEK_API_KEY ?? '';
-    try {
-      const store = await openTenantSecrets(config.dataDir, scoped.tenantId);
-      apiKey = (await store.get('deepseek_api_key')) ?? apiKey;
-    } catch (error) {
-      console.error('[adoption-candidates] 读取租户 secrets 失败，用平台 key：', error);
-    }
+    const store = await openTenantSecrets(config.dataDir, scoped.tenantId);
+    apiKey = (await store.get('deepseek_api_key')) ?? apiKey;
 
     const result = await generateCandidates(
       {

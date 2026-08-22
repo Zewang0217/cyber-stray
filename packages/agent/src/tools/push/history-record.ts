@@ -52,7 +52,11 @@ export interface SpeakRecord {
    * 内存 map 即失效，REST 反馈从 speaks 历史按 messageId 反查） */
   matchedTopics?: string[];
   /** 本次 speak 用到的口头禅文本（#114 反馈归因：按内容包含扫描落盘，
-   * 反馈时按 messageId 反查做权重归因；同 matchedTopics 的持久化模式） */
+   * 反馈时按 messageId 反查做权重归因；同 matchedTopics 的持久化模式）。
+   * 取舍（review P4）：存文本而非 catchphraseId——LLM 自由发挥 speak，
+   * 无法结构化标记用了哪条，文本包含扫描是唯一务实方案；副作用是设置页
+   * 改写口头禅文案后，旧 speak 点赞按文本找不到条目 → 归因静默跳过
+   * （权重不更新，不误归因、不报错）。 */
   matchedCatchphrases?: string[];
 }
 

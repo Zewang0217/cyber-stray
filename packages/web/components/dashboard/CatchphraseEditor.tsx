@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Catchphrase } from "@cyber-stray/shared";
+import {
+  CATCHPHRASE_LIST_MAX,
+  CATCHPHRASE_TEXT_MAX,
+  CATCHPHRASE_WEIGHT_FLOOR,
+  type Catchphrase,
+} from "@cyber-stray/shared";
 import type { Pet } from "@/hooks/usePets";
 
-/** 与服务端 parseCatchphraseList 一致的客户端约束 */
-const MAX_ITEMS = 6;
-const MAX_TEXT = 24;
-const WEIGHT_FLOOR = 0.05;
 
 /**
  * 口头禅编辑卡片（#114 切片 6）：展示当前集合，可改文本/权重/增删，
@@ -45,19 +46,19 @@ export function CatchphraseEditor({
     setDraft((prev) => prev.filter((_, idx) => idx !== i));
   };
   const add = () => {
-    if (draft.length >= MAX_ITEMS) return;
+    if (draft.length >= CATCHPHRASE_LIST_MAX) return;
     setDirty(true);
     setSaved(false);
     setDraft((prev) => [...prev, { text: "", weight: 1 }]);
   };
   const save = async () => {
     const trimmed = draft.map((c) => ({ ...c, text: c.text.trim() }));
-    if (trimmed.some((c) => c.text.length === 0 || c.text.length > MAX_TEXT)) {
-      setErr(`每条口头禅需要 1-${MAX_TEXT} 个字符`);
+    if (trimmed.some((c) => c.text.length === 0 || c.text.length > CATCHPHRASE_TEXT_MAX)) {
+      setErr(`每条口头禅需要 1-${CATCHPHRASE_TEXT_MAX} 个字符`);
       return;
     }
-    if (trimmed.some((c) => c.weight < WEIGHT_FLOOR || c.weight > 10)) {
-      setErr(`权重须在 ${WEIGHT_FLOOR}-10 之间`);
+    if (trimmed.some((c) => c.weight < CATCHPHRASE_WEIGHT_FLOOR || c.weight > 10)) {
+      setErr(`权重须在 ${CATCHPHRASE_WEIGHT_FLOOR}-10 之间`);
       return;
     }
     setErr(null);
@@ -83,7 +84,7 @@ export function CatchphraseEditor({
           <div key={i} className="flex gap-2 items-center">
             <input
               value={c.text}
-              maxLength={MAX_TEXT}
+              maxLength={CATCHPHRASE_TEXT_MAX}
               onChange={(e) => update(i, { text: e.target.value })}
               placeholder="口头禅文本"
               className="flex-1 px-3 py-2 rounded-sm bg-[var(--c-paper)] border border-[var(--c-engraving-fine)]
@@ -91,7 +92,7 @@ export function CatchphraseEditor({
             />
             <input
               type="number"
-              min={WEIGHT_FLOOR}
+              min={CATCHPHRASE_WEIGHT_FLOOR}
               max={10}
               step={0.1}
               value={c.weight}
@@ -116,11 +117,11 @@ export function CatchphraseEditor({
         <button
           type="button"
           onClick={add}
-          disabled={draft.length >= MAX_ITEMS}
+          disabled={draft.length >= CATCHPHRASE_LIST_MAX}
           className="px-4 py-2 rounded-sm text-small border border-[var(--c-engraving-fine)] text-subtext
             hover:text-text hover:border-[var(--c-amber)] transition-colors disabled:opacity-30"
         >
-          加一条（{draft.length}/{MAX_ITEMS}）
+          加一条（{draft.length}/{CATCHPHRASE_LIST_MAX}）
         </button>
         <button
           type="button"

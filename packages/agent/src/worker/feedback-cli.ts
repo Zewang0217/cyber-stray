@@ -67,8 +67,8 @@ export async function resolveCatchphrasesFromHistory(
   return phrases.length > 0 ? phrases : null;
 }
 
-/** speaks 历史按 messageId 反查整条记录（归因数据的持久化入口） */
-async function findSpeakRecord(
+/** speaks 历史按 messageId 反查整条记录（归因数据的持久化入口；一次扫描供双投影） */
+export async function findSpeakRecord(
   dataDir: string,
   messageId: string,
 ): Promise<{ matchedTopics?: string[]; matchedCatchphrases?: string[] } | null> {
@@ -125,10 +125,11 @@ export async function runFeedbackWorker(options: FeedbackWorkerOptions): Promise
     if (!options.messageId) {
       throw new Error('action=feedback 需要 --message-id');
     }
-    // 归因优先走持久化历史（worker 进程无内存映射）
-    const topics = (await resolveTopicsFromHistory(dataDir, options.messageId)) ?? undefined;
+    // 归因优先走持久化历史（worker 进程无内存映射）；单次扫描取整条记录再拆投影
+    const record = await findSpeakRecord(dataDir, options.messageId);
+    const topics = (record?.matchedTopics?.length ? record.matchedTopics : undefined) ?? undefined;
     const matchedPhrases =
-      (await resolveCatchphrasesFromHistory(dataDir, options.messageId)) ?? undefined;
+      (record?.matchedCatchphrases?.length ? record.matchedCatchphrases : undefined) ?? undefined;
     setTenantContext({
       tenantId: 'feedback-worker',
       dataDir,
