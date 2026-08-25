@@ -13,8 +13,9 @@
 
 import { spawn } from 'child_process';
 import { readdir, rm } from 'fs/promises';
+import { appendFileSync, mkdirSync, readdirSync, rmSync, statSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { openTenantSecrets, type TenantSecretsStore } from '../secrets/tenant-secrets.js';
 import { writeSecretsFile, resolveAgentSecrets } from '../secrets/worker-secrets.js';
@@ -25,24 +26,96 @@ const AGENT_CLI = fileURLToPath(
   new URL('../../../agent/src/worker/cli.ts', import.meta.url),
 );
 
+// ─── worker 运行日志落盘（#122）─────────────────────────────────────
+// worker stdout/stderr 全量按「租户+日期」落盘，失败时错误可查（原实现只
+// 在非零退出时打印 2KB 尾巴，运行中错误不可见）。best-effort：日志失败
+// 静默丢弃，绝不打断 worker 与调度。
+
+/** worker 日志保留天数（启动清理；防无界磁盘占用） */
+export const WORKER_LOG_RETENTION_DAYS = 14;
+/** 单文件日志上限（超限停止追加 + 一次性截断标记） */
+export const MAX_WORKER_LOG_BYTES = 10 * 1024 * 1024;
+
+const WORKER_LOG_SUBDIR = join('logs', 'workers');
+const truncatedFiles = new Set<string>();
+
+/** 本地日期键（YYYY-MM-DD；日志按天分文件） */
+export function logDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** worker 日志文件路径（kind: worker|diary；按租户+日期） */
+export function workerLogPath(dataDir: string, kind: 'worker' | 'diary', tenantId: string): string {
+  return join(dataDir, WORKER_LOG_SUBDIR, `${kind}-${tenantId}-${logDateKey(new Date())}.log`);
+}
+
+/** 追加 worker 输出到日志（超限截断；失败静默） */
+export function appendWorkerLog(logFile: string, chunk: string): void {
+  try {
+    mkdirSync(dirname(logFile), { recursive: true });
+    let size = 0;
+    try {
+      size = statSync(logFile).size;
+    } catch {
+      // 首写：文件尚不存在
+    }
+    if (size >= MAX_WORKER_LOG_BYTES) {
+      if (!truncatedFiles.has(logFile)) {
+        truncatedFiles.add(logFile);
+        appendFileSync(
+          logFile,
+          `\n[worker log truncated: exceeded ${MAX_WORKER_LOG_BYTES} bytes]\n`,
+        );
+      }
+      return;
+    }
+    appendFileSync(logFile, chunk);
+  } catch {
+    // best-effort：日志失败不影响 worker
+  }
+}
+
+/** 启动清扫：删 N 天前的 worker 日志（目录缺失/权限失败静默） */
+export function sweepWorkerLogs(dataDir: string, retentionDays = WORKER_LOG_RETENTION_DAYS): void {
+  try {
+    const dir = join(dataDir, WORKER_LOG_SUBDIR);
+    const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+    for (const f of readdirSync(dir)) {
+      if (statSync(join(dir, f)).mtimeMs < cutoff) {
+        rmSync(join(dir, f), { force: true });
+      }
+    }
+  } catch {
+    // 目录不存在/权限不足：静默
+  }
+}
+
 /** 注入式 spawn（测试用 fake；真实实现见下方 realSpawn） */
 export type SpawnLike = (
   cmd: string,
   args: string[],
-  opts: { timeoutMs: number },
+  opts: { timeoutMs: number; logFile?: string },
 ) => Promise<{ exitCode: number }>;
 
 /** stderr 累积上限（64 KiB——防长命控制面无界增长，只留排障尾巴） */
 const STDERR_CAP_BYTES = 64 * 1024;
 
-const realSpawn: SpawnLike = (cmd, args, { timeoutMs }) => {
+const realSpawn: SpawnLike = (cmd, args, { timeoutMs, logFile }) => {
   const { promise, resolve, reject } = Promise.withResolvers<{ exitCode: number }>();
   const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   activeChildren.add(child);
   child.on('exit', () => activeChildren.delete(child));
+  // #122：全量落盘（best-effort）；stderr 同时累积留非零退出尾巴
+  child.stdout?.on('data', (chunk: Buffer) => {
+    if (logFile) appendWorkerLog(logFile, chunk.toString('utf8'));
+  });
   const stderr: string[] = [];
   let stderrBytes = 0;
   child.stderr?.on('data', (chunk: Buffer) => {
+    if (logFile) appendWorkerLog(logFile, chunk.toString('utf8'));
     stderrBytes += chunk.length;
     if (stderrBytes <= STDERR_CAP_BYTES) stderr.push(chunk.toString('utf8'));
   });
@@ -100,6 +173,8 @@ export function createWorkerRunner(deps: WorkerRunnerDeps): WorkerRunner {
   const spawnFn = deps.spawnFn ?? realSpawn;
   const command = deps.command ?? process.env.CP_WORKER_CMD ?? 'bun';
   const open = deps.openSecrets ?? openTenantSecrets;
+  // #122：启动时清理过期 worker 日志（幂等；失败静默）
+  sweepWorkerLogs(deps.dataDir);
 
   return async (job: WorkerJob): Promise<WorkerResult> => {
     const secretsPath = await writeSecretsFile(open, deps.dataDir, job.tenantId);
@@ -109,7 +184,8 @@ export function createWorkerRunner(deps: WorkerRunnerDeps): WorkerRunner {
       args.push('--plan-args', JSON.stringify(job.plan));
       args.push('--personality', job.personality);
       if (job.catchphrases !== undefined) args.push('--catchphrases', job.catchphrases);
-      const { exitCode } = await spawnFn(command, args, { timeoutMs: deps.timeoutMs });
+      const logFile = workerLogPath(deps.dataDir, 'worker', job.tenantId);
+      const { exitCode } = await spawnFn(command, args, { timeoutMs: deps.timeoutMs, logFile });
       return { ok: exitCode === 0, exitCode };
     } catch (error) {
       console.error(
