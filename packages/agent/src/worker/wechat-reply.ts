@@ -123,7 +123,7 @@ export async function runWechatReply(
         maxOutputTokens: 500,
       });
       // #129：用量记录（no-throw）
-      void recordUsage(dataDir, {
+      await recordUsage(dataDir, {
         kind: 'llm',
         model: config.llmModel,
         inputTokens: result?.usage?.inputTokens,
