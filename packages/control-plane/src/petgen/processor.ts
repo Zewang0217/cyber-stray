@@ -322,7 +322,7 @@ export class PetGenProcessor {
     }
   }
 
-  // ─── 质检阶段（两层：结构脚本 + 语义 qwen-vl） ───────────────────────
+  // ─── 质检阶段（两层：结构脚本 + 语义豆包视觉） ───────────────────────
 
   private async advanceQc(task: PetGenTask): Promise<void> {
     const now = this.now();

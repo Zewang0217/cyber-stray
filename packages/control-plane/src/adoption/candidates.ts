@@ -6,7 +6,7 @@
  * "换一批"由客户端计数限 3 次，batch 随请求传入用于 LLM 提示与本地
  * 模板轮换（fallback 在无 key/超时/解析失败时也随 batch 变化）。
  *
- * mock 友好：fetch 注入（同 petgen/qwen.ts 模式），测试不打真实 API。
+ * mock 友好：fetch 注入（同 petgen/ark.ts 模式），测试不打真实 API。
  */
 
 import { getPersonality, isPersonalityId, type PersonalityId } from '@cyber-stray/shared';

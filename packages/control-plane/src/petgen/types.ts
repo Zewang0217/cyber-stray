@@ -93,7 +93,7 @@ export interface Splitter {
   ): Promise<{ files: Record<PetStateId, string>; emptyCells: number }>;
   /** 概念图归一：抠绿幕 → 透明底整身 PNG（角色锚点） */
   normalizeConcept(srcPath: string, outPath: string, frame: number): Promise<string>;
-  /** 参考图压平：透明 PNG → 白底 JPEG（qwen-image img2img 输入） */
+  /** 参考图压平：透明 PNG → 白底 JPEG（Seedream image 字段 data URL 输入） */
   flattenReference(srcPath: string, outPath: string, frame: number): Promise<string>;
 }
 
@@ -105,9 +105,9 @@ export interface PetGenProcessorConfig {
   maxQcRetries: number;
   /** 概念图归一边长（默认 512） */
   conceptFrame: number;
-  /** 参考图压平边长（qwen-image input.image base64 ≤61440 字符） */
+  /** 参考图压平边长（白底 JPEG 参考输入；默认 384） */
   referenceFrame: number;
-  /** 网格生图尺寸（qwen-image size 参数） */
+  /** 网格生图尺寸（Seedream size 参数） */
   gridSize: string;
 }
 

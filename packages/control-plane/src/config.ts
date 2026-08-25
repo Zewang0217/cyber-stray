@@ -36,12 +36,12 @@ export interface ControlPlaneConfig {
   webOrigin: string;
   /** 运营管理面板：管理员 Casdoor sub 白名单（逗号分隔 env CP_ADMIN_SUBS） */
   adminSubs: string[];
-  /** DashScope API key（生图 qwen-image + 视觉质检 qwen-vl；#94 生成管线） */
-  dashscopeApiKey: string;
-  /** 生图模型（env CP_DASHSCOPE_IMAGE_MODEL；async 任务 API） */
-  dashscopeImageModel: string;
-  /** 视觉质检模型（env CP_DASHSCOPE_VL_MODEL；语义层 qwen-vl） */
-  dashscopeVlModel: string;
+  /** 火山方舟 API key（生图 Seedream + 视觉质检豆包；#128 生成管线） */
+  arkApiKey: string;
+  /** 生图模型（env CP_ARK_IMAGE_MODEL；Seedream 5.0 Lite，同步 API） */
+  arkImageModel: string;
+  /** 视觉质检模型（env CP_ARK_VISION_MODEL；豆包视觉） */
+  arkVisionModel: string;
   /** 宠物 IP 生成月度配额（套/自然月；env CP_PETGEN_MONTHLY_QUOTA，默认 2） */
   petGenMonthlyQuota: number;
   /** 生成任务处理器 tick 间隔 ms（0 = 关闭；#94） */
@@ -91,9 +91,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     workerTimeoutMs: Number(env.CP_WORKER_TIMEOUT_MS ?? 10 * 60_000),
     workerRetryBackoffMs: Number(env.CP_SCHEDULER_RETRY_BACKOFF_MS ?? 60_000),
     workerMaxRetries: Number(env.CP_SCHEDULER_MAX_RETRIES ?? 2),
-    dashscopeApiKey: env.DASHSCOPE_API_KEY ?? '',
-    dashscopeImageModel: env.CP_DASHSCOPE_IMAGE_MODEL ?? 'wanx2.1-t2i-turbo',
-    dashscopeVlModel: env.CP_DASHSCOPE_VL_MODEL ?? 'qwen-vl-max',
+    arkApiKey: env.ARK_API_KEY ?? '',
+    arkImageModel: env.CP_ARK_IMAGE_MODEL ?? 'doubao-seedream-5-0-260128',
+    arkVisionModel: env.CP_ARK_VISION_MODEL ?? 'doubao-1.5-vision-pro',
     petGenMonthlyQuota: Number(env.CP_PETGEN_MONTHLY_QUOTA ?? 2),
     petGenIntervalMs: Number(env.CP_PETGEN_INTERVAL_MS ?? 5_000),
     memeEnabled: env.CP_MEME_ENABLED !== 'false',

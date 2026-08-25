@@ -141,13 +141,13 @@ describe('runMemePipeline（端到端 mock）', () => {
       dataDir: dir,
       imageGen: {
         async generate() {
-          throw new Error('DashScope 500');
+          throw new Error('火山 500');
         },
       },
     });
     const result = await runMemePipeline(deps, { topic: 't', mode: 'abstract' }, copyGen);
     expect(result.status).toBe('failed');
     if (result.status !== 'failed') return;
-    expect(result.error).toMatch(/生图失败.*DashScope 500/);
+    expect(result.error).toMatch(/生图失败.*火山 500/);
   });
 });

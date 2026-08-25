@@ -2,9 +2,9 @@
  * IP 表情包参考图（#96）—— 宠物概念图 → 白底 JPEG
  *
  * IP 模式用宠物概念图锁角色（ADR-0001 参考图机制，与 #94 同）。概念图是
- * 透明底 PNG（pet-assets/concept.png），qwen-image 参考图 input.image 是
- * base64（≤61440 字符），透明 PNG 可能超限 → 用 pet-sheet.py --flatten 压成
- * 白底 JPEG（与 #94 splitter.flattenReference 同一脚本、同一模式）。
+ * 透明底 PNG（pet-assets/concept.png），Seedream 参考图 image 字段用 data URL，
+ * 透明 PNG 体积大 → 用 pet-sheet.py --flatten 压成白底 JPEG（与 #94
+ * splitter.flattenReference 同一脚本、同一模式；小图省带宽、更稳）。
  *
  * 依赖注入 spawn（测试 fake）；脚本路径 import.meta.url 仓库内锚定。
  */
@@ -61,7 +61,7 @@ export interface FlattenReferenceOptions {
   pythonCmd?: string;
   timeoutMs?: number;
   spawnFn?: RefSpawnLike;
-  /** 压平边长（qwen-image base64 限 61440 字符；默认 384 与 #94 同） */
+  /** 压平边长（白底 JPEG 参考输入；默认 384 与 #94 同） */
   frame?: number;
 }
 
