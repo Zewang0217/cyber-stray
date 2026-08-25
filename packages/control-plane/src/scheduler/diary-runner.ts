@@ -15,6 +15,7 @@ import { rm } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { openTenantSecrets, type TenantSecretsStore } from '../secrets/tenant-secrets.js';
 import { writeSecretsFile } from '../secrets/worker-secrets.js';
+import { workerLogPath, appendWorkerLog } from './worker-runner.js';
 import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
 import type { PersonalityId } from '@cyber-stray/shared';
 
@@ -27,16 +28,21 @@ const DIARY_CLI = fileURLToPath(
 export type DiarySpawnLike = (
   cmd: string,
   args: string[],
-  opts: { timeoutMs: number },
+  opts: { timeoutMs: number; logFile?: string },
 ) => Promise<{ exitCode: number }>;
 
-const realSpawn: DiarySpawnLike = (cmd, args, { timeoutMs }) => {
+const realSpawn: DiarySpawnLike = (cmd, args, { timeoutMs, logFile }) => {
   const { promise, resolve, reject } = Promise.withResolvers<{ exitCode: number }>();
   const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   activeChildren.add(child);
   child.on('exit', () => activeChildren.delete(child));
+  // #122：全量落盘（best-effort）；stderr 同时累积留非零退出尾巴
+  child.stdout?.on('data', (chunk: Buffer) => {
+    if (logFile) appendWorkerLog(logFile, chunk.toString('utf8'));
+  });
   const stderr: string[] = [];
   child.stderr?.on('data', (chunk: Buffer) => {
+    if (logFile) appendWorkerLog(logFile, chunk.toString('utf8'));
     if (stderr.join('').length < 2000) stderr.push(chunk.toString('utf8'));
   });
   const timer = setTimeout(() => {
@@ -126,7 +132,8 @@ export function createDiaryRunner(deps: DiaryRunnerDeps): DiaryRunner {
       if (job.pushEnabled) args.push('--push-enabled', 'true');
       if (job.memeEnabled) args.push('--meme-enabled', 'true');
       if (secretsPath) args.push('--secrets-file', secretsPath);
-      const { exitCode } = await spawnFn(command, args, { timeoutMs: deps.timeoutMs });
+      const logFile = workerLogPath(deps.dataDir, 'diary', job.tenantId);
+      const { exitCode } = await spawnFn(command, args, { timeoutMs: deps.timeoutMs, logFile });
       return { ok: exitCode === 0, exitCode };
     } catch (error) {
       console.error(

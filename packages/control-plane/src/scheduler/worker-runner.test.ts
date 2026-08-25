@@ -8,18 +8,23 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, readFileSync, statSync } from 'fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { getOrCreateTenant } from '../tenant.js';
 import { openTenantSecrets } from '../secrets/tenant-secrets.js';
-import { createWorkerRunner, type SpawnLike } from './worker-runner.js';
+import {
+  createWorkerRunner,
+  appendWorkerLog,
+  MAX_WORKER_LOG_BYTES,
+  type SpawnLike,
+} from './worker-runner.js';
 
 describe('worker runner', () => {
   let dataDir: string;
-  const spawned: { cmd: string; args: string[] }[] = [];
+  const spawned: { cmd: string; args: string[]; opts?: { timeoutMs: number; logFile?: string } }[] = [];
 
   beforeEach(async () => {
     dataDir = mkdtempSync(join(tmpdir(), 'cp-runner-'));
@@ -38,8 +43,8 @@ describe('worker runner', () => {
   /** fake spawn：记录调用、透传预设退出码 */
   const fakeSpawn =
     (exitCode = 0): SpawnLike =>
-    async (cmd, args) => {
-      spawned.push({ cmd, args });
+    async (cmd, args, opts) => {
+      spawned.push({ cmd, args, opts });
       return { exitCode };
     };
 
@@ -133,5 +138,41 @@ describe('worker runner', () => {
       vi.fn(async () => ({ exitCode: 0 })),
     );
     expect((await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB, personality: 'curious' })).ok).toBe(true);
+  });
+
+  it('#122 日志落盘：spawn 收到按租户+日期命名的 logFile', async () => {
+    const runner = makeRunner(fakeSpawn(0));
+    await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB, personality: 'curious' });
+    const logFile = spawned.at(-1)?.opts?.logFile;
+    expect(logFile).toContain(join(dataDir, 'logs', 'workers'));
+    expect(logFile).toMatch(/worker-t1-\d{4}-\d{2}-\d{2}\.log$/);
+  });
+});
+
+describe('appendWorkerLog（#122）', () => {
+  it('自动建目录 + 多次追加', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cp-wlog-'));
+    try {
+      const file = join(dir, 'nested', 'a.log');
+      appendWorkerLog(file, 'line1\n');
+      appendWorkerLog(file, 'line2\n');
+      expect(readFileSync(file, 'utf8')).toBe('line1\nline2\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('超限：写截断标记且不再追加内容', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cp-wlog-cap-'));
+    try {
+      const file = join(dir, 'big.log');
+      writeFileSync(file, Buffer.alloc(MAX_WORKER_LOG_BYTES));
+      appendWorkerLog(file, 'overflow-content');
+      const content = readFileSync(file, 'utf8');
+      expect(content).toContain('truncated');
+      expect(content).not.toContain('overflow-content');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
