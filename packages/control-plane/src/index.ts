@@ -27,6 +27,7 @@ import { createImageGenerator } from './petgen/ark.js';
 import { createVisionQc } from './petgen/vision.js';
 import { createSplitter } from './petgen/splitter.js';
 import { createStructureQc } from './petgen/structure-qc.js';
+import { createPetUsageRecorder } from './usage.js';
 import { initLogger } from './logger.js';
 
 const config = loadConfig();
@@ -105,6 +106,11 @@ const petGenProcessor = new PetGenProcessor({
   visionQc: createVisionQc(config.visionApiKey, { model: config.visionModel }),
   splitter: createSplitter(),
   structureQc: createStructureQc(),
+  // #129：petgen 生图/质检用量记录（no-throw）
+  usage: createPetUsageRecorder(config.dataDir, {
+    imageModel: config.arkImageModel,
+    visionModel: config.visionModel,
+  }),
   config: {
     maxBatchRetries: 2,
     maxQcRetries: 2,

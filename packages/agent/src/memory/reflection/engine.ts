@@ -24,6 +24,8 @@ import { generateText } from 'ai';
 import { sanitizeForLLM } from '../../utils/text-sanitize.js';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { consola } from '../../logger.js';
+import { getDataRoot } from '../../config.js';
+import { recordUsage } from '../../usage/usage.js';
 import { getConfig } from '../../config.js';
 import { getMemoryStore } from '../long-term/index.js';
 import { getInterestGraph } from '../interest-graph.js';
@@ -289,6 +291,13 @@ export class ReflectionEngine {
       system: sanitizeForLLM(systemPrompt),
       prompt: sanitizeForLLM(userPrompt),
       maxOutputTokens: 3000,
+    });
+
+    // #129：用量记录（no-throw）
+    void recordUsage(getDataRoot(), {
+      kind: 'llm',
+      model: cfg.llmModel,
+      tokens: result?.usage?.totalTokens,
     });
 
     return result.text.trim();

@@ -23,6 +23,8 @@ import { generateText } from 'ai';
 import { sanitizeForLLM } from '../../utils/text-sanitize.js';
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
+import { getDataRoot } from '../../config.js';
+import { recordUsage, modelIdOf } from '../../usage/usage.js';
 import { getDataPath } from '../../config.js';
 import type { PersonalityProfile } from '@cyber-stray/shared';
 import type { DiaryData } from './diary-generator.js';
@@ -116,5 +118,11 @@ export async function generateDreamNarrative(
   temperature: number,
 ): Promise<string> {
   const result = await generateText({ model, temperature, prompt: sanitizeForLLM(prompt) });
+  // #129：用量记录（no-throw）
+  void recordUsage(getDataRoot(), {
+    kind: 'llm',
+    model: modelIdOf(model),
+    tokens: result?.usage?.totalTokens,
+  });
   return result.text;
 }
