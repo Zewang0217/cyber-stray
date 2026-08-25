@@ -28,6 +28,7 @@ import { createVisionQc } from './petgen/vision.js';
 import { createSplitter } from './petgen/splitter.js';
 import { createStructureQc } from './petgen/structure-qc.js';
 import { createPetUsageRecorder } from './usage.js';
+import { refreshModelConfig, getModelConfig } from './app-config.js';
 import { initLogger } from './logger.js';
 
 const config = loadConfig();
@@ -40,6 +41,12 @@ await runMigrations(config.dataDir);
 
 // S4：预热 master key（fail-fast——MK 缺失/损坏尽早暴露，而非租户登录时才炸）
 await loadMasterKey(config.dataDir);
+
+// #131：加载全局模型配置（DB → 内存缓存；admin 面板热更新后 refresh）
+await refreshModelConfig(config.dataDir, {
+  imageModel: config.arkImageModel,
+  visionModel: config.visionModel,
+});
 
 // S5：清扫上次崩溃残留的明文 secrets 临时文件（/tmp cp-secrets-*.json）
 await sweepStaleSecretFiles();
@@ -100,7 +107,8 @@ const petGenProcessor = new PetGenProcessor({
   dataDir: config.dataDir,
   db: await getDb(config.dataDir),
   imageGen: createImageGenerator(config.arkApiKey, {
-    model: config.arkImageModel,
+    // #131：每次 generate 读配置缓存（admin 改面板 → 下次生图即生效，无重启）
+    model: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).imageModel,
     size: '2K', // Seedream 5.0 无 1K 档，最小 2K（2048×2048）
   }),
   visionQc: createVisionQc(config.visionApiKey, { model: config.visionModel }),
