@@ -3,16 +3,18 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useAdmin } from "@/hooks/useAdmin";
+import UsagePanel from "./usage-panel";
 
 /**
  * 运营管理面板（S14）：全部用户（含无宠物）+ 用户套餐分配 + 宠物摘要
- * 卡片 + 暂停/恢复 + 管理员管理（RBAC 授权）。
+ * 卡片 + 暂停/恢复 + 管理员管理（RBAC 授权）+ 用量成本（ADR-0007）。
  * 非管理员（403）显示无权限提示。
  */
 export default function AdminPage(): React.ReactElement {
   const { users, admins, error, isAdmin, setPlan, setPetStatus, grantAdmin, revokeAdmin } =
     useAdmin();
   const [grantSub, setGrantSub] = useState("");
+  const [tab, setTab] = useState<"users" | "usage">("users");
 
   if (isAdmin === false) {
     return (
@@ -47,6 +49,34 @@ export default function AdminPage(): React.ReactElement {
           全部用户 · 共 {users.length} 人 · {users.filter((u) => u.petId).length} 只有宠物
         </p>
       </motion.div>
+
+      {/* Tab 导航 */}
+      <div className="flex gap-1 mb-6">
+        <button
+          type="button"
+          onClick={() => setTab("users")}
+          className={`px-4 py-2 rounded-sm text-small font-semibold transition-colors ${
+            tab === "users"
+              ? "bg-accent text-base"
+              : "bg-surface text-subtext border border-[var(--c-engraving-fine)] hover:text-text"
+          }`}
+        >
+          用户管理
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("usage")}
+          className={`px-4 py-2 rounded-sm text-small font-semibold transition-colors ${
+            tab === "usage"
+              ? "bg-accent text-base"
+              : "bg-surface text-subtext border border-[var(--c-engraving-fine)] hover:text-text"
+          }`}
+        >
+          用量
+        </button>
+      </div>
+
+      {tab === "usage" ? <UsagePanel /> : null}
 
       {/* 用户列表 */}
       <motion.div
