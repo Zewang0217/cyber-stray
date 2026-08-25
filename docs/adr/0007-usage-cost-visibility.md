@@ -5,8 +5,8 @@
 ## 决策
 
 **1. 用量记录 = 租户目录 `usage/usage-YYYY-MM-DD.jsonl`**（与 history/speaks 同模式）：
-- 行结构：`{ timestamp, tenantId, kind: 'llm'|'image'|'vision_qc', model, tokens?, images?, cost }`
-- 写入方：agent worker（游荡/日记/反思/微信/表情包文案的 LLM 调用 + 表情包生图/质检）与 CP 进程（petgen 生图/质检）都写租户 usage 文件——worker 本地写无跨进程 DB 风险，CP 聚合读
+- 行结构：`{ timestamp, tenantId, kind: 'llm'|'image'|'vision_qc', model, tokens?, images? }`——**不含 cost**：费用由聚合 API 按单价表折算（单价表单一真相源在 CP，避免 agent/CP 双份单价漂移）
+- 写入方：agent worker（游荡/日记/反思/微信/表情包文案的 6 个 LLM 调用点 + 表情包生图/质检装饰器）与 CP 进程（petgen 生图/质检，processor 注入 recorder）都写租户 usage 文件——worker 本地写无跨进程 DB 风险，CP 聚合读；模型名来自 AI SDK model.modelId / 配置，不新增签名
 - 与现有 speaks/history 一致：备份天然包含、租户隔离天然成立
 - 不用 control.db 表：worker 跨进程写 SQLite 有锁/事务风险；JSONL 追加原子、低频可接受
 

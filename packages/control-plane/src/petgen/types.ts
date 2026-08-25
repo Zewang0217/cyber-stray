@@ -11,6 +11,7 @@
 import type { PetPresetId, PetStateId } from '@cyber-stray/shared/pet';
 import type { ControlDb } from '../db/client.js';
 import type { PetGenTask } from '../db/schema.js';
+import type { PetUsageRecorder } from '../usage.js';
 
 export type PetGenTaskStatus = PetGenTask['status'];
 
@@ -121,4 +122,6 @@ export interface PetGenProcessorDeps {
   splitter: Splitter;
   config: PetGenProcessorConfig;
   now?: () => number;
+  /** 用量记录（#129；缺省 = 不记录，测试/降级友好） */
+  usage?: PetUsageRecorder;
 }

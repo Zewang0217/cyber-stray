@@ -39,6 +39,11 @@ export function getTenantContext(): TenantContext | null {
   return currentTenant;
 }
 
+/** 当前租户 ID（单用户模式 null；用量记录用） */
+export function getTenantId(): string | null {
+  return currentTenant?.tenantId ?? null;
+}
+
 /** 设置/清除当前租户上下文（租户入口进入/退出时调用；单用户模式传 null） */
 export function setTenantContext(ctx: TenantContext | null): void {
   currentTenant = ctx;

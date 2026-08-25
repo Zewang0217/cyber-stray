@@ -21,8 +21,9 @@ import { sanitizeForLLM } from '../../utils/text-sanitize.js';
 import { readFile, mkdir, appendFile, writeFile, rename } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { getDataPath } from '../../config.js';
+import { getDataPath, getDataRoot } from '../../config.js';
 import { loadFeedbacks } from '../feedback-store.js';
+import { recordUsage, modelIdOf } from '../../usage/usage.js';
 import type { PersonalityProfile } from '@cyber-stray/shared';
 import { resolveDiaryStylePrompt } from '@cyber-stray/shared/diary';
 import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
@@ -250,5 +251,11 @@ export async function generateDiaryNarrative(
   temperature: number,
 ): Promise<string> {
   const result = await generateText({ model, temperature, prompt: sanitizeForLLM(prompt) });
+  // #129：用量记录（no-throw）
+  void recordUsage(getDataRoot(), {
+    kind: 'llm',
+    model: modelIdOf(model),
+    tokens: result?.usage?.totalTokens,
+  });
   return result.text;
 }

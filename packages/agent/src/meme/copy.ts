@@ -12,6 +12,8 @@
 import { generateText } from 'ai';
 import { sanitizeForLLM } from '../utils/text-sanitize.js';
 import { z } from 'zod';
+import { getDataRoot } from '../config.js';
+import { recordUsage, modelIdOf } from '../usage/usage.js';
 import type { MemeCopy } from './types.js';
 
 /** LLM 产出 schema（话题 → 梗文案 + 情绪；topic 可选——缺失回退触发话题） */
@@ -66,5 +68,11 @@ export async function generateMemeCopy(
   model: Parameters<typeof generateText>[0]['model'],
 ): Promise<string> {
   const result = await generateText({ model, temperature: 0.9, prompt: sanitizeForLLM(prompt) });
+  // #129：用量记录（no-throw）
+  void recordUsage(getDataRoot(), {
+    kind: 'llm',
+    model: modelIdOf(model),
+    tokens: result?.usage?.totalTokens,
+  });
   return result.text;
 }

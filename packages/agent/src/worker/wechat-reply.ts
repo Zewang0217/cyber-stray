@@ -14,6 +14,7 @@ import { generateText } from 'ai';
 import { sanitizeForLLM } from '../utils/text-sanitize.js';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { loadConfig, setTenantContext } from '../config.js';
+import { recordUsage } from '../usage/usage.js';
 import type { AgentSecrets } from '../types.js';
 
 export interface WechatReplyOptions {
@@ -120,6 +121,12 @@ export async function runWechatReply(
         prompt: sanitizeForLLM(user),
         temperature: 0.8,
         maxOutputTokens: 500,
+      });
+      // #129：用量记录（no-throw）
+      void recordUsage(dataDir, {
+        kind: 'llm',
+        model: config.llmModel,
+        tokens: result?.usage?.totalTokens,
       });
       reply = result.text;
     } finally {

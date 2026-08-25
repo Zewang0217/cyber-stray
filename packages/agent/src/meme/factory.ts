@@ -14,6 +14,7 @@ import { createImageGenerator } from './ark.js';
 import { createVisionQc } from './vision.js';
 import { createOverlay } from './overlay.js';
 import { createMemeQc } from './qc.js';
+import { withImageUsageTracking, withVisionUsageTracking } from '../usage/usage.js';
 import type { MemePipelineDeps } from './types.js';
 
 /** 从配置组装真实管线依赖 */
@@ -27,9 +28,16 @@ export function createMemePipelineDeps(dataDir: string): MemePipelineDeps {
 
   return {
     dataDir,
-    imageGen: createImageGenerator(arkKey, { model: imageModel, size }),
+    // #129：生图/质检成功后各记一条用量（no-throw）
+    imageGen: withImageUsageTracking(
+      createImageGenerator(arkKey, { model: imageModel, size }),
+      dataDir,
+      imageModel,
+    ),
     overlay: createOverlay(),
-    qc: createMemeQc({ vision: createVisionQc(visionKey, { model: visionModel }) }),
+    qc: createMemeQc({
+      vision: withVisionUsageTracking(createVisionQc(visionKey, { model: visionModel }), dataDir, visionModel),
+    }),
     dailyLimit: Number.isFinite(dailyLimit) && dailyLimit >= 0 ? dailyLimit : 3,
   };
 }

@@ -198,6 +198,8 @@ export class PetGenProcessor {
         prompt: buildConceptPrompt(spec, preset),
         outPath: rawPath,
       });
+      // #129：生图成功记用量（no-throw）
+      this.deps.usage?.recordImage(task.tenantId);
       const conceptPath = await this.deps.splitter.normalizeConcept(
         rawPath,
         join(taskDir, 'concept.png'),
@@ -267,6 +269,8 @@ export class PetGenProcessor {
         outPath: gridPath,
         reference,
       });
+      // #129：每批网格生图成功记用量（no-throw）
+      this.deps.usage?.recordImage(task.tenantId);
       const { files, emptyCells } = await this.deps.splitter.splitGrid(gridPath, batch, {
         cols,
         outDir: statesDir,
@@ -345,6 +349,8 @@ export class PetGenProcessor {
           state,
           spec,
         });
+        // #129：视觉质检成功记用量（no-throw）
+        this.deps.usage?.recordVision(task.tenantId);
       }
       const failed = PET_STATE_IDS.filter(
         (s) => !structural[s].pass || !semantic[s].pass,
