@@ -27,8 +27,12 @@ export interface UsageEntry {
   kind: UsageKind;
   /** 模型 ID（如 deepseek-chat / doubao-seedream-5-0-260128 / glm-4v-flash） */
   model: string;
-  /** LLM 调用 token 总数（生图/质检无此字段） */
+  /** LLM 调用总 token（兼容旧行；新行用 inputTokens/outputTokens） */
   tokens?: number;
+  /** LLM 输入 token */
+  inputTokens?: number;
+  /** LLM 输出 token */
+  outputTokens?: number;
   /** 生图/质检张数（每次调用 1 张） */
   images?: number;
 }
