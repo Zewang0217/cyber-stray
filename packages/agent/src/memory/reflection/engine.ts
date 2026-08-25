@@ -21,6 +21,7 @@
  */
 
 import { generateText } from 'ai';
+import { sanitizeForLLM } from '../../utils/text-sanitize.js';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { consola } from '../../logger.js';
 import { getConfig } from '../../config.js';
@@ -285,8 +286,8 @@ export class ReflectionEngine {
     const result = await generateText({
       model: provider.chat(cfg.llmModel),
       temperature: 0.4, // 反思需要一致性高于创造性
-      system: systemPrompt,
-      prompt: userPrompt,
+      system: sanitizeForLLM(systemPrompt),
+      prompt: sanitizeForLLM(userPrompt),
       maxOutputTokens: 3000,
     });
 

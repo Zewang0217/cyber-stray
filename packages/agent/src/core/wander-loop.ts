@@ -10,6 +10,7 @@
  */
 
 import { generateText, stepCountIs, hasToolCall } from 'ai';
+import { sanitizeForLLM } from '../utils/text-sanitize.js';
 import type { Tool } from 'ai';
 import { consola } from '../logger.js';
 import { resetLLMStats, getLLMStats, recordStep } from '../llm/stats.js';
@@ -74,8 +75,8 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
       const result = await generateText({
         model,
         temperature: config.temperature,
-        system: systemPrompt,
-        prompt: userPrompt,
+        system: sanitizeForLLM(systemPrompt),
+        prompt: sanitizeForLLM(userPrompt),
         stopWhen: [hasToolCall('rest'), stepCountIs(config.maxSteps)],
         tools,
         onStepFinish({ stepNumber, usage, toolCalls }) {

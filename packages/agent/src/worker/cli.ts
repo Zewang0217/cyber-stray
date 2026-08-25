@@ -13,6 +13,7 @@
  */
 
 import { readFileSync } from 'fs';
+import { initLogger } from '../logger.js';
 import { runOneWander } from './run-one-wander.js';
 import { isPersonalityId, parseCatchphraseList, type Catchphrase, type PersonalityId } from '@cyber-stray/shared';
 import type { AgentSecrets, PlanExecutionArgs } from '../types.js';
@@ -23,6 +24,9 @@ function parseArg(name: string): string | undefined {
 }
 
 async function main(): Promise<void> {
+  // #122：worker 日志落盘（agent logger 只写文件；不初始化则日志全丢）
+  initLogger();
+
   const tenantId = parseArg('tenant');
   const dataDir = parseArg('data-dir');
 

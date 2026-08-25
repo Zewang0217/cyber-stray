@@ -15,6 +15,7 @@
  */
 
 import { readFileSync } from 'fs';
+import { initLogger } from '../logger.js';
 import { isPersonalityId, type PersonalityId } from '@cyber-stray/shared';
 import { isDiaryStyleChoice, type DiaryStyleChoice } from '@cyber-stray/shared/diary';
 import type { AgentSecrets, PlanExecutionArgs } from '../types.js';
@@ -30,6 +31,9 @@ function isTrue(value: string | undefined): boolean {
 }
 
 async function main(): Promise<void> {
+  // #122：worker 日志落盘（agent logger 只写文件；不初始化则日志全丢）
+  initLogger();
+
   const tenantId = parseArg('tenant');
   const dataDir = parseArg('data-dir');
   const petName = parseArg('pet-name');
