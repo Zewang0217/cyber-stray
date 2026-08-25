@@ -29,23 +29,23 @@ describe('createPetUsageRecorder', () => {
     });
     recorder.recordImage('sub-1');
     recorder.recordVision('sub-1');
-    // 等待异步落盘（no-throw fire-and-forget）
-    await new Promise((r) => setTimeout(r, 50));
+    // 等待异步落盘（no-throw fire-and-forget；两行并发 append，顺序不保证）
+    await new Promise((r) => setTimeout(r, 100));
 
     const file = join(dataDir, 'tenants', 'sub-1', 'usage', `usage-${localDateKey()}.jsonl`);
     expect(existsSync(file)).toBe(true);
-    const lines = readFileSync(file, 'utf-8').trim().split('\n');
+    const lines = readFileSync(file, 'utf-8').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>);
     expect(lines).toHaveLength(2);
 
-    const image = JSON.parse(lines[0]!) as Record<string, unknown>;
-    expect(image.kind).toBe('image');
-    expect(image.model).toBe('doubao-seedream-5-0-260128');
-    expect(image.images).toBe(1);
-    expect(image.tenantId).toBe('sub-1');
+    const image = lines.find((l) => l.kind === 'image');
+    expect(image).toBeDefined();
+    expect(image!.model).toBe('doubao-seedream-5-0-260128');
+    expect(image!.images).toBe(1);
+    expect(image!.tenantId).toBe('sub-1');
 
-    const vision = JSON.parse(lines[1]!) as Record<string, unknown>;
-    expect(vision.kind).toBe('vision_qc');
-    expect(vision.model).toBe('glm-4v-flash');
+    const vision = lines.find((l) => l.kind === 'vision_qc');
+    expect(vision).toBeDefined();
+    expect(vision!.model).toBe('glm-4v-flash');
   });
 
   it('不同租户写入各自目录（隔离）', async () => {
