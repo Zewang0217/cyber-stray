@@ -111,7 +111,7 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
       });
 
       // #129：用量记录（no-throw，失败不影响主流程）
-      void recordUsage(getDataRoot(), {
+      await recordUsage(getDataRoot(), {
         kind: 'llm',
         model: config.llmModel,
         inputTokens: result?.usage?.inputTokens,

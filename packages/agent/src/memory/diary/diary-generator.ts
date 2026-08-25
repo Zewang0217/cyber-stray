@@ -252,7 +252,7 @@ export async function generateDiaryNarrative(
 ): Promise<string> {
   const result = await generateText({ model, temperature, prompt: sanitizeForLLM(prompt) });
   // #129：用量记录（no-throw）
-  void recordUsage(getDataRoot(), {
+  await recordUsage(getDataRoot(), {
     kind: 'llm',
     model: modelIdOf(model),
     inputTokens: result?.usage?.inputTokens,

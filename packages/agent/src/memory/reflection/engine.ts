@@ -294,7 +294,7 @@ export class ReflectionEngine {
     });
 
     // #129：用量记录（no-throw）
-    void recordUsage(getDataRoot(), {
+    await recordUsage(getDataRoot(), {
       kind: 'llm',
       model: cfg.llmModel,
       inputTokens: result?.usage?.inputTokens,
