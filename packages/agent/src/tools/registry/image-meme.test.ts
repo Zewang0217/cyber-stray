@@ -147,7 +147,7 @@ describe('image_meme 工具', () => {
           dataDir: dir,
           imageGen: {
             async generate() {
-              throw new Error('DashScope 500');
+              throw new Error('火山 500');
             },
           },
         }),

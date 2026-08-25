@@ -9,7 +9,7 @@
  * 产物落租户数据目录 meme-assets/（manifest.json 索引 + meme-<id>.png）。
  */
 
-import type { ImageGenRequest } from './qwen.js';
+import type { ImageGenRequest } from './ark.js';
 
 /** 表情包模式：abstract=通用风格抽象梗图 / ip=宠物概念图参考（IP 一致性） */
 export type MemeMode = 'abstract' | 'ip';
@@ -39,7 +39,7 @@ export interface MemeMeta {
   createdAt: number;
 }
 
-/** 生图服务（qwen-image；测试注入 fake） */
+/** 生图服务（Seedream；测试注入 fake） */
 export interface ImageGenerator {
   generate(req: ImageGenRequest): Promise<{ imagePath: string }>;
 }

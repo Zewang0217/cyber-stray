@@ -65,7 +65,7 @@ export function buildGridPrompt(
   );
 }
 
-/** 语义质检 prompt（qwen-vl）：状态正确/角色一致/无文字水印/无畸形 */
+/** 语义质检 prompt（豆包视觉）：状态正确/角色一致/无文字水印/无畸形 */
 export function buildQcPrompt(state: PetStateId, spec: PetSpec): string {
   return (
     `这张图应该展示宠物状态的"${PET_STATES[state].label}"(${state})。` +

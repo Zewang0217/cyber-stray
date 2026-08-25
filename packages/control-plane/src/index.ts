@@ -23,7 +23,7 @@ import { BindingService } from './ilink/binding-service.js';
 import { WechatPoller } from './ilink/poller.js';
 import { createWechatPushGateway } from './ilink/wechat-gateway.js';
 import { PetGenProcessor } from './petgen/processor.js';
-import { createImageGenerator, createVisionQc } from './petgen/qwen.js';
+import { createImageGenerator, createVisionQc } from './petgen/ark.js';
 import { createSplitter } from './petgen/splitter.js';
 import { createStructureQc } from './petgen/structure-qc.js';
 import { initLogger } from './logger.js';
@@ -92,16 +92,16 @@ const scheduler = new Scheduler({
 });
 scheduler.start(config.schedulerIntervalMs);
 
-// #94：宠物 IP 生成任务处理器（异步队列状态机；生图/视觉/切分全部注入，
-// 无 DASHSCOPE_API_KEY 时任务在概念图阶段显式失败——不静默）
+// #128：宠物 IP 生成任务处理器（异步队列状态机；生图/视觉/切分全部注入，
+// 无 ARK_API_KEY 时任务在概念图阶段显式失败——不静默）
 const petGenProcessor = new PetGenProcessor({
   dataDir: config.dataDir,
   db: await getDb(config.dataDir),
-  imageGen: createImageGenerator(config.dashscopeApiKey, {
-    model: config.dashscopeImageModel,
-    size: '1024*1024',
+  imageGen: createImageGenerator(config.arkApiKey, {
+    model: config.arkImageModel,
+    size: '2K', // Seedream 5.0 无 1K 档，最小 2K（2048×2048）
   }),
-  visionQc: createVisionQc(config.dashscopeApiKey, { model: config.dashscopeVlModel }),
+  visionQc: createVisionQc(config.arkApiKey, { model: config.arkVisionModel }),
   splitter: createSplitter(),
   structureQc: createStructureQc(),
   config: {
