@@ -3,21 +3,22 @@
 @theme inline {
   /* ============================================
      Semantic Colors (mapped via CSS variables)
-     These reference --c-* vars that are theme-swapped
+     维多利亚自然博物图鉴:纸/墨/生命色 Restrained
+     主题系统改值不改角色
      ============================================ */
-  --color-base: var(--c-base);
-  --color-mantle: var(--c-mantle);
+  --color-base: var(--c-paper);
+  --color-mantle: var(--c-deep-paper);
   --color-crust: var(--c-crust);
-  --color-text: var(--c-text);
-  --color-subtext: var(--c-subtext);
-  --color-accent: var(--c-accent);
-  --color-accent-blue: var(--c-accent-blue);
-  --color-danger: var(--c-danger);
-  --color-warning: var(--c-warning);
-  --color-success: var(--c-success);
-  --color-surface: var(--c-surface);
-  --color-surface-highlight: var(--c-surface-highlight);
-  --color-overlay: var(--c-overlay);
+  --color-text: var(--c-ink);
+  --color-subtext: var(--c-faded-ink);
+  --color-accent: var(--c-amber);
+  --color-accent-blue: var(--c-faded-ink);
+  --color-danger: var(--c-state-warn);
+  --color-warning: var(--c-amber-ink);
+  --color-success: var(--c-ink);
+  --color-surface: var(--c-deep-paper);
+  --color-surface-highlight: var(--c-paper);
+  --color-overlay: var(--c-faded-ink);
 
   /* ============================================
      Fluid Typography (clamp-based)
@@ -40,107 +41,72 @@
 
   /* ============================================
      Typography
+     图鉴衬线 + 手写注解 + 等宽读数
+     字体本地化 @fontsource(layout.tsx import),变量直接指向 font-family 名
      ============================================ */
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
-  --font-heading: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-eb-garamond: "EB Garamond";
+  --font-caveat: "Caveat";
+  --font-ibm-plex-mono: "IBM Plex Mono";
+  --font-sans: var(--font-eb-garamond), Georgia, "Times New Roman", serif;
+  --font-mono: var(--font-ibm-plex-mono), ui-monospace, monospace;
+  --font-heading: var(--font-eb-garamond), Georgia, serif;
+  --font-hand: var(--font-caveat), "Segoe Script", cursive;
 
   /* ============================================
      Animations
+     会动铜版画 + 纸张纹理
      ============================================ */
-  --animate-pulse-border: pulse-border 2s ease-in-out infinite;
-  --animate-radar-spin: radar-spin 3s linear infinite;
   --animate-cursor-blink: cursor-blink 1s step-end infinite;
-
-  @keyframes pulse-border {
-    0%, 100% {
-      opacity: 0.3;
-      box-shadow: 0 0 8px 0px oklch(0.658 0.222 18);
-    }
-    50% {
-      opacity: 0.8;
-      box-shadow: 0 0 24px 4px oklch(0.658 0.222 18);
-    }
-  }
-
-  @keyframes radar-spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
-  }
+  --animate-amber-breath: amber-breath 2.8s ease-in-out infinite;
 
   @keyframes cursor-blink {
-    0%, 100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0;
-    }
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  /* 生命色呼吸光:宠物自己改的兴趣节点/可交互示能 */
+  @keyframes amber-breath {
+    0%, 100% { opacity: 0.45; }
+    50% { opacity: 0.9; }
   }
 }
 
 /* ============================================
-   Mocha (Dark) - Default Theme
-   All colors in oklch color space
+   日间图鉴(默认主题)
+   纸色底 + 墨色墨 + 琥珀生命色
+   oklch color space
    ============================================ */
 :root {
-  --c-base: oklch(0.185 0.014 265);
-  --c-mantle: oklch(0.162 0.012 265);
-  --c-crust: oklch(0.129 0.008 265);
-  --c-text: oklch(0.892 0.038 265);
-  --c-subtext: oklch(0.767 0.031 265);
-  --c-accent: oklch(0.702 0.148 326.5);
-  --c-accent-blue: oklch(0.707 0.132 253);
-  --c-danger: oklch(0.658 0.222 18);
-  --c-warning: oklch(0.863 0.132 95);
-  --c-success: oklch(0.768 0.137 148);
-  --c-surface: oklch(0.286 0.024 265);
-  --c-surface-highlight: oklch(0.346 0.030 265);
-  --c-overlay: oklch(0.467 0.036 265);
+  /* 纸色系(底) */
+  --c-paper: oklch(0.92 0.03 85);        /* 做旧泛黄纸张 */
+  --c-deep-paper: oklch(0.88 0.03 85);   /* 略深纸色,卡片分层 */
+  --c-crust: oklch(0.84 0.025 85);      /* 最深纸色,沉浸区/页脚 */
 
-  /* 动效变量 - 深色模式 */
-  --c-glow: oklch(0.702 0.148 326.5);      /* 霓虹紫光晕 */
-  --c-glow-opacity: 0.06;
-  --c-grid: oklch(0.702 0.148 326.5);      /* 紫色网格线 */
-  --c-grid-opacity: 0.04;
-  --c-glass-border: oklch(1 0 0 / 0.1);    /* 玻璃边框 */
+  /* 墨色系(正文/线条) */
+  --c-ink: oklch(0.28 0.02 75);         /* 棕墨/铁胆墨,正文+铜版画线+主标题 */
+  --c-faded-ink: oklch(0.50 0.03 75);   /* 褪色墨水,次要文本(≥4.5:1 on paper) */
 
-  --background: var(--c-base);
-  --foreground: var(--c-text);
+  /* 生命色(活着/交互示能) */
+  --c-amber: oklch(0.62 0.13 75);       /* 琥珀,图形/光晕/圆点用 */
+  --c-amber-ink: oklch(0.48 0.12 75);   /* 文本安全琥珀(≥4.5:1 on paper) */
+
+  /* 铜版画线条色(用于 SVG 排线) */
+  --c-engraving: oklch(0.28 0.02 75);
+  --c-engraving-fine: oklch(0.45 0.025 75);
+
+  /* 状态色(不引入新角色,墨/生命色明度变体) */
+  --c-state-warn: oklch(0.45 0.13 75);   /* 警告/错误文本,≥4.5:1 on paper */
+
+  /* 纸张纹理(SVG noise,静态或极慢漂移) */
+  --paper-texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.16  0 0 0 0 0.14  0 0 0 0 0.09  0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  --background: var(--c-paper);
+  --foreground: var(--c-ink);
 }
 
-/* ============================================
-   Latte (Light) Theme
-   All colors in oklch color space
-   ============================================ */
-html.light {
-  --c-base: oklch(0.951 0.020 265);
-  --c-mantle: oklch(0.930 0.018 265);
-  --c-crust: oklch(0.912 0.016 265);
-  --c-text: oklch(0.331 0.048 265);
-  --c-subtext: oklch(0.476 0.042 265);
-  --c-accent: oklch(0.546 0.245 330);
-  --c-accent-blue: oklch(0.497 0.242 259);
-  --c-danger: oklch(0.472 0.268 19);
-  --c-warning: oklch(0.705 0.188 80);
-  --c-success: oklch(0.578 0.218 145);
-  --c-surface: oklch(0.858 0.032 265);
-  --c-surface-highlight: oklch(0.830 0.034 265);
-  --c-overlay: oklch(0.671 0.040 265);
-
-  /* 动效变量 - 浅色模式 (柔和不刺眼) */
-  --c-glow: oklch(0.65 0.18 280);         /* 柔和蓝紫光晕 */
-  --c-glow-opacity: 0.03;                  /* 更淡，避免刺眼 */
-  --c-grid: oklch(0.476 0.042 265);        /* subtext 色网格 */
-  --c-grid-opacity: 0.06;
-  --c-glass-border: oklch(0.331 0.048 265 / 0.15); /* 浅色玻璃边框 */
-}
 
 /* ============================================
-   Global Styles
+   全局样式
    ============================================ */
 
 html {
@@ -148,16 +114,71 @@ html {
 }
 
 body {
-  background-color: var(--c-base);
-  color: var(--c-text);
+  background-color: var(--c-paper);
+  background-image: var(--paper-texture);
+  background-repeat: repeat;
+  color: var(--c-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* 铜版画分隔线(替代旧玻璃边框) */
+.engraving-rule {
+  border: none;
+  border-top: 1px solid var(--c-engraving-fine);
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 2px,
+    var(--c-engraving-fine) 2px,
+    var(--c-engraving-fine) 3px
+  );
+  height: 3px;
+}
+
+/* 纸色卡片(替代旧玻璃态);阴影色由 token 派生,随主题切换 */
+.paper-card {
+  background-color: var(--c-deep-paper);
+  border: 1px solid var(--c-engraving-fine);
+  box-shadow:
+    0 1px 0 0 color-mix(in oklch, var(--c-paper) 50%, transparent),
+    0 2px 4px 0 color-mix(in oklch, var(--c-ink) 8%, transparent);
+}
+
+/* 主题切换:颜色平滑过渡(ease-out,不阻塞交互) */
+body,
+.paper-card,
+.engraving-rule {
+  transition:
+    background-color 0.35s ease-out,
+    color 0.35s ease-out,
+    border-color 0.35s ease-out;
+}
+
+/* 手写注解样式 */
+.field-note {
+  font-family: var(--font-hand);
+  color: var(--c-faded-ink);
+  line-height: 1.5;
+}
+
+/* 等宽读数 */
+.mono-reading {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1, "liga" 1;
+  color: var(--c-ink);
+}
+
+/* 生命色示能(可交互/宠物自己改的) */
+.amber-glow {
+  color: var(--c-amber);
+  animation: var(--animate-amber-breath);
+}
+
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -165,17 +186,35 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--c-surface-highlight);
-  border-radius: 4px;
+  background: var(--c-faded-ink);
+  border-radius: 2px;
+  border: 2px solid var(--c-crust);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--c-overlay);
+  background: var(--c-ink);
 }
 
 ::selection {
-  background-color: var(--c-accent);
-  color: var(--c-crust);
+  background-color: var(--c-amber);
+  color: var(--c-paper);
+}
+
+/* ============================================
+   宠物精灵图播放器(lib/pet-sprite.ts 契约)
+   帧推进由 PetSprite 用 JS setInterval 直接设 backgroundPosition
+   (不走 CSS steps 动画——合成器会周期性渲染空白帧,勿改回)
+   ============================================ */
+
+/* 夜读主题:棕墨素材在暗纸上提亮(素材文件不变) */
+html[data-theme="night"] .pet-player {
+  filter: brightness(1.5) contrast(1.05);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet-player {
+    animation: none !important;
+  }
 }
 
 /* ============================================

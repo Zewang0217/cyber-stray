@@ -27,6 +27,7 @@ import { WanderEventEmitter } from './events.js';
 import type { WanderEvent } from './events.js';
 import { wanderLoop } from './wander-loop.js';
 import { computeStrategy } from './strategy.js';
+import { pickFocusTopics } from './personality.js';
 import type { WanderLoopConfig } from './wander-loop.js';
 import { HookChain } from '../hooks/chain.js';
 import type { HookContext } from '../hooks/types.js';
@@ -43,6 +44,11 @@ const logger = consola.withTag('wander-agent');
 /** 游荡历史文件 */
 const WANDER_HISTORY_FILE = 'wander-history.json';
 const MAX_WANDER_HISTORY_ENTRIES = 100;
+
+/** 兴趣回灌：已存在兴趣每次游荡的强化增量（0-1 权重域） */
+const WANDER_REINFORCE_DELTA = 0.12;
+/** 兴趣回灌：新话题的初始权重（novelty 预算会钳低） */
+const WANDER_NEW_INTEREST_WEIGHT = 0.2;
 
 export class WanderAgent {
   private emitter = new WanderEventEmitter();
@@ -175,15 +181,17 @@ export class WanderAgent {
 
   /**
    * 生成游荡策略：兴趣图谱 → 聚焦话题，状态 → 行为参数。
-   * 映射规则见 core/strategy.ts（computeStrategy，纯函数可测）。
+   * 映射规则见 core/strategy.ts（computeStrategy，纯函数可测）；
+   * #90 性格探索倾向见 core/personality.ts（pickFocusTopics，纯函数可测）——
+   * 候选取 top-8 再按性格新/旧话题权重混合打分，好奇偏新、慵懒偏熟。
    */
   private buildStrategy(state: AgentState): WanderStrategy {
-    // ─── 兴趣 → 聚焦话题 ───
+    // ─── 兴趣 → 聚焦话题（候选放宽到 8，性格权重定最终 3）───
     let focusTopics: string[] = [];
     try {
       const graph = getInterestGraph();
-      const topInterests = graph.getTopInterestsWithWeights(3, 0.05);
-      focusTopics = topInterests.map((i) => i.id);
+      const candidates = graph.getTopInterestsWithWeights(8, 0.05);
+      focusTopics = pickFocusTopics(candidates, this.agentConfig.personality, 3);
     } catch (err) {
       // InterestGraph 不可用时 fallback 到 state.agentInterests（显式 warn，不静默降级）
       logger.warn('InterestGraph 查询失败，fallback 到 state.agentInterests', { error: String(err) });
@@ -195,9 +203,19 @@ export class WanderAgent {
 
   private getProvider() {
     if (!this._provider) {
-      const apiKey = process.env.DEEPSEEK_API_KEY;
+      // per-tenant secrets 优先，回退进程环境变量（单用户模式）。
+      // BYOK：config.ts 组装时已把回退挡掉（secrets.deepseekApiKey 为
+      // undefined）——这里 ?? env 会重新开漏字口，必须按 plan 再挡一次
+      const apiKey =
+        this.agentConfig.plan?.plan === 'byok'
+          ? this.agentConfig.secrets?.deepseekApiKey
+          : (this.agentConfig.secrets?.deepseekApiKey ?? process.env.DEEPSEEK_API_KEY);
       if (!apiKey) {
-        throw new Error('缺少环境变量 DEEPSEEK_API_KEY');
+        throw new Error(
+          this.agentConfig.plan?.plan === 'byok'
+            ? 'BYOK 套餐缺少自有 DeepSeek API key（请在设置页绑定）'
+            : '缺少环境变量 DEEPSEEK_API_KEY',
+        );
       }
       this._provider = createDeepSeek({ apiKey });
     }
@@ -245,6 +263,31 @@ export class WanderAgent {
       recentTopics: this.extractRecentTopics(ctx.wanderHistory, state.recentTopics),
       consecutiveFailures: result.endReason === 'error' ? state.consecutiveFailures + 1 : 0,
     });
+
+    // 兴趣回灌：本次游荡学到的话题 → 图谱强化/新增，persist 触发兴趣快照
+    // （S13 evolution 数据源；失败不阻断游荡结果）
+    await this.reinforceInterestGraph(this.extractRecentTopics(ctx.wanderHistory, []));
+  }
+
+  /** 兴趣回灌：已存在节点强化，新话题加入图谱（来源 reflection） */
+  private async reinforceInterestGraph(topics: string[]): Promise<void> {
+    if (topics.length === 0) return;
+    try {
+      const graph = getInterestGraph();
+      await graph.load();
+      for (const id of topics) {
+        if (id.length > 64) continue; // 过长的 query/URL 不构成稳定兴趣
+        if (graph.getNode(id)) {
+          graph.reinforce(id, WANDER_REINFORCE_DELTA);
+        } else {
+          graph.addInterest(id, WANDER_NEW_INTEREST_WEIGHT, 'reflection');
+        }
+      }
+      await graph.persist();
+      logger.info('兴趣图谱已回灌', { topics: topics.length });
+    } catch (err) {
+      logger.warn('兴趣回灌失败，不影响游荡结果', { error: String(err) });
+    }
   }
 
   /** 从游荡步骤中提取话题关键词，用于去重提示 */

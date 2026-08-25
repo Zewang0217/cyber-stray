@@ -1,0 +1,1 @@
+ALTER TABLE `pets` ADD `personality` text DEFAULT 'curious' NOT NULL;

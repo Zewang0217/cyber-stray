@@ -1,7 +1,8 @@
 import { appendFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { consola } from '../../logger.js';
-import { config, getDataPath } from '../../config.js';
+import { getConfig, getDataPath } from '../../config.js';
+import { localHour, withinPushWindow, countGatePassedToday, todaySpeaksFile } from './push-budget.js';
 import { sendFeishuMessage } from './lark-sender.js';
 import { registerSpeakTopics } from '../../memory/feedback-pipeline.js';
 import { buildSpeakRecord, type SpeakRecord, type SpeakRecordMeta } from './history-record.js';
@@ -40,7 +41,7 @@ async function appendSpeakHistory(record: SpeakRecord): Promise<void> {
   try {
     const historyDir = getDataPath('history');
     await mkdir(historyDir, { recursive: true });
-const filename = join(historyDir, `speaks-${new Date().toISOString().slice(0, 10)}.jsonl`);
+const filename = join(historyDir, todaySpeaksFile());
     const line = JSON.stringify(record) + '\n';
     await appendFile(filename, line, 'utf-8');
   } catch (error) {
@@ -71,9 +72,10 @@ export async function recordGatedSpeak(
 /**
  * 推送到 Telegram
  */
-async function pushToTelegram(content: string): Promise<void> {
-  const token = config.telegramBotToken;
-  const chatId = config.telegramChatId;
+async function pushToTelegram(content: string): Promise<string> {
+  const cfg = getConfig();
+  const token = cfg.telegramBotToken;
+  const chatId = cfg.telegramChatId;
 
   if (!token || !chatId) {
     throw new Error('未配置 TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID');
@@ -97,10 +99,15 @@ async function pushToTelegram(content: string): Promise<void> {
     throw new Error(`Telegram 推送失败: HTTP ${response.status}`);
   }
 
-  const data = (await response.json()) as { ok?: boolean; description?: string };
+  const data = (await response.json()) as {
+    ok?: boolean;
+    description?: string;
+    result?: { message_id?: number };
+  };
   if (!data.ok) {
     throw new Error(`Telegram 推送失败: ${data.description ?? '未知错误'}`);
   }
+  return data.result?.message_id ? String(data.result.message_id) : '';
 }
 
 /**
@@ -116,7 +123,12 @@ async function pushToTelegram(content: string): Promise<void> {
 export async function speak(
   content: string,
   type: SpeakType,
-  meta: { mood?: Mood; gateScore?: number; matchedTopics?: string[] } = {},
+  meta: {
+    mood?: Mood;
+    gateScore?: number;
+    gateReasons?: string[];
+    matchedTopics?: string[];
+  } = {},
 ): Promise<SpeakResult> {
   const timestamp = new Date().toISOString();
 
@@ -137,15 +149,46 @@ export async function speak(
   if (type === 'share' && !content.includes('http')) {
     logger.warn('share 类型的内容不包含 URL', { content: content.slice(0, 50) });
   }
+  const cfg = getConfig();
+  // S11 套餐门控：日预算 + 推送窗口（控制面注入 plan；未注入 = 单用户
+  // 模式不设限）。只卡"到达主人"，学习照常——超限内容落盘标 planLimited。
+  const plan = cfg.plan;
+  let planLimited = false;
+  if (plan) {
+    const hour = localHour();
+    if (!withinPushWindow(hour, plan.pushWindowStart, plan.pushWindowEnd)) {
+      planLimited = true;
+      logger.info('推送窗口外，内容仅记录', { hour, window: [plan.pushWindowStart, plan.pushWindowEnd] });
+    } else if (plan.pushesPerDay > 0) {
+      const used = await countGatePassedToday(getDataPath(`history/${todaySpeaksFile()}`));
+      if (used >= plan.pushesPerDay) {
+        planLimited = true;
+        logger.info('日推送预算已满，内容仅记录', { used, limit: plan.pushesPerDay });
+      }
+    }
+  }
+  if (planLimited) {
+    await appendSpeakHistory(
+      buildSpeakRecord(content, type, false, timestamp, {
+        ...meta,
+        planLimited: true,
+      }),
+    );
+    return {
+      success: true,
+      pushed: false,
+      timestamp,
+    };
+  }
 
   let pushed = false;
   let messageId: string | undefined;
   const pushErrors: string[] = [];
 
   // 推送到飞书（根据配置选择方式）
-  if (config.feishu?.pushMode === 'lark_channel') {
+  if (cfg.feishu?.pushMode === 'lark_channel') {
     // LarkChannel 方式
-    if (config.larkAppId && config.larkAppSecret) {
+    if (cfg.larkAppId && cfg.larkAppSecret) {
       try {
         messageId = await sendFeishuMessage(content);
         pushed = true;
@@ -158,7 +201,7 @@ export async function speak(
     } else {
       logger.warn('未配置 LARK_APP_ID/LARK_APP_SECRET，无法使用 LarkChannel');
     }
-  } else if (config.feishuWebhook) {
+  } else if (cfg.feishuWebhook) {
     // Webhook 方式
     try {
       messageId = await sendFeishuMessage(content);
@@ -172,10 +215,12 @@ export async function speak(
   }
 
   // 尝试推送到 Telegram
-  if (config.telegramBotToken && config.telegramChatId) {
+  if (cfg.telegramBotToken && cfg.telegramChatId) {
     try {
-      await pushToTelegram(content);
+      const tgMessageId = await pushToTelegram(content);
       pushed = true;
+      // 飞书未回 ID 或未配置飞书时，用 Telegram message_id 做反馈归因
+      if (!messageId) messageId = tgMessageId || undefined;
       logger.success('Telegram 推送成功');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -185,9 +230,15 @@ export async function speak(
   }
 
   // 没有配置任何推送渠道时，只记录日志
-  if (!config.feishu?.pushMode && !config.feishuWebhook && (!config.telegramBotToken || !config.telegramChatId)) {
+  if (!cfg.feishu?.pushMode && !cfg.feishuWebhook && (!cfg.telegramBotToken || !cfg.telegramChatId)) {
     logger.info('无推送渠道配置，内容仅记录日志', { content });
   }
+
+  // #114 反馈归因：内容包含扫描命中的口头禅（LLM 自由发挥，文本包含即
+  // 视为用过——粗粒度但可解释；落盘供反馈时按 messageId 反查）
+  const matchedCatchphrases = (cfg.catchphrases ?? [])
+    .filter((c) => content.includes(c.text))
+    .map((c) => c.text);
 
   // 记录到历史文件
   await appendSpeakHistory(
@@ -195,6 +246,9 @@ export async function speak(
       messageId,
       mood: meta.mood,
       gateScore: meta.gateScore,
+      gateReasons: meta.gateReasons,
+      matchedTopics: meta.matchedTopics,
+      matchedCatchphrases,
     }),
   );
 

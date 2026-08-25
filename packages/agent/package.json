@@ -6,12 +6,14 @@
   "private": true,
   "scripts": {
     "dev": "tsx --env-file=dev.env --env-file=../../.env src/index.ts",
+    "worker": "tsx --env-file=../../.env src/worker/cli.ts",
     "test": "vitest",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^2.0.29",
+    "@cyber-stray/shared": "workspace:*",
     "@ai-sdk/openai": "^3.0.53",
     "@larksuiteoapi/node-sdk": "^1.62.1",
     "@mozilla/readability": "^0.6.0",

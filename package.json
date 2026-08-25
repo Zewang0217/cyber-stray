@@ -5,6 +5,7 @@
     "dev": "pnpm -r dev",
     "dev:agent": "pnpm --filter @cyber-stray/agent dev",
     "dev:web": "pnpm --filter @cyber-stray/web dev",
+    "dev:cp": "pnpm --filter @cyber-stray/control-plane dev",
     "dev:slides": "pnpm --filter @cyber-stray/slides dev",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",

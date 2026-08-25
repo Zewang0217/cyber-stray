@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   InterestNodeData,
   InterestSnapshot,
@@ -48,11 +48,20 @@ function detectCollapse(entropy: number, nodeCount: number): CollapseDetection {
   return { isCollapsing, entropy, maxEntropy, warning };
 }
 
+
+interface UseInterestGraphOptions {
+  /** S8：SSE 刷新信号（worker 跑完图谱可能已强化/新增节点，变化即拉取） */
+  refreshSignal?: number;
+}
+
 /**
  * 获取兴趣图谱数据的 Hook
- * 每 30 秒轮询（比 Agent 状态慢，兴趣变化较缓慢）
+ * 30s 轮询兜底 + SSE 刷新信号实时拉取
  */
-export function useInterestGraph(): UseInterestGraphReturn {
+export function useInterestGraph(
+  options: UseInterestGraphOptions = {},
+): UseInterestGraphReturn {
+  const { refreshSignal = 0 } = options;
   const [nodes, setNodes] = useState<InterestNodeData[]>([]);
   const [entropy, setEntropy] = useState(0);
   const [nodeCount, setNodeCount] = useState(0);
@@ -66,6 +75,7 @@ export function useInterestGraph(): UseInterestGraphReturn {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const fetchRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     const fetchData = async (): Promise<void> => {
@@ -107,12 +117,16 @@ export function useInterestGraph(): UseInterestGraphReturn {
         setIsLoading(false);
       }
     };
-
-    fetchData();
+    fetchRef.current = fetchData;
+    void fetchData();
     // 30 秒轮询（兴趣变化较缓慢）
-    const interval = setInterval(fetchData, 30000);
+    const interval = setInterval(() => void fetchRef.current(), 30000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (refreshSignal > 0) void fetchRef.current();
+  }, [refreshSignal]);
 
   return {
     nodes,

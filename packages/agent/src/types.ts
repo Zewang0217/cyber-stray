@@ -2,6 +2,8 @@
  * 赛博街溜子核心类型定义
  */
 
+import type { Catchphrase, PersonalityId } from '@cyber-stray/shared';
+
 // ============================================
 // 状态相关
 // ============================================
@@ -111,6 +113,36 @@ export interface Feedback {
 // 配置相关
 // ============================================
 
+/** 每租户敏感信息（SaaS：per-tenant secrets，注入而非进程环境变量） */
+export interface AgentSecrets {
+  /** DeepSeek API key（provider 读取点：secrets 优先，回退 process.env.DEEPSEEK_API_KEY） */
+  deepseekApiKey?: string;
+  /** Tavily API key（等价于 searchApiKey） */
+  tavilyApiKey?: string;
+  /** Exa API key（等价于 exaApiKey） */
+  exaApiKey?: string;
+  /** 飞书 Webhook（等价于 feishuWebhook） */
+  feishuWebhook?: string;
+  /** Telegram Bot Token（等价于 telegramBotToken） */
+  telegramBotToken?: string;
+  /** Telegram Chat ID（等价于 telegramChatId） */
+  telegramChatId?: string;
+  /** 飞书应用 App ID（等价于 larkAppId） */
+  larkAppId?: string;
+  /** 飞书应用 App Secret（等价于 larkAppSecret） */
+  larkAppSecret?: string;
+}
+
+/** 套餐执行参数（S11 门控：控制面调度器注入；worker 短命进程内存态） */
+export interface PlanExecutionArgs {
+  plan: 'free' | 'pro' | 'byok';
+  /** 每日推送上限（gate 放行 speak 落盘数；0 = 不限） */
+  pushesPerDay: number;
+  /** 推送时间窗（本地小时 0-23；null = 全天可推） */
+  pushWindowStart: number | null;
+  pushWindowEnd: number | null;
+}
+
 /** 阶梯恢复配置 */
 export interface EnergyRecoveryTier {
   maxEnergy: number;      // 该阶梯的最大能量值（用于判断是否适用此阶梯）
@@ -151,7 +183,11 @@ export interface AgentConfig {
   // ReAct Loop 配置（新增）
   maxWanderSteps: number;        // 每次游荡最大步数（安全上限）
   wanderTemperature: number;     // 游荡 LLM 温度（高随机性）
-  
+
+  /** 性格（#90：认领时选择；好奇=基准；控制面经 worker CLI 注入，默认好奇） */
+  personality: PersonalityId;
+  /** 口头禅（#114：worker CLI 注入的当前有效集合；缺省 = 性格默认组） */
+  catchphrases?: Catchphrase[];
   // 搜索配置
   searchProvider: string;
   searchApiKey: string;     // Tavily API key
@@ -245,6 +281,11 @@ export interface AgentConfig {
     /** 禁用的 hook 名称列表（如 ["quality"]） */
     disabled?: string[];
   };
+
+  /** 每租户敏感信息（由 loadConfig 注入；单用户模式为空对象，回退环境变量） */
+  secrets?: AgentSecrets;
+  /** 套餐执行参数（S11 门控：控制面注入；未注入 = 单用户模式不设限） */
+  plan?: PlanExecutionArgs;
 }
 
 // ============================================

@@ -26,6 +26,10 @@ export const qualityHook = {
     const gate = getPushGate(ctx.config.pushGate);
 
     try {
+      // 先清上一轮残留：evaluate 抛错走默认放行时，不能把上个内容的
+      // 门控理由透传给本次 speak
+      ctx.toolCtx.gateReasons = undefined;
+      ctx.toolCtx.matchedTopics = undefined;
       const gateResult = await gate.evaluate(content, type as SpeakType);
 
       // 存储分数供 afterToolCall 使用
@@ -33,6 +37,8 @@ export const qualityHook = {
       ctx.data['quality:gateReasons'] = gateResult.reasons;
       // 实际命中的兴趣话题 → 供 speak() 反馈归因（与工具共享同一 toolCtx）
       ctx.toolCtx.matchedTopics = gateResult.matchedTopics;
+      // 推送理由 → 供 speak() 随推送历史落盘（S8 推送流展示）
+      ctx.toolCtx.gateReasons = gateResult.reasons;
 
       if (!gateResult.passed) {
         logger.info(
@@ -61,6 +67,7 @@ export const qualityHook = {
         await recordGatedSpeak(content, type as SpeakType, {
           mood: ctx.toolCtx.state.mood,
           gateScore: gateResult.score,
+          gateReasons: gateResult.reasons,
         });
 
         // F8：gated:true 的 speak 事件（deny 路径不经过 afterToolCall，需在此显式发）

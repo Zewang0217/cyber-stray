@@ -10,6 +10,9 @@
  */
 
 import { generateText, stepCountIs, hasToolCall } from 'ai';
+import { sanitizeForLLM } from '../utils/text-sanitize.js';
+import { getDataRoot } from '../config.js';
+import { recordUsage } from '../usage/usage.js';
 import type { Tool } from 'ai';
 import { consola } from '../logger.js';
 import { resetLLMStats, getLLMStats, recordStep } from '../llm/stats.js';
@@ -74,8 +77,8 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
       const result = await generateText({
         model,
         temperature: config.temperature,
-        system: systemPrompt,
-        prompt: userPrompt,
+        system: sanitizeForLLM(systemPrompt),
+        prompt: sanitizeForLLM(userPrompt),
         stopWhen: [hasToolCall('rest'), stepCountIs(config.maxSteps)],
         tools,
         onStepFinish({ stepNumber, usage, toolCalls }) {
@@ -105,6 +108,14 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
       logger.info(`[${traceId}] LLM 输出 [steps=${result?.steps?.length ?? 0} toolCalls=${toolCallCount} stopReason=${result?.finishReason}]`, {
         text: finalText || '(empty)',
         toolCalls: result?.toolCalls?.map((tc) => tc.toolName) ?? [],
+      });
+
+      // #129：用量记录（no-throw，失败不影响主流程）
+      await recordUsage(getDataRoot(), {
+        kind: 'llm',
+        model: config.llmModel,
+        inputTokens: result?.usage?.inputTokens,
+        outputTokens: result?.usage?.outputTokens,
       });
 
       break; // 成功，退出重试

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * InterestGraph 测试
  *
  * 覆盖：加载/持久化 round-trip、衰减计算、权重上限、novelty 预算、
@@ -292,6 +292,58 @@ describe('InterestGraph', () => {
 
     const graph = new InterestGraph('data/interests.json');
     expect(graph.load()).rejects.toThrow('兴趣图谱解析失败');
+  });
+
+  // ----------------------------------------
+  // 游荡回灌（S13 evolution 数据源）
+  // ----------------------------------------
+
+  it('should reinforce known topics, add new ones, and append interest snapshot on persist', async () => {
+    const { readFile, mkdir } = await import('fs/promises');
+    await mkdir('data', { recursive: true });
+
+    // 既有图谱：两个已知兴趣
+    const graph = new InterestGraph('data/interests.json');
+    graph.addInterest('AI', 0.4, 'default');
+    graph.addInterest('科技', 0.3, 'default');
+    await graph.persist();
+
+    // 模拟一次游荡学到的话题：AI 已知（强化）、两个新话题（加入）
+    const wanderTopics = ['AI', 'arstechnica.com', '量子芯片 最新进展'];
+    const graph2 = new InterestGraph('data/interests.json');
+    await graph2.load();
+    for (const id of wanderTopics) {
+      if (graph2.getNode(id)) {
+        graph2.reinforce(id, 0.12);
+      } else {
+        graph2.addInterest(id, 0.2, 'reflection');
+      }
+    }
+    await graph2.persist();
+
+    // interests.json 更新：AI 被强化，新话题已加入且来源为 reflection
+    const reloaded = new InterestGraph('data/interests.json');
+    await reloaded.load();
+    expect(reloaded.getNode('AI')!.weight).toBeCloseTo(0.52, 5);
+    expect(reloaded.getNode('AI')!.reinforceCount).toBe(1);
+    expect(reloaded.getNode('arstechnica.com')!.source).toBe('reflection');
+    expect(reloaded.getNode('量子芯片 最新进展')!.source).toBe('reflection');
+
+    // 快照追加：persist 必须写出 interest-history.jsonl（evolution 页数据源）
+    const historyContent = await readFile('data/interest-history.jsonl', 'utf-8');
+    const lines = historyContent.trim().split('\n');
+    expect(lines.length).toBeGreaterThan(0);
+    const lastLine = lines[lines.length - 1];
+    expect(lastLine).toBeTruthy();
+    const snapshot = JSON.parse(lastLine!) as {
+      nodes: Array<{ id: string; weight: number }>;
+      timestamp: string;
+      hash: string;
+    };
+    expect(snapshot.timestamp).toBeTruthy();
+    expect(snapshot.hash).toMatch(/^[0-9a-f]{8,16}$/);
+    expect(snapshot.nodes).toHaveLength(4);
+    expect(snapshot.nodes.find((n) => n.id === 'AI')!.weight).toBeCloseTo(0.52, 5);
   });
 
   // ----------------------------------------
