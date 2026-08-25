@@ -20,7 +20,8 @@ import type { ImageGenerator, ImageGenRequest } from './types.js';
 const ARK_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
 
 export interface ArkImageOptions {
-  model: string;
+  /** 生图模型 ID；函数 = 每次 generate 求值（#131 热更新：装配时读配置缓存） */
+  model: string | (() => string);
   /** 生图尺寸（Seedream 档位 '2K'/'3K' 或精确像素；5.0 无 1K 档） */
   size: string;
   /** 单次 HTTP 请求超时 ms（Seedream 5.0 建议 ≥120s——同步调用，断连结果即丢但仍计费） */
@@ -53,8 +54,9 @@ export function createImageGenerator(apiKey: string, opts: ArkImageOptions): Ima
       if (!apiKey) {
         throw new Error('缺少火山方舟 API key（环境变量 ARK_API_KEY）');
       }
+      const model = typeof opts.model === 'function' ? opts.model() : opts.model;
       const body: Record<string, unknown> = {
-        model: opts.model,
+        model,
         prompt: req.prompt,
         size: opts.size,
         response_format: 'b64_json',

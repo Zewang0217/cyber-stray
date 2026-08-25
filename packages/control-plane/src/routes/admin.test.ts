@@ -10,6 +10,7 @@ import { getOrCreateTenant, tenantDataDir } from '../tenant.js';
 import { signSession, SESSION_COOKIE } from '../session.js';
 import { admins, pets, tenants } from '../db/schema.js';
 import { createAdminRoutes } from './admin.js';
+import { refreshModelConfig } from '../app-config.js';
 
 const SECRET = 'x'.repeat(40);
 
@@ -46,6 +47,8 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     const config = {
       dataDir, sessionSecret: SECRET,
       adminSubs: ['admin-1'], // env bootstrap
+      arkImageModel: 'default-img',
+      visionModel: 'default-vl',
     } as Parameters<typeof createAdminRoutes>[0]['config'];
     app.route('/api/admin', createAdminRoutes({ config }));
   });
@@ -170,6 +173,8 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     // app2：env 白名单为空（生产形态），admin-1 先入表才能操作
     const emptyEnvConfig = {
       dataDir, sessionSecret: SECRET, adminSubs: [],
+      arkImageModel: 'default-img',
+      visionModel: 'default-vl',
     } as Parameters<typeof createAdminRoutes>[0]['config'];
     const app2 = new Hono();
     app2.route('/api/admin', createAdminRoutes({ config: emptyEnvConfig }));
@@ -259,6 +264,58 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     expect(bad.status).toBe(400);
     const forbidden = await app.request(
       await authed('http://x/api/admin/usage', {}, { sub: 'evil-user', tenantId: 'tenant-b' }),
+    );
+    expect(forbidden.status).toBe(403);
+  });
+
+  it('GET /api/admin/config：返回默认模型 + 候选下拉', async () => {
+    await refreshModelConfig(dataDir, { imageModel: 'default-img', visionModel: 'default-vl' });
+    const res = await app.request(await authed('http://x/api/admin/config'));
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: { imageModel: string; visionModel: string; candidates: Record<string, string[]> } };
+    expect(json.data.imageModel).toBe('default-img');
+    expect(json.data.visionModel).toBe('default-vl');
+    expect(json.data.candidates.image).toContain('doubao-seedream-5-0-260128');
+  });
+
+  it('PUT /api/admin/config：写 DB 生效，下次 GET 读到新值', async () => {
+    await refreshModelConfig(dataDir, { imageModel: 'default-img', visionModel: 'default-vl' });
+    const res = await app.request(
+      await authed('http://x/api/admin/config', {
+        method: 'PUT',
+        body: JSON.stringify({ imageModel: 'new-img-model' }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: { imageModel: string; visionModel: string } };
+    expect(json.data.imageModel).toBe('new-img-model');
+    expect(json.data.visionModel).toBe('default-vl'); // 未传字段保持
+
+    const get = await app.request(await authed('http://x/api/admin/config'));
+    const getJson = (await get.json()) as { data: { imageModel: string } };
+    expect(getJson.data.imageModel).toBe('new-img-model');
+  });
+
+  it('PUT /api/admin/config：空/超长模型 ID → 400；非管理员 → 403', async () => {
+    const bad = await app.request(
+      await authed('http://x/api/admin/config', {
+        method: 'PUT',
+        body: JSON.stringify({ imageModel: '' }),
+      }),
+    );
+    expect(bad.status).toBe(400);
+    const long = await app.request(
+      await authed('http://x/api/admin/config', {
+        method: 'PUT',
+        body: JSON.stringify({ imageModel: 'x'.repeat(101) }),
+      }),
+    );
+    expect(long.status).toBe(400);
+    const forbidden = await app.request(
+      await authed('http://x/api/admin/config', {
+        method: 'PUT',
+        body: JSON.stringify({ imageModel: 'm' }),
+      }, { sub: 'evil-user', tenantId: 'tenant-b' }),
     );
     expect(forbidden.status).toBe(403);
   });

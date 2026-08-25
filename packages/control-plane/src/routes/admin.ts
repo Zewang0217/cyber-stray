@@ -22,9 +22,13 @@ import { PLAN_VALUES, type PlanValue } from '../plan/limits.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
 import { costOf, type UsageRow } from '../pricing.js';
+import { getModelConfig, setModelConfig, refreshModelConfig, MODEL_CANDIDATES, validateModelId, type ModelConfig } from '../app-config.js';
 
 export interface AdminDeps {
-  config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret' | 'adminSubs'>;
+  config: Pick<
+    ControlPlaneConfig,
+    'dataDir' | 'sessionSecret' | 'adminSubs' | 'arkImageModel' | 'visionModel'
+  >;
 }
 
 const jsonError = (message: string) => ({ success: false, error: message });
@@ -342,6 +346,65 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
       .map((row) => ({ ...row, cost: costOf(row) }));
 
     return c.json({ success: true, data: { summary, perTenant, recent } });
+  });
+
+  /**
+   * GET /api/admin/config — 全局模型配置（#131）：当前生效值 + 候选下拉。
+   * 未 refresh（单测场景）回退 env 默认。
+   */
+  app.get('/config', async (c) => {
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) {
+      return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
+    }
+    const cfg = getModelConfig({
+      imageModel: config.arkImageModel,
+      visionModel: config.visionModel,
+    });
+    return c.json({
+      success: true,
+      data: {
+        imageModel: cfg.imageModel,
+        visionModel: cfg.visionModel,
+        candidates: MODEL_CANDIDATES,
+      },
+    });
+  });
+
+  /**
+   * PUT /api/admin/config — 更新全局模型（#131）：写 DB + 刷缓存，下次生图生效。
+   * body: { imageModel?, visionModel? }（缺省字段保持不变）。
+   */
+  app.put('/config', async (c) => {
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) {
+      return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
+    }
+    let body: { imageModel?: unknown; visionModel?: unknown };
+    try {
+      body = (await c.req.json()) as { imageModel?: unknown; visionModel?: unknown };
+    } catch {
+      return c.json(jsonError('请求体须为 JSON'), 400);
+    }
+    if (body.imageModel !== undefined) {
+      const err = validateModelId(body.imageModel);
+      if (err) return c.json(jsonError(`imageModel: ${err}`), 400);
+    }
+    if (body.visionModel !== undefined) {
+      const err = validateModelId(body.visionModel);
+      if (err) return c.json(jsonError(`visionModel: ${err}`), 400);
+    }
+
+    const current = getModelConfig({
+      imageModel: config.arkImageModel,
+      visionModel: config.visionModel,
+    });
+    const next: ModelConfig = {
+      imageModel: typeof body.imageModel === 'string' ? body.imageModel : current.imageModel,
+      visionModel: typeof body.visionModel === 'string' ? body.visionModel : current.visionModel,
+    };
+    const saved = await setModelConfig(config.dataDir, next);
+    return c.json({ success: true, data: { imageModel: saved.imageModel, visionModel: saved.visionModel } });
   });
 
   return app;

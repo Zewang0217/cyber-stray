@@ -117,7 +117,6 @@ export const billing = sqliteTable('billing', {
 });
 
 // ─── 每租户 secrets（占位：S4 信封加密后填充 encrypted blob + DEK keyId） ─
-
 export const tenantSecrets = sqliteTable('tenant_secrets', {
   tenantId: text('tenant_id')
     .primaryKey()
@@ -253,6 +252,19 @@ export const petGenTasks = sqliteTable('pet_gen_tasks', {
   /** 租户列表查询索引（GET /api/petgen/tasks + 配额统计）；非唯一——同租户多任务 */ 
   petGenTasksTenantIdx: index('pet_gen_tasks_tenant_idx').on(t.tenantId),
 }));
+
+// ─── 应用级配置（#131：全局模型选择，admin 面板热更新） ────────────────
+
+export const appConfig = sqliteTable('app_config', {
+  /** 配置键（imageModel / visionModel） */
+  key: text('key').primaryKey(),
+  /** 配置值（模型 ID 等） */
+  value: text('value').notNull(),
+  updatedAt: integer('updated_at').notNull().$defaultFn(now),
+});
+
+export type AppConfig = typeof appConfig.$inferSelect;
+export type NewAppConfig = typeof appConfig.$inferInsert;
 
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type NewPushSubscription = typeof pushSubscriptions.$inferInsert;
