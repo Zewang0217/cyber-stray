@@ -200,6 +200,14 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
+/** 分页元数据（#123 history 等列表接口） */
+export interface PaginationMeta {
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+}
+
 /** 导航项 */
 export interface NavItem {
   label: string;

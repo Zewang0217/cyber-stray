@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { useHistory } from "@/hooks/useHistory";
 import { useTenantEvents } from "@/hooks/useTenantEvents";
@@ -12,10 +13,21 @@ import { PetSprite } from "@/components/dashboard/PetSprite";
  */
 export default function HistoryPage(): React.ReactElement {
   const { connected: realtimeConnected, refreshSignal } = useTenantEvents();
-  const { items, isLoading, error } = useHistory({
+  const { items, total, isLoading, isLoadingMore, hasMore, error, loadMore } = useHistory({
     refreshSignal,
     realtimeConnected,
   });
+
+  // #123 分页：滚动接近底部 → 加载更多
+  useEffect(() => {
+    const onScroll = () => {
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 400) {
+        loadMore();
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [loadMore]);
 
   if (isLoading) {
     return (
@@ -52,7 +64,7 @@ export default function HistoryPage(): React.ReactElement {
         >
           历史推送
         </h1>
-        <p className="text-body text-subtext mt-1">共 {items.length} 条采集记录</p>
+        <p className="text-body text-subtext mt-1">共 {total} 条采集记录</p>
       </motion.div>
       <div className="engraving-rule mb-8" />
 
@@ -84,6 +96,18 @@ export default function HistoryPage(): React.ReactElement {
             <FeedCard key={item.timestamp + item.title} item={item} />
           ))}
         </motion.div>
+      )}
+      {/* #123 分页：滚动加载状态 */}
+      {items.length > 0 && (
+        <div className="flex justify-center py-8">
+          {isLoadingMore ? (
+            <span className="field-note text-sm text-subtext">正在翻阅更多…</span>
+          ) : hasMore ? (
+            <span className="field-note text-sm text-subtext">继续滚动加载更多</span>
+          ) : (
+            <span className="field-note text-sm text-subtext">—— 已翻阅全部 ——</span>
+          )}
+        </div>
       )}
     </div>
   );

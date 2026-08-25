@@ -105,6 +105,49 @@ describe('data 路由（租户数据 + 鉴权）', () => {
     expect(body.data[0]!.message).toBe('hi');
   });
 
+  it('history 分页（#123）：limit/offset 切片 + hasMore + total', async () => {
+    const aliceDir = join(dataDir, 'tenants', 'alice');
+    const lines = Array.from({ length: 5 }, (_, i) =>
+      JSON.stringify({
+        content: `msg-${i}`,
+        type: 'nonsense',
+        timestamp: `2026-08-1${i}T00:00:00Z`,
+      }),
+    ).join('\n');
+    writeFileSync(join(aliceDir, 'history', 'speaks-paged.jsonl'), lines + '\n');
+
+    const page0 = (await (await app.request(await authedAsync('http://x/api/history?limit=2&offset=0'))).json()) as {
+      data: { message: string }[];
+      pagination: { total: number; offset: number; limit: number; hasMore: boolean };
+    };
+    expect(page0.data).toHaveLength(2);
+    expect(page0.data[0]!.message).toBe('hi'); // setup 的 08-15 最新，倒序第一
+    expect(page0.data[1]!.message).toBe('msg-4');
+    expect(page0.pagination).toMatchObject({ total: 6, offset: 0, limit: 2, hasMore: true });
+
+    const page2 = (await (await app.request(await authedAsync('http://x/api/history?limit=2&offset=2'))).json()) as {
+      data: { message: string }[];
+      pagination: { hasMore: boolean };
+    };
+    expect(page2.data[0]!.message).toBe('msg-3');
+    expect(page2.pagination.hasMore).toBe(true);
+
+    const last = (await (await app.request(await authedAsync('http://x/api/history?limit=2&offset=4'))).json()) as {
+      data: { message: string }[];
+      pagination: { hasMore: boolean };
+    };
+    expect(last.data).toHaveLength(2); // msg-1, msg-0（含 setup 的 'hi' 共 6 条）
+    expect(last.pagination.hasMore).toBe(false);
+  });
+
+  it('history 分页边界：limit 钳制在 [1,200]，offset 负值归 0', async () => {
+    const res = await app.request(await authedAsync('http://x/api/history?limit=9999&offset=-3'));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: unknown[]; pagination: { limit: number; offset: number } };
+    expect(body.pagination.limit).toBe(200);
+    expect(body.pagination.offset).toBe(0);
+  });
+
   it('租户隔离：bob 的 session 读不到 alice 数据（bob 目录为空 → 空数据/200）', async () => {
     const res = await app.request(
       await authedAsync('http://x/api/state', { sub: 'bob', tenantId: 'bob' }),
