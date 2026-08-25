@@ -10,13 +10,15 @@
 - 同步返回图片（base64/URL），替换现有 wanx 异步任务（提交 → 轮询 task）的客户端实现
 - 尺寸沿用 1024×1024（成本最低档）
 
-**2. 视觉质检 = 豆包 `doubao-1.5-vision-pro`**（同 Ark，OpenAI 兼容 chat completions）：
-- 成本 ≈ ¥0.005–0.01/张（生图 ≈ ¥0.4/张 的 ~1/40，可忽略）
+**2. 视觉质检 = 智谱 GLM-4V-Flash**（OpenAI 兼容 chat/completions，免费）：
+- 原定豆包 doubao-1.5-vision-pro 因账号未开通（模型 ID 直调全 404，需推理接入点 ep-xxx）放弃
+- 智谱实测可用（2026-08-25：正确识别测试图），成本 ¥0（flash 版免费）
+- 客户端独立 vision.ts + baseUrl 可配：质检供应商切换零代码（DashScope→Ark→智谱 已两次切换，配置化是真实需求）
 - 保持两层质检结构（结构层本地脚本 + 语义层视觉模型），管线契约不变
 
 **3. 迁移方式 = 替换客户端实现，接口契约不动**：`ImageGenerator` / `VisionQc` / `StructureQc` / `Splitter` 接口保持；仅 `petgen/qwen.ts` 与 `meme/qwen.ts` 的 DashScope 实现替换为 Ark 实现（async 任务轮询 → 同步调用）。两处各自替换（petgen 在 CP 进程，meme 在 agent worker）。
 
-**4. 密钥与模型配置化**：`ARK_API_KEY`（产机 .env）+ 模型 ID 存配置（DB，admin 面板可改）；DashScope key 相关 env 废弃。
+**4. 密钥与模型配置化**：`ARK_API_KEY`（生图）+ `ZHIPU_API_KEY`（质检）写产机 .env；模型 ID 存配置（admin 面板可改）；DashScope key 相关 env 废弃。
 
 ## Considered Options
 - **保留 DashScope 换 key**：用户无可用 key（DashScope 账号未配）→ 不可行。
