@@ -16,6 +16,7 @@ import { readdir, rm } from 'fs/promises';
 import { appendFileSync, mkdirSync, readdirSync, rmSync, statSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
+import { StringDecoder } from 'string_decoder';
 import { fileURLToPath } from 'url';
 import { openTenantSecrets, type TenantSecretsStore } from '../secrets/tenant-secrets.js';
 import { writeSecretsFile, resolveAgentSecrets } from '../secrets/worker-secrets.js';
@@ -78,7 +79,8 @@ export function appendWorkerLog(logFile: string, chunk: string): void {
   }
 }
 
-/** 启动清扫：删 N 天前的 worker 日志（目录缺失/权限失败静默） */
+/** 启动清扫：删 N 天前的 worker 日志（目录缺失/权限失败静默）；同步剪枝
+ * truncatedFiles 内存集（防无界增长） */
 export function sweepWorkerLogs(dataDir: string, retentionDays = WORKER_LOG_RETENTION_DAYS): void {
   try {
     const dir = join(dataDir, WORKER_LOG_SUBDIR);
@@ -86,6 +88,7 @@ export function sweepWorkerLogs(dataDir: string, retentionDays = WORKER_LOG_RETE
     for (const f of readdirSync(dir)) {
       if (statSync(join(dir, f)).mtimeMs < cutoff) {
         rmSync(join(dir, f), { force: true });
+        truncatedFiles.delete(join(dir, f));
       }
     }
   } catch {
@@ -108,14 +111,17 @@ const realSpawn: SpawnLike = (cmd, args, { timeoutMs, logFile }) => {
   const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   activeChildren.add(child);
   child.on('exit', () => activeChildren.delete(child));
-  // #122：全量落盘（best-effort）；stderr 同时累积留非零退出尾巴
+  // #122：全量落盘（best-effort）；StringDecoder 增量解码防多字节 UTF-8
+  // 跨 chunk 截断成 U+FFFD；stderr 同时累积留非零退出尾巴
+  const stdoutDecoder = new StringDecoder('utf8');
+  const stderrDecoder = new StringDecoder('utf8');
   child.stdout?.on('data', (chunk: Buffer) => {
-    if (logFile) appendWorkerLog(logFile, chunk.toString('utf8'));
+    if (logFile) appendWorkerLog(logFile, stdoutDecoder.write(chunk));
   });
   const stderr: string[] = [];
   let stderrBytes = 0;
   child.stderr?.on('data', (chunk: Buffer) => {
-    if (logFile) appendWorkerLog(logFile, chunk.toString('utf8'));
+    if (logFile) appendWorkerLog(logFile, stderrDecoder.write(chunk));
     stderrBytes += chunk.length;
     if (stderrBytes <= STDERR_CAP_BYTES) stderr.push(chunk.toString('utf8'));
   });

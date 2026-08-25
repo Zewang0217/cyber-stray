@@ -12,6 +12,7 @@
 
 import { spawn, type ChildProcess } from 'child_process';
 import { rm } from 'fs/promises';
+import { StringDecoder } from 'string_decoder';
 import { fileURLToPath } from 'url';
 import { openTenantSecrets, type TenantSecretsStore } from '../secrets/tenant-secrets.js';
 import { writeSecretsFile } from '../secrets/worker-secrets.js';
@@ -36,13 +37,16 @@ const realSpawn: DiarySpawnLike = (cmd, args, { timeoutMs, logFile }) => {
   const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   activeChildren.add(child);
   child.on('exit', () => activeChildren.delete(child));
-  // #122：全量落盘（best-effort）；stderr 同时累积留非零退出尾巴
+  // #122：全量落盘（best-effort）；StringDecoder 增量解码防多字节 UTF-8
+  // 跨 chunk 截断成 U+FFFD；stderr 同时累积留非零退出尾巴
+  const stdoutDecoder = new StringDecoder('utf8');
+  const stderrDecoder = new StringDecoder('utf8');
   child.stdout?.on('data', (chunk: Buffer) => {
-    if (logFile) appendWorkerLog(logFile, chunk.toString('utf8'));
+    if (logFile) appendWorkerLog(logFile, stdoutDecoder.write(chunk));
   });
   const stderr: string[] = [];
   child.stderr?.on('data', (chunk: Buffer) => {
-    if (logFile) appendWorkerLog(logFile, chunk.toString('utf8'));
+    if (logFile) appendWorkerLog(logFile, stderrDecoder.write(chunk));
     if (stderr.join('').length < 2000) stderr.push(chunk.toString('utf8'));
   });
   const timer = setTimeout(() => {

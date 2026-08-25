@@ -13,6 +13,7 @@
  */
 
 import { readFileSync } from 'fs';
+import { initLogger } from '../logger.js';
 import { runWechatReply } from './wechat-reply.js';
 import type { AgentSecrets } from '../types.js';
 
@@ -22,6 +23,9 @@ function parseArg(name: string): string | undefined {
 }
 
 async function main(): Promise<void> {
+  // #122：worker 日志落盘（agent logger 只写文件；不初始化则日志全丢）
+  initLogger();
+
   const dataDir = parseArg('data-dir');
   const userId = parseArg('user-id');
   const message = parseArg('message');
