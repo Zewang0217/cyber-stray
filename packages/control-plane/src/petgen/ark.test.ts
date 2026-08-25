@@ -1,16 +1,15 @@
 /**
- * 火山方舟客户端测试（#128）：mock fetch，不打真实 API
+ * 火山方舟生图客户端测试（#128）：mock fetch，不打真实 API
  *
  * 契约：同步生图（POST /images/generations → b64_json 落盘，无任务轮询）；
- * 参考图 data URL（image 字段）；豆包视觉（OpenAI 兼容 chat/completions，
- * content 数组 + image_url）→ content 字符串 + JSON 解析（容忍 markdown 围栏）。
+ * 参考图 data URL（image 字段）。视觉质检见 vision.test.ts。
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { createImageGenerator, createVisionQc, parseQcJson } from './ark.js';
+import { createImageGenerator } from './ark.js';
 
 const API_KEY = 'ark-test';
 
@@ -49,15 +48,6 @@ describe('createImageGenerator', () => {
     const gen = createImageGenerator('', { model: 'm', size: '2K' });
     await expect(
       gen.generate({ kind: 'concept', prompt: '一只猫', outPath: join(tmp, 'x.png') }),
-    ).rejects.toThrow(/ARK_API_KEY/);
-    const qc = createVisionQc('', { model: 'doubao-1.5-vision-pro' });
-    await expect(
-      qc.inspect({
-        referencePath: join(tmp, 'ref.png'),
-        statePath: join(tmp, 'idle.png'),
-        state: 'idle',
-        spec: { specText: '猫' },
-      }),
     ).rejects.toThrow(/ARK_API_KEY/);
   });
 
@@ -127,72 +117,5 @@ describe('createImageGenerator', () => {
     await expect(gen.generate({ kind: 'grid', prompt: 'x', outPath: join(tmp, 'g.png') })).rejects.toThrow(
       /无 b64_json/,
     );
-  });
-});
-
-describe('createVisionQc', () => {
-  let tmp: string;
-
-  beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'cp-petgen-ark-vl-'));
-    // 1x1 透明 PNG
-    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
-    writeFileSync(join(tmp, 'concept.png'), Buffer.from(png, 'base64'));
-    writeFileSync(join(tmp, 'idle.png'), Buffer.from(png, 'base64'));
-  });
-
-  afterEach(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it('双图 data URL + OpenAI content 数组 + JSON 输出解析', async () => {
-    let seenBody = '';
-    let seenUrl = '';
-    const fetchFn = fakeFetch(
-      [{ status: 200, body: { choices: [{ message: { content: '```json\n{"pass": false, "issues": ["有文字水印"]}\n```' } }] } }],
-      (url, init) => {
-        seenUrl = url;
-        seenBody = String(init.body);
-      },
-    );
-    const qc = createVisionQc(API_KEY, { model: 'doubao-1.5-vision-pro', fetchFn });
-    const result = await qc.inspect({
-      referencePath: join(tmp, 'concept.png'),
-      statePath: join(tmp, 'idle.png'),
-      state: 'idle',
-      spec: { specText: '一只猫' },
-    });
-    expect(result).toEqual({ pass: false, issues: ['有文字水印'] });
-    expect(seenUrl).toContain('/chat/completions');
-    expect(seenBody).toContain('doubao-1.5-vision-pro');
-    const body = JSON.parse(seenBody) as { messages: Array<{ content: Array<{ type: string; image_url?: { url: string } }> }> };
-    const content = body.messages[0]!.content;
-    expect(content[0]).toMatchObject({ type: 'image_url' });
-    expect(content[0]!.image_url!.url).toContain('data:image/png;base64,');
-    expect(content[2]).toMatchObject({ type: 'text' });
-  });
-
-  it('质检响应非 JSON → 抛错（禁兜底）', async () => {
-    const fetchFn = fakeFetch([{ status: 200, body: { choices: [{ message: { content: '我看不清' } }] } }]);
-    const qc = createVisionQc(API_KEY, { model: 'doubao-1.5-vision-pro', fetchFn });
-    await expect(
-      qc.inspect({
-        referencePath: join(tmp, 'concept.png'),
-        statePath: join(tmp, 'idle.png'),
-        state: 'idle',
-        spec: { specText: '一只猫' },
-      }),
-    ).rejects.toThrow(/非 JSON/);
-  });
-});
-
-describe('parseQcJson', () => {
-  it('容忍 markdown 围栏与空白', () => {
-    expect(parseQcJson('```json\n{"pass": true, "issues": []}\n```')).toEqual({ pass: true, issues: [] });
-    expect(parseQcJson('{"pass": false, "issues": ["a", "b"]}')).toEqual({ pass: false, issues: ['a', 'b'] });
-  });
-
-  it('缺字段 → 抛错', () => {
-    expect(() => parseQcJson('{"ok": true}')).toThrow(/缺字段/);
   });
 });

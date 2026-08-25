@@ -23,7 +23,8 @@ import { BindingService } from './ilink/binding-service.js';
 import { WechatPoller } from './ilink/poller.js';
 import { createWechatPushGateway } from './ilink/wechat-gateway.js';
 import { PetGenProcessor } from './petgen/processor.js';
-import { createImageGenerator, createVisionQc } from './petgen/ark.js';
+import { createImageGenerator } from './petgen/ark.js';
+import { createVisionQc } from './petgen/vision.js';
 import { createSplitter } from './petgen/splitter.js';
 import { createStructureQc } from './petgen/structure-qc.js';
 import { initLogger } from './logger.js';
@@ -101,7 +102,7 @@ const petGenProcessor = new PetGenProcessor({
     model: config.arkImageModel,
     size: '2K', // Seedream 5.0 无 1K 档，最小 2K（2048×2048）
   }),
-  visionQc: createVisionQc(config.arkApiKey, { model: config.arkVisionModel }),
+  visionQc: createVisionQc(config.visionApiKey, { model: config.visionModel }),
   splitter: createSplitter(),
   structureQc: createStructureQc(),
   config: {

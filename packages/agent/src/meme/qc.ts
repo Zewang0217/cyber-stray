@@ -4,8 +4,8 @@
  * 两层：
  * - 结构层：成品文件存在且非空（脚本层已在 overlay 抛错，这里做最终落盘
  *   检查——禁兜底：文件缺失/空 → 判 fail 不进图鉴）。
- * - 语义层：豆包视觉检查画面完整 / 文字可读无 AI 画字残留 / 与话题情绪一致
- *   / IP 模式角色一致（buildMemeQcPrompt，见 ark.ts）。
+ * - 语义层：视觉模型检查画面完整 / 文字可读无 AI 画字残留 / 与话题情绪一致
+ *   / IP 模式角色一致（buildMemeQcPrompt，见 vision.ts）。
  *
  * 质检不过 → 不收录（qcPass=false，图鉴 API 只展示 pass 的）。依赖全部
  * 注入（structure 检查 fs、semantic 检查由 createVisionQc 注入），可 mock。
@@ -13,7 +13,7 @@
 
 import { access, stat } from 'fs/promises';
 import type { MemeCopy, MemeMode, MemeQc } from './types.js';
-import type { MemeVisionQcRequest } from './ark.js';
+import type { MemeVisionQcRequest } from './vision.js';
 
 /** 结构检查：文件存在且大小 > 0（禁兜底——缺失/空文件判 fail） */
 async function checkStructure(imagePath: string): Promise<{ pass: boolean; issues: string[] }> {
