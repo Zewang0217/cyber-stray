@@ -156,12 +156,15 @@ export function createDataRoutes({ config }: DataDeps): Hono {
     return c.json({ success: true, data: snapshots.slice(-limit) });
   });
 
-  /** GET /api/history — 历史推送记录（JSONL 解析 + 展示层归一化，倒序） */
+  /** GET /api/history — 历史推送记录（JSONL 解析 + 展示层归一化，倒序；支持分页） */
   app.get('/history', async (c) => {
     const scoped = await scopedTenant(c.req.raw, config);
     if ('error' in scoped) {
       return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
     }
+    // 分页（#123）：limit 默认 100 上限 200；offset 默认 0。不带参数 = 第一页。
+    const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 100) || 100, 1), 200);
+    const offset = Math.max(Number(c.req.query('offset') ?? 0) || 0, 0);
     const historyDir = join(scoped.dir, 'history');
     let files: string[] = [];
     try {
@@ -194,7 +197,13 @@ export function createDataRoutes({ config }: DataDeps): Hono {
       (a, b) =>
         new Date(String(b.timestamp)).getTime() - new Date(String(a.timestamp)).getTime(),
     );
-    return c.json({ success: true, data: items });
+    const total = items.length;
+    const page = items.slice(offset, offset + limit);
+    return c.json({
+      success: true,
+      data: page,
+      pagination: { total, offset, limit, hasMore: offset + limit < total },
+    });
   });
 
   return app;

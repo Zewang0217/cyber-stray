@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { PushContent, ApiResponse } from "@/lib/types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ApiResponse, PaginationMeta, PushContent } from "@/lib/types";
 
 interface UseHistoryOptions {
   /** S8：SSE 刷新信号（变化即拉取） */
@@ -9,59 +9,123 @@ interface UseHistoryOptions {
   /** SSE 是否连通（连通时降频轮询为健康心跳；断开回落 5s 兜底——总线无重放，
    * 断线期间的 worker 事件永久丢失，只能靠轮询补齐） */
   realtimeConnected?: boolean;
+  /** 每页条数（#123 分页；默认 50） */
+  pageSize?: number;
 }
 
 interface UseHistoryReturn {
   items: PushContent[];
+  /** 记录总数（分页元数据） */
+  total: number;
+  /** 首屏加载中 */
   isLoading: boolean;
+  /** 滚动加载更多进行中 */
+  isLoadingMore: boolean;
+  hasMore: boolean;
   error: string | null;
+  loadMore: () => void;
+}
+
+/** /api/history 分页响应（ApiResponse + pagination） */
+interface HistoryResponse extends ApiResponse<PushContent[]> {
+  pagination?: PaginationMeta;
+}
+
+/** 记录去重键（无稳定 id：timestamp+正文） */
+function recordKey(it: PushContent): string {
+  return `${it.timestamp}|${it.message}`;
 }
 
 /**
- * 获取历史推送记录的 Hook。
- * SSE 实时（refreshSignal 变化立即拉）+ 定时轮询兜底（同 useAgentState）。
+ * 获取历史推送记录的 Hook（#123 分页）。
+ * - 首屏 / SSE 刷新：reset（清空重拉第一页）
+ * - 滚动到底：append（按已加载条数追加下一页）
+ * - 轮询兜底：merge（拉第一页大窗口与现有合并去重——保留已加载内容，
+ *   新记录插顶，不打断阅读位置）
  */
 export function useHistory(options: UseHistoryOptions = {}): UseHistoryReturn {
-  const { refreshSignal = 0, realtimeConnected = false } = options;
+  const { refreshSignal = 0, realtimeConnected = false, pageSize = 50 } = options;
   const [items, setItems] = useState<PushContent[]>([]);
+  const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fetchHistoryRef = useRef<() => Promise<void>>(async () => {});
+  const loadingRef = useRef(false);
+  /** 已加载条数（append 的 offset 基准；随 setItems 同步） */
+  const loadedRef = useRef(0);
 
-  useEffect(() => {
-    const fetchHistory = async (): Promise<void> => {
+  const fetchHistory = useCallback(
+    async (mode: "reset" | "merge" | "append") => {
+      if (loadingRef.current) return;
+      loadingRef.current = true;
+      if (mode === "append") setIsLoadingMore(true);
       try {
-        const res = await fetch("/api/history");
-        const json = (await res.json()) as ApiResponse<PushContent[]>;
+        // merge 用大窗口保证轮询时能覆盖已加载范围（新记录插顶且旧记录不被清掉）
+        const limit = mode === "merge" ? Math.max(pageSize * 3, 100) : pageSize;
+        const offset = mode === "append" ? loadedRef.current : 0;
+        const res = await fetch(`/api/history?limit=${limit}&offset=${offset}`);
+        const json = (await res.json()) as HistoryResponse;
 
-        if (!json.success) {
+        if (!json.success || !json.data) {
           throw new Error(json.error ?? "获取历史记录失败");
         }
-
-        setItems(json.data ?? []);
+        const incoming = json.data;
+        const meta = json.pagination;
+        setTotal(meta?.total ?? incoming.length);
+        setHasMore(meta?.hasMore ?? false);
+        setItems((prev) => {
+          if (mode === "reset") {
+            loadedRef.current = incoming.length;
+            return incoming;
+          }
+          if (mode === "append") {
+            const seen = new Set(prev.map(recordKey));
+            const fresh = incoming.filter((it) => !seen.has(recordKey(it)));
+            loadedRef.current += fresh.length;
+            return [...prev, ...fresh];
+          }
+          // merge：新记录插顶，保留已加载的（去重；append 的深页不因轮询丢失）
+          const seen = new Set(incoming.map(recordKey));
+          const kept = prev.filter((it) => !seen.has(recordKey(it)));
+          loadedRef.current = incoming.length + kept.length;
+          return [...incoming, ...kept];
+        });
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : "未知错误");
       } finally {
+        loadingRef.current = false;
         setIsLoading(false);
+        setIsLoadingMore(false);
       }
-    };
-    fetchHistoryRef.current = fetchHistory;
-    void fetchHistory();
-  }, []);
+    },
+    [pageSize],
+  );
 
+  // 首屏
   useEffect(() => {
-    if (refreshSignal > 0) void fetchHistoryRef.current();
-  }, [refreshSignal]);
+    void fetchHistory("reset");
+  }, [fetchHistory]);
 
-  // 定时轮询兜底：SSE 断开时事件无重放（内存总线），只能轮询补齐
+  // SSE 实时刷新：新事件到达 → 重置重拉（顶部出现新记录）
+  useEffect(() => {
+    if (refreshSignal > 0) void fetchHistory("reset");
+  }, [refreshSignal, fetchHistory]);
+
+  // 定时轮询兜底：SSE 断开时事件无重放（内存总线），只能轮询补齐。
+  // merge 模式：不打断已滚动位置，新记录插顶。
   useEffect(() => {
     const interval = setInterval(
-      () => void fetchHistoryRef.current(),
+      () => void fetchHistory("merge"),
       realtimeConnected ? 60_000 : 15_000,
     );
     return () => clearInterval(interval);
-  }, [realtimeConnected]);
+  }, [realtimeConnected, fetchHistory]);
 
-  return { items, isLoading, error };
+  const loadMore = useCallback(() => {
+    if (hasMore && !loadingRef.current) void fetchHistory("append");
+  }, [hasMore, fetchHistory]);
+
+  return { items, total, isLoading, isLoadingMore, hasMore, error, loadMore };
 }
