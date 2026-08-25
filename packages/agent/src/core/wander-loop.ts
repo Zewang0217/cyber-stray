@@ -114,7 +114,8 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
       void recordUsage(getDataRoot(), {
         kind: 'llm',
         model: config.llmModel,
-        tokens: result?.usage?.totalTokens,
+        inputTokens: result?.usage?.inputTokens,
+        outputTokens: result?.usage?.outputTokens,
       });
 
       break; // 成功，退出重试

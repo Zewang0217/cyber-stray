@@ -297,7 +297,8 @@ export class ReflectionEngine {
     void recordUsage(getDataRoot(), {
       kind: 'llm',
       model: cfg.llmModel,
-      tokens: result?.usage?.totalTokens,
+      inputTokens: result?.usage?.inputTokens,
+      outputTokens: result?.usage?.outputTokens,
     });
 
     return result.text.trim();

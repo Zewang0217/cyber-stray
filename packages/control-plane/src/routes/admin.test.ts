@@ -198,4 +198,68 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     );
     expect(res.status).toBe(404);
   });
+
+  it('GET /api/admin/usage：聚合费用/token/张数 + 每租户 + 最近明细', async () => {
+    // seed usage 数据：tenant-a 两条 LLM + 一张生图；tenant-b 无用量
+    const writeUsage = (tid: string, lines: Array<Record<string, unknown>>) => {
+      const dir = join(tenantDataDir(dataDir, tid), 'usage');
+      mkdirSync(dir, { recursive: true });
+      const today = new Date();
+      const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      writeFileSync(
+        join(dir, `usage-${date}.jsonl`),
+        lines.map((l) => JSON.stringify(l)).join('\n') + '\n',
+      );
+    };
+    writeUsage('tenant-a', [
+      { timestamp: '2026-08-25T01:00:00.000Z', tenantId: 'tenant-a', kind: 'llm', model: 'deepseek-chat', inputTokens: 1_000_000, outputTokens: 500_000 },
+      { timestamp: '2026-08-25T02:00:00.000Z', tenantId: 'tenant-a', kind: 'image', model: 'doubao-seedream-5-0-260128', images: 1 },
+      { timestamp: '2026-08-24T03:00:00.000Z', tenantId: 'tenant-a', kind: 'vision_qc', model: 'glm-4v-flash', images: 1 },
+    ]);
+
+    const res = await app.request(await authed('http://x/api/admin/usage'));
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      data: { summary: Record<string, number>; perTenant: Array<Record<string, unknown>>; recent: Array<Record<string, unknown>> };
+    };
+    const { summary, perTenant, recent } = json.data;
+    expect(summary.totalLlmTokens).toBe(1_500_000);
+    expect(summary.totalImages).toBe(1);
+    expect(summary.totalVisionQc).toBe(1);
+    expect(summary.totalCost).toBeCloseTo(6 + 0.4, 6); // LLM 6 元 + 生图 0.4 元
+
+    const a = perTenant.find((p) => p.tenantId === 'tenant-a');
+    expect(a?.llmTokens).toBe(1_500_000);
+    expect(a?.imageCount).toBe(1);
+    expect(a?.visionCount).toBe(1);
+    const b = perTenant.find((p) => p.tenantId === 'tenant-b');
+    expect(b?.llmTokens).toBe(0);
+    expect(b?.cost).toBe(0);
+
+    // 明细降序 + 含 cost
+    expect(recent).toHaveLength(3);
+    expect(recent[0]?.kind).toBe('image');
+    expect(recent[2]?.cost).toBe(0); // glm-4v-flash 免费
+  });
+
+  it('GET /api/admin/usage?from/to：时间范围筛选文件与行', async () => {
+    const dir = join(tenantDataDir(dataDir, 'tenant-a'), 'usage');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'usage-2026-08-20.jsonl'), JSON.stringify({ timestamp: '2026-08-20T01:00:00.000Z', tenantId: 'tenant-a', kind: 'llm', model: 'deepseek-chat', inputTokens: 100 }) + '\n');
+    writeFileSync(join(dir, 'usage-2026-08-25.jsonl'), JSON.stringify({ timestamp: '2026-08-25T01:00:00.000Z', tenantId: 'tenant-a', kind: 'llm', model: 'deepseek-chat', inputTokens: 200 }) + '\n');
+
+    const res = await app.request(await authed('http://x/api/admin/usage?from=2026-08-22&to=2026-08-25'));
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: { summary: { totalLlmTokens: number } } };
+    expect(json.data.summary.totalLlmTokens).toBe(200); // 20 日的文件被排除
+  });
+
+  it('GET /api/admin/usage：非法日期 → 400；非管理员 → 403', async () => {
+    const bad = await app.request(await authed('http://x/api/admin/usage?from=abc'));
+    expect(bad.status).toBe(400);
+    const forbidden = await app.request(
+      await authed('http://x/api/admin/usage', {}, { sub: 'evil-user', tenantId: 'tenant-b' }),
+    );
+    expect(forbidden.status).toBe(403);
+  });
 });

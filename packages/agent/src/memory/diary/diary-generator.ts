@@ -255,7 +255,8 @@ export async function generateDiaryNarrative(
   void recordUsage(getDataRoot(), {
     kind: 'llm',
     model: modelIdOf(model),
-    tokens: result?.usage?.totalTokens,
+    inputTokens: result?.usage?.inputTokens,
+    outputTokens: result?.usage?.outputTokens,
   });
   return result.text;
 }

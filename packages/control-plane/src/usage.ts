@@ -20,6 +20,8 @@ export interface UsageEntry {
   kind: UsageKind;
   model: string;
   tokens?: number;
+  inputTokens?: number;
+  outputTokens?: number;
   images?: number;
 }
 

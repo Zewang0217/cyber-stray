@@ -11,7 +11,7 @@
  */
 
 import { Hono } from 'hono';
-import { readFile } from 'fs/promises';
+import { readFile, readdir } from 'fs/promises';
 import { join } from 'path';
 import { eq } from 'drizzle-orm';
 import type { ControlPlaneConfig } from '../config.js';
@@ -21,6 +21,7 @@ import { tenantDataDir } from '../tenant.js';
 import { PLAN_VALUES, type PlanValue } from '../plan/limits.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
+import { costOf, type UsageRow } from '../pricing.js';
 
 export interface AdminDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret' | 'adminSubs'>;
@@ -60,6 +61,85 @@ async function readTenantStats(dataDir: string, tenantId: string): Promise<{
     }
     throw error;
   }
+}
+
+/** usage 文件名日期（usage-YYYY-MM-DD.jsonl → 'YYYY-MM-DD'）；非法名 = null */
+function usageFileDate(file: string): string | null {
+  const m = /^usage-(\d{4}-\d{2}-\d{2})\.jsonl$/.exec(file);
+  return m ? m[1]! : null;
+}
+
+/** 读租户 usage 行（时间范围 [from, to] 日期字符串；缺省全部；行内 timestamp 再筛） */
+async function readTenantUsage(
+  dataDir: string,
+  tenantId: string,
+  from?: string,
+  to?: string,
+): Promise<UsageRow[]> {
+  const dir = join(tenantDataDir(dataDir, tenantId), 'usage');
+  let files: string[];
+  try {
+    files = await readdir(dir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; // 租户未产生用量 = 合法空态
+    throw error;
+  }
+  const rows: UsageRow[] = [];
+  for (const file of files) {
+    const date = usageFileDate(file);
+    if (!date) continue;
+    if (from && date < from) continue;
+    if (to && date > to) continue;
+    let content: string;
+    try {
+      content = await readFile(join(dir, file), 'utf-8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue; // 并发轮转可能消失
+      throw error;
+    }
+    for (const line of content.split('\n')) {
+      if (!line.trim()) continue;
+      let row: UsageRow;
+      try {
+        row = JSON.parse(line) as UsageRow;
+      } catch {
+        continue; // 半行写入（崩溃残留）跳过，不拖垮聚合
+      }
+      if (!row.timestamp || typeof row.kind !== 'string') continue;
+      const day = row.timestamp.slice(0, 10);
+      if (from && day < from) continue;
+      if (to && day > to) continue;
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
+/** 租户级用量聚合（单租户；无数据 = 0，不报错） */
+function aggregateTenantUsage(rows: UsageRow[]): {
+  llmTokens: number;
+  imageCount: number;
+  visionCount: number;
+  cost: number;
+  lastActive: string | null;
+} {
+  let llmTokens = 0;
+  let imageCount = 0;
+  let visionCount = 0;
+  let cost = 0;
+  let lastActive: string | null = null;
+  for (const row of rows) {
+    if (row.kind === 'llm') {
+      llmTokens += (row.inputTokens ?? 0) + (row.outputTokens ?? 0);
+    } else if (row.kind === 'image') {
+      imageCount += row.images ?? 1;
+    } else if (row.kind === 'vision_qc') {
+      visionCount += row.images ?? 1;
+    }
+    cost += costOf(row);
+    if (!lastActive || row.timestamp > lastActive) lastActive = row.timestamp;
+  }
+  return { llmTokens, imageCount, visionCount, cost, lastActive };
 }
 
 export function createAdminRoutes({ config }: AdminDeps): Hono {
@@ -212,6 +292,56 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
     }
     const removed = await db.delete(admins).where(eq(admins.sub, sub)).run();
     return c.json({ success: true, data: { removed: removed.rowsAffected > 0 } });
+  });
+
+  /**
+   * GET /api/admin/usage?from=YYYY-MM-DD&to=YYYY-MM-DD — 用量成本可视化（ADR-0007）
+   *
+   * 响应：summary（总费用/token/张数）+ perTenant（每租户聚合）+ recent（最近 50 条明细）。
+   * 费用按内置默认单价表折算（pricing.ts）；未知模型 0（不瞎估）。
+   */
+  app.get('/usage', async (c) => {
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) {
+      return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
+    }
+    const from = c.req.query('from');
+    const to = c.req.query('to');
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    if ((from && !dateRe.test(from)) || (to && !dateRe.test(to))) {
+      return c.json(jsonError('from/to 须为 YYYY-MM-DD'), 400);
+    }
+
+    const db = await getDb(config.dataDir);
+    const tenantRows = await db.select().from(tenants).all();
+    const perTenant = await Promise.all(
+      tenantRows.map(async (t) => {
+        const rows = await readTenantUsage(config.dataDir, t.id, from, to);
+        const agg = aggregateTenantUsage(rows);
+        return {
+          tenantId: t.id,
+          tenantName: t.name,
+          plan: t.plan,
+          ...agg,
+        };
+      }),
+    );
+
+    const allRows = (await Promise.all(
+      tenantRows.map((t) => readTenantUsage(config.dataDir, t.id, from, to)),
+    )).flat();
+    const summary = {
+      totalCost: perTenant.reduce((s, p) => s + p.cost, 0),
+      totalLlmTokens: perTenant.reduce((s, p) => s + p.llmTokens, 0),
+      totalImages: perTenant.reduce((s, p) => s + p.imageCount, 0),
+      totalVisionQc: perTenant.reduce((s, p) => s + p.visionCount, 0),
+    };
+    const recent = allRows
+      .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))
+      .slice(0, 50)
+      .map((row) => ({ ...row, cost: costOf(row) }));
+
+    return c.json({ success: true, data: { summary, perTenant, recent } });
   });
 
   return app;

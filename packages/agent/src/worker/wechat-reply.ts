@@ -126,7 +126,8 @@ export async function runWechatReply(
       void recordUsage(dataDir, {
         kind: 'llm',
         model: config.llmModel,
-        tokens: result?.usage?.totalTokens,
+        inputTokens: result?.usage?.inputTokens,
+        outputTokens: result?.usage?.outputTokens,
       });
       reply = result.text;
     } finally {
