@@ -88,6 +88,15 @@ export async function runMemePipeline(
   const finalPath = join(memeAssetsDir(deps.dataDir), meta.file);
 
   // 3. 画面生图（图文分离：画面 prompt 绝不含梗文字）
+  // 生图前确保目录存在（#133 产机暴露：mkdir 原在收录步，writeFile rawPath ENOENT）
+  try {
+    await mkdir(memeAssetsDir(deps.dataDir), { recursive: true });
+  } catch (error) {
+    return {
+      status: 'failed',
+      error: `表情包目录创建失败: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
   const prompt = buildMemeImagePrompt(copy, input.mode, input.petSpecText);
   try {
     await deps.imageGen.generate({
@@ -122,7 +131,6 @@ export async function runMemePipeline(
 
   // 6. 收录（manifest 记录 qcPass=true，图已落盘）
   try {
-    await mkdir(memeAssetsDir(deps.dataDir), { recursive: true });
     await appendManifest(deps.dataDir, { ...meta, qcPass: true });
   } catch (error) {
     return {
