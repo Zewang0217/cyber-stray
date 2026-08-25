@@ -10,6 +10,7 @@
  */
 
 import { generateText } from 'ai';
+import { sanitizeForLLM } from '../utils/text-sanitize.js';
 import { z } from 'zod';
 import type { MemeCopy } from './types.js';
 
@@ -64,6 +65,6 @@ export async function generateMemeCopy(
   prompt: string,
   model: Parameters<typeof generateText>[0]['model'],
 ): Promise<string> {
-  const result = await generateText({ model, temperature: 0.9, prompt });
+  const result = await generateText({ model, temperature: 0.9, prompt: sanitizeForLLM(prompt) });
   return result.text;
 }

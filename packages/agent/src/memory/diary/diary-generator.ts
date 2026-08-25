@@ -17,6 +17,7 @@
  */
 
 import { generateText } from 'ai';
+import { sanitizeForLLM } from '../../utils/text-sanitize.js';
 import { readFile, mkdir, appendFile, writeFile, rename } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -248,6 +249,6 @@ export async function generateDiaryNarrative(
   model: Parameters<typeof generateText>[0]['model'],
   temperature: number,
 ): Promise<string> {
-  const result = await generateText({ model, temperature, prompt });
+  const result = await generateText({ model, temperature, prompt: sanitizeForLLM(prompt) });
   return result.text;
 }

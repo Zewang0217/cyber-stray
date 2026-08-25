@@ -11,6 +11,7 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { generateText } from 'ai';
+import { sanitizeForLLM } from '../utils/text-sanitize.js';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { loadConfig, setTenantContext } from '../config.js';
 import type { AgentSecrets } from '../types.js';
@@ -115,8 +116,8 @@ export async function runWechatReply(
       const provider = createDeepSeek({ apiKey });
       const result = await generateText({
         model: provider.chat(config.llmModel),
-        system,
-        prompt: user,
+        system: sanitizeForLLM(system),
+        prompt: sanitizeForLLM(user),
         temperature: 0.8,
         maxOutputTokens: 500,
       });

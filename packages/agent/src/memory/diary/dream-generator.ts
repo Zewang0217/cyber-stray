@@ -20,6 +20,7 @@
  */
 
 import { generateText } from 'ai';
+import { sanitizeForLLM } from '../../utils/text-sanitize.js';
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
 import { getDataPath } from '../../config.js';
@@ -114,6 +115,6 @@ export async function generateDreamNarrative(
   model: Parameters<typeof generateText>[0]['model'],
   temperature: number,
 ): Promise<string> {
-  const result = await generateText({ model, temperature, prompt });
+  const result = await generateText({ model, temperature, prompt: sanitizeForLLM(prompt) });
   return result.text;
 }
