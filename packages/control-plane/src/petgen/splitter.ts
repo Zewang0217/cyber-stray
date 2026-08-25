@@ -15,7 +15,7 @@ import type { Splitter } from './types.js';
 
 /** pet-sheet.py 绝对路径（仓库内锚定，与 worker-runner AGENT_CLI 同款） */
 const PET_SHEET_PY = fileURLToPath(
-  new URL('../../../../web/scripts/pet-sheet.py', import.meta.url),
+  new URL('../../../web/scripts/pet-sheet.py', import.meta.url),
 );
 
 /** 注入式 spawn（测试 fake；真实实现见 realSpawn） */
