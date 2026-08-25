@@ -179,7 +179,9 @@ export function createDataRoutes({ config }: DataDeps): Hono {
     }
 
     const items: Array<Record<string, unknown>> = [];
-    for (const file of files.slice(-50)) {
+    // 全量遍历（分页契约要求 total/hasMore 基于全部记录；speaks 每天数行，
+    // 解析开销毫秒级——不再截断到最近 50 文件，超窗历史可分页可达）
+    for (const file of files) {
       let content: string;
       try {
         content = await readFile(join(historyDir, file), 'utf-8');

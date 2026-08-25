@@ -38,10 +38,14 @@ function recordKey(it: PushContent): string {
 
 /**
  * 获取历史推送记录的 Hook（#123 分页）。
- * - 首屏 / SSE 刷新：reset（清空重拉第一页）
- * - 滚动到底：append（按已加载条数追加下一页）
+ * - 首屏 / SSE 刷新：reset（清空重拉第一页；reqId 递增使在飞旧请求作废）
+ * - 滚动到底：append（按已加载条数追加下一页；loadingRef 守卫防并发）
  * - 轮询兜底：merge（拉第一页大窗口与现有合并去重——保留已加载内容，
  *   新记录插顶，不打断阅读位置）
+ *
+ * 并发模型：reset/merge 各递增 reqId，响应应用前校验仍为最新（后到者胜）；
+ * append 不递增，若期间出现新基线则丢弃结果。loadedRef/itemsRef 在
+ * setState updater 外同步（updater 必须纯函数——React StrictMode 双调用安全）。
  */
 export function useHistory(options: UseHistoryOptions = {}): UseHistoryReturn {
   const { refreshSignal = 0, realtimeConnected = false, pageSize = 50 } = options;
@@ -52,14 +56,30 @@ export function useHistory(options: UseHistoryOptions = {}): UseHistoryReturn {
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loadingRef = useRef(false);
-  /** 已加载条数（append 的 offset 基准；随 setItems 同步） */
+  /** 已加载条数（append 的 offset 基准） */
   const loadedRef = useRef(0);
+  /** items 同步镜像（updater 外读当前列表） */
+  const itemsRef = useRef<PushContent[]>([]);
+  /** 基线请求 id：reset/merge 递增，使在飞旧请求结果作废（防乱序覆盖） */
+  const reqIdRef = useRef(0);
+
+  const applyItems = useCallback((updater: (prev: PushContent[]) => PushContent[]) => {
+    setItems((prev) => {
+      const next = updater(prev);
+      itemsRef.current = next;
+      return next;
+    });
+  }, []);
 
   const fetchHistory = useCallback(
     async (mode: "reset" | "merge" | "append") => {
-      if (loadingRef.current) return;
+      // append 受并发守卫（滚动高频）；reset/merge 不被拦截（SSE 事件不丢，
+      // 乱序由 reqId 兜底）
+      if (mode === "append" && loadingRef.current) return;
       loadingRef.current = true;
       if (mode === "append") setIsLoadingMore(true);
+      if (mode === "reset") setIsLoading(true);
+      const reqId = mode === "append" ? reqIdRef.current : ++reqIdRef.current;
       try {
         // merge 用大窗口保证轮询时能覆盖已加载范围（新记录插顶且旧记录不被清掉）
         const limit = mode === "merge" ? Math.max(pageSize * 3, 100) : pageSize;
@@ -70,37 +90,44 @@ export function useHistory(options: UseHistoryOptions = {}): UseHistoryReturn {
         if (!json.success || !json.data) {
           throw new Error(json.error ?? "获取历史记录失败");
         }
+        // 已被更新的基线请求取代 → 丢弃（reqId 校验）
+        if (reqId !== reqIdRef.current) return;
+
         const incoming = json.data;
         const meta = json.pagination;
         setTotal(meta?.total ?? incoming.length);
         setHasMore(meta?.hasMore ?? false);
-        setItems((prev) => {
-          if (mode === "reset") {
-            loadedRef.current = incoming.length;
-            return incoming;
-          }
-          if (mode === "append") {
-            const seen = new Set(prev.map(recordKey));
-            const fresh = incoming.filter((it) => !seen.has(recordKey(it)));
-            loadedRef.current += fresh.length;
-            return [...prev, ...fresh];
-          }
+
+        const prev = itemsRef.current;
+        if (mode === "reset") {
+          loadedRef.current = incoming.length;
+          applyItems(() => incoming);
+        } else if (mode === "append") {
+          const seen = new Set(prev.map(recordKey));
+          const fresh = incoming.filter((it) => !seen.has(recordKey(it)));
+          loadedRef.current += fresh.length;
+          applyItems((p) => [...p, ...fresh]);
+        } else {
           // merge：新记录插顶，保留已加载的（去重；append 的深页不因轮询丢失）
           const seen = new Set(incoming.map(recordKey));
           const kept = prev.filter((it) => !seen.has(recordKey(it)));
           loadedRef.current = incoming.length + kept.length;
-          return [...incoming, ...kept];
-        });
+          applyItems(() => [...incoming, ...kept]);
+        }
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "未知错误");
+        if (reqId === reqIdRef.current) {
+          setError(err instanceof Error ? err.message : "未知错误");
+        }
       } finally {
-        loadingRef.current = false;
-        setIsLoading(false);
-        setIsLoadingMore(false);
+        if (reqId === reqIdRef.current) {
+          loadingRef.current = false;
+          setIsLoading(false);
+          setIsLoadingMore(false);
+        }
       }
     },
-    [pageSize],
+    [pageSize, applyItems],
   );
 
   // 首屏
@@ -108,7 +135,7 @@ export function useHistory(options: UseHistoryOptions = {}): UseHistoryReturn {
     void fetchHistory("reset");
   }, [fetchHistory]);
 
-  // SSE 实时刷新：新事件到达 → 重置重拉（顶部出现新记录）
+  // SSE 实时刷新：新事件到达 → 重置重拉（顶部出现新记录；不被在飞请求丢弃）
   useEffect(() => {
     if (refreshSignal > 0) void fetchHistory("reset");
   }, [refreshSignal, fetchHistory]);
