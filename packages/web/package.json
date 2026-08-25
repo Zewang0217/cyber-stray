@@ -25,6 +25,7 @@
     "postprocessing": "^6.39.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-markdown": "^10.1.0",
     "tailwind-merge": "^3.5.0",
     "three": "0.185.1"
   },

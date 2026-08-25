@@ -1,8 +1,10 @@
 "use client";
 
 import { motion } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
 import { useState } from "react";
-import type { PushContent } from "@/lib/types";
+import type { PushContent, SpeakType } from "@/lib/types";
 import { ExternalLink, ThumbsUp, ThumbsDown, Flame } from "lucide-react";
 import { useFeedback } from "@/hooks/useFeedback";
 
@@ -12,27 +14,80 @@ interface FeedCardProps {
   onFeedbackDone?: () => void;
 }
 
+/** 内容类型标签（与 CP 归一化的 type 对齐；静态映射用 Record） */
+const TYPE_LABELS: Record<SpeakType, string> = {
+  share: "分享",
+  nonsense: "碎碎念",
+  article: "文章",
+};
+
 /** 推送状态徽标：已推送不额外标记，其余两种需要让主人看出区别 */
 function statusBadge(item: PushContent): { label: string; className: string } | null {
   if (item.gated) {
     return {
-      label: "仅学习 · 未推送",
-      className: "bg-subtext/10 text-subtext",
+      label: "未推送（门控拦截）",
+      className: "bg-[var(--c-engraving-fine)] text-subtext",
     };
   }
   if (item.pushed === false) {
     return {
-      label: "推送失败",
-      className: "bg-[var(--c-state-warn)]/15 text-[var(--c-state-warn)]",
+      label: "未推送",
+      className: "border border-[var(--c-state-warn)]/50 text-[var(--c-state-warn)]",
     };
   }
   return null;
 }
 
 /**
- * 采集条目卡(原推流卡片)
+ * Markdown 正文渲染（#121）：宠物文案含粗体/列表等语法，
+ * 用 react-markdown 渲染并适配项目 CSS 变量体系；raw HTML 默认不渲染（安全）。
+ */
+const markdownComponents: Components = {
+  p: ({ children }) => (
+    <p className="text-sm text-[var(--c-faded-ink)] leading-relaxed mb-2 last:mb-0">{children}</p>
+  ),
+  strong: ({ children }) => (
+    <strong className="font-semibold text-text">{children}</strong>
+  ),
+  em: ({ children }) => <em className="italic text-text">{children}</em>,
+  ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+  li: ({ children }) => <li className="text-sm text-[var(--c-faded-ink)] leading-relaxed">{children}</li>,
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-[var(--c-amber)] underline underline-offset-2 hover:opacity-80"
+    >
+      {children}
+    </a>
+  ),
+  h1: ({ children }) => <h1 className="font-heading text-base font-semibold text-text mb-2 mt-3">{children}</h1>,
+  h2: ({ children }) => <h2 className="font-heading text-base font-semibold text-text mb-2 mt-3">{children}</h2>,
+  h3: ({ children }) => <h3 className="font-heading text-sm font-semibold text-text mb-2 mt-3">{children}</h3>,
+  code: ({ children }) => (
+    <code className="px-1 py-0.5 rounded-sm bg-[var(--c-engraving-fine)]/60 mono-reading text-xs text-text">
+      {children}
+    </code>
+  ),
+  pre: ({ children }) => (
+    <pre className="p-3 rounded-sm bg-[var(--c-engraving-fine)]/60 overflow-x-auto mb-2 mono-reading text-xs text-text">
+      {children}
+    </pre>
+  ),
+  blockquote: ({ children }) => (
+    <blockquote className="pl-3 border-l-2 border-[var(--c-amber)]/40 mb-2 text-sm text-[var(--c-faded-ink)]">
+      {children}
+    </blockquote>
+  ),
+  hr: () => <hr className="border-[var(--c-engraving-fine)] my-3" />,
+};
+
+/**
+ * 采集条目卡（#121 展示重构）
  * 图鉴世界:采集者笔记里新贴的发现。人格化文案 = 手写旁注(宠物的语气)。
- * staggered reveal 保留(从底部滑入 + fade + 轻缩放)。
+ * 去三段重复：正文（Markdown 渲染）为唯一内容主体，标题/摘要不再重复展示。
  */
 export function FeedCard({ item, onFeedbackDone }: FeedCardProps): React.ReactElement {
   const badge = statusBadge(item);
@@ -72,11 +127,18 @@ export function FeedCard({ item, onFeedbackDone }: FeedCardProps): React.ReactEl
       transition={{ type: "spring", stiffness: 300, damping: 28 }}
     >
       <div className="relative">
-        {/* 标题与链接（碎碎念类内容没有链接，此时不渲染入口） */}
+        {/* 卡片头部：类型标签 + 原文链接（碎碎念无链接时不渲染入口） */}
         <div className="flex items-start justify-between gap-3 mb-3">
-          <h3 className="font-heading text-base font-semibold text-text leading-tight">
-            {item.title}
-          </h3>
+          <div className="flex items-center gap-2">
+            {item.type && TYPE_LABELS[item.type] && (
+              <span className="px-2 py-0.5 rounded-sm mono-reading text-xs border border-[var(--c-engraving-fine)] text-subtext">
+                {TYPE_LABELS[item.type]}
+              </span>
+            )}
+            {item.mood && (
+              <span className="field-note text-sm text-subtext capitalize">{item.mood}</span>
+            )}
+          </div>
           {item.url && (
             <a
               href={item.url}
@@ -90,16 +152,9 @@ export function FeedCard({ item, onFeedbackDone }: FeedCardProps): React.ReactEl
           )}
         </div>
 
-        {/* 摘要 */}
-        <p className="text-sm text-subtext leading-relaxed mb-4">
-          {item.summary}
-        </p>
-
-        {/* 人格化文案 = 采集者手写旁注(宠物的语气) */}
+        {/* 正文（Markdown 渲染；唯一内容主体，不再与标题/摘要重复） */}
         <div className="pl-3 border-l-2 border-[var(--c-amber)]/40 mb-4">
-          <p className="field-note text-base text-[var(--c-faded-ink)]">
-            {item.message}
-          </p>
+          <ReactMarkdown components={markdownComponents}>{item.message}</ReactMarkdown>
         </div>
 
         {/* 推送理由（S8）：门控因子——它为什么觉得主人会感兴趣 */}
@@ -121,11 +176,6 @@ export function FeedCard({ item, onFeedbackDone }: FeedCardProps): React.ReactEl
         {/* 底部元信息 */}
         <div className="flex items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2">
-            {item.mood && (
-              <span className="field-note text-sm text-subtext capitalize">
-                {item.mood}
-              </span>
-            )}
             {badge && (
               <span className={`px-2 py-0.5 rounded-sm mono-reading ${badge.className}`}>
                 {badge.label}
