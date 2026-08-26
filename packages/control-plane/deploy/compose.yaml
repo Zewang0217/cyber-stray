@@ -1,4 +1,3 @@
-# ============================================================
 # cyber-stray 全栈编排（#138 / ADR-0008）——真相源在仓库，每次发布流水线
 # 同步到生产机 /opt/cyber-stray/deploy/compose.yaml 后再生效。
 #
@@ -17,7 +16,6 @@
 # 注意：CASDOOR_ISSUER 保持公网地址（经 nginx /casdoor/ 到达本服务）——
 # 控制面容器内访问 discovery 走 host nginx → casdoor 容器；authorize 端点是
 # 浏览器直接访问的，不能是容器内网地址。
-# ============================================================
 name: cyber-stray
 
 services:
@@ -38,7 +36,7 @@ services:
       # 健康门/排障用；对外流量只走 web rewrites（经 nginx）
       - "127.0.0.1:8787:8787"
     healthcheck:
-      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:8787/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: [ "CMD", "bun", "-e", "fetch('http://127.0.0.1:8787/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))" ]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -57,29 +55,23 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     healthcheck:
-      # 首页 307 → /login 视为健康（HTTP ≥400 才算不健康）
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>{if(r.status>=400)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: [ "CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>{if(r.status>=400)process.exit(1)}).catch(()=>process.exit(1))" ]
       interval: 10s
       timeout: 5s
       retries: 6
       start_period: 20s
 
   casdoor:
-    # 官方镜像实际发布在 casbin/casdoor（旧组织名；semantic-release 版本无 v 前缀）
     image: casbin/casdoor:3.153.0
     container_name: cyber-stray-casdoor
     restart: always
-    # 仅挂载配置与 SQLite 数据文件；app.conf 的 dataSourceName 相对 workdir
-    # （/）→ /casdoor.db。首次容器化前需 chown 1000:1000（见切换 runbook）。
     volumes:
       - /opt/casdoor/conf:/conf
       - /opt/casdoor/casdoor.db:/casdoor.db
     ports:
-      # 保持现网行为：浏览器与控制面 discovery 均直连 http://<IP>:8000
-      # （CASDOOR_ISSUER 是公网地址，非经 nginx）；勿收窄为回环
       - "8000:8000"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/.well-known/openid-configuration"]
+      test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:8000/.well-known/openid-configuration" ]
       interval: 10s
       timeout: 5s
       retries: 6
