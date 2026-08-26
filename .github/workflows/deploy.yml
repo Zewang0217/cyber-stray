@@ -54,12 +54,12 @@ jobs:
           default_tag="$(sed -nE 's/.*IMAGE_TAG:-([^}]+)}.*/\1/p' "$compose_file" | head -1)"
           case "$default_tag" in
             sha)
-              echo "tag=$GITHUB_SHA"
-              echo "build=1"       # 常规发布：构建本次 sha 镜像
+              echo "tag=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+              echo "build=1" >> "$GITHUB_OUTPUT"   # 常规发布：构建本次 sha 镜像
               ;;
             [0-9a-f]|[0-9a-f][0-9a-f]*)
-              echo "tag=$default_tag"
-              echo "build=0"       # 回滚：compose 已钉旧 sha，只拉取部署
+              echo "tag=$default_tag" >> "$GITHUB_OUTPUT"
+              echo "build=0" >> "$GITHUB_OUTPUT"   # 回滚：compose 已钉旧 sha，只拉取部署
               ;;
             *)
               echo "无法解析 compose.yaml 的 IMAGE_TAG 占位（got: $default_tag）" >&2
@@ -105,6 +105,10 @@ jobs:
             packages/control-plane/deploy/backup.sh \
             packages/control-plane/deploy/restore.sh \
             "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/"
+          # 兜底：脚本可执行位（git 在 Windows 侧记录 644 时 scp 后不可执行）
+          ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
+            "${PROD_USER}@${PROD_HOST}" \
+            "chmod +x /opt/cyber-stray/deploy/container-update.sh /opt/cyber-stray/deploy/backup.sh /opt/cyber-stray/deploy/restore.sh"
         env:
           PROD_HOST: ${{ secrets.PROD_HOST }}
           PROD_USER: ${{ secrets.PROD_USER }}
