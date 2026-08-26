@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# ============================================================
 # container-update.sh — 生产机容器更新（#138 / ADR-0008）
 # 真相源：仓库 packages/control-plane/deploy/（发布流水线每次同步本脚本 +
 # compose.yaml 到 /opt/cyber-stray/deploy/ 后执行）。
@@ -13,7 +12,6 @@
 #       暴露而非潜伏到深夜。
 # 回滚: 把 compose.yaml 的 IMAGE_TAG 占位改成旧 sha，合并 main 重发（流水线
 #       检测到非占位 tag 时跳过构建，只拉取部署）。
-# ============================================================
 set -euo pipefail
 
 DEPLOY_DIR=/opt/cyber-stray/deploy

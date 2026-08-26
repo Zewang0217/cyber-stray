@@ -1,6 +1,7 @@
 {
   "name": "cyber-stray",
   "private": true,
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
     "dev": "pnpm -r dev",
     "dev:agent": "pnpm --filter @cyber-stray/agent dev",

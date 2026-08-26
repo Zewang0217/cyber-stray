@@ -2,11 +2,13 @@ name: CI
 
 # #138 / ADR-0009：develop 是唯一集成区——push/PR 只跑质量门
 # （typecheck / test / lint + web 构建验证），不产镜像不推仓库。
-# 镜像构建与部署只在 main 发布流水线（deploy.yml，自带质量门）。
+# 发布 PR（develop→main，ADR-0009）不重复跑质量门：其 head 就是 develop，
+# 同一 commit 已由 push:develop 触发过；PR 事件只对 base 为 develop 的 PR 生效。
 on:
   push:
     branches: [develop]
   pull_request:
+    branches: [develop]
 
 jobs:
   verify:
@@ -16,8 +18,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -38,5 +38,5 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Build web (standalone, 产物验证)
+      - name: Build web
         run: pnpm -F @cyber-stray/web build

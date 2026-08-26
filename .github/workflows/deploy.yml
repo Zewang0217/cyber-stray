@@ -8,11 +8,16 @@ name: CD Deploy（容器发布）
 # 合并 main 重发——本流水线检测到非占位 tag 时跳过镜像构建、只拉取部署。
 #
 # 密钥（仓库不存值）：PROD_HOST / PROD_USER / PROD_SSH_PORT / PROD_SSH_KEY；
-# GHCR 推送用 GITHUB_TOKEN（本仓库自动授予）。fork PR 不会触达本流水线。
+# GHCR 推送用 GITHUB_TOKEN（显式 permissions 保证 packages:write）。
+# fork PR 不会触达本流水线。
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
 
 concurrency:
   group: deploy
@@ -20,14 +25,12 @@ concurrency:
 
 jobs:
   release:
-    name: 质量门 + 镜像构建 + 生产部署
+    name: Image build & Production deployment
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -39,14 +42,14 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Quality gates（typecheck / test / lint + web 构建验证）
+      - name: typecheck & test & lint + web construct 
         run: |
           pnpm typecheck
           pnpm test
           pnpm lint
           pnpm -F @cyber-stray/web build
 
-      - name: 解析发布 tag（compose.yaml 占位或回滚钉住的旧 sha）
+      - name: Parse and publish the tag
         id: tag
         run: |
           set -euo pipefail
@@ -74,7 +77,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & push 应用镜像（控制面 + agent）
+      - name: Build and push the application image (control plane + agent)
         if: steps.tag.outputs.build == '1'
         uses: docker/build-push-action@v6
         with:
@@ -82,7 +85,8 @@ jobs:
           file: packages/control-plane/deploy/Dockerfile.app
           push: true
           tags: ghcr.io/zewang0217/cyber-stray-app:${{ steps.tag.outputs.tag }}
-      - name: Build & push web 镜像
+
+      - name: Build & push web image
         if: steps.tag.outputs.build == '1'
         uses: docker/build-push-action@v6
         with:
@@ -91,7 +95,7 @@ jobs:
           push: true
           tags: ghcr.io/zewang0217/cyber-stray-web:${{ steps.tag.outputs.tag }}
 
-      - name: 同步编排配置到生产机
+      - name: Synchronize the arrangement configuration to the production machine
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
@@ -115,7 +119,7 @@ jobs:
           PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
           PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
 
-      - name: 部署（拉镜像 + 起容器 + 健康门 + 镜像清理）
+      - name: Deployment (pull image + start container + health check + image cleanup)
         run: |
           ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
             "${PROD_USER}@${PROD_HOST}" \

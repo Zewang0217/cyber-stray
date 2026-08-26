@@ -17,6 +17,8 @@ COPY packages/control-plane/package.json packages/control-plane/
 COPY packages/agent/package.json packages/agent/
 COPY packages/web/package.json packages/web/
 COPY packages/slides/package.json packages/slides/
+# pnpm 钉定 9.x：根 package.json 的 packageManager 生效（corepack 读取）；
+# pnpm 10 的 deploy 默认要求 inject-workspace-packages，会使本构建失败。
 RUN corepack enable \
   && pnpm install --frozen-lockfile --filter @cyber-stray/control-plane --filter @cyber-stray/agent
 # 源码（deploy 会把包内文件复制进产物——只有清单则产物缺 src/）
