@@ -20,6 +20,9 @@
     "pg": "^8.23.0",
     "web-push": "^3.6.7"
   },
+  "optionalDependencies": {
+    "@libsql/linux-x64-gnu": "0.5.29"
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@types/node": "^20",
