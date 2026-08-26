@@ -1,4 +1,4 @@
-name: CD Deploy（容器发布）
+name: CD Deploy
 
 # #138 / ADR-0008/0009：main 每次合并 = 一次生产发布（无审批门）。
 # 构建与推送全部在 GitHub-hosted runner 完成；部署 = SSH 进生产机同步编排
