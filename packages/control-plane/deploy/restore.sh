@@ -15,7 +15,7 @@ set -euo pipefail
 TARBALL=${1:-}
 NO_SYSTEMD=${2:-}
 APP_DIR=${APP_DIR:-/opt/cyber-stray}
-CASDOOR_DIR=${CASDOOR_DIR:-/opt/casdoor}
+CASDOOR_DIR=${CASDOOR_DIR:-/opt/cyber-stray/casdoor}
 [ -n "$TARBALL" ] || { echo "用法: $0 <backup.tar.gz> [--no-systemd]"; exit 2; }
 [ -f "$TARBALL" ] || { echo "备份文件不存在: $TARBALL"; exit 1; }
 
