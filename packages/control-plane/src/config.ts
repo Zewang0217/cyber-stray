@@ -50,6 +50,8 @@ export interface ControlPlaneConfig {
   petGenIntervalMs: number;
   /** 是否日记写完触发表情包生成（#96；env CP_MEME_ENABLED，缺省 true） */
   memeEnabled: boolean;
+  /** 优雅停机收口预算 ms（#138：60–90s；compose stop_grace_period 需覆盖） */
+  shutdownBudgetMs: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneConfig {
@@ -66,6 +68,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     ['workerMaxRetries', Number(env.CP_SCHEDULER_MAX_RETRIES ?? 2)],
     ['petGenMonthlyQuota', Number(env.CP_PETGEN_MONTHLY_QUOTA ?? 2)],
     ['petGenIntervalMs', Number(env.CP_PETGEN_INTERVAL_MS ?? 5_000)],
+    ['shutdownBudgetMs', Number(env.CP_SHUTDOWN_BUDGET_MS ?? 90_000)],
   ];
   for (const [field, value] of numeric) {
     if (!Number.isFinite(value) || value < 0) {
@@ -99,6 +102,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     visionModel: env.CP_VISION_MODEL ?? 'glm-4v-flash',
     petGenMonthlyQuota: Number(env.CP_PETGEN_MONTHLY_QUOTA ?? 2),
     petGenIntervalMs: Number(env.CP_PETGEN_INTERVAL_MS ?? 5_000),
+    shutdownBudgetMs: Number(env.CP_SHUTDOWN_BUDGET_MS ?? 90_000),
     memeEnabled: env.CP_MEME_ENABLED !== 'false',
   };
 }

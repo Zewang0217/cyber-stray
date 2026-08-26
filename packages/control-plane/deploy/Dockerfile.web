@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1
+# web 镜像（#138 / ADR-0008）——Next.js standalone 产物 + node 运行时。
+#
+# CP_ORIGIN 是构建期变量（next.config.ts 的 rewrites 在构建时内联目标）：
+# compose 网络内指向 control-plane 服务名；本机/裸进程部署时覆盖为
+# http://127.0.0.1:8787 或经 nginx 的对外地址。
+#
+# 构建：仅在 main 发布流水线（deploy.yml）执行；develop 只跑构建验证不产镜像。
+FROM node:22-bookworm-slim AS builder
+WORKDIR /repo
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/web/package.json packages/web/
+# shared 源码：transpilePackages 构建期直接消费 TS 源码
+COPY packages/shared ./packages/shared
+COPY packages/web ./packages/web
+RUN corepack enable && pnpm install --frozen-lockfile --filter @cyber-stray/web
+ARG CP_ORIGIN=http://control-plane:8787
+ENV CP_ORIGIN=$CP_ORIGIN
+RUN pnpm --filter @cyber-stray/web build
+
+FROM node:22-bookworm-slim
+WORKDIR /app
+ENV NODE_ENV=production
+# standalone 树：server.js 位于 packages/web/ 下（Turbopack root 为仓库根所致）
+COPY --from=builder /repo/packages/web/.next/standalone ./
+COPY --from=builder /repo/packages/web/.next/static ./packages/web/.next/static
+COPY --from=builder /repo/packages/web/public ./packages/web/public
+EXPOSE 3000
+CMD ["node", "packages/web/server.js"]

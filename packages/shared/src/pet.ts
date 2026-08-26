@@ -2,7 +2,7 @@
  * 宠物素材契约（#94 自定义 IP 生成 / #95 消费）——跨包单一真相源
  *
  * 来源：ADR-0001（参考图锁角色 + 单图多状态 + 静态帧）与 spike 结论
- * （docs/spike-multi-state.md：四宫格 2x2×3 主路径、素材契约建议 §5）。
+ * （四宫格 2x2×3 主路径、素材契约建议 §5——详见 ADR-0001 与 petgen/processor.ts）。
  *
  * - PET_STATES：9 状态注册表（帧数/时长/无障碍标签），内置素材（public/pet/）
  *   与自定义 IP 共用同一套状态名；自定义 IP 的 manifest 每状态 frames=1

@@ -1,21 +1,15 @@
-name: CD Deploy
+name: CD Deploy（容器发布）
 
-# 手动触发部署(workflow_dispatch)。
-# 架构(国内服务器适配):
-#   - verify: GitHub-hosted(美国 runner)跑 check(类型/测试/lint)+ 构建验证
-#   - deploy: 服务器自托管 runner(self-hosted,出站连 GitHub 稳定)
-#     本地 checkout + 构建 + deploy.sh update(免 artifact 传输,
-#     服务器到 GitHub artifact 下载端点慢,直连不稳定)
+# #138 / ADR-0008/0009：main 每次合并 = 一次生产发布（无审批门）。
+# 构建与推送全部在 GitHub-hosted runner 完成；部署 = SSH 进生产机同步编排
+# 配置 + 拉镜像 + 起容器——产机不再当 self-hosted runner / 构建机。
 #
-# 前置:
-#   - 产机一次性:deploy.sh install + 自托管 runner(svc.sh)注册为 self-hosted
-#   - .env 配置 CASDOOR 三件套 / CP_ADMIN_SUBS / LLM keys
+# 回滚：把 compose.yaml 的 IMAGE_TAG 占位（${IMAGE_TAG:-sha}）改成旧 sha，
+# 合并 main 重发——本流水线检测到非占位 tag 时跳过镜像构建、只拉取部署。
 #
-# 产物:web standalone 由 deploy job 在服务器本地构建(零编译部署原则的
-# 例外:国内服务器从 GitHub 拉 artifact 不可靠,改为本地构建一次)
-
+# 密钥（仓库不存值）：PROD_HOST / PROD_USER / PROD_SSH_PORT / PROD_SSH_KEY；
+# GHCR 推送用 GITHUB_TOKEN（本仓库自动授予）。fork PR 不会触达本流水线。
 on:
-  # merge main 自动部署;也可手动触发(workflow_dispatch)
   push:
     branches: [main]
   workflow_dispatch:
@@ -25,9 +19,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  verify:
+  release:
+    name: 质量门 + 镜像构建 + 生产部署
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -44,65 +39,85 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Test
-        run: pnpm test
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Build web (standalone, 产物验证)
-        run: pnpm -F @cyber-stray/web build
-
-  deploy:
-    needs: verify
-    runs-on: self-hosted # 服务器自托管 runner(cyberstray 用户)
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install
+      - name: Quality gates（typecheck / test / lint + web 构建验证）
         run: |
-          # 国内服务器:依赖走 npmmirror(直连 npmjs 慢)
-          pnpm config set registry https://registry.npmmirror.com
-          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm test
+          pnpm lint
+          pnpm -F @cyber-stray/web build
 
-      - name: Build web standalone
-        run: pnpm -F @cyber-stray/web build
-
-      - name: Package artifact
+      - name: 解析发布 tag（compose.yaml 占位或回滚钉住的旧 sha）
+        id: tag
         run: |
           set -euo pipefail
-          cd packages/web
-          mkdir -p dist
-          cp -r .next/standalone dist/app
-          cp -r .next/static dist/app/packages/web/.next/static
-          cp -r public dist/app/packages/web/public
-          tar -czf ../../web-standalone.tar.gz -C dist .
+          compose_file="packages/control-plane/deploy/compose.yaml"
+          default_tag="$(sed -nE 's/.*IMAGE_TAG:-([^}]+)}.*/\1/p' "$compose_file" | head -1)"
+          case "$default_tag" in
+            sha)
+              echo "tag=$GITHUB_SHA"
+              echo "build=1"       # 常规发布：构建本次 sha 镜像
+              ;;
+            [0-9a-f]|[0-9a-f][0-9a-f]*)
+              echo "tag=$default_tag"
+              echo "build=0"       # 回滚：compose 已钉旧 sha，只拉取部署
+              ;;
+            *)
+              echo "无法解析 compose.yaml 的 IMAGE_TAG 占位（got: $default_tag）" >&2
+              exit 1
+              ;;
+          esac
 
-      - name: Incremental deploy (local deploy.sh update)
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push 应用镜像（控制面 + agent）
+        if: steps.tag.outputs.build == '1'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/control-plane/deploy/Dockerfile.app
+          push: true
+          tags: ghcr.io/zewang0217/cyber-stray-app:${{ steps.tag.outputs.tag }}
+      - name: Build & push web 镜像
+        if: steps.tag.outputs.build == '1'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/control-plane/deploy/Dockerfile.web
+          push: true
+          tags: ghcr.io/zewang0217/cyber-stray-web:${{ steps.tag.outputs.tag }}
+
+      - name: 同步编排配置到生产机
         run: |
           set -euo pipefail
-          # cyberstray 用户 sudoers 已放行此 deploy.sh(最小权限)
-          sudo -n /opt/cyber-stray/packages/control-plane/deploy/deploy.sh update \
-            --web-tar "${GITHUB_WORKSPACE}/web-standalone.tar.gz"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$PROD_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$PROD_SSH_PORT" "$PROD_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          scp -P "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
+            packages/control-plane/deploy/compose.yaml \
+            packages/control-plane/deploy/container-update.sh \
+            packages/control-plane/deploy/backup.sh \
+            packages/control-plane/deploy/restore.sh \
+            "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/"
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
 
-      - name: Smoke test
+      - name: 部署（拉镜像 + 起容器 + 健康门 + 镜像清理）
         run: |
-          set -euo pipefail
-          curl -sf http://localhost:8787/healthz >/dev/null && echo "CP healthz OK"
-          curl -sfI http://localhost:3000 >/dev/null && echo "Web OK"
-          echo "部署完成"
+          ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
+            "${PROD_USER}@${PROD_HOST}" \
+            "sudo -n /opt/cyber-stray/deploy/container-update.sh --tag '$TAG'"
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
+          TAG: ${{ steps.tag.outputs.tag }}

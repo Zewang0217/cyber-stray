@@ -29,6 +29,7 @@ import { createSplitter } from './petgen/splitter.js';
 import { createStructureQc } from './petgen/structure-qc.js';
 import { createPetUsageRecorder } from './usage.js';
 import { refreshModelConfig, getModelConfig } from './app-config.js';
+import { runGracefulShutdown } from './graceful-shutdown.js';
 import { initLogger } from './logger.js';
 
 const config = loadConfig();
@@ -132,15 +133,34 @@ petGenProcessor.start(config.petGenIntervalMs);
 // S10：Web Push 分发器（worker_succeeded → 读最新推送 → 系统级通知）
 const detachPushGateway = attachPushGateway({ dataDir: config.dataDir, bus });
 
-// 优雅关停：停 tick + 杀在飞 worker + 卸推送分发（防孤儿并发写租户 state.json）
+// 优雅关停（#138/ADR-0008）：停派发 → 等在飞游荡收口（预算内）→ 卸推送分发
+// → 退出。预算耗尽：强制终止在飞 worker，孤儿由既有 lease/DB 冷却自愈。
+// 二次信号：立即退出（不等收口；容器 stop 的 SIGKILL 是最终兜底）。
+let shuttingDown = false;
 const shutdown = () => {
-  scheduler.stop();
-  petGenProcessor.stop();
-  wechatPoller.stop();
-  stopAllWorkers();
-  stopAllDiaryWorkers();
-  detachPushGateway();
-  detachWechatGateway();
+  if (shuttingDown) {
+    console.log('[shutdown] 收到二次停止信号，立即退出');
+    process.exit(1);
+  }
+  shuttingDown = true;
+  void runGracefulShutdown({
+    stopDispatch: () => {
+      scheduler.stop();
+      petGenProcessor.stop();
+      wechatPoller.stop();
+    },
+    drain: () => scheduler.drain(),
+    forceKill: () => {
+      stopAllWorkers();
+      stopAllDiaryWorkers();
+    },
+    detach: () => {
+      detachPushGateway();
+      detachWechatGateway();
+    },
+    exit: (code) => process.exit(code),
+    budgetMs: config.shutdownBudgetMs,
+  });
 };
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);

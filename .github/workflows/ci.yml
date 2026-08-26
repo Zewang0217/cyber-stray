@@ -1,10 +1,11 @@
 name: CI
 
-# S12 纪律：构建在 CI，不在产机。产机只拉产物（web standalone）+ 源码
-# （CP/agent 由 bun 直跑 TS，无编译步骤）+ pnpm install --frozen-lockfile。
+# #138 / ADR-0009：develop 是唯一集成区——push/PR 只跑质量门
+# （typecheck / test / lint + web 构建验证），不产镜像不推仓库。
+# 镜像构建与部署只在 main 发布流水线（deploy.yml，自带质量门）。
 on:
   push:
-    branches: [main]
+    branches: [develop]
   pull_request:
 
 jobs:
@@ -37,25 +38,5 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Build web (standalone)
+      - name: Build web (standalone, 产物验证)
         run: pnpm -F @cyber-stray/web build
-
-      - name: Package deploy artifact
-        run: |
-          set -euo pipefail
-          cd packages/web
-          mkdir -p dist
-          # 打包整个 standalone 树（含根 node_modules——packages/web 下的
-          # next 是相对软链指向 standalone 根 .pnpm，只拷 packages/web 会
-          # 悬空 → node server.js MODULE_NOT_FOUND）
-          cp -r .next/standalone dist/app
-          cp -r .next/static dist/app/packages/web/.next/static
-          cp -r public dist/app/packages/web/public
-          tar -czf ../../web-standalone.tar.gz -C dist .
-        shell: bash
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: web-standalone
-          path: web-standalone.tar.gz
-          retention-days: 14
