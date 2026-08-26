@@ -32,7 +32,7 @@ docker pull ghcr.io/zewang0217/cyber-stray-app:latest 2>/dev/null || true  # 连
 sudo mkdir -p /opt/cyber-stray/deploy
 sudo chown -R cyberstray:cyberstray /opt/cyber-stray/deploy   # SSH 部署用户可写
 
-# 4) sudoers：放行部署脚本（最小权限，参考旧 deploy.sh 的放行先例）
+# 4) sudoers：放行部署脚本（最小权限，与旧裸进程部署的放行先例同构）
 ## 2. 演练（可选，不碰生产数据与旧服务）
 
 > 端口互斥 + 数据互斥：compose 与旧 systemd unit 绑定同一组回环端口
@@ -86,7 +86,8 @@ ssh cyberstray@<PROD_HOST> \
 ```bash
 # 1) 停旧服务（数据不动：unit 只管进程）
 sudo systemctl disable --now control-plane web casdoor
-# 或整体卸载（保留数据）：sudo /opt/cyber-stray/packages/control-plane/deploy/deploy.sh uninstall
+sudo rm -f /etc/systemd/system/control-plane.service /etc/systemd/system/web.service /etc/systemd/system/casdoor.service
+sudo systemctl daemon-reload
 
 # 2) 起容器 + 健康门（失败保留现场、退出非零）
 ssh cyberstray@<PROD_HOST> \

@@ -11,6 +11,5 @@ data
 .trellis
 .claude
 .planning
-assets
 packages/web/.next
 packages/web/dist

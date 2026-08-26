@@ -12,9 +12,13 @@
 | `Dockerfile.app` | 应用镜像（控制面 + agent，bun 直跑 TS；pnpm deploy 出 prod 依赖） |
 | `Dockerfile.web` | web 镜像（Next.js standalone + node 运行时） |
 | `container-update.sh` | 生产机更新：拉镜像 → 起容器 → 健康门 → 镜像清理 |
-| `nginx-sslip.conf` | nginx 站点模板（WS 升级头 + 请求体上限 + SSE 保留） |
 | `backup.sh` / `restore.sh` | 备份 / 恢复（数据路径不变，零迁移） |
-| `deploy.sh`、`*.service`、`setup-casdoor.sh` | 旧 systemd 拓扑（已退役；切换 runbook 见 `docs/runbooks/container-switchover.md`） |
+
+> 旧 systemd 拓扑脚本（deploy.sh / *.service / setup-casdoor.sh / create-app.sh）
+> 已随容器化退役删除（ADR-0008）；切换步骤见 `docs/runbooks/container-switchover.md`。
+> 全新环境首次配置 Casdoor OIDC 应用：在 Casdoor 管理界面创建
+> （`/casdoor` 登录 admin → 应用 → 添加 cyber-stray-web，client id/secret 写入
+> `/opt/cyber-stray/.env`）。
 
 ## 拓扑
 

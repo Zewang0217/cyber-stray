@@ -22,7 +22,7 @@ RUN pnpm --filter @cyber-stray/web build
 FROM node:22-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production
-# standalone 树：server.js 在 packages/web/ 下（monorepo 根布局，见 web.service 先例）
+# standalone 树：server.js 位于 packages/web/ 下（Turbopack root 为仓库根所致）
 COPY --from=builder /repo/packages/web/.next/standalone ./
 COPY --from=builder /repo/packages/web/.next/static ./packages/web/.next/static
 COPY --from=builder /repo/packages/web/public ./packages/web/public
