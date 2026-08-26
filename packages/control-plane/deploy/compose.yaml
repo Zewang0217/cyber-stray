@@ -65,7 +65,8 @@ services:
       start_period: 20s
 
   casdoor:
-    image: casdoor/casdoor:v3.153.0
+    # 官方镜像实际发布在 casbin/casdoor（旧组织名；semantic-release 版本无 v 前缀）
+    image: casbin/casdoor:3.153.0
     container_name: cyber-stray-casdoor
     restart: always
     # 仅挂载配置与 SQLite 数据文件；app.conf 的 dataSourceName 相对 workdir
