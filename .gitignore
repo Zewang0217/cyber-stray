@@ -49,10 +49,6 @@ Thumbs.db
 !data/history/.gitkeep
 !data/memory/.gitkeep
 
-AGENTS.md
-
-.kilo/
-
 # 运行态数据（dev 跑产生，不入库）
 data/dedup/visited-urls.json
 
