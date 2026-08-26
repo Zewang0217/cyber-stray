@@ -1,54 +1,44 @@
-# S12 · 部署：2C4G systemd 拓扑 + 备份纪律
+# 部署：容器化拓扑（#138 / ADR-0008）+ 备份纪律
 
-单机部署（不是 Docker/K8s 起步）。控制面（API + 调度器 + 推送网关）、web
-（Next.js standalone）、Casdoor（OIDC provider）各一个 systemd unit；
-短命 worker 由调度器拉起、随控制面进程组收口（无独立 unit）。
+单机容器化部署：控制面 + agent（同镜像，worker 是短命子进程）、web
+（Next.js standalone 镜像）、Casdoor（官方镜像）全栈一个 compose 编排；
+产机只负责拉镜像、跑容器，不再担任构建机与 self-hosted runner。
+
+本目录是部署编排配置的真相源：
+
+| 文件 | 作用 |
+|---|---|
+| `compose.yaml` | 全栈编排（镜像 tag = `${IMAGE_TAG:-sha}`；回滚 = 占位改旧 sha 重发） |
+| `Dockerfile.app` | 应用镜像（控制面 + agent，bun 直跑 TS；pnpm deploy 出 prod 依赖） |
+| `Dockerfile.web` | web 镜像（Next.js standalone + node 运行时） |
+| `container-update.sh` | 生产机更新：拉镜像 → 起容器 → 健康门 → 镜像清理 |
+| `nginx-sslip.conf` | nginx 站点模板（WS 升级头 + 请求体上限 + SSE 保留） |
+| `backup.sh` / `restore.sh` | 备份 / 恢复（数据路径不变，零迁移） |
+| `deploy.sh`、`*.service`、`setup-casdoor.sh` | 旧 systemd 拓扑（已退役；切换 runbook 见 `docs/runbooks/container-switchover.md`） |
 
 ## 拓扑
 
 ```
-Nginx (443) ─┬─ /           → web (Next.js standalone :3000)
-             └─ /api/*       → 控制面 :8787（rewrites 同域代理，cookie 归浏览器源）
-控制面 :8787 ─┬─ 调度器 tick → spawn 短命 worker（bun 直跑 agent CLI，并发上限 4）
-              └─ Casdoor OIDC :8000（SQLite 账号库）
+Nginx (443) ─┬─ /           → web 容器 :3000（rewrites 同域代理 /api/* → 控制面容器）
+             └─ /casdoor/*   → casdoor 容器 :8000（OIDC；配置与 SQLite 文件 bind mount）
+控制面容器 :8787 ─ 调度器 tick → spawn 短命 worker（同镜像子进程，并发上限 4）
+镜像：ghcr.io/zewang0217/cyber-stray-{app,web}:<commit-sha>（tag 即版本）
 ```
 
-数据落盘：
-- 控制面 `data/`（`tenants/<sub>/` 记忆 markdown + `control.db` + `master.key`）
-- Casdoor `/opt/casdoor/casdoor.db`（身份）
-- web 无本地状态（产物可再生）
+数据落盘（bind mount 回原路径，备份脚本零迁移）：
+- 控制面 `/opt/cyber-stray/data`（`tenants/<sub>/` 记忆 markdown + `control.db` + `master.key` + logs）
+- Casdoor `/opt/casdoor/conf` + `/opt/casdoor/casdoor.db`（身份）
+- web 无本地状态（产物在镜像内）
 
-## 一键部署（产机）
+## 发布 / 回滚
 
-```bash
-# 0) 产机一次性前置
-curl -fsSL https://bun.sh/install | bash        # 控制面运行时
-# node ≥ 22（web standalone 运行时）
-sudo git clone <repo> /opt/cyber-stray
-
-# 1) 安装全栈（units + env 模板 + 启用）。web 产物先解包（可选 --web-tar）
-sudo ./packages/control-plane/deploy/deploy.sh install \
-  --web-tar /path/to/web-standalone.tar.gz    # CI artifact（缺省则 web 稍后手动部署）
-# 2) 填 Casdoor 三件套（create-app.sh 输出）
-sudo nano /opt/cyber-stray/.env   # CASDOOR_CLIENT_ID / SECRET / REDIRECT_URI
-sudo systemctl restart control-plane
-# 3) 首次配置 Casdoor OIDC 应用
-sudo /opt/cyber-stray/packages/control-plane/deploy/create-app.sh --restart
-```
-
-`deploy.sh status` 查三服务状态；`uninstall` 移除 units（数据保留）。
-
-## 三条修复纪律（#79）
-
-1. **崩溃自恢复**——全部 `Restart=always` + `RestartSec=5`；控制面
-   `KillMode=control-group`：CP 退出时整个进程组收口（无孤儿 worker 写租户
-   状态），CP 重启后 lease + DB 冷却兜底（S5 既有）。
-2. **构建在 CI 不在产机**——`.github/workflows/ci.yml` 每次 push 跑
-   typecheck/test/lint + `next build`（standalone），产物上传 artifact。
-   产机：web 解包 CI 产物（零编译）；CP/agent bun 直跑 TS（无编译步骤）；
-   `pnpm install --frozen-lockfile` 只装依赖不构建。
-3. **真实可恢复备份**——`backup.sh`（tar 控制面 data + Casdoor 账号库，
-   保留最近 N 份）+ `restore.sh`（停机→解包→重启）。恢复演练见下。
+- 发布 = 人工开 develop→main PR，merge 即触发 `deploy.yml`：质量门 → 构建推送镜像
+  （tag = commit sha）→ SSH 同步编排配置 → `container-update.sh`（拉镜像 + 起容器 +
+  健康门）。PR 描述即发布说明（ADR-0009）。
+- 回滚 = 把 `compose.yaml` 的 `IMAGE_TAG:-sha` 占位改成旧 sha，合并 main 重发——
+  流水线检测到非占位 tag 时跳过构建、只拉取部署。
+- 部署完成判定 = 容器 healthcheck 全绿 + 端点门（控制面 healthz / web / Casdoor
+  OIDC discovery）；任一不健康部署失败并保留现场。
 
 ## 备份 / 恢复
 
@@ -57,8 +47,9 @@ sudo /opt/cyber-stray/packages/control-plane/deploy/create-app.sh --restart
 ./backup.sh                    # → /backup/cyber-stray/cyber-stray-<时间戳>.tar.gz
 BACKUP_KEEP=14 ./backup.sh     # 保留 14 份（默认 7）
 
-# 恢复
+# 恢复（容器化后路径不变）
 sudo ./restore.sh /backup/cyber-stray/cyber-stray-20260816-214133.tar.gz
+sudo systemctl restart docker  # 容器重读挂载文件（或 docker compose restart）
 ```
 
 ## 恢复演练记录（2026-08-16，v2 备份布局）
@@ -81,14 +72,19 @@ control.db / casdoor.db 为真实 SQLite 含数据行，非占位文件）。
 ## 已知边界
 
 - **PWA/Web Push 需 HTTPS 安全上下文**：Service Worker 注册与 Web Push 订阅要求
-  secure context（HTTPS；localhost 豁免）。本拓扑 unit 内为 HTTP 回环（127.0.0.1），
-  生产必须由 Nginx 终结 TLS（443 → 回环服务），手机/PWA 安装与系统推送才可用。
-  `CASDOOR_REDIRECT_URI` 与 `CP_WEB_ORIGIN` 用对外 https 域名。开发机 localhost
-  访问不受影响（浏览器豁免）。
+  secure context（HTTPS；localhost 豁免）。生产必须由 Nginx 终结 TLS
+  （443 → 回环容器端口），手机/PWA 安装与系统推送才可用。`CASDOOR_REDIRECT_URI`
+  与 `CP_WEB_ORIGIN` 用对外 https 域名。开发机 localhost 访问不受影响。
 - **单实例**：调度器/推送网关嵌入控制面进程，多实例部署前需 DB 级租约（S5 已知限制）。
-- **Nginx TLS 终止**：unit 内为 HTTP（127.0.0.1 回环）；443 由 Nginx 反代，回调
-  `CASDOOR_REDIRECT_URI` 用对外 https 域名。
+- **CASDOOR_ISSUER 必须是对外 https 地址**（经 nginx /casdoor/）：控制面容器内
+  discovery 走 host nginx → casdoor 容器；authorize 端点是浏览器直接访问的，
+  不能用 127.0.0.1 或容器内网地址。
+- **优雅停机**：控制面 SIGTERM 后停调度器、等在飞游荡收口（默认 90s）再退出；
+  compose `stop_grace_period: 100s` 覆盖预算，超时孤儿由既有 lease 机制自愈。
+- **SQLite 迁移单向**：schema 变更必须兼容「旧代码读新 schema」，坏版本才能简单
+  换 tag 回退（ADR-0009）。
 - **注册邮箱验证码**：Casdoor 默认 signupItems 含邮箱验证，未配 SMTP 时注册不可
   完成——生产配 SMTP 或调整 signupItems（S2 已知限制）。
-- **web rewrites 目标**：`CP_ORIGIN` 构建期注入（next.config.ts），生产构建须设
+- **web rewrites 目标**：`CP_ORIGIN` 构建期注入（next.config.ts），镜像构建默认
+  `http://control-plane:8787`（compose 网络内）；裸进程部署须设
   `CP_ORIGIN=http://127.0.0.1:8787`。

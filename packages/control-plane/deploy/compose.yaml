@@ -1,0 +1,83 @@
+# ============================================================
+# cyber-stray 全栈编排（#138 / ADR-0008）——真相源在仓库，每次发布流水线
+# 同步到生产机 /opt/cyber-stray/deploy/compose.yaml 后再生效。
+#
+# 交付单元：
+#   - control-plane：应用镜像（控制面 + agent 同镜像；worker 是短命子进程）
+#   - web：Next.js standalone 镜像
+#   - casdoor：官方镜像（仅挂载配置 + SQLite 数据文件，零数据库依赖）
+#
+# 镜像 tag：${IMAGE_TAG:-sha} —— "sha" 占位 = 发布流水线注入本次 commit sha；
+# 回滚：把占位改成旧 sha（如 ${IMAGE_TAG:-abc123…}）合并到 main 重发，流水线
+# 检测到非占位 tag 时跳过镜像构建、只拉取部署（见 container-update.sh）。
+#
+# 数据零迁移：bind mount 回现网原路径（控制面 /opt/cyber-stray/data、
+# Casdoor /opt/casdoor/{conf,casdoor.db}），backup.sh / restore.sh 无需改动。
+#
+# 注意：CASDOOR_ISSUER 保持公网地址（经 nginx /casdoor/ 到达本服务）——
+# 控制面容器内访问 discovery 走 host nginx → casdoor 容器；authorize 端点是
+# 浏览器直接访问的，不能是容器内网地址。
+# ============================================================
+name: cyber-stray
+
+services:
+  control-plane:
+    image: ghcr.io/zewang0217/cyber-stray-app:${IMAGE_TAG:-sha}
+    container_name: cyber-stray-control-plane
+    restart: always
+    # 优雅停机预算（CP_SHUTDOWN_BUDGET_MS 默认 90s）+ 余量：在飞游荡收口再退出
+    stop_grace_period: 100s
+    env_file:
+      - /opt/cyber-stray/.env
+    environment:
+      # 容器内数据根；bind mount 回原路径（.env 里的 CP_DATA_DIR 被本值覆盖）
+      CP_DATA_DIR: /data
+    volumes:
+      - /opt/cyber-stray/data:/data
+    ports:
+      # 健康门/排障用；对外流量只走 web rewrites（经 nginx）
+      - "127.0.0.1:8787:8787"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:8787/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  web:
+    image: ghcr.io/zewang0217/cyber-stray-web:${IMAGE_TAG:-sha}
+    container_name: cyber-stray-web
+    restart: always
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    environment:
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      # 首页 307 → /login 视为健康（HTTP ≥400 才算不健康）
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>{if(r.status>=400)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  casdoor:
+    image: casdoor/casdoor:v3.153.0
+    container_name: cyber-stray-casdoor
+    restart: always
+    # 仅挂载配置与 SQLite 数据文件；app.conf 的 dataSourceName 相对 workdir
+    # （/）→ /casdoor.db。首次容器化前需 chown 1000:1000（见切换 runbook）。
+    volumes:
+      - /opt/casdoor/conf:/conf
+      - /opt/casdoor/casdoor.db:/casdoor.db
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/.well-known/openid-configuration"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s

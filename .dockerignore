@@ -1,0 +1,16 @@
+# 构建上下文裁剪（容器镜像构建；仓库根为 context）
+.git
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+data
+.env
+.env.*
+*.tar.gz
+.trellis
+.claude
+.planning
+assets
+packages/web/.next
+packages/web/dist
