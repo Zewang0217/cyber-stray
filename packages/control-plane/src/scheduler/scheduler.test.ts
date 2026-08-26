@@ -442,4 +442,23 @@ describe('调度器', () => {
       expect(diaryRunner).toHaveBeenCalledTimes(1);
     });
   });
+
+  it('stop() 后不再派发新游荡（优雅停机接缝：停止语义）', async () => {
+    // #138：控制面收到停止信号后先 stop()（停 tick），在飞游荡收口后退出。
+    // 契约：stop 后 interval 不再触发 tick → runner 不再被拉起。
+    await addPet('p-stop', 't1');
+    vi.useFakeTimers();
+    try {
+      sched.start(1_000);
+      await vi.advanceTimersByTimeAsync(2_000); // 2 个 tick：宠物就绪 → 拉起
+      expect(runner).toHaveBeenCalled();
+      const callsAtStop = runner.mock.calls.length;
+
+      sched.stop();
+      await vi.advanceTimersByTimeAsync(5_000); // 停止后推进 5 个 tick 周期
+      expect(runner.mock.calls.length).toBe(callsAtStop);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
