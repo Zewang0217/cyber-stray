@@ -46,13 +46,13 @@
 - **Bridge 隔离**：控制面 pooled + agent 运行时/存储 siloed。
 - **调度器 + 短命 worker（宠物执行模型）**：宠物**不是常驻进程**。调度器扫控制面 SQLite，按"无聊/精力就绪"（由 `lastRunAt` + 流逝时间前推算，无需常驻进程）拉起短命 Bun worker，载入该宠物 markdown 记忆、跑一小段游荡、写回并更新 DB 状态、退出。任何时刻一宠物一 worker（隔离不变）。几百个注册宠物只有"正无聊"的几只醒着 → 一台 2h4g 就够。
   - 触发 = 无聊/精力（time-propagable）；方向 = 兴趣（InterestGraph focusTopics）；进化 = 反思 + 反馈。
-  - **不是 Docker 起步**；横向加服务器/编排是命名的容量瓶颈触发后再上，映射不重构。
+  - **容器化部署（ADR-0008，2026-08-26 取代本条旧决策）**：生产 = GHCR 镜像 + compose（控制面+agent 同镜像、web、casdoor 官方镜像），产机只跑容器不再当 runner。旧「不是 Docker 起步」针对的是横向扩展，不适用于不可变交付与产机角色分离。
 - **不迁 Postgres**：文件系统 markdown 持久化让租户隔离近乎免费；租户备份 = `tar` 一个目录。
 - **租户解析**：JWT org claim 为准 + 路径前缀 `/t/<slug>`。不做子域名（单机要通配 DNS+证书，性价比低）。
 - **安全硬规矩**：服务端剥掉客户端传入的 tenant header；每处数据访问带已验证 tenant id。
 - **每租户 secrets**：信封加密，master key 包每租户 DEK，DEK 加密存租户目录（并存用户 key / 平台 key）。不用 Secrets Manager / Vault。
 - **状态在盘**：worker 无状态可杀可拉；`getDataPath()` 按 `DATA_DIR` 即租户键。
-- **鉴权 = Casdoor**（Apache 2.0，自托管）：Go 二进制跑 systemd unit（非容器），SQLite 嵌入式账号库（用户/组织/角色）。多租户原生的 organization 模型。
+- **鉴权 = Casdoor**（Apache 2.0，自托管）：官方镜像跑在 compose 内（ADR-0008 前是裸二进制 + systemd unit），SQLite 嵌入式账号库（用户/组织/角色，零数据库依赖）。多租户原生的 organization 模型。
 - **控制面元数据存储 = SQLite + ORM**（推荐 Drizzle/Prisma）：用户↔租户↔宠物↔账单等关系数据。**不上 Postgres 实例起步**；`SQLite↔Postgres` 靠 ORM 只需改连接串。触发切 Postgres 的**命名门槛 = 需多机共享控制面库**（SQLite 单节点不能多机写），非"客户变多"。
 
 > 澄清：宠物数据仍是每租户 markdown 目录（不迁任何 SQL）。"控制面 SQLite"是另一层（注册/租户/计费/inventory），不违反记忆保持 markdown 约束。SQLite 本身即关系数据库（SQL/事务/索引），嵌入式 vs 服务器版才是真对比。
