@@ -25,12 +25,12 @@ concurrency:
 
 jobs:
   release:
-    name: 质量门 + 镜像构建 + 生产部署
+    name: Image build & Production deployment
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4 # 版本由根 package.json 的 packageManager 决定
+      - uses: pnpm/action-setup@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -42,14 +42,14 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Quality gates（typecheck / test / lint + web 构建验证）
+      - name: typecheck & test & lint + web construct 
         run: |
           pnpm typecheck
           pnpm test
           pnpm lint
           pnpm -F @cyber-stray/web build
 
-      - name: 解析发布 tag（compose.yaml 占位或回滚钉住的旧 sha）
+      - name: Parse and publish the tag
         id: tag
         run: |
           set -euo pipefail

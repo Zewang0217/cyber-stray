@@ -38,5 +38,5 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Build web (standalone, 产物验证)
+      - name: Build web
         run: pnpm -F @cyber-stray/web build
