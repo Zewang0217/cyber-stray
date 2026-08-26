@@ -22,12 +22,6 @@
 
 ## 拓扑
 
-```
-Nginx (443) ─┬─ /           → web 容器 :3000（rewrites 同域代理 /api/* → 控制面容器）
-             └─ /casdoor/*   → casdoor 容器 :8000（OIDC；配置与 SQLite 文件 bind mount）
-控制面容器 :8787 ─ 调度器 tick → spawn 短命 worker（同镜像子进程，并发上限 4）
-镜像：ghcr.io/zewang0217/cyber-stray-{app,web}:<commit-sha>（tag 即版本）
-```
 
 数据落盘（bind mount 回原路径，备份脚本零迁移）：
 - 控制面 `/opt/cyber-stray/data`（`tenants/<sub>/` 记忆 markdown + `control.db` + `master.key` + logs）
@@ -47,13 +41,14 @@ Nginx (443) ─┬─ /           → web 容器 :3000（rewrites 同域代理 /
 ## 备份 / 恢复
 
 ```bash
-# 备份（建议 cron：0 3 * * * /opt/cyber-stray/packages/control-plane/deploy/backup.sh）
-./backup.sh                    # → /backup/cyber-stray/cyber-stray-<时间戳>.tar.gz
-BACKUP_KEEP=14 ./backup.sh     # 保留 14 份（默认 7）
+# 备份（建议 cron：0 3 * * * /opt/cyber-stray/deploy/backup.sh）
+/opt/cyber-stray/deploy/backup.sh  # → /backup/cyber-stray/cyber-stray-<时间戳>.tar.gz
+BACKUP_KEEP=14 /opt/cyber-stray/deploy/backup.sh     # 保留 14 份（默认 7）
 
 # 恢复（容器化后路径不变）
-sudo ./restore.sh /backup/cyber-stray/cyber-stray-20260816-214133.tar.gz
-sudo systemctl restart docker  # 容器重读挂载文件（或 docker compose restart）
+sudo /opt/cyber-stray/deploy/restore.sh /backup/cyber-stray/cyber-stray-20260816-214133.tar.gz
+# 容器重读挂载文件（bind mount 目录：restore 换新文件后需重启容器）
+sudo docker compose -f /opt/cyber-stray/deploy/compose.yaml restart
 ```
 
 ## 恢复演练记录（2026-08-16，v2 备份布局）

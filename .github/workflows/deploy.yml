@@ -82,7 +82,6 @@ jobs:
           file: packages/control-plane/deploy/Dockerfile.app
           push: true
           tags: ghcr.io/zewang0217/cyber-stray-app:${{ steps.tag.outputs.tag }}
-
       - name: Build & push web 镜像
         if: steps.tag.outputs.build == '1'
         uses: docker/build-push-action@v6
@@ -103,6 +102,8 @@ jobs:
           scp -P "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
             packages/control-plane/deploy/compose.yaml \
             packages/control-plane/deploy/container-update.sh \
+            packages/control-plane/deploy/backup.sh \
+            packages/control-plane/deploy/restore.sh \
             "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/"
         env:
           PROD_HOST: ${{ secrets.PROD_HOST }}

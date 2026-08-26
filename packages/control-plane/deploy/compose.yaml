@@ -74,7 +74,9 @@ services:
       - /opt/casdoor/conf:/conf
       - /opt/casdoor/casdoor.db:/casdoor.db
     ports:
-      - "127.0.0.1:8000:8000"
+      # 保持现网行为：浏览器与控制面 discovery 均直连 http://<IP>:8000
+      # （CASDOOR_ISSUER 是公网地址，非经 nginx）；勿收窄为回环
+      - "8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/.well-known/openid-configuration"]
       interval: 10s

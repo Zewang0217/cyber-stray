@@ -61,7 +61,6 @@ while true; do
   fi
   sleep 5
 done
-# 端点门：控制面 healthz / web 响应 / Casdoor OIDC discovery
 curl -fsS http://127.0.0.1:8787/healthz >/dev/null
 curl -fsS -o /dev/null http://127.0.0.1:3000/
 curl -fsS http://127.0.0.1:8000/.well-known/openid-configuration >/dev/null
@@ -77,4 +76,4 @@ done
 
 echo "部署完成: IMAGE_TAG=$TAG"
 echo "验证: docker compose ps; curl http://127.0.0.1:8787/healthz"
-echo "备份: /opt/cyber-stray/packages/control-plane/deploy/backup.sh（数据路径不变）"
+echo "备份: /opt/cyber-stray/deploy/backup.sh（数据路径不变）"

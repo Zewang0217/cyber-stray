@@ -33,6 +33,8 @@ sudo mkdir -p /opt/cyber-stray/deploy
 sudo chown -R cyberstray:cyberstray /opt/cyber-stray/deploy   # SSH 部署用户可写
 
 # 4) sudoers：放行部署脚本（最小权限，与旧裸进程部署的放行先例同构）
+```
+
 ## 2. 演练（可选，不碰生产数据与旧服务）
 
 > 端口互斥 + 数据互斥：compose 与旧 systemd unit 绑定同一组回环端口
@@ -104,12 +106,16 @@ curl -fsS https://<HOST>/casdoor/.well-known/openid-configuration   # Casdoor �
 
 ```bash
 # 1) 注销 self-hosted runner（GitHub 仓库 Settings → Actions → Runners → 移除；
-#    或产机 runner 目录执行 ./svc.sh uninstall + ./config.sh remove --token <token>）
+#    或产机 runner 目录执行 ./svc.sh uninstall；注册项可用
+#    gh api repos/Zewang0217/cyber-stray/actions/runners 列出后 DELETE 删除）
 # 2) 删除 runner 工作目录（_work）与 runner 用户 systemd unit（actions.runner.*）
-# 3) 删除 Casdoor 裸二进制（121MB）
-sudo rm -f /opt/casdoor/casdoor /opt/casdoor/casdoor.log
-# 4) 仓库源码副本可保留（backup.sh 路径 /opt/cyber-stray/... 依赖它），
-#    但不再需要 node/bun/pnpm 运行时与自建依赖（勿删 .env 与 data）
+# 3) 旧产物先打包备份再删除（本机产物，勿直接丢）：
+#    casdoor 裸二进制、旧 web standalone（/opt/cyber-stray-web）、
+#    旧源码克隆（/opt/cyber-stray 下除 data/、.env 外全部）
+#    → tar czf /backup/cyber-stray/legacy/<名称>-<日期>.tar.gz 后再 rm
+# 4) /opt/cyber-stray 只保留：data/（bind mount）、.env（env_file）、
+#    deploy/（compose + container-update.sh + backup.sh + restore.sh，
+#    由发布流水线每次同步）
 # 5) 镜像清理（container-update.sh 每次部署已做；此后再执行一次兜底）
 sudo docker image prune -f
 df -h /
@@ -138,14 +144,14 @@ curl -si -H 'Connection: Upgrade' -H 'Upgrade: websocket' https://<HOST>/api/eve
 
 ## 7. 故障排查
 
-| 症状 | 排查 |
-|---|---|
-| 健康门失败（容器 unhealthy） | `docker compose ps`、`docker compose logs --tail 100 <svc>`；控制面 healthz 需 `.env` 完整 |
-| casdoor 无法写库 | `/opt/casdoor` 属主非 uid 1000（`chown -R 1000:1000`）；db 文件被误建为目录（删目录重 `touch`） |
-| docker pull 超时 | docker.service 代理 drop-in 未生效（`systemctl show docker -p Environment`） |
-| 登录失败 / discovery 不通 | `.env` 的 `CASDOOR_ISSUER` 必须是对外 https 地址（经 nginx /casdoor/） |
-| 部署后行为异常需退版本 | 按第 6 节回滚；SQLite 迁移单向——旧代码必须兼容新 schema（ADR-0009 约束） |
-| 停机期间宠物数据半写 | 优雅停机（默认 90s 预算）后仍超时被杀的孤儿由既有 lease / DB 冷却自愈（S5） |
+| 症状                         | 排查                                                                                            |
+| ---------------------------- | ----------------------------------------------------------------------------------------------- |
+| 健康门失败（容器 unhealthy） | `docker compose ps`、`docker compose logs --tail 100 <svc>`；控制面 healthz 需 `.env` 完整      |
+| casdoor 无法写库             | `/opt/casdoor` 属主非 uid 1000（`chown -R 1000:1000`）；db 文件被误建为目录（删目录重 `touch`） |
+| docker pull 超时             | docker.service 代理 drop-in 未生效（`systemctl show docker -p Environment`）                    |
+| 登录失败 / discovery 不通    | `.env` 的 `CASDOOR_ISSUER` 必须是对外 https 地址（经 nginx /casdoor/）                          |
+| 部署后行为异常需退版本       | 按第 6 节回滚；SQLite 迁移单向——旧代码必须兼容新 schema（ADR-0009 约束）                        |
+| 停机期间宠物数据半写         | 优雅停机（默认 90s 预算）后仍超时被杀的孤儿由既有 lease / DB 冷却自愈（S5）                     |
 
 ## 8. 验收清单（issue #138 User Stories）
 
