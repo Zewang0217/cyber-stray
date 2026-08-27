@@ -10,8 +10,8 @@
 # 回滚：把占位改成旧 sha（如 ${IMAGE_TAG:-abc123…}）合并到 main 重发，流水线
 # 检测到非占位 tag 时跳过镜像构建、只拉取部署（见 container-update.sh）。
 #
-# 数据零迁移：bind mount 回现网原路径（控制面 /opt/cyber-stray/data、
-# Casdoor /opt/casdoor/{conf,casdoor.db}），backup.sh / restore.sh 无需改动。
+# 数据布局（单根 /opt/cyber-stray）：控制面 data/、casdoor/{conf,casdoor.db}；
+# backup.sh / restore.sh 同根备份。
 #
 # 注意：CASDOOR_ISSUER 保持公网地址（经 nginx /casdoor/ 到达本服务）——
 # 控制面容器内访问 discovery 走 host nginx → casdoor 容器；authorize 端点是
@@ -62,12 +62,15 @@ services:
       start_period: 20s
 
   casdoor:
-    image: casbin/casdoor:3.153.0
+    image: casbin/casdoor:3.159.0
     container_name: cyber-stray-casdoor
     restart: always
     volumes:
-      - /opt/casdoor/conf:/conf
-      - /opt/casdoor/casdoor.db:/casdoor.db
+      # 目录挂载而非单文件：SQLite 写库需在库同目录建 journal，文件挂载时目录落在
+      # 容器根 /（root:755），uid 1000 建不了 journal → 整库只读（部署 #33 根因）。
+      # 宿主目录须 chown 1000:1000。
+      - /opt/cyber-stray/casdoor:/casdoor
+      - /opt/cyber-stray/casdoor/conf:/conf
     ports:
       - "8000:8000"
     healthcheck:

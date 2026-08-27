@@ -11,7 +11,7 @@
 ## Consequences
 
 - 部署单元 = 镜像 = 版本（tag = commit sha）。坏版本 = 改 compose 里的 tag 重发，天然留档——**因此不建显式回滚机制**。
-- 数据路径不变（`/opt/cyber-stray/data`、`/opt/casdoor/` bind mount），现有 backup.sh 零迁移；casdoor 零数据库依赖（SQLite 单文件），容器化只需挂两个文件。
+- 数据布局单根化（`/opt/cyber-stray/data`、`/opt/cyber-stray/casdoor/` bind mount），backup.sh / restore.sh 同根覆盖；casdoor 零数据库依赖（SQLite 单文件）。
 - 磁盘：根分区已用 79%，镜像按「保留在用 tag + 定期 prune」管理，部署脚本附带清理。
 - 产机直连 GHCR 不通，`docker pull` 必须走本机代理（为 `docker.service` 配 systemd proxy drop-in，一次性）。
 - 本 ADR 取代根 CONTEXT.md 两条旧锁定决策：「不是 Docker 起步」与「Casdoor 跑 systemd unit（非容器）」——当初的论证（容量瓶颈触发才上编排）针对的是横向扩展，不适用于不可变交付与产机角色分离的诉求。

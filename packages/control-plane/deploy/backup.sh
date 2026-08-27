@@ -3,7 +3,7 @@
 #
 # 覆盖三块可恢复数据：
 #   1. 控制面 data/（tenants/ 租户目录、control.db、master.key）——核心
-#   2. Casdoor 账号库（/opt/casdoor/casdoor.db + conf/）——身份
+#   2. Casdoor 账号库（/opt/cyber-stray/casdoor/{casdoor.db, conf/}）——身份
 #   3. web 无本地状态（standalone 产物可再生），不备份
 #
 # SQLite 一致性（StdS12 review 修复）：control.db / casdoor.db 是运行中
@@ -21,7 +21,7 @@ set -euo pipefail
 DEST=${BACKUP_DIR:-/backup/cyber-stray}
 KEEP=${BACKUP_KEEP:-7}
 APP_DIR=${APP_DIR:-/opt/cyber-stray}
-CASDOOR_DIR=${CASDOOR_DIR:-/opt/casdoor}
+CASDOOR_DIR=${CASDOOR_DIR:-/opt/cyber-stray/casdoor}
 STAGING=$(mktemp -d)
 trap 'rm -rf "$STAGING"' EXIT   # 中途失败清理暂存
 

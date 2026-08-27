@@ -63,3 +63,5 @@ skills-lock.json
 
 # 浏览器加密 key（#54 持久化）
 data/.browser-key
+
+.temp

@@ -23,9 +23,9 @@
 ## 拓扑
 
 
-数据落盘（bind mount 回原路径，备份脚本零迁移）：
+数据落盘（单根 `/opt/cyber-stray`，备份脚本同根覆盖）：
 - 控制面 `/opt/cyber-stray/data`（`tenants/<sub>/` 记忆 markdown + `control.db` + `master.key` + logs）
-- Casdoor `/opt/casdoor/conf` + `/opt/casdoor/casdoor.db`（身份）
+- Casdoor `/opt/cyber-stray/casdoor`（`conf/` + `casdoor.db`，目录属主须 1000:1000）
 - web 无本地状态（产物在镜像内）
 
 ## 发布 / 回滚
