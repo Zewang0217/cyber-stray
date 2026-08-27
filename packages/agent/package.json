@@ -24,6 +24,7 @@
     "pptxgenjs": "^4.0.1",
     "react": "^19.2.5",
     "react-devtools-core": "^7.0.1",
+    "undici": "^7.28.0",
     "zod": "4"
   },
   "devDependencies": {
