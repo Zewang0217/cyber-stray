@@ -9,7 +9,7 @@
 | 文件 | 作用 |
 |---|---|
 | `compose.yaml` | 全栈编排（镜像 tag = `${IMAGE_TAG:-sha}`；回滚 = 占位改旧 sha 重发） |
-| `Dockerfile.app` | 应用镜像（控制面 + agent，bun 直跑 TS；pnpm deploy 出 prod 依赖） |
+| `Dockerfile.app` | 应用镜像（控制面 + agent，bun 直跑 TS；pnpm install --prod 出 prod 依赖（含可选平台绑定）） |
 | `Dockerfile.web` | web 镜像（Next.js standalone + node 运行时） |
 | `container-update.sh` | 生产机更新：拉镜像 → 起容器 → 健康门 → 镜像清理 |
 | `backup.sh` / `restore.sh` | 备份 / 恢复（数据路径不变，零迁移） |
