@@ -7,6 +7,10 @@ import { usePlan } from "@/hooks/usePlan";
 import { useWechatStatus } from "@/hooks/useWechatStatus";
 import { usePets } from "@/hooks/usePets";
 import { CatchphraseEditor } from "@/components/dashboard/CatchphraseEditor";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { Switch } from "@/components/ui/Switch";
+import { spring } from "@/components/ui/motion";
 
 /**
  * 设置页面
@@ -31,27 +35,17 @@ export default function SettingsPage(): React.ReactElement {
     sleepPet !== null && sleepPet.sleepStart !== null && sleepPet.sleepEnd !== null;
   return (
     <div className="spacing-lg max-w-6xl mx-auto">
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 400, damping: 25 }}
-      >
-        <h1
-          className="font-heading text-hero font-semibold text-text"
-          style={{ letterSpacing: "-0.04em" }}
-        >
-          设置
-        </h1>
-        <p className="text-body text-subtext mt-1">
-          查看当前 Agent 配置（修改需编辑后端 .env 文件）
-        </p>
-      </motion.div>
+      <PageHeader
+        kicker="Praefatio"
+        title="设置"
+        subtitle={<>查看当前 Agent 配置（修改需编辑后端 .env 文件）</>}
+      />
 
       <motion.div
         className="grid grid-cols-1 lg:grid-cols-2 gap-6"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 400, damping: 25, delay: 0.1 }}
+        transition={{ ...spring, delay: 0.1 }}
       >
         {/* 心跳配置 */}
         <div className="p-6 paper-card rounded-sm">
@@ -147,22 +141,19 @@ export default function SettingsPage(): React.ReactElement {
             </p>
           ) : (
             <div className="flex items-center gap-3">
-              <button
-                type="button"
+              <Switch
+                checked={pushState === "on"}
+                onCheckedChange={(on) => void (on ? enable() : disable())}
                 disabled={pushState === "subscribing"}
-                onClick={() => void (pushState === "on" ? disable() : enable())}
-                className={`px-4 py-2 rounded-sm text-small font-medium transition-colors ${
-                  pushState === "on"
-                    ? "bg-success/20 text-success"
-                    : "bg-accent text-base font-semibold"
-                } disabled:opacity-50`}
-              >
+                aria-label="系统推送开关"
+              />
+              <span className="text-small text-subtext">
                 {pushState === "subscribing"
                   ? "订阅中…"
                   : pushState === "on"
-                    ? "已开启（点击关闭）"
-                    : "开启系统推送"}
-              </button>
+                    ? "已开启——关掉 App 也能收到"
+                    : "已关闭"}
+              </span>
               {pushError ? <span className="text-small text-danger">{pushError}</span> : null}
             </div>
           )}
@@ -177,13 +168,9 @@ export default function SettingsPage(): React.ReactElement {
           {channels?.feishu ? (
             <div className="flex items-center gap-3">
               <span className="text-small text-success">已绑定</span>
-              <button
-                type="button"
-                onClick={() => void unbindFeishu()}
-                className="px-3 py-1.5 rounded-sm text-small bg-danger/10 text-danger"
-              >
+              <Button variant="danger" size="sm" onClick={() => void unbindFeishu()}>
                 解绑
-              </button>
+              </Button>
             </div>
           ) : (
             <form
@@ -203,12 +190,7 @@ export default function SettingsPage(): React.ReactElement {
                 placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/…"
                 className="flex-1 px-3 py-2 rounded-sm bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
               />
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-sm text-small bg-accent text-base font-semibold"
-              >
-                绑定
-              </button>
+              <Button type="submit">绑定</Button>
             </form>
           )}
           {channelError ? <p className="text-small text-danger mt-2">{channelError}</p> : null}
@@ -225,23 +207,19 @@ export default function SettingsPage(): React.ReactElement {
           {!wechatStatus ? (
             <p className="text-small text-subtext">加载中…</p>
           ) : !wechatStatus.bound ? (
-            <a
-              href="/wechat"
-              className="inline-block px-4 py-2 rounded-sm text-small bg-accent text-base font-semibold"
-            >
-              扫码绑定
-            </a>
+            <Button asChild>
+              <a href="/wechat">扫码绑定</a>
+            </Button>
           ) : wechatStatus.status === "expired" ? (
             <div className="flex items-center gap-3">
               <span className="text-small text-danger">
                 {wechatStatus.expiredHint ?? "微信通道已过期,发条消息重新激活"}
               </span>
-              <a
-                href={`/wechat?rebind=${encodeURIComponent(wechatStatus.tenantId ?? "")}`}
-                className="px-3 py-1.5 rounded-sm text-small bg-accent text-base font-semibold"
-              >
-                重新激活
-              </a>
+              <Button asChild size="sm">
+                <a href={`/wechat?rebind=${encodeURIComponent(wechatStatus.tenantId ?? "")}`}>
+                  重新激活
+                </a>
+              </Button>
             </div>
           ) : (
             <span className="text-small text-success">
@@ -262,19 +240,14 @@ export default function SettingsPage(): React.ReactElement {
           </p>
           <div className="flex gap-2 mb-4">
             {(["free", "pro", "byok"] as const).map((p) => (
-              <button
+              <Button
                 key={p}
-                type="button"
+                variant={plan?.plan === p ? "primary" : "secondary"}
                 disabled={plan?.plan === p}
                 onClick={() => void switchPlan(p)}
-                className={`px-4 py-2 rounded-sm text-small font-semibold ${
-                  plan?.plan === p
-                    ? "bg-accent text-base"
-                    : "bg-surface text-subtext border border-[var(--c-engraving-fine)]"
-                }`}
               >
                 {p === "free" ? "免费" : p === "pro" ? "Pro" : "BYOK"}
-              </button>
+              </Button>
             ))}
           </div>
 
@@ -308,20 +281,11 @@ export default function SettingsPage(): React.ReactElement {
                 className="w-16 px-2 py-1.5 rounded-lg bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
               />
               <span className="text-small text-subtext">点</span>
-              <button
-                type="submit"
-                className="px-3 py-1.5 rounded-sm text-small bg-accent text-base font-semibold"
-              >
-                保存
-              </button>
+              <Button type="submit" size="sm">保存</Button>
               {plan.pushWindow ? (
-                <button
-                  type="button"
-                  onClick={() => void clearPushWindow()}
-                  className="px-3 py-1.5 rounded-sm text-small bg-danger/10 text-danger"
-                >
+                <Button variant="danger" size="sm" onClick={() => void clearPushWindow()}>
                   清除
-                </button>
+                </Button>
               ) : null}
             </form>
           ) : null}
@@ -347,12 +311,9 @@ export default function SettingsPage(): React.ReactElement {
                 }
                 className="flex-1 px-3 py-2 rounded-sm bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
               />
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-sm text-small bg-accent text-base font-semibold"
-              >
+              <Button type="submit">
                 {plan.byok.keyBound ? "更换" : "绑定"}
-              </button>
+              </Button>
             </form>
           ) : null}
           {planError ? <p className="text-small text-danger mt-2">{planError}</p> : null}
@@ -369,12 +330,9 @@ export default function SettingsPage(): React.ReactElement {
               （四宫格主路径 + 两层质检；每月限 2 套）。确认后的概念图是角色锚点，
               后续表情包等生成都复用它。
             </p>
-            <a
-              href="/pet/customize"
-              className="inline-block px-4 py-2 rounded-sm text-small bg-accent text-base font-semibold"
-            >
-              去定制
-            </a>
+            <Button asChild>
+              <a href="/pet/customize">去定制</a>
+            </Button>
           </div>
         ) : null}
 
@@ -420,20 +378,11 @@ export default function SettingsPage(): React.ReactElement {
                 className="w-16 px-2 py-1.5 rounded-lg bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
               />
               <span className="text-small text-subtext">点</span>
-              <button
-                type="submit"
-                className="px-3 py-1.5 rounded-sm text-small bg-accent text-base font-semibold"
-              >
-                保存
-              </button>
+              <Button type="submit" size="sm">保存</Button>
               {hasSleepSchedule ? (
-                <button
-                  type="button"
-                  onClick={() => void clearSleepSchedule()}
-                  className="px-3 py-1.5 rounded-sm text-small bg-danger/10 text-danger"
-                >
+                <Button variant="danger" size="sm" onClick={() => void clearSleepSchedule()}>
                   清除
-                </button>
+                </Button>
               ) : null}
             </form>
           )}
@@ -463,34 +412,24 @@ export default function SettingsPage(): React.ReactElement {
                     { value: "literary", label: "文艺" },
                   ] as const
                 ).map((opt) => (
-                  <button
+                  <Button
                     key={opt.value}
-                    type="button"
+                    variant={sleepPet.diaryStyle === opt.value ? "primary" : "secondary"}
+                    size="sm"
                     disabled={sleepPet.diaryStyle === opt.value}
                     onClick={() => void setDiaryStyle(opt.value)}
-                    className={`px-3 py-1.5 rounded-sm text-small font-semibold ${
-                      sleepPet.diaryStyle === opt.value
-                        ? "bg-accent text-base"
-                        : "bg-surface text-subtext border border-[var(--c-engraving-fine)]"
-                    }`}
                   >
                     {opt.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-small text-subtext">每日推送</span>
-                <button
-                  type="button"
-                  onClick={() => void setDiaryPush(!sleepPet.diaryPushEnabled)}
-                  className={`px-4 py-2 rounded-sm text-small font-semibold ${
-                    sleepPet.diaryPushEnabled
-                      ? "bg-accent text-base"
-                      : "bg-surface text-subtext border border-[var(--c-engraving-fine)]"
-                  }`}
-                >
-                  {sleepPet.diaryPushEnabled ? "已开启（点击关闭）" : "开启"}
-                </button>
+                <Switch
+                  checked={sleepPet.diaryPushEnabled}
+                  onCheckedChange={(on) => void setDiaryPush(on)}
+                  aria-label="每日日记推送开关"
+                />
                 <span className="text-xs text-subtext">
                   {sleepPet.diaryPushEnabled ? "日记生成后推送给你" : "仅生成，不推送"}
                 </span>

@@ -147,7 +147,7 @@ export function PetSprite({
     <motion.button
       type="button"
       onClick={pat}
-      className="pet-player relative cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-amber)] rounded-sm"
+      className="pet-player relative cursor-pointer focus:outline-none rounded-sm"
       style={playerStyle}
       whileTap={{ scale: 0.96 }}
       animate={humming ? { rotate: [-4, 4, -2, 0] } : { rotate: 0 }}

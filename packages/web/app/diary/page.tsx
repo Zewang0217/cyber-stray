@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { spring } from "@/components/ui/motion";
 
 interface DiaryEntry {
   date: string;
@@ -17,6 +19,8 @@ interface DiaryEntry {
 export default function DiaryPage(): React.ReactElement {
   const [entries, setEntries] = useState<DiaryEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // prefers-reduced-motion:时间轴节点弹跳降级为淡入
+  const reduced = useReducedMotion();
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -46,16 +50,11 @@ export default function DiaryPage(): React.ReactElement {
 
   return (
     <div className="spacing-lg max-w-4xl mx-auto">
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 400, damping: 25 }}
-      >
-        <h1 className="font-heading text-heading font-semibold text-text mb-1">日记</h1>
-        <p className="text-body text-subtext mb-6">
-          宠物每天睡前的性格化日记 {entries ? `· 共 ${entries.length} 篇` : ""}
-        </p>
-      </motion.div>
+      <PageHeader
+        kicker="Ephemeris"
+        title="日记"
+        subtitle={<>宠物每天睡前的性格化日记 {entries ? `· 共 ${entries.length} 篇` : ""}</>}
+      />
 
       {!entries ? (
         <p className="text-body text-subtext">加载中…</p>
@@ -76,7 +75,15 @@ export default function DiaryPage(): React.ReactElement {
               transition={{ delay: Math.min(i * 0.05, 0.4) }}
             >
               {/* 时间轴节点 */}
-              <span className="absolute -left-[30px] top-2 w-3 h-3 rounded-full bg-[var(--c-amber)]" />
+              <motion.span
+                className="absolute -left-[30px] top-2 w-3 h-3 rounded-full bg-[var(--c-amber)]"
+                initial={reduced ? { opacity: 0 } : { scale: 0 }}
+                animate={reduced ? { opacity: 1 } : { scale: 1 }}
+                transition={{
+                  ...spring,
+                  delay: Math.min(i * 0.05, 0.4) + 0.15,
+                }}
+              />
               <div className="p-5 paper-card rounded-sm">
                 <div className="flex items-center justify-between mb-2">
                   <h2 className="font-heading text-body font-semibold text-text">{e.title}</h2>

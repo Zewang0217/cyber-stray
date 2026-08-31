@@ -11,6 +11,7 @@ import {
   type PersonalityId,
 } from "@cyber-stray/shared";
 import type { Pet } from "@/hooks/usePets";
+import { Button } from "@/components/ui/Button";
 
 /** 默认初始兴趣（与服务端 DEFAULT_ADOPTION_INTERESTS 一致；用户可改） */
 const DEFAULT_INTERESTS = ["科技", "AI", "互联网"];
@@ -264,14 +265,13 @@ export function AdoptionFlow({ adopting, onAdopt }: AdoptionFlowProps): React.Re
                   focus:border-[var(--c-amber)] mb-4 font-heading text-body"
               />
               {error && <p className="field-note text-sm text-[var(--c-state-warn)] mb-3">{error}</p>}
-              <button
+              <Button
                 onClick={submitName}
-                className="w-full py-3 rounded-sm bg-[var(--c-ink)] text-[var(--c-paper)] font-heading font-medium
-                  hover:border-[var(--c-amber)] hover:shadow-[0_2px_0_0_var(--c-amber)] transition-all disabled:opacity-50"
+                className="w-full py-3"
                 disabled={name.trim().length === 0}
               >
                 就叫这个
-              </button>
+              </Button>
             </motion.div>
           ) : step === "personality" ? (
             <motion.div key="personality" {...stepMotion} className="paper-card p-8 rounded-sm">
@@ -316,20 +316,16 @@ export function AdoptionFlow({ adopting, onAdopt }: AdoptionFlowProps): React.Re
               </div>
               {error && <p className="field-note text-sm text-[var(--c-state-warn)] mb-3">{error}</p>}
               <div className="flex gap-3">
-                <button
+                <Button
+                  variant="secondary"
+                  className="flex-1 py-3"
                   onClick={() => back("name")}
-                  className="flex-1 py-3 rounded-sm border border-[var(--c-engraving-fine)] text-subtext
-                    hover:text-text hover:border-[var(--c-amber)] transition-colors"
                 >
                   返回改名
-                </button>
-                <button
-                  onClick={submitPersonality}
-                  className="flex-1 py-3 rounded-sm bg-[var(--c-ink)] text-[var(--c-paper)] font-heading font-medium
-                    hover:shadow-[0_2px_0_0_var(--c-amber)] transition-all"
-                >
+                </Button>
+                <Button className="flex-1 py-3" onClick={submitPersonality}>
                   就是这种性格
-                </button>
+                </Button>
               </div>
             </motion.div>
           ) : step === "catchphrase" ? (
@@ -387,32 +383,29 @@ export function AdoptionFlow({ adopting, onAdopt }: AdoptionFlowProps): React.Re
                   className="flex-1 px-4 py-2 rounded-sm bg-[var(--c-paper)] border border-[var(--c-engraving-fine)]
                     text-text placeholder:text-subtext focus:outline-none focus:border-[var(--c-amber)] text-small"
                 />
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
                   onClick={addCustomPhrase}
-                  className="px-4 py-2 rounded-sm border border-[var(--c-engraving-fine)] text-small text-subtext
-                    hover:text-text hover:border-[var(--c-amber)] transition-colors"
                 >
                   教它
-                </button>
+                </Button>
               </div>
               {error && <p className="field-note text-sm text-[var(--c-state-warn)] mb-3">{error}</p>}
               <div className="flex gap-3">
-                <button
+                <Button
+                  variant="secondary"
+                  className="flex-1 py-3"
                   onClick={() => back("personality")}
-                  className="flex-1 py-3 rounded-sm border border-[var(--c-engraving-fine)] text-subtext
-                    hover:text-text hover:border-[var(--c-amber)] transition-colors"
                 >
                   返回改性格
-                </button>
-                <button
+                </Button>
+                <Button
+                  className="flex-1 py-3"
                   onClick={submitCatchphrase}
                   disabled={catchphraseList.length === 0}
-                  className="flex-1 py-3 rounded-sm bg-[var(--c-ink)] text-[var(--c-paper)] font-heading font-medium
-                    hover:shadow-[0_2px_0_0_var(--c-amber)] transition-all disabled:opacity-50"
                 >
                   就爱这么说
-                </button>
+                </Button>
               </div>
             </motion.div>
           ) : (
@@ -445,21 +438,20 @@ export function AdoptionFlow({ adopting, onAdopt }: AdoptionFlowProps): React.Re
               </div>
               {error && <p className="field-note text-sm text-[var(--c-state-warn)] mb-3">{error}</p>}
               <div className="flex gap-3">
-                <button
+                <Button
+                  variant="secondary"
+                  className="flex-1 py-3"
                   onClick={() => back("catchphrase")}
-                  className="flex-1 py-3 rounded-sm border border-[var(--c-engraving-fine)] text-subtext
-                    hover:text-text hover:border-[var(--c-amber)] transition-colors"
                 >
                   返回改口头禅
-                </button>
-                <button
+                </Button>
+                <Button
+                  className="flex-1 py-3"
                   onClick={() => void submitAdopt()}
                   disabled={adopting || interests.length === 0}
-                  className="flex-1 py-3 rounded-sm bg-[var(--c-ink)] text-[var(--c-paper)] font-heading font-medium
-                    hover:shadow-[0_2px_0_0_var(--c-amber)] transition-all disabled:opacity-50"
                 >
                   {adopting ? "办理领养中…" : `带 ${name} 回家`}
-                </button>
+                </Button>
               </div>
             </motion.div>
           )}

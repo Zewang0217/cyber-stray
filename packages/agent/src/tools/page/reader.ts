@@ -1,6 +1,7 @@
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import { consola } from '../../logger.js';
+import { proxyFetch } from '../../net/proxy.js';
 
 const logger = consola.withTag('page-reader');
 
@@ -91,7 +92,7 @@ export async function readPage(url: string): Promise<PageResult> {
   let html: string;
 
   try {
-    const response = await fetch(url, {
+    const response = await proxyFetch(url, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; CyberStrayBot/1.0)',

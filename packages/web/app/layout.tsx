@@ -16,6 +16,7 @@ import "@fontsource/ibm-plex-mono/600.css";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { PageTransition } from "@/components/layout/PageTransition";
 import { PaperTexture } from "@/components/effects/PaperTexture";
 import { THEMES, THEME_STORAGE_KEY } from "@/lib/themes";
 
@@ -61,7 +62,18 @@ export default function RootLayout({
         <Providers>
           <PaperTexture />
           <Sidebar />
-          <main className="flex-1 lg:ml-64 relative z-10 pt-14 lg:pt-0">{children}</main>
+          <main className="flex-1 lg:ml-64 relative z-10 pt-14 lg:pt-0">
+            <PageTransition>
+              {children}
+              {/* 卷末印记(colophon):随翻页子树一起进出,避免高度突变跳位 */}
+              <footer
+                aria-hidden
+                className="field-note text-xs text-subtext text-center pt-16 pb-8 select-none"
+              >
+                — 图鉴 · 采集自云端 —
+              </footer>
+            </PageTransition>
+          </main>
         </Providers>
       </body>
     </html>
