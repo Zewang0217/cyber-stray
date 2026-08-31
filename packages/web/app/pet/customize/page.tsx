@@ -9,6 +9,8 @@ import {
   type PetStateId,
 } from "@cyber-stray/shared/pet";
 import { usePetGen, type PetGenSpecInput, type PetGenTaskStatus } from "@/hooks/usePetGen";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
 
 const presetOptions = listPetStylePresets();
 
@@ -59,15 +61,12 @@ export default function PetCustomizePage(): React.ReactElement {
   if (quota && !quota.available) {
     return (
       <div className="spacing-lg max-w-3xl mx-auto">
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="font-heading text-hero font-semibold text-text" style={{ letterSpacing: "-0.04em" }}>
-            宠物 IP 定制
-          </h1>
-          <p className="text-body text-subtext mt-1">
-            自定义宠物形象是 Pro/BYOK 专属功能
-          </p>
-        </motion.div>
-        <div className="p-6 paper-card rounded-sm mt-6">
+        <PageHeader
+          kicker="Effigies"
+          title="宠物 IP 定制"
+          subtitle={<>自定义宠物形象是 Pro/BYOK 专属功能</>}
+        />
+        <div className="p-6 paper-card rounded-sm">
           <p className="text-body text-text">
             升级到 Pro（或接入自己的 API Key）后，可以为你的街溜子生成专属形象：
             描述它的样子 → 确认概念图 → 自动生成 9 种状态的完整素材。
@@ -106,14 +105,11 @@ export default function PetCustomizePage(): React.ReactElement {
 
   return (
     <div className="spacing-lg max-w-4xl mx-auto">
-      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="font-heading text-hero font-semibold text-text" style={{ letterSpacing: "-0.04em" }}>
-          宠物 IP 定制
-        </h1>
-        <p className="text-body text-subtext mt-1">
-          描述你的专属街溜子 → 确认概念图 → 自动生成全套状态素材（Pro/BYOK 专属）
-        </p>
-      </motion.div>
+      <PageHeader
+        kicker="Effigies"
+        title="宠物 IP 定制"
+        subtitle={<>描述你的专属街溜子 → 确认概念图 → 自动生成全套状态素材（Pro/BYOK 专属）</>}
+      />
 
       {quota ? (
         <p className="text-small text-subtext mt-2 font-mono">
@@ -195,20 +191,20 @@ export default function PetCustomizePage(): React.ReactElement {
             </select>
           </div>
           <div className="flex items-center gap-3">
-            <button
+            <Button
               type="submit"
+              size="lg"
               disabled={submitting || loading || spec.specText.trim().length === 0}
-              className="px-5 py-2.5 rounded-sm bg-accent text-base font-semibold disabled:opacity-50"
             >
               {task?.status === "failed" && editing
                 ? "按新描述重新生成"
                 : task?.status === "awaiting_confirmation" && editing
                   ? "生成新概念图"
                   : "生成概念图"}
-            </button>
+            </Button>
             {task ? (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
                 onClick={() => {
                   setEditing(false);
                   setSpec({
@@ -217,10 +213,9 @@ export default function PetCustomizePage(): React.ReactElement {
                     stylePreset: task.stylePreset,
                   });
                 }}
-                className="px-4 py-2.5 rounded-sm text-small text-subtext"
               >
                 返回当前任务
-              </button>
+              </Button>
             ) : null}
           </div>
           <p className="text-small text-subtext">
@@ -263,23 +258,18 @@ export default function PetCustomizePage(): React.ReactElement {
           {/* 等待确认：满意 / 调整 */}
           {task.status === "awaiting_confirmation" ? (
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => void confirm(task.id)}
-                className="px-5 py-2.5 rounded-sm bg-accent text-base font-semibold"
-              >
+              <Button size="lg" onClick={() => void confirm(task.id)}>
                 满意，生成全套素材
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="secondary"
                 onClick={() => {
                   setSpec({ specText: task.specText, options: task.options ?? {}, stylePreset: task.stylePreset });
                   setEditing(true);
                 }}
-                className="px-4 py-2.5 rounded-sm text-small text-subtext border border-[var(--c-engraving-fine)]"
               >
                 不满意，调整描述重来
-              </button>
+              </Button>
             </div>
           ) : null}
 
@@ -294,16 +284,15 @@ export default function PetCustomizePage(): React.ReactElement {
           {task.status === "failed" ? (
             <div className="mt-4">
               <p className="text-small text-danger whitespace-pre-wrap">{task.error}</p>
-              <button
-                type="button"
+              <Button
+                className="mt-3"
                 onClick={() => {
                   setSpec({ specText: task.specText, options: task.options ?? {}, stylePreset: task.stylePreset });
                   setEditing(true);
                 }}
-                className="mt-3 px-4 py-2.5 rounded-sm bg-accent text-base font-semibold"
               >
                 调整描述，重新生成
-              </button>
+              </Button>
             </div>
           ) : null}
 
@@ -324,16 +313,16 @@ export default function PetCustomizePage(): React.ReactElement {
                   </div>
                 ))}
               </div>
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                className="mt-4"
                 onClick={() => {
                   setSpec({ specText: "", options: {}, stylePreset: "chibi-kawaii" });
                   setEditing(true);
                 }}
-                className="mt-4 px-4 py-2.5 rounded-sm text-small text-subtext border border-[var(--c-engraving-fine)]"
               >
                 再定制一套（消耗本月配额）
-              </button>
+              </Button>
             </div>
           ) : null}
         </motion.div>

@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { spring } from "@/components/ui/motion";
 
 interface FootprintStep {
   timestamp: string;
@@ -18,6 +20,8 @@ interface FootprintStep {
 export default function FootprintPage(): React.ReactElement {
   const [steps, setSteps] = useState<FootprintStep[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // prefers-reduced-motion:时间轴节点弹跳降级为淡入
+  const reduced = useReducedMotion();
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -48,16 +52,11 @@ export default function FootprintPage(): React.ReactElement {
 
   return (
     <div className="spacing-lg max-w-4xl mx-auto">
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 400, damping: 25 }}
-      >
-        <h1 className="font-heading text-heading font-semibold text-text mb-1">足迹</h1>
-        <p className="text-body text-subtext mb-6">
-          宠物每次游荡的每一个步骤 {steps ? `· 共 ${steps.length} 步` : ""}
-        </p>
-      </motion.div>
+      <PageHeader
+        kicker="Itinerarium"
+        title="足迹"
+        subtitle={<>宠物每次游荡的每一个步骤 {steps ? `· 共 ${steps.length} 步` : ""}</>}
+      />
 
       {!steps ? (
         <p className="text-body text-subtext">加载中…</p>
@@ -80,9 +79,15 @@ export default function FootprintPage(): React.ReactElement {
               transition={{ delay: Math.min(i * 0.02, 0.4) }}
             >
               {/* 时间轴节点 */}
-              <span
+              <motion.span
                 className="absolute -left-[30px] top-1.5 w-3 h-3 rounded-full"
                 style={{ background: toolColor(s.tool) }}
+                initial={reduced ? { opacity: 0 } : { scale: 0 }}
+                animate={reduced ? { opacity: 1 } : { scale: 1 }}
+                transition={{
+                  ...spring,
+                  delay: Math.min(i * 0.02, 0.4) + 0.15,
+                }}
               />
               <div className="p-4 paper-card rounded-sm">
                 <div className="flex items-center gap-2 mb-1">

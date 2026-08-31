@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import type { EvolutionSnapshot, FeedbackEvent, SnapshotNode } from "@/hooks/useEvolution";
 
 /** 时间线画布(逻辑坐标,SVG viewBox) */
@@ -228,21 +229,48 @@ export function InterestTimeline({
             </text>
           </g>
         ))}
-        {/* 兴趣权重线:active 高亮加粗,其余退淡;线型循环区分近权重线 */}
+        {/* 兴趣权重线:active 高亮加粗,其余退淡;线型循环区分近权重线。
+            入场用 mask 左→右揭示——绝不动 strokeDasharray/pathLength(#115
+            线型区分对 framer 重渲染免疫,不再做一次性属性手术) */}
         {visible.map((s, rank) => {
           const isActive = s.id === activeId;
           const dimmed = activeId !== null && !isActive;
+          const maskId = `timeline-mask-${rank}`;
           return (
-            <polyline
-              key={s.id}
-              points={s.points.map((p) => `${x(p.t)},${y(p.w)}`).join(" ")}
-              fill="none"
-              stroke={s.color}
-              strokeWidth={isActive ? 3.5 : 2.5}
-              strokeDasharray={DASH_PATTERNS[rank % DASH_PATTERNS.length]}
-              strokeLinejoin="round"
-              opacity={dimmed ? 0.18 : 1}
-            />
+            <g key={s.id}>
+              <mask
+                id={maskId}
+                maskUnits="userSpaceOnUse"
+                x={PAD_L}
+                y={PAD_T}
+                width={W - PAD_L - PAD_R}
+                height={H - PAD_T - PAD_B}
+              >
+                <motion.rect
+                  x={PAD_L}
+                  y={PAD_T}
+                  height={H - PAD_T - PAD_B}
+                  fill="#fff"
+                  initial={{ width: 0 }}
+                  animate={{ width: W - PAD_L - PAD_R }}
+                  transition={{
+                    duration: 0.9,
+                    ease: "easeOut",
+                    delay: 0.15 + Math.min(rank * 0.07, 0.5),
+                  }}
+                />
+              </mask>
+              <polyline
+                points={s.points.map((p) => `${x(p.t)},${y(p.w)}`).join(" ")}
+                fill="none"
+                stroke={s.color}
+                strokeWidth={isActive ? 3.5 : 2.5}
+                strokeDasharray={DASH_PATTERNS[rank % DASH_PATTERNS.length]}
+                strokeLinejoin="round"
+                opacity={dimmed ? 0.18 : 1}
+                mask={`url(#${maskId})`}
+              />
+            </g>
           );
         })}
         {/* 数据点:默认小点;active 系列加大 */}

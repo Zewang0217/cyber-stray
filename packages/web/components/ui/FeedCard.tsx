@@ -5,8 +5,9 @@ import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import { useState } from "react";
 import type { PushContent, SpeakType } from "@/lib/types";
-import { ExternalLink, ThumbsUp, ThumbsDown, Flame } from "lucide-react";
+import { ExternalLink, ThumbsUp, ThumbsDown, Flame, ChevronRight } from "lucide-react";
 import { useFeedback } from "@/hooks/useFeedback";
+import { Tooltip } from "@/components/ui/Tooltip";
 
 interface FeedCardProps {
   item: PushContent;
@@ -140,15 +141,17 @@ export function FeedCard({ item, onFeedbackDone }: FeedCardProps): React.ReactEl
             )}
           </div>
           {item.url && (
-            <a
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 p-1.5 rounded-sm bg-[var(--c-paper)] text-subtext hover:text-[var(--c-amber)] transition-colors border border-[var(--c-engraving-fine)]"
-              aria-label="打开原文"
-            >
-              <ExternalLink className="w-4 h-4" />
-            </a>
+            <Tooltip content="打开原文">
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 p-1.5 rounded-sm bg-[var(--c-paper)] text-subtext hover:text-[var(--c-amber)] transition-colors border border-[var(--c-engraving-fine)]"
+                aria-label="打开原文"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </Tooltip>
           )}
         </div>
 
@@ -160,7 +163,10 @@ export function FeedCard({ item, onFeedbackDone }: FeedCardProps): React.ReactEl
         {/* 推送理由（S8）：门控因子——它为什么觉得主人会感兴趣 */}
         {item.gateReasons?.length ? (
           <details className="mb-4 text-xs">
-            <summary className="cursor-pointer field-note text-sm text-subtext hover:text-text select-none">
+            <summary className="cursor-pointer field-note text-sm text-subtext hover:text-text select-none flex items-center gap-1">
+              <span className="disclosure-chevron" aria-hidden>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </span>
               为什么推给我？
             </summary>
             <ul className="mt-2 space-y-1 pl-3">
@@ -224,16 +230,17 @@ export function FeedCard({ item, onFeedbackDone }: FeedCardProps): React.ReactEl
             </>
           ) : null}
           {item.matchedTopics?.length && item.matchedTopics[0] ? (
-            <button
-              type="button"
-              disabled={pending || boosted}
-              onClick={() => void handleBoost()}
-              className="flex items-center gap-1 px-2 py-1 rounded-sm text-xs transition-colors border border-[var(--c-amber)]/50 text-[var(--c-amber)] hover:border-[var(--c-amber)] disabled:opacity-50"
-              title={`顶「${item.matchedTopics[0]}」——告诉它多逛这个方向`}
-            >
-              <Flame size={12} />
-              {boosted ? "已顶" : `顶「${item.matchedTopics[0]}」`}
-            </button>
+            <Tooltip content={`顶「${item.matchedTopics[0]}」——告诉它多逛这个方向`}>
+              <button
+                type="button"
+                disabled={pending || boosted}
+                onClick={() => void handleBoost()}
+                className="flex items-center gap-1 px-2 py-1 rounded-sm text-xs transition-colors border border-[var(--c-amber)]/50 text-[var(--c-amber)] hover:border-[var(--c-amber)] disabled:opacity-50"
+              >
+                <Flame size={12} />
+                {boosted ? "已顶" : `顶「${item.matchedTopics[0]}」`}
+              </button>
+            </Tooltip>
           ) : null}
           {error ? <span className="text-xs text-[var(--c-state-warn)]">{error}</span> : null}
         </div>

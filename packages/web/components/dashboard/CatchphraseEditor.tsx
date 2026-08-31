@@ -8,6 +8,7 @@ import {
   type Catchphrase,
 } from "@cyber-stray/shared";
 import type { Pet } from "@/hooks/usePets";
+import { Button } from "@/components/ui/Button";
 
 
 /**
@@ -114,24 +115,16 @@ export function CatchphraseEditor({
         ))}
       </div>
       <div className="flex items-center gap-3">
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           onClick={add}
           disabled={draft.length >= CATCHPHRASE_LIST_MAX}
-          className="px-4 py-2 rounded-sm text-small border border-[var(--c-engraving-fine)] text-subtext
-            hover:text-text hover:border-[var(--c-amber)] transition-colors disabled:opacity-30"
         >
           加一条（{draft.length}/{CATCHPHRASE_LIST_MAX}）
-        </button>
-        <button
-          type="button"
-          onClick={() => void save()}
-          disabled={!dirty || saving}
-          className="px-4 py-2 rounded-sm text-small font-semibold bg-[var(--c-ink)] text-[var(--c-paper)]
-            hover:shadow-[0_2px_0_0_var(--c-amber)] transition-all disabled:opacity-40"
-        >
+        </Button>
+        <Button onClick={() => void save()} disabled={!dirty || saving}>
           {saving ? "保存中…" : saved ? "已保存" : "保存"}
-        </button>
+        </Button>
         {err ? <span className="text-small text-danger">{err}</span> : null}
       </div>
     </div>
