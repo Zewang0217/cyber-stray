@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { motion } from "framer-motion";
 import { Download, Trash2, Sparkles } from "lucide-react";
 import { useMeme, type MemeEntry } from "@/hooks/useMeme";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 /**
  * 表情包图鉴页（#96）：宠物自动生成的表情包集合。
@@ -31,19 +32,12 @@ export default function MemePage(): React.ReactElement {
 
   return (
     <div className="spacing-lg max-w-5xl mx-auto">
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 400, damping: 25 }}
-      >
-        <div className="flex items-center gap-2 mb-1">
-          <Sparkles className="w-5 h-5 text-[var(--c-amber)]" aria-hidden />
-          <h1 className="font-heading text-heading font-semibold text-text">表情包图鉴</h1>
-        </div>
-        <p className="text-body text-subtext mb-6">
-          宠物自动生成的表情包 · 每张带话题/情绪/日期 {memes ? `· 共 ${memes.length} 张` : ""}
-        </p>
-      </motion.div>
+      <PageHeader
+        kicker="Mimica"
+        icon={<Sparkles className="w-5 h-5" />}
+        title="表情包图鉴"
+        subtitle={<>宠物自动生成的表情包 · 每张带话题/情绪/日期 {memes ? `· 共 ${memes.length} 张` : ""}</>}
+      />
 
       {!memes ? (
         <p className="text-body text-subtext">加载中…</p>

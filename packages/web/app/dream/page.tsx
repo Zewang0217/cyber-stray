@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Moon } from "lucide-react";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 interface DreamEntry {
   date: string;
@@ -49,19 +50,12 @@ export default function DreamPage(): React.ReactElement {
 
   return (
     <div className="spacing-lg max-w-4xl mx-auto">
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 400, damping: 25 }}
-      >
-        <div className="flex items-center gap-2 mb-1">
-          <Moon className="w-5 h-5 text-[var(--c-amber)]" aria-hidden />
-          <h1 className="font-heading text-heading font-semibold text-text">梦境</h1>
-        </div>
-        <p className="text-body text-subtext mb-6">
-          宠物睡前的抽象叙事 {entries ? `· 共 ${entries.length} 个梦` : ""}
-        </p>
-      </motion.div>
+      <PageHeader
+        kicker="Somnia"
+        icon={<Moon className="w-5 h-5" />}
+        title="梦境"
+        subtitle={<>宠物睡前的抽象叙事 {entries ? `· 共 ${entries.length} 个梦` : ""}</>}
+      />
 
       {!entries ? (
         <p className="text-body text-subtext">加载中…</p>

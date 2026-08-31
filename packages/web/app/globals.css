@@ -69,6 +69,50 @@
     0%, 100% { opacity: 0.45; }
     50% { opacity: 0.9; }
   }
+
+  /* 修订闪光:读数变化时整段数字被采集者擦改重写(FieldNote keyed remount 触发) */
+  --animate-revise: revise-flash 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes revise-flash {
+    0% { color: var(--c-amber-ink); transform: translateY(-2px); }
+    35% { color: var(--c-amber-ink); }
+    100% { color: inherit; transform: translateY(0); }
+  }
+
+  /* 图版落纸:标题下的分隔线自左向右画出 */
+  --animate-rule-draw: rule-draw 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+
+  @keyframes rule-draw {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+
+  /* 生命墨晕:主图版落定时琥珀墨在纸面晕开一次(one-shot) */
+  --animate-plate-bloom: plate-bloom 1.7s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both;
+
+  @keyframes plate-bloom {
+    0% { opacity: 0; transform: scale(0.7); }
+    30% { opacity: 0.32; }
+    100% { opacity: 0; transform: scale(1.35); }
+  }
+
+  /* 对话框/提示气泡:遮罩与内容入场退场(内容用 inset-0 m-auto 居中,免 transform 叠加) */
+  @keyframes dialog-overlay-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes dialog-overlay-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+  @keyframes dialog-content-in {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes dialog-content-out {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(0.97); }
+  }
 }
 
 /* ============================================
@@ -176,6 +220,105 @@ body,
   animation: var(--animate-amber-breath);
 }
 
+/* 修订闪光:读数被采集者擦改(值变化 → keyed remount 重放) */
+.revise-flash {
+  display: inline-block;
+  animation: var(--animate-revise);
+}
+
+/* 铜版分隔线入场:标题下的横线自左画出 */
+.engraving-rule--draw {
+  transform-origin: left center;
+  animation: var(--animate-rule-draw);
+}
+
+/* 生命墨晕:主图版落定时琥珀墨晕开一次(one-shot,paper-card 内定位) */
+.plate-bloom {
+  animation: var(--animate-plate-bloom);
+}
+
+/* 手写注解折叠箭头(如"为什么推给我?"):展开时旋转 90° */
+.disclosure-chevron {
+  display: inline-flex;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+details[open] > summary .disclosure-chevron {
+  transform: rotate(90deg);
+}
+
+/* ============================================
+   按钮(DESIGN.md 活版印刷规格)
+   主 = 墨底纸字 + hover 琥珀底阴影;次 = 纸底 + 铜版细框 + hover 琥珀框
+   排版/尺寸由 Tailwind 类负责(px-4 py-2 rounded-sm text-small),本类只管颜色
+   ============================================ */
+.btn-primary {
+  background-color: var(--c-ink);
+  color: var(--c-paper);
+  border: 1px solid var(--c-ink);
+  border-radius: 2px;
+  font-family: var(--font-heading);
+  font-weight: 500;
+  transition:
+    box-shadow 0.2s ease-out,
+    border-color 0.2s ease-out,
+    background-color 0.2s ease-out,
+    color 0.2s ease-out;
+}
+.btn-primary:hover:not(:disabled) {
+  border-color: var(--c-amber);
+  box-shadow: 0 2px 0 0 var(--c-amber);
+}
+.btn-primary:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 0 var(--c-amber);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+}
+
+.btn-secondary {
+  background-color: var(--c-paper);
+  color: var(--c-ink);
+  border: 1px solid var(--c-engraving-fine);
+  border-radius: 2px;
+  transition:
+    border-color 0.2s ease-out,
+    color 0.2s ease-out,
+    background-color 0.2s ease-out;
+}
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--c-amber);
+}
+.btn-secondary:disabled {
+  opacity: 0.5;
+}
+
+.btn-danger {
+  background-color: color-mix(in oklch, var(--c-state-warn) 10%, var(--c-paper));
+  color: var(--c-state-warn);
+  border: 1px solid color-mix(in oklch, var(--c-state-warn) 35%, transparent);
+  border-radius: 2px;
+  transition:
+    background-color 0.2s ease-out,
+    border-color 0.2s ease-out;
+}
+.btn-danger:hover:not(:disabled) {
+  background-color: color-mix(in oklch, var(--c-state-warn) 16%, var(--c-paper));
+  border-color: var(--c-state-warn);
+}
+.btn-danger:disabled {
+  opacity: 0.5;
+}
+
+/* 键盘可达:链接/按钮/折叠摘要统一琥珀焦点描边(Switch/Tabs 组件内另有 outline) */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--c-amber);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -212,8 +355,18 @@ html[data-theme="night"] .pet-player {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* 宠物精灵图:JS 帧驱动在 PetSprite 内已按 matchMedia 停用,这里兜底 */
   .pet-player {
     animation: none !important;
+  }
+  /* 全部 CSS 动画/过渡收敛为瞬时(修订闪光/图版落纸/呼吸光/主题过渡等) */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

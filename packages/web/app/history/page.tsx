@@ -6,6 +6,8 @@ import { useHistory } from "@/hooks/useHistory";
 import { useTenantEvents } from "@/hooks/useTenantEvents";
 import { FeedCard } from "@/components/ui/FeedCard";
 import { PetSprite } from "@/components/dashboard/PetSprite";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { staggerContainer } from "@/components/ui/motion";
 
 /**
  * 历史推送页(采集者笔记条目册)
@@ -51,22 +53,12 @@ export default function HistoryPage(): React.ReactElement {
 
   return (
     <div className="spacing-lg max-w-6xl mx-auto">
-      <motion.div
-        className="mb-8"
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 300, damping: 28 }}
-      >
-        <p className="field-note text-sm text-subtext mb-1">Annotationes</p>
-        <h1
-          className="font-heading text-hero font-semibold text-text"
-          style={{ letterSpacing: "-0.01em" }}
-        >
-          历史推送
-        </h1>
-        <p className="text-body text-subtext mt-1">共 {total} 条采集记录</p>
-      </motion.div>
-      <div className="engraving-rule mb-8" />
+      <PageHeader
+        kicker="Annotationes"
+        title="历史推送"
+        size="hero"
+        subtitle={`共 ${total} 条采集记录`}
+      />
 
       {items.length === 0 ? (
         <motion.div
@@ -82,15 +74,7 @@ export default function HistoryPage(): React.ReactElement {
           className="grid grid-cols-1 md:grid-cols-2 gap-4"
           initial="hidden"
           animate="visible"
-          variants={{
-            hidden: { opacity: 0 },
-            visible: {
-              opacity: 1,
-              transition: {
-                staggerChildren: 0.08,
-              },
-            },
-          }}
+          variants={staggerContainer}
         >
           {items.map((item) => (
             <FeedCard key={item.timestamp + item.title} item={item} />
@@ -101,7 +85,7 @@ export default function HistoryPage(): React.ReactElement {
       {items.length > 0 && (
         <div className="flex justify-center py-8">
           {isLoadingMore ? (
-            <span className="field-note text-sm text-subtext">正在翻阅更多…</span>
+            <span className="field-note text-sm text-subtext animate-pulse">正在翻阅更多…</span>
           ) : hasMore ? (
             <span className="field-note text-sm text-subtext">继续滚动加载更多</span>
           ) : (

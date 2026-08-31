@@ -13,7 +13,10 @@ import { AdoptionFlow } from "@/components/dashboard/AdoptionFlow";
 import { PetIntro } from "@/components/dashboard/PetIntro";
 import { PetSprite } from "@/components/dashboard/PetSprite";
 import { FieldNote } from "@/components/dashboard/FieldNote";
+import { RevisingValue } from "@/components/ui/RevisingValue";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { spring, staggerContainer } from "@/components/ui/motion";
 
 /**
  * 图鉴首页:维多利亚自然博物图鉴
@@ -170,34 +173,29 @@ export default function DashboardPage(): React.ReactElement {
     return (
         <div className="spacing-lg max-w-6xl mx-auto">
             {/* 图鉴标题 + 主题切换 */}
-            <motion.header
-                className="flex items-center justify-between mb-8"
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 28 }}
-            >
-                <div>
-                    <p className="field-note text-sm text-subtext mb-1">
-                        Tabula Principalis
-                    </p>
-                    <h1
-                        className="font-heading text-hero font-semibold text-text"
-                        style={{ letterSpacing: "-0.01em" }}
-                    >
-                        Cyber Stray
-                    </h1>
-                </div>
-                <ThemeToggle />
-            </motion.header>
-            <div className="engraving-rule mb-8" />
+            <PageHeader
+                kicker="Tabula Principalis"
+                title="Cyber Stray"
+                size="hero"
+                right={<ThemeToggle />}
+            />
 
             {/* 主区:会动的铜版画宠物 + 采集笔记 */}
             <motion.section
-                className="paper-card p-8 mb-8"
+                className="paper-card relative overflow-hidden rounded-sm p-8 mb-10"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 28, delay: 0.1 }}
+                transition={{ ...spring, delay: 0.1 }}
             >
+                {/* 生命墨晕:图版落定时琥珀墨在纸面晕开一次(one-shot) */}
+                <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-sm">
+                    <div
+                        className="plate-bloom absolute -top-1/3 -left-1/3 w-2/3 h-2/3 rounded-full"
+                        style={{
+                            background: "radial-gradient(circle, var(--c-amber), transparent 70%)",
+                        }}
+                    />
+                </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
                     {/* 左:会动的铜版画插画 */}
                     <div className="flex flex-col items-center gap-4">
@@ -231,9 +229,12 @@ export default function DashboardPage(): React.ReactElement {
                             {sleeping && (
                                 <Link
                                     href="/dream"
-                                    className="field-note text-sm text-[var(--c-amber)] hover:text-text transition-colors"
+                                    className="group field-note text-sm text-[var(--c-amber)] hover:text-text transition-colors"
                                 >
                                     查看今晚的梦
+                                    <span className="inline-block transition-transform group-hover:translate-x-0.5">
+                                        →
+                                    </span>
                                 </Link>
                             )}
                         </div>
@@ -282,16 +283,10 @@ export default function DashboardPage(): React.ReactElement {
 
             {/* 状态读数行:采集者笔记里的数字 */}
             <motion.section
-                className="mb-8"
+                className="mb-10"
                 initial="hidden"
                 animate="visible"
-                variants={{
-                    hidden: { opacity: 0 },
-                    visible: {
-                        opacity: 1,
-                        transition: { staggerChildren: 0.12, delayChildren: 0.2 },
-                    },
-                }}
+                variants={staggerContainer}
             >
                 <p className="field-note text-xs text-subtext uppercase tracking-wider mb-3">
                     生理测量 · Status
@@ -301,16 +296,22 @@ export default function DashboardPage(): React.ReactElement {
                     <FieldNote label="精力值" value={`${state.energy}`} suffix="/100" isReading />
                     <FieldNote label="脾气值" value={`${state.temper}`} suffix="/100" isReading />
                     <FieldNote label="固执度" value={`${state.stubbornness}`} suffix="/100" isReading />
-                    <FieldNote label="连续失败" value={`${state.consecutiveFailures}`} isReading />
+                    {/* 5 项在 2 列网格会余出孤儿项:连续失败做整行页边注脚(md+ 回归单列) */}
+                    <FieldNote
+                        label="连续失败"
+                        value={`${state.consecutiveFailures}`}
+                        isReading
+                        className="col-span-2 md:col-span-1"
+                    />
                 </div>
             </motion.section>
 
             {/* 统计:游荡次数/步数/推送(采集者记录) */}
             <motion.section
-                className="paper-card p-6 mb-8"
+                className="paper-card p-6 mb-10"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 28, delay: 0.25 }}
+                transition={{ ...spring, delay: 0.25 }}
             >
                 <p className="field-note text-xs text-subtext uppercase tracking-wider mb-3">
                     观察统计 · Census
@@ -324,10 +325,10 @@ export default function DashboardPage(): React.ReactElement {
 
             {/* 兴趣图谱:采集品类整理(自改节点带琥珀呼吸光) */}
             <motion.section
-                className="mb-8"
+                className="mb-10"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 28, delay: 0.3 }}
+                transition={{ ...spring, delay: 0.3 }}
             >
                 <div className="flex items-center justify-between mb-3">
                     <p className="field-note text-xs text-subtext uppercase tracking-wider">
@@ -358,7 +359,9 @@ export default function DashboardPage(): React.ReactElement {
                                         {node.id}
                                     </span>
                                     <span className="mono-reading text-xs text-subtext">
-                                        {(node.weight * 100).toFixed(1)}%
+                                        {/* 权重被宠物修订 → 闪光重写(自进化可见) */}
+                                        <RevisingValue value={(node.weight * 100).toFixed(1)} />
+                                        <span className="ml-0.5">%</span>
                                     </span>
                                     {node.source === "reflection" && (
                                         <span className="field-note text-xs text-[var(--c-amber)] italic">
@@ -385,7 +388,7 @@ export default function DashboardPage(): React.ReactElement {
                             熵值 · Entropia
                         </p>
                         <p className="mono-reading text-sm text-text">
-                            {entropy.toFixed(3)}
+                            <RevisingValue value={entropy.toFixed(3)} />
                         </p>
                     </div>
                 </div>
@@ -396,7 +399,7 @@ export default function DashboardPage(): React.ReactElement {
                 className="paper-card p-6"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 28, delay: 0.35 }}
+                transition={{ ...spring, delay: 0.35 }}
             >
                 <p className="field-note text-xs text-subtext uppercase tracking-wider mb-3">
                     最近游荡 · Itinerarium

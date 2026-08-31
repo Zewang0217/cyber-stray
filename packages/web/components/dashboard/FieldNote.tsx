@@ -1,6 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { RevisingValue } from "@/components/ui/RevisingValue";
+import { staggerItem } from "@/components/ui/motion";
 
 /**
  * FieldNote - 采集者笔记读数
@@ -18,6 +20,8 @@ interface FieldNoteProps {
   large?: boolean;
   /** 读数样式(带/100 后缀,状态色) */
   isReading?: boolean;
+  /** 追加类名(如响应式栅格跨越) */
+  className?: string;
 }
 
 export function FieldNote({
@@ -27,14 +31,12 @@ export function FieldNote({
   mono = false,
   large = false,
   isReading = false,
+  className,
 }: FieldNoteProps): React.ReactElement {
   return (
     <motion.div
-      className="paper-card p-3"
-      variants={{
-        hidden: { opacity: 0, y: 10 },
-        visible: { opacity: 1, y: 0 },
-      }}
+      className={`paper-card p-3 ${className ?? ""}`}
+      variants={staggerItem}
     >
       <p className="field-note text-xs text-subtext uppercase tracking-wider mb-1">
         {label}
@@ -50,7 +52,8 @@ export function FieldNote({
                 : "font-heading text-sm text-text"
         }
       >
-        {value}
+        {/* 值变化 → 修订闪光重放(采集者擦改笔记);首屏不闪 */}
+        <RevisingValue value={value} />
         {suffix && (
           <span className="field-note text-xs text-subtext ml-1">
             {suffix}

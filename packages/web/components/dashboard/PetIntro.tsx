@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import { TypewriterText } from "@/components/ui/TypewriterText";
 import { PetSprite } from "@/components/dashboard/PetSprite";
+import { Button } from "@/components/ui/Button";
 import type { Pet } from "@/hooks/usePets";
 
 interface PetIntroProps {
@@ -68,14 +69,13 @@ export function PetIntro({ pet, interests, onDone }: PetIntroProps): React.React
             </p>
           )}
         </div>
-        <button
+        <Button
           onClick={onDone}
           autoFocus={done}
-          className="w-full py-3 rounded-sm bg-[var(--c-ink)] text-[var(--c-paper)] font-heading font-medium
-            hover:shadow-[0_2px_0_0_var(--c-amber)] transition-all"
+          className="w-full py-3"
         >
           带它回家
-        </button>
+        </Button>
       </motion.div>
     </div>
   );
