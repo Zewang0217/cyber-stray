@@ -85,10 +85,11 @@ describe('evolution 路由（进化可视化 + 回滚）', () => {
       join(dir, 'interest-history.jsonl'),
       snapshots.map((s) => JSON.stringify(s)).join('\n') + '\n',
     );
-    // 当前 interests.json（= snap-3 状态）
+    // 当前 user-interests.json（= snap-3 状态）
+    mkdirSync(join(dir, 'user-profile'), { recursive: true });
     writeFileSync(
-      join(dir, 'interests.json'),
-      JSON.stringify({ version: 1, lastUpdated: '2026-08-15T16:00:00.000Z', nodes: snapshots[2]!.nodes }),
+      join(dir, 'user-profile', 'user-interests.json'),
+      JSON.stringify({ version: 2, lastUpdated: '2026-08-15T16:00:00.000Z', nodes: snapshots[2]!.nodes }),
     );
     // 反馈
     writeFileSync(
@@ -143,8 +144,8 @@ describe('evolution 路由（进化可视化 + 回滚）', () => {
     );
     expect(res.status).toBe(200);
 
-    // interests.json 还原为 snap-1 的两节点权重
-        const current = JSON.parse(readFileSync(join(tenantDir('alice'), 'interests.json'), 'utf-8')) as {
+    // user-interests.json 还原为 snap-1 的两节点权重
+        const current = JSON.parse(readFileSync(join(tenantDir('alice'), 'user-profile', 'user-interests.json'), 'utf-8')) as {
       nodes: Array<{ id: string; weight: number }>;
     };
     expect(current.nodes).toHaveLength(2);
@@ -174,9 +175,10 @@ describe('evolution 路由（进化可视化 + 回滚）', () => {
         nodes: [{ id: '科技', weight: 0.5, source: 'default', reinforceCount: 0 }],
       }) + '\n',
     );
+    mkdirSync(join(dir, 'user-profile'), { recursive: true });
     writeFileSync(
-      join(dir, 'interests.json'),
-      JSON.stringify({ version: 1, lastUpdated: '2026-08-15T08:00:00.000Z', nodes: [] }),
+      join(dir, 'user-profile', 'user-interests.json'),
+      JSON.stringify({ version: 2, lastUpdated: '2026-08-15T08:00:00.000Z', nodes: [] }),
     );
     const res = await app.request(
       await authed('http://x/api/evolution/rollback', {
@@ -185,7 +187,7 @@ describe('evolution 路由（进化可视化 + 回滚）', () => {
       }),
     );
     expect(res.status).toBe(200);
-        const current = JSON.parse(readFileSync(join(dir, 'interests.json'), 'utf-8')) as {
+        const current = JSON.parse(readFileSync(join(dir, 'user-profile', 'user-interests.json'), 'utf-8')) as {
       nodes: Array<{ id: string }>;
     };
     expect(current.nodes).toHaveLength(1);

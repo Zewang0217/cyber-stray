@@ -381,7 +381,7 @@ describe('InterestGraph', () => {
     // 而不是硬编码 'data/interests.json'，确保路径一致
     const { getInterestGraph, _resetInterestGraphCache } = await import('./interest-graph.js');
     const { getDataPath } = await import('../config.js');
-    const graphPath = getDataPath('interests.json');
+    const graphPath = getDataPath('user-profile/user-interests.json');
     const graph = new (await import('./interest-graph.js')).InterestGraph(graphPath, {
       ...DEFAULT_INTEREST_CONFIG,
       defaultSeeds: [],

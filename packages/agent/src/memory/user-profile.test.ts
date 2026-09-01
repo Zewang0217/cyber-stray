@@ -90,37 +90,41 @@ describe('UserProfile', () => {
   // updateUserProfile: like
   // ----------------------------------------
 
-  it('should add like topic and remove from dislikes', async () => {
-    // 先手动构造一个 dislike 状态
+  it('should dissolve likes/dislikes (S1): only count samples, no array mutation', async () => {
+    // 先手动构造一个 dislike 状态（旧数据兼容）
     const profile = await loadUserProfile();
     profile.dislikes.push('AI');
     await saveUserProfile(profile);
 
     const updated = await updateUserProfile('like', 'AI');
-    // AI 应从 dislikes 移到 likes
-    expect(updated.likes).toContain('AI');
-    expect(updated.dislikes).not.toContain('AI');
+    // S1（#150）：likes/dislikes 概念消解为图谱叶子权重——不再写数组，
+    // 旧数组原样保留（信号落图谱由 feedback-pipeline 负责，S2 精确归因）
+    expect(updated.likes).toEqual([]);
+    expect(updated.dislikes).toEqual(['AI']);
+    expect(updated.sampleCount).toBe(1);
+    expect(updated.feedbackCount).toBe(1);
   });
 
-  it('should not duplicate like entries', async () => {
+  it('should not write likes entries on repeated like (S1)', async () => {
     await updateUserProfile('like', '科技');
     const updated = await updateUserProfile('like', '科技');
-    // 去重后 likes 中只有 1 个 "科技"
-    expect(updated.likes.filter((l) => l === '科技').length).toBe(1);
+    expect(updated.likes).toEqual([]);
+    expect(updated.sampleCount).toBe(2);
   });
 
   // ----------------------------------------
   // updateUserProfile: dislike
   // ----------------------------------------
 
-  it('should add dislike topic and remove from likes', async () => {
+  it('should not write dislikes entries (S1)', async () => {
     const profile = await loadUserProfile();
     profile.likes.push('广告');
     await saveUserProfile(profile);
 
     const updated = await updateUserProfile('dislike', '广告');
-    expect(updated.dislikes).toContain('广告');
-    expect(updated.likes).not.toContain('广告');
+    expect(updated.dislikes).toEqual([]);
+    expect(updated.likes).toEqual(['广告']);
+    expect(updated.sampleCount).toBe(1);
   });
 
   // ----------------------------------------
@@ -215,7 +219,8 @@ describe('UserProfile', () => {
     const result = await tryUpdateUserProfile('like', '深度学习', '主人对AI感兴趣');
     expect(result.success).toBe(true);
     const profile = result.profile!;
-    expect(profile.likes).toContain('深度学习');
+    // S1：likes/dislikes 消解——Agent 观察只计样本
+    expect(profile.likes).toEqual([]);
     expect(profile.sampleCount).toBe(1);
   });
 

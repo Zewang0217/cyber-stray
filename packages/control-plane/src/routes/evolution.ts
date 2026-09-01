@@ -11,7 +11,7 @@
  */
 
 import { Hono } from 'hono';
-import { readFile, writeFile, appendFile, rename } from 'fs/promises';
+import { readFile, writeFile, appendFile, rename, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { createHash, randomUUID } from 'crypto';
 import type { ControlPlaneConfig } from '../config.js';
@@ -170,9 +170,9 @@ export function createEvolutionRoutes({ config }: EvolutionDeps): Hono {
       return c.json(jsonError('快照不存在'), 404);
     }
 
-    // 还原 interests.json（agent InterestGraphData schema：version/lastUpdated/nodes）
+    // 还原 user-interests.json（agent InterestGraphData schema v2：version/lastUpdated/nodes）
     const restored = {
-      version: 1,
+      version: 2,
       lastUpdated: new Date().toISOString(),
       nodes: target.nodes.map((n) => ({
         id: String(n.id),
@@ -182,9 +182,12 @@ export function createEvolutionRoutes({ config }: EvolutionDeps): Hono {
         lastReinforced:
           typeof n.lastReinforced === 'string' ? n.lastReinforced : new Date().toISOString(),
         reinforceCount: typeof n.reinforceCount === 'number' ? n.reinforceCount : 0,
+        path: String(n.id),
       })),
     };
-    const interestsFile = join(dir, 'interests.json');
+    const profileDir = join(dir, 'user-profile');
+    await mkdir(profileDir, { recursive: true });
+    const interestsFile = join(profileDir, 'user-interests.json');
     const tmp = `${interestsFile}.tmp-${randomUUID().slice(0, 8)}`;
     await writeFile(tmp, JSON.stringify(restored, null, 2));
     await rename(tmp, interestsFile);

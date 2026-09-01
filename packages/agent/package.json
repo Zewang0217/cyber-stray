@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "dev": "tsx --env-file=dev.env --env-file=../../.env src/index.ts",
+    "migrate:user-profile": "tsx src/worker/migrate-cli.ts",
     "worker": "tsx --env-file=../../.env src/worker/cli.ts",
     "test": "vitest",
     "lint": "eslint src/",

@@ -89,12 +89,14 @@ export function createDataRoutes({ config }: DataDeps): Hono {
     let nodes: Array<{ weight: number }> = [];
     let lastUpdated: string | null = null;
     try {
-      const data = JSON.parse(await readFile(join(scoped.dir, 'interests.json'), 'utf-8'));
+      const data = JSON.parse(
+        await readFile(join(scoped.dir, 'user-profile', 'user-interests.json'), 'utf-8'),
+      );
       nodes = data.nodes ?? [];
       lastUpdated = data.lastUpdated ?? null;
     } catch (error) {
       if (!isEnoent(error)) {
-        console.error('[data] interests.json 读取失败：', error);
+        console.error('[data] user-interests.json 读取失败：', error);
         return c.json(jsonError('兴趣图谱数据损坏或不可读'), 500);
       }
       // 文件不存在 → 空数据（空态）
