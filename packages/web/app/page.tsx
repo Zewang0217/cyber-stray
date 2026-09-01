@@ -80,7 +80,7 @@ export default function DashboardPage(): React.ReactElement {
 
     // 检查中:纸色屏防止底部暴露
     if (isCheckingIntro || !introRestored) {
-        return <div className="fixed inset-0 bg-base z-[9999]" />;
+        return <div className="fixed inset-0 bg-base z-boot" />;
     }
 
     // 领养门:未领养 → 领养流程
@@ -126,7 +126,7 @@ export default function DashboardPage(): React.ReactElement {
     // 加载态
     if (isLoading) {
         return (
-            <div className="spacing-lg flex flex-col items-center justify-center min-h-screen gap-4">
+            <div className="spacing-lg flex flex-col items-center justify-center min-h-dvh gap-4">
                 <PetSprite size={120} state="walk" />
                 <p className="field-note text-sm text-subtext">
                     正在翻阅图鉴…
@@ -138,7 +138,7 @@ export default function DashboardPage(): React.ReactElement {
     // 错误态
     if (error) {
         return (
-            <div className="spacing-lg flex items-center justify-center min-h-screen">
+            <div className="spacing-lg flex items-center justify-center min-h-dvh">
                 <div className="text-center paper-card p-8 max-w-md">
                     <p className="mono-reading text-sm text-text mb-2">
                         {error}
@@ -154,7 +154,7 @@ export default function DashboardPage(): React.ReactElement {
     // 空态:尚未游荡
     if (!state) {
         return (
-            <div className="spacing-lg flex flex-col items-center justify-center min-h-screen gap-6">
+            <div className="spacing-lg flex flex-col items-center justify-center min-h-dvh gap-6">
                 <PetSprite size={180} mood="curious" />
                 <div className="text-center">
                     <p className="font-heading text-heading text-text mb-2">

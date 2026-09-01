@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "@fontsource/eb-garamond/400.css";
 import "@fontsource/eb-garamond/400-italic.css";
 import "@fontsource/eb-garamond/500.css";
@@ -34,6 +34,28 @@ import { THEMES, THEME_STORAGE_KEY } from "@/lib/themes";
 export const metadata: Metadata = {
   title: "Cyber Stray | 赛博街溜子",
   description: "一只在云端自主游荡的赛博宠物,活在会动的维多利亚自然博物图鉴里",
+  openGraph: {
+    title: "Cyber Stray | 赛博街溜子",
+    description: "一只在云端自主游荡的赛博宠物,活在会动的维多利亚自然博物图鉴里",
+    type: "website",
+    locale: "zh_CN",
+  },
+  twitter: {
+    card: "summary",
+    title: "Cyber Stray | 赛博街溜子",
+    description: "一只在云端自主游荡的赛博宠物,活在会动的维多利亚自然博物图鉴里",
+  },
+};
+
+/**
+ * 移动浏览器 chrome 色随 OS 明暗取纸色(默认日间纸 / 深色系统用夜读纸)。
+ * 应用内四卷主题(夜/春/秋)为运行时数据驱动,无法静态跟随——取日/夜两档即可。
+ */
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "oklch(0.22 0.018 75)" },
+    { color: "oklch(0.92 0.03 85)" },
+  ],
 };
 
 /** 非默认主题表(内联进防闪烁脚本;day 走 :root 兜底,无需注入) */
@@ -59,10 +81,16 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
       <body className="min-h-full flex bg-base text-text" suppressHydrationWarning>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-boot focus:px-3 focus:py-2 focus:rounded-sm focus:bg-[var(--c-paper)] focus:border focus:border-[var(--c-engraving-fine)] focus:text-text focus:font-heading focus:text-sm"
+        >
+          跳到主内容
+        </a>
         <Providers>
           <PaperTexture />
           <Sidebar />
-          <main className="flex-1 lg:ml-64 relative z-10 pt-14 lg:pt-0">
+          <main id="main-content" className="flex-1 lg:ml-64 relative z-10 pt-14 lg:pt-0">
             <PageTransition>
               {children}
               {/* 卷末印记(colophon):随翻页子树一起进出,避免高度突变跳位 */}

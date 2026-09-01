@@ -207,7 +207,7 @@ export function AdoptionFlow({ adopting, onAdopt }: AdoptionFlowProps): React.Re
   };
 
   return (
-    <div className="spacing-lg flex items-center justify-center min-h-screen">
+    <div className="spacing-lg flex items-center justify-center min-h-dvh">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

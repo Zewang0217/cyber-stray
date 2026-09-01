@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
+import { Megaphone } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { spring } from "@/components/ui/motion";
 
@@ -104,7 +105,10 @@ export default function FootprintPage(): React.ReactElement {
                     {new Date(s.timestamp).toLocaleString()}
                   </span>
                   {s.spoke ? (
-                    <span className="text-xs text-[var(--c-amber-ink)] font-semibold">📣 推送</span>
+                    <span className="inline-flex items-center gap-1 text-xs text-[var(--c-amber-ink)] font-semibold">
+                      <Megaphone className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                      推送
+                    </span>
                   ) : null}
                 </div>
                 {s.thought ? (
