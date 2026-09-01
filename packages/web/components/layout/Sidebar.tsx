@@ -134,7 +134,7 @@ export function Sidebar(): React.ReactElement {
   return (
     <>
       {/* 桌面:固定侧栏 */}
-      <aside className="hidden lg:flex fixed left-0 top-0 h-full w-64 z-50 flex-col">
+      <aside className="hidden lg:flex fixed left-0 top-0 h-full w-64 z-nav flex-col">
         <div className="absolute inset-0 bg-mantle border-r border-[var(--c-engraving-fine)]" />
         <div className="relative flex flex-col h-full p-6">
           <BrandBlock />
@@ -146,7 +146,7 @@ export function Sidebar(): React.ReactElement {
       </aside>
 
       {/* 移动:顶栏 */}
-      <header className="lg:hidden fixed top-0 inset-x-0 z-50 bg-mantle border-b border-[var(--c-engraving-fine)]">
+      <header className="lg:hidden fixed top-0 inset-x-0 z-nav bg-mantle border-b border-[var(--c-engraving-fine)]">
         <div className="flex items-center justify-between px-4 h-14">
           <Link href="/" className="flex items-baseline gap-2">
             <span className="font-heading text-lg font-semibold text-text">
@@ -175,14 +175,14 @@ export function Sidebar(): React.ReactElement {
         {drawerOpen && (
           <>
             <motion.div
-              className="lg:hidden fixed inset-0 z-[60] bg-[var(--c-ink)]/30"
+              className="lg:hidden fixed inset-0 z-drawer-overlay bg-[var(--c-ink)]/30"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setDrawerOpen(false)}
             />
             <motion.div
-              className="lg:hidden fixed left-0 top-0 h-full w-72 z-[61] bg-mantle border-r border-[var(--c-engraving-fine)] p-6 overflow-y-auto"
+              className="lg:hidden fixed left-0 top-0 h-full w-72 z-drawer bg-mantle border-r border-[var(--c-engraving-fine)] p-6 overflow-y-auto"
               initial={{ x: "-100%" }}
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}

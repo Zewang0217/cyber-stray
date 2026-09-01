@@ -113,6 +113,48 @@
     from { opacity: 1; transform: scale(1); }
     to { opacity: 0; transform: scale(0.97); }
   }
+
+}
+/* 语义 z-index 工具类(v4 的 z-* 为 bare value 命名空间,自定义名走 @layer utilities) */
+@layer utilities {
+  .z-nav {
+    z-index: var(--z-nav);
+  }
+  .z-drawer-overlay {
+    z-index: var(--z-drawer-overlay);
+  }
+  .z-drawer {
+    z-index: var(--z-drawer);
+  }
+  .z-boot {
+    z-index: var(--z-boot);
+  }
+  .z-dialog-overlay {
+    z-index: var(--z-dialog-overlay);
+  }
+  .z-dialog {
+    z-index: var(--z-dialog);
+  }
+  .z-tooltip {
+    z-index: var(--z-tooltip);
+  }
+}
+/* 采集印章批注(兴趣条目"自改/顶过"):墨色描边 + 等宽,悬停转正 */
+.ink-stamp {
+  display: inline-block;
+  border: 1px solid color-mix(in oklch, var(--c-amber) 55%, transparent);
+  padding: 0 0.3rem;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  transform: rotate(-2deg);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.group:hover .ink-stamp {
+  transform: rotate(0deg);
 }
 
 /* ============================================
@@ -129,6 +171,15 @@
   /* 墨色系(正文/线条) */
   --c-ink: oklch(0.28 0.02 75);         /* 棕墨/铁胆墨,正文+铜版画线+主标题 */
   --c-faded-ink: oklch(0.50 0.03 75);   /* 褪色墨水,次要文本(≥4.5:1 on paper) */
+
+  /* Z-index Scale(全站单一分层来源;工具类在 @layer utilities 引用) */
+  --z-nav: 50;             /* 侧栏 / 顶栏(常驻导航) */
+  --z-drawer-overlay: 60;  /* 移动抽屉遮罩 */
+  --z-drawer: 61;          /* 移动抽屉面板 */
+  --z-boot: 9999;          /* 首帧引导屏(领养检查,须盖过一切) */
+  --z-dialog-overlay: 70;  /* 对话框遮罩(高于导航/抽屉) */
+  --z-dialog: 71;          /* 对话框面板 */
+  --z-tooltip: 72;         /* 提示气泡(全站最高交互层) */
 
   /* 生命色(活着/交互示能) */
   --c-amber: oklch(0.62 0.13 75);       /* 琥珀,图形/光晕/圆点用 */
