@@ -139,6 +139,23 @@
     z-index: var(--z-tooltip);
   }
 }
+/* 采集印章批注(兴趣条目"自改/顶过"):墨色描边 + 等宽,悬停转正 */
+.ink-stamp {
+  display: inline-block;
+  border: 1px solid color-mix(in oklch, var(--c-amber) 55%, transparent);
+  padding: 0 0.3rem;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  transform: rotate(-2deg);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.group:hover .ink-stamp {
+  transform: rotate(0deg);
+}
 
 /* ============================================
    日间图鉴(默认主题)

@@ -31,3 +31,15 @@ export const staggerItem: Variants = {
   hidden: { opacity: 0, y: 10 },
   visible: { opacity: 1, y: 0, transition: spring },
 };
+
+/** 标本图版落定:插画就位(轻沉降 + 微呼吸缩放) */
+export const plateItem: Variants = {
+  hidden: { opacity: 0, y: 8, scale: 0.98 },
+  visible: { opacity: 1, y: 0, scale: 1, transition: spring },
+};
+
+/** 采集笔记落纸:手写注解带手部微旋入纸(焦点序列专用,克制) */
+export const noteItem: Variants = {
+  hidden: { opacity: 0, y: 10, rotate: -0.6 },
+  visible: { opacity: 1, y: 0, rotate: 0, transition: spring },
+};

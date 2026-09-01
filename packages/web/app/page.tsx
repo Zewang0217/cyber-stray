@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { getPersonality, DEFAULT_PERSONALITY } from "@cyber-stray/shared";
 import { useAgentState } from "@/hooks/useAgentState";
 import { useTenantEvents } from "@/hooks/useTenantEvents";
@@ -16,7 +16,7 @@ import { FieldNote } from "@/components/dashboard/FieldNote";
 import { RevisingValue } from "@/components/ui/RevisingValue";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
-import { spring, staggerContainer } from "@/components/ui/motion";
+import { spring, staggerContainer, plateItem, noteItem } from "@/components/ui/motion";
 
 /**
  * 图鉴首页:维多利亚自然博物图鉴
@@ -51,6 +51,8 @@ export default function DashboardPage(): React.ReactElement {
       pets[0]?.sleepStart ?? null,
       pets[0]?.sleepEnd ?? null,
     );
+    // 减弱动效:焦点序列降级为直接可见(内容不隐藏、不编排)
+    const reduced = useReducedMotion();
     const {
         nodes: interestNodes,
         entropy,
@@ -196,9 +198,14 @@ export default function DashboardPage(): React.ReactElement {
                         }}
                     />
                 </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+                <motion.div
+                    className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center"
+                    initial={reduced ? false : "hidden"}
+                    animate="visible"
+                    variants={staggerContainer}
+                >
                     {/* 左:会动的铜版画插画 */}
-                    <div className="flex flex-col items-center gap-4">
+                        <motion.div variants={plateItem} className="flex flex-col items-center gap-4">
                         <div className="relative">
                             {/* 生命色光晕(示能:它活着);睡眠期不发光 */}
                             {isBored && !sleeping && (
@@ -238,11 +245,17 @@ export default function DashboardPage(): React.ReactElement {
                                 </Link>
                             )}
                         </div>
-                    </div>
+                    </motion.div>
 
                     {/* 右:采集笔记(手写拉丁名 + 状态) */}
-                    <div className="space-y-4">
-                        <div>
+                    <motion.div
+                        className="space-y-4"
+                        variants={{
+                            hidden: { opacity: 0 },
+                            visible: { opacity: 1, transition: { staggerChildren: 0.06 } },
+                        }}
+                    >
+                        <motion.div variants={noteItem}>
                             <p className="font-heading text-3xl font-semibold italic text-text leading-tight">
                                 {pets[0]?.name ?? "Cyber Stray"}
                             </p>
@@ -251,9 +264,9 @@ export default function DashboardPage(): React.ReactElement {
                                     ? `${getPersonality(pets[0].personality ?? DEFAULT_PERSONALITY).name}性格的赛博街溜子`
                                     : "赛博街溜子"}
                             </p>
-                        </div>
+                        </motion.div>
                         <div className="engraving-rule" />
-                        <FieldNote label="上次行动" value={state.lastAction ?? "无"} mono />
+                        <FieldNote label="上次行动" value={state.lastAction ?? "无"} mono variant={noteItem} />
                         <FieldNote
                             label="上次游荡"
                             value={
@@ -262,11 +275,13 @@ export default function DashboardPage(): React.ReactElement {
                                     : "从未"
                             }
                             mono
+                            variant={noteItem}
                         />
                         <FieldNote
                             label="上次心跳"
                             value={new Date(state.lastHeartbeat).toLocaleString("zh-CN")}
                             mono
+                            variant={noteItem}
                         />
                         <FieldNote
                             label="上次休息"
@@ -276,9 +291,10 @@ export default function DashboardPage(): React.ReactElement {
                                     : "从未"
                             }
                             mono
+                            variant={noteItem}
                         />
-                    </div>
-                </div>
+                    </motion.div>
+                </motion.div>
             </motion.section>
 
             {/* 状态读数行:采集者笔记里的数字 */}
@@ -317,9 +333,9 @@ export default function DashboardPage(): React.ReactElement {
                     观察统计 · Census
                 </p>
                 <div className="grid grid-cols-3 gap-4">
-                    <FieldNote label="总游荡" value={`${state.totalWanders ?? 0}`} isReading large />
-                    <FieldNote label="总步数" value={`${state.totalSteps ?? 0}`} isReading large />
-                    <FieldNote label="总推送" value={`${state.totalPushes}`} isReading large />
+                    <FieldNote label="总游荡" value={`${state.totalWanders ?? 0}`} isReading large animated />
+                    <FieldNote label="总步数" value={`${state.totalSteps ?? 0}`} isReading large animated />
+                    <FieldNote label="总推送" value={`${state.totalPushes}`} isReading large animated />
                 </div>
             </motion.section>
 
@@ -346,32 +362,28 @@ export default function DashboardPage(): React.ReactElement {
                             {interestNodes.slice(0, 8).map((node) => (
                                 <li
                                     key={node.id}
-                                    className="flex items-center gap-3"
+                                    className="group flex items-center gap-3 rounded-sm -mx-1 px-1 py-0.5 transition-colors hover:bg-[var(--c-paper)]"
                                 >
                                     <span
                                         className={
                                             node.source === "reflection"
-                                                ? "w-1.5 h-1.5 rounded-full bg-[var(--c-amber)] animate-[var(--animate-amber-breath)]"
-                                                : "w-1.5 h-1.5 rounded-full bg-[var(--c-faded-ink)]"
+                                                ? "w-1.5 h-1.5 rounded-full bg-[var(--c-amber)] animate-[var(--animate-amber-breath)] transition-transform duration-200 group-hover:scale-150"
+                                                : "w-1.5 h-1.5 rounded-full bg-[var(--c-faded-ink)] transition-transform duration-200 group-hover:scale-150 group-hover:bg-[var(--c-amber)]"
                                         }
                                     />
-                                    <span className="font-heading text-sm text-text flex-1 truncate">
+                                    <span className="font-heading text-sm text-text flex-1 truncate transition-colors group-hover:text-[var(--c-amber-ink)]">
                                         {node.id}
                                     </span>
-                                    <span className="mono-reading text-xs text-subtext">
+                                    <span className="mono-reading text-xs text-subtext transition-colors group-hover:text-text">
                                         {/* 权重被宠物修订 → 闪光重写(自进化可见) */}
                                         <RevisingValue value={(node.weight * 100).toFixed(1)} />
                                         <span className="ml-0.5">%</span>
                                     </span>
                                     {node.source === "reflection" && (
-                                        <span className="field-note text-xs text-[var(--c-amber)] italic">
-                                            自改
-                                        </span>
+                                        <span className="ink-stamp text-[var(--c-amber-ink)]">自改</span>
                                     )}
                                     {node.source === "feedback" && (
-                                        <span className="field-note text-xs text-subtext italic">
-                                            顶过
-                                        </span>
+                                        <span className="ink-stamp text-subtext">顶过</span>
                                     )}
                                 </li>
                             ))}
@@ -412,9 +424,9 @@ export default function DashboardPage(): React.ReactElement {
                             .map((step) => (
                                 <li
                                     key={step.timestamp}
-                                    className="flex items-baseline gap-3 text-sm"
+                                    className="group flex items-baseline gap-3 text-sm"
                                 >
-                                    <span className="mono-reading text-xs text-subtext shrink-0">
+                                    <span className="mono-reading text-xs text-subtext shrink-0 transition-colors group-hover:text-[var(--c-amber-ink)]">
                                         {new Date(step.timestamp).toLocaleTimeString("zh-CN")}
                                     </span>
                                     <span className="mono-reading text-xs text-text shrink-0">
