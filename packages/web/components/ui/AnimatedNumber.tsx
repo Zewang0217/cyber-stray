@@ -18,7 +18,7 @@ export function AnimatedNumber({
   duration?: number;
 }): React.ReactElement {
   const reduced = useReducedMotion();
-  const [display, setDisplay] = useState(value);
+  const [display, setDisplay] = useState(reduced ? value : 0);
 
   useEffect(() => {
     if (reduced) {
