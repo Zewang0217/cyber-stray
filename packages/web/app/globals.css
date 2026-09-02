@@ -115,29 +115,27 @@
   }
 
 }
-/* 语义 z-index 工具类(v4 的 z-* 为 bare value 命名空间,自定义名走 @layer utilities) */
-@layer utilities {
-  .z-nav {
-    z-index: var(--z-nav);
-  }
-  .z-drawer-overlay {
-    z-index: var(--z-drawer-overlay);
-  }
-  .z-drawer {
-    z-index: var(--z-drawer);
-  }
-  .z-boot {
-    z-index: var(--z-boot);
-  }
-  .z-dialog-overlay {
-    z-index: var(--z-dialog-overlay);
-  }
-  .z-dialog {
-    z-index: var(--z-dialog);
-  }
-  .z-tooltip {
-    z-index: var(--z-tooltip);
-  }
+/* 语义 z-index 工具类(v4 的 z-* 为 bare value 命名空间,自定义名用 @utility 以支持 focus: 等变体) */
+@utility z-nav {
+  z-index: var(--z-nav);
+}
+@utility z-drawer-overlay {
+  z-index: var(--z-drawer-overlay);
+}
+@utility z-drawer {
+  z-index: var(--z-drawer);
+}
+@utility z-boot {
+  z-index: var(--z-boot);
+}
+@utility z-dialog-overlay {
+  z-index: var(--z-dialog-overlay);
+}
+@utility z-dialog {
+  z-index: var(--z-dialog);
+}
+@utility z-tooltip {
+  z-index: var(--z-tooltip);
 }
 /* 采集印章批注(兴趣条目"自改/顶过"):墨色描边 + 等宽,悬停转正 */
 .ink-stamp {
@@ -172,7 +170,7 @@
   --c-ink: oklch(0.28 0.02 75);         /* 棕墨/铁胆墨,正文+铜版画线+主标题 */
   --c-faded-ink: oklch(0.50 0.03 75);   /* 褪色墨水,次要文本(≥4.5:1 on paper) */
 
-  /* Z-index Scale(全站单一分层来源;工具类在 @layer utilities 引用) */
+  /* Z-index Scale(全站单一分层来源;工具类经 @utility 定义) */
   --z-nav: 50;             /* 侧栏 / 顶栏(常驻导航) */
   --z-drawer-overlay: 60;  /* 移动抽屉遮罩 */
   --z-drawer: 61;          /* 移动抽屉面板 */
