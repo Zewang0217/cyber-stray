@@ -16,7 +16,11 @@
 import { consola } from '../logger.js';
 import { recordFeedback } from './feedback-store.js';
 import { updateUserProfileBatch, type ProfileUpdateEntry } from './user-profile.js';
-import { getInterestGraph } from './interest-graph.js';
+import {
+  getInterestGraph,
+  type InterestSignalType,
+} from './interest-graph.js';
+import { regenerateProfileSummary } from './profile-summary.js';
 import { updateMoodByFeedback } from '../agent/state.js';
 import {
   CATCHPHRASE_WEIGHT_FLOOR,
@@ -26,14 +30,8 @@ import {
 import { getConfig } from '../config.js';
 
 const logger = consola.withTag('FeedbackPipeline');
-/** 点赞强化权重增量 */
-const LIKE_REINFORCE_DELTA = 0.1;
-
-/** 踩的权重衰减 */
-const DISLIKE_DECAY_DELTA = 0.1;
-
-/** 顶话题强化权重增量（显式"我要更多"——强于点赞） */
-const BOOST_REINFORCE_DELTA = 0.25;
+/** S2 #151：多信号权重已由 interest-graph.applySignal 统一实现（SIGNAL_STRENGTH），
+ * 本模块不再维护独立增量常量。 */
 
 /** 顶话题新节点种子权重（与反馈创建新兴趣一致） */
 const BOOST_SEED_WEIGHT = 0.3;
@@ -104,6 +102,30 @@ export function applyCatchphraseFeedback(
       type === 'like' ? c.weight + CATCHPHRASE_DELTA : c.weight - CATCHPHRASE_DELTA;
     return { ...c, weight: Math.max(CATCHPHRASE_WEIGHT_FLOOR, Number(next.toFixed(4))) };
   });
+}
+
+/** 信号类型 → 用户图谱信号（S2 #151） */
+const SIGNAL_MAP: Record<'like' | 'dislike', InterestSignalType> = {
+  like: 'like',
+  dislike: 'dislike',
+};
+
+/**
+ * 叶子优先归因（S2 #151）。
+ *
+ * 反馈目标是 speak 时的 matchedTopics（可能是父级节点）。规则：
+ * - 目标存在且为叶子 → 直接返回自身
+ * - 目标存在且为父级（有子节点）→ 返回其叶子后代（归因到叶子，不碰父级）
+ * - 目标存在为纯父（无子节点）→ 视作叶子返回自身（当前扁平图谱下所有节点即叶子）
+ * - 目标不存在 → 返回 undefined（调用方决定：like 新话题入图 / dislike 忽略）
+ */
+function resolveLeafTarget(graph: ReturnType<typeof getInterestGraph>, topic: string): string | undefined {
+  const node = graph.getNode(topic);
+  if (!node) return undefined;
+
+  const leafDesc = graph.getLeafDescendants(topic);
+  // 纯父（getLeafDescendants 返回自身）→ 当叶子处理
+  return leafDesc[0] ?? topic;
 }
 
 /**
@@ -183,29 +205,35 @@ export async function processFeedback(
       }
 
       for (const topic of topics) {
-        if (type === 'like') {
-          // 点赞：检查节点是否存在，不存在则先创建
-          if (!graph.getNode(topic)) {
+        const signal = SIGNAL_MAP[type];
+        // 叶子优先归因：父级 → 叶子；纯父 → 自身
+        const target = resolveLeafTarget(graph, topic);
+        if (!target) {
+          if (type === 'like') {
+            // 点赞新话题：入图后应用信号（feedback 来源）
             graph.addInterest(topic, 0.3, 'feedback');
+            graph.applySignal(topic, signal);
+            result.interestReinforced = true;
+          } else {
+            // dislike 目标不存在：无节点可降，跳过（不碰父级/兄弟，符合 S2）
+            logger.debug('dislike 目标不存在，跳过', { topic });
           }
-          graph.reinforce(topic, LIKE_REINFORCE_DELTA);
-          result.interestReinforced = true;
-        } else {
-          // 踩：衰减兴趣（不删除，让时间衰减自然处理）
-          const node = graph.getNode(topic);
-          if (node) {
-            const newWeight = Math.max(0, node.weight - DISLIKE_DECAY_DELTA);
-            if (newWeight > 0) {
-              node.weight = newWeight;
-              node.lastReinforced = new Date().toISOString();
-              result.interestReinforced = true;
-            }
-          }
+          continue;
         }
+        graph.applySignal(target, signal);
+        // dislike 只落叶子：显式隔绝父级（applySignal 内部已重聚合祖先，
+        // 但父级本身不作为信号目标，兄弟节点完全不受影响）
+        if (type === 'dislike' && target !== topic) {
+          logger.info('dislike 归因到叶子，父级未直击', { topic, leaf: target });
+        }
+        result.interestReinforced = true;
       }
 
       // 所有 topic 处理完后一次持久化（N 个 topic → 1 次原子写）
       await graph.persist();
+
+      // S2 #151：反馈后增量重生成 profile-summary（失败上抛——摘要过期=数据不一致）
+      await regenerateProfileSummary(graph);
     } catch (error) {
       logger.error('兴趣图谱操作失败', { error, type, topics });
       throw error;
@@ -275,9 +303,12 @@ export async function boostTopic(
     if (!graph.getNode(topic)) {
       graph.addInterest(topic, BOOST_SEED_WEIGHT, 'feedback');
     }
-    graph.reinforce(topic, BOOST_REINFORCE_DELTA);
+    // S2 #151：boost 走统一多信号公式（SIGNAL_STRENGTH.boost = 2.0）
+    graph.applySignal(topic, 'boost');
     result.interestReinforced = true;
     await graph.persist();
+    // S2 #151：反馈后增量重生成 profile-summary
+    await regenerateProfileSummary(graph);
   } catch (error) {
     logger.error('顶话题图谱强化失败', { error, topic });
     throw error;
