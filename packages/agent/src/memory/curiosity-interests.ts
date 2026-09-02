@@ -11,11 +11,12 @@
  * 读写与 interest-graph 同模式：原子写 + schema 漂移守卫 + 文件不存在返骨架（合法）。
  */
 
-import { readFile, writeFile, mkdir, rename } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { z } from 'zod';
 import { consola } from '../logger.js';
 import { getDataPath } from '../config.js';
+import { atomicWriteJson } from '../utils/atomic-json.js';
 
 const logger = consola.withTag('CuriosityGraph');
 
@@ -24,9 +25,7 @@ export function curiosityFilePath(): string {
   return getDataPath('curiosity-interests.json');
 }
 
-// ============================================
 // Zod Schema（防 schema 漂移）
-// ============================================
 
 export const CuriosityNodeSchema = z.object({
   /** 节点 id（叶子路径，如 `天文/黑洞`；一级节点 = 路径自身） */
@@ -52,9 +51,7 @@ export const CuriosityGraphDataSchema = z.object({
   nodes: z.array(CuriosityNodeSchema),
 });
 
-// ============================================
 // Types
-// ============================================
 
 export type CuriositySource = 'default' | 'reflection' | 'exploration' | 'migration';
 
@@ -74,9 +71,7 @@ export interface CuriosityGraphData {
   nodes: CuriosityNode[];
 }
 
-// ============================================
-// 默认骨架 / 原子写 / 读写
-// ============================================
+// 默认骨架 / 读写
 
 /** 空骨架（文件不存在或首次初始化时的合法状态） */
 export function createDefaultCuriosityData(): CuriosityGraphData {
@@ -87,14 +82,6 @@ export function createDefaultCuriosityData(): CuriosityGraphData {
   };
 }
 
-async function atomicWriteJson(path: string, data: unknown): Promise<void> {
-  const dir = path.substring(0, path.lastIndexOf('/')) || '.';
-  await mkdir(dir, { recursive: true });
-  const tmp = `${path}.tmp.${process.pid}.${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const payload = JSON.stringify(data, null, 2);
-  await writeFile(tmp, payload, 'utf-8');
-  await rename(tmp, path);
-}
 
 /**
  * 加载好奇图谱。

@@ -1,8 +1,9 @@
-import { readFile, writeFile, mkdir, rename } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { z } from 'zod';
 import { consola } from '../logger.js';
 import { getDataPath } from '../config.js';
+import { atomicWriteJson } from '../utils/atomic-json.js';
 
 const logger = consola.withTag('UserProfile');
 
@@ -26,22 +27,7 @@ const CONFIDENCE_K = 10;
 /** 置信度上限 */
 const CONFIDENCE_CAP = 0.95;
 
-// ============================================
-// 原子写（与 interest-graph.ts 统一模式）
-// ============================================
-
-async function atomicWriteJson(path: string, data: unknown): Promise<void> {
-  const dir = path.substring(0, path.lastIndexOf('/')) || '.';
-  await mkdir(dir, { recursive: true });
-  const tmp = `${path}.tmp.${process.pid}.${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const payload = JSON.stringify(data, null, 2);
-  await writeFile(tmp, payload, 'utf-8');
-  await rename(tmp, path);
-}
-
-// ============================================
 // Zod Schema（防 schema 漂移）
-// ============================================
 
 export const UserProfileSchema = z.object({
   /** S1(#150)：likes/dislikes 概念消解为图谱叶子权重；旧文件兼容，新写入不再产生 */
@@ -69,11 +55,7 @@ export const UserProfileSchema = z.object({
     .nullable(),
 });
 
-// ============================================
 // Types
-// ============================================
-
-/** 用户画像数据结构 */
 export interface UserProfile {
   likes: string[];
   dislikes: string[];
@@ -88,9 +70,7 @@ export interface UserProfile {
   lastProfileUpdateAt: string | null;
 }
 
-// ============================================
-// 工厂 / 加载 / 持久化
-// ============================================
+// 默认画像 / 加载 / 持久化
 
 /** 默认用户画像 */
 function createDefaultUserProfile(): UserProfile {
@@ -176,9 +156,7 @@ export async function saveUserProfile(profile: UserProfile): Promise<void> {
   }
 }
 
-// ============================================
 // 置信度计算
-// ============================================
 
 /**
  * 计算置信度（sigmoid 校准）。
@@ -192,9 +170,7 @@ function computeConfidence(sampleCount: number): number {
   return Math.min(CONFIDENCE_CAP, raw);
 }
 
-// ============================================
 // 画像更新
-// ============================================
 
 /**
  * 更新用户画像（基于反馈）。

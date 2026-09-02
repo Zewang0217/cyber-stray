@@ -17,7 +17,7 @@
 
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { consola } from '../logger.js';
 import {
   USER_INTERESTS_FILE,
@@ -26,6 +26,7 @@ import {
   type InterestNode,
 } from '../memory/interest-graph.js';
 import { createDefaultCuriosityData } from '../memory/curiosity-interests.js';
+import { atomicWriteJson } from '../utils/atomic-json.js';
 
 const logger = consola.withTag('MigrateUserProfile');
 
@@ -55,6 +56,8 @@ export interface MigrationStats {
   /** 旧画像阻尼参数（保留给 S2） */
   sampleCount: number | null;
   confidence: number | null;
+  /** 迁移诊断备注（坏节点/文件不可读），与 unmapped 原文分离 */
+  notes: string[];
 }
 
 export interface MigrationReport {
@@ -78,21 +81,25 @@ function emptyStats(): MigrationStats {
     unmappedDislikes: [],
     sampleCount: null,
     confidence: null,
+    notes: [],
   };
 }
 
-/** 旧图谱节点解析（宽松：逐节点 v2 schema 校验；坏节点进 unmapped 不丢） */
+/** 旧图谱节点解析（宽松：逐节点 v2 schema 校验；坏节点进 notes 不丢） */
 function parseLegacyNodes(raw: unknown): { nodes: InterestNode[]; invalid: unknown[] } {
   const nodes: InterestNode[] = [];
   const invalid: unknown[] = [];
-  if (raw && typeof raw === 'object' && Array.isArray((raw as { nodes?: unknown }).nodes)) {
-    for (const item of (raw as { nodes: unknown[] }).nodes) {
-      const parsed = InterestNodeSchema.safeParse(item);
-      if (parsed.success) {
-        nodes.push(parsed.data);
-      } else {
-        invalid.push(item);
-      }
+  if (raw === null || typeof raw !== 'object' || !('nodes' in raw)) {
+    return { nodes, invalid };
+  }
+  const rawNodes = raw.nodes;
+  if (!Array.isArray(rawNodes)) return { nodes, invalid };
+  for (const item of rawNodes) {
+    const parsed = InterestNodeSchema.safeParse(item);
+    if (parsed.success) {
+      nodes.push(parsed.data);
+    } else {
+      invalid.push(item);
     }
   }
   return { nodes, invalid };
@@ -113,20 +120,192 @@ function matchNode(nodes: InterestNode[], text: string): InterestNode | undefine
   );
 }
 
-/** 写文件（父目录自动建） */
-async function writeJson(path: string, data: unknown): Promise<void> {
-  const dir = path.substring(0, path.lastIndexOf('/')) || '.';
-  await mkdir(dir, { recursive: true });
-  await writeFile(path, JSON.stringify(data, null, 2), 'utf-8');
-}
-
 /** 占位文件（缺失才建；已存在不覆盖） */
 async function ensurePlaceholder(path: string, content: string): Promise<boolean> {
   if (existsSync(path)) return false;
-  const dir = path.substring(0, path.lastIndexOf('/')) || '.';
-  await mkdir(dir, { recursive: true });
+  await mkdir(dirname(path), { recursive: true });
   await writeFile(path, content, 'utf-8');
   return true;
+}
+
+/**
+ * 旧扁平图谱 → 一级节点（path = id，parent 缺省 = 根）。
+ * 坏节点/不可读 → 记 stats.notes（诊断信息，与 unmapped 原文分离）+ 日志。
+ */
+async function loadLegacyNodes(
+  legacyPath: string,
+  stats: MigrationStats,
+): Promise<InterestNode[]> {
+  if (!existsSync(legacyPath)) return [];
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(legacyPath, 'utf-8'));
+  } catch (error) {
+    logger.error('旧图谱解析失败（跳过图谱迁移，节点数 0）', {
+      path: legacyPath,
+      error,
+    });
+    stats.notes.push(`[legacy-interests-unreadable] ${String(error).slice(0, 160)}`);
+    return [];
+  }
+
+  const parsed = parseLegacyNodes(raw);
+  stats.sourceInterests = parsed.nodes.length;
+  if (parsed.invalid.length > 0) {
+    logger.warn('旧图谱存在无法校验的节点，已记录进报告（不丢）', {
+      invalidCount: parsed.invalid.length,
+    });
+    for (const v of parsed.invalid) {
+      stats.notes.push(`[invalid-node] ${JSON.stringify(v).slice(0, 120)}`);
+    }
+  }
+  return parsed.nodes.map((n) => ({ ...n, path: n.id }));
+}
+
+/**
+ * 旧画像 likes/dislikes → 节点 exemplars/negativeExemplars；阻尼参数保留。
+ * 未命中的原文进 unmapped；文件不可读 → 记 notes。
+ */
+async function dissolveLegacyProfile(
+  legacyProfilePath: string,
+  nodes: InterestNode[],
+  stats: MigrationStats,
+  migratedAt: string,
+): Promise<void> {
+  if (!existsSync(legacyProfilePath)) return;
+
+  const raw = await readProfileJson(legacyProfilePath, stats);
+  if (!raw) return;
+
+  const likes = Array.isArray(raw.likes) ? raw.likes : [];
+  const dislikes = Array.isArray(raw.dislikes) ? raw.dislikes : [];
+  stats.likesTotal = likes.length;
+  stats.dislikesTotal = dislikes.length;
+  stats.sampleCount = typeof raw.sampleCount === 'number' ? raw.sampleCount : null;
+  stats.confidence = typeof raw.confidence === 'number' ? raw.confidence : null;
+
+  dissolveFeedback(likes, nodes, stats, 'like');
+  dissolveFeedback(dislikes, nodes, stats, 'dislike');
+
+  // slim 画像写回（无 likes/dislikes 字段 = 单写者纪律）
+  const slim: Record<string, unknown> = {
+    lastUpdated: typeof raw.lastUpdated === 'string' ? raw.lastUpdated : migratedAt,
+    feedbackCount: typeof raw.feedbackCount === 'number' ? raw.feedbackCount : 0,
+    sampleCount: typeof raw.sampleCount === 'number' ? raw.sampleCount : 0,
+    confidence: typeof raw.confidence === 'number' ? raw.confidence : 0,
+    lastProfileUpdateAt: raw.lastProfileUpdateAt ?? null,
+  };
+  await atomicWriteJson(legacyProfilePath, slim);
+}
+
+/** 读取旧画像 JSON；不可读/非对象 → 记 notes 并返回 null（兼容旧租户，不抛） */
+async function readProfileJson(
+  legacyProfilePath: string,
+  stats: MigrationStats,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(legacyProfilePath, 'utf-8'));
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('剖面文件不是 JSON 对象');
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    logger.error('旧画像解析失败（跳过画像消解）', {
+      path: legacyProfilePath,
+      error,
+    });
+    stats.notes.push(`[legacy-profile-unreadable] ${String(error).slice(0, 160)}`);
+    return null;
+  }
+}
+
+/** 单类反馈（like/dislike）消解到节点 exemplars/negativeExemplars，未命中进 unmapped */
+function dissolveFeedback(
+  items: unknown[],
+  nodes: InterestNode[],
+  stats: MigrationStats,
+  type: 'like' | 'dislike',
+): void {
+  const mapped = type === 'like' ? 'likesMapped' : 'dislikesMapped';
+  const unmapped = type === 'like' ? stats.unmappedLikes : stats.unmappedDislikes;
+
+  for (const item of items) {
+    if (typeof item !== 'string') {
+      unmapped.push(JSON.stringify(item));
+      continue;
+    }
+    const node = matchNode(nodes, item);
+    if (node) {
+      if (type === 'like') {
+        node.exemplars = [...(node.exemplars ?? []), item];
+      } else {
+        node.negativeExemplars = [...(node.negativeExemplars ?? []), item];
+      }
+      stats[mapped] += 1;
+    } else {
+      unmapped.push(item);
+    }
+  }
+}
+
+/** 占位文件批次：identity / settings / profile-summary / curiosity 骨架 */
+async function ensurePlaceholders(dataDir: string, migratedAt: string): Promise<string[]> {
+  const created: string[] = [];
+  const identity = JSON.stringify({ version: 1, createdAt: migratedAt, name: null }, null, 2);
+  if (await ensurePlaceholder(join(dataDir, IDENTITY_FILE), identity)) {
+    created.push(IDENTITY_FILE);
+  }
+  const settings = JSON.stringify({ version: 1, createdAt: migratedAt, pushBudget: null }, null, 2);
+  if (await ensurePlaceholder(join(dataDir, SETTINGS_FILE), settings)) {
+    created.push(SETTINGS_FILE);
+  }
+  const summary = [
+    '# profile-summary（派生摘要）',
+    '',
+    '> S1 占位：由反思时从图谱增量生成（S2/S4），不独立维护。',
+    '',
+  ].join('\n');
+  if (await ensurePlaceholder(join(dataDir, PROFILE_SUMMARY_FILE), summary)) {
+    created.push(PROFILE_SUMMARY_FILE);
+  }
+  const curiosity = JSON.stringify(createDefaultCuriosityData(), null, 2);
+  if (await ensurePlaceholder(join(dataDir, CURIOSITY_FILE), curiosity)) {
+    created.push(CURIOSITY_FILE);
+  }
+  return created;
+}
+
+/** 写迁移报告（回放验证「旧数据零丢失」的依据） */
+async function writeMigrationReport(dataDir: string, report: MigrationReport): Promise<void> {
+  await atomicWriteJson(join(dataDir, MIGRATION_REPORT_FILE), report);
+}
+
+/**
+ * 核心迁移：旧图谱 → 一级节点、旧画像消解落 exemplars、新图谱 v2 落盘。
+ * 调用方保证新图谱文件缺失（幂等守卫在 migrateUserProfile）。
+ */
+async function migrateLegacyCore(
+  dataDir: string,
+  stats: MigrationStats,
+  migratedAt: string,
+): Promise<string[]> {
+  const createdFiles: string[] = [];
+
+  // 1. 旧图谱 → 一级节点（path = id，parent 缺省 = 根）
+  const nodes = await loadLegacyNodes(join(dataDir, LEGACY_INTERESTS_FILE), stats);
+
+  // 2. 旧画像 likes/dislikes → 节点 exemplars；阻尼参数保留
+  await dissolveLegacyProfile(join(dataDir, LEGACY_PROFILE_FILE), nodes, stats, migratedAt);
+
+  // 3. 新图谱落盘（v2）
+  await atomicWriteJson(join(dataDir, USER_INTERESTS_FILE), {
+    version: 2,
+    lastUpdated: migratedAt,
+    nodes,
+  });
+  createdFiles.push(USER_INTERESTS_FILE);
+  return createdFiles;
 }
 
 /**
@@ -135,10 +314,10 @@ async function ensurePlaceholder(path: string, content: string): Promise<boolean
  */
 export async function migrateUserProfile(dataDir: string): Promise<MigrationReport> {
   const migratedAt = new Date().toISOString();
-  const userInterestsPath = join(dataDir, USER_INTERESTS_FILE);
-  const createdFiles: string[] = [];
+  const stats = emptyStats();
 
   // 幂等：新图谱已存在 → 跳过核心迁移，只补缺失的占位文件
+  const userInterestsPath = join(dataDir, USER_INTERESTS_FILE);
   const alreadyMigrated = existsSync(userInterestsPath);
   if (alreadyMigrated) {
     logger.info('user-interests.json 已存在，跳过图谱/画像迁移（幂等重跑）', {
@@ -146,135 +325,15 @@ export async function migrateUserProfile(dataDir: string): Promise<MigrationRepo
     });
   }
 
-  const stats = emptyStats();
-  const profilePath = join(dataDir, LEGACY_PROFILE_FILE);
-
+  const createdFiles: string[] = [];
   if (!alreadyMigrated) {
-    // 1. 旧图谱 → 一级节点（path = id，parent 缺省 = 根）
-    const legacyPath = join(dataDir, LEGACY_INTERESTS_FILE);
-    let nodes: InterestNode[] = [];
-    if (existsSync(legacyPath)) {
-      try {
-        const raw = JSON.parse(await readFile(legacyPath, 'utf-8'));
-        const parsed = parseLegacyNodes(raw);
-        nodes = parsed.nodes.map((n) => ({ ...n, path: n.id }));
-        stats.sourceInterests = parsed.nodes.length;
-        if (parsed.invalid.length > 0) {
-          logger.warn('旧图谱存在无法校验的节点，已记录进报告（不丢）', {
-            invalidCount: parsed.invalid.length,
-          });
-          stats.unmappedDislikes.push(
-            ...parsed.invalid.map((v) => `[invalid-node] ${JSON.stringify(v).slice(0, 120)}`),
-          );
-        }
-      } catch (error) {
-        logger.error('旧图谱解析失败（跳过图谱迁移，节点数 0）', {
-          path: legacyPath,
-          error,
-        });
-        stats.unmappedDislikes.push(`[legacy-interests-unreadable] ${String(error).slice(0, 160)}`);
-      }
-    }
-
-    // 2. 旧画像 likes/dislikes → 节点 exemplars；阻尼参数保留
-    if (existsSync(profilePath)) {
-      try {
-        const raw = JSON.parse(await readFile(profilePath, 'utf-8')) as {
-          likes?: string[];
-          dislikes?: string[];
-          sampleCount?: number;
-          confidence?: number;
-          lastUpdated?: string;
-          feedbackCount?: number;
-          lastProfileUpdateAt?: string | null;
-        };
-        const likes = Array.isArray(raw.likes) ? raw.likes : [];
-        const dislikes = Array.isArray(raw.dislikes) ? raw.dislikes : [];
-        stats.likesTotal = likes.length;
-        stats.dislikesTotal = dislikes.length;
-        stats.sampleCount = typeof raw.sampleCount === 'number' ? raw.sampleCount : null;
-        stats.confidence = typeof raw.confidence === 'number' ? raw.confidence : null;
-
-        for (const like of likes) {
-          const node = matchNode(nodes, like);
-          if (node) {
-            node.exemplars = [...(node.exemplars ?? []), like];
-            stats.likesMapped += 1;
-          } else {
-            stats.unmappedLikes.push(like);
-          }
-        }
-        for (const dislike of dislikes) {
-          const node = matchNode(nodes, dislike);
-          if (node) {
-            node.negativeExemplars = [...(node.negativeExemplars ?? []), dislike];
-            stats.dislikesMapped += 1;
-          } else {
-            stats.unmappedDislikes.push(dislike);
-          }
-        }
-
-        // 3. slim 画像写回（无 likes/dislikes 字段 = 单写者纪律）
-        const slim: Record<string, unknown> = {
-          lastUpdated: raw.lastUpdated ?? migratedAt,
-          feedbackCount: raw.feedbackCount ?? 0,
-          sampleCount: raw.sampleCount ?? 0,
-          confidence: raw.confidence ?? 0,
-          lastProfileUpdateAt: raw.lastProfileUpdateAt ?? null,
-        };
-        await writeJson(profilePath, slim);
-        createdFiles.push(LEGACY_PROFILE_FILE);
-      } catch (error) {
-        logger.error('旧画像解析失败（跳过画像消解）', {
-          path: profilePath,
-          error,
-        });
-        stats.unmappedDislikes.push(`[legacy-profile-unreadable] ${String(error).slice(0, 160)}`);
-      }
-    }
-
-    // 4. 新图谱落盘（v2）
-    await writeJson(userInterestsPath, {
-      version: 2,
-      lastUpdated: migratedAt,
-      nodes,
-    });
-    createdFiles.push(USER_INTERESTS_FILE);
+    createdFiles.push(...(await migrateLegacyCore(dataDir, stats, migratedAt)));
   }
 
-  // 5. 占位文件：identity / settings / profile-summary / curiosity 骨架
-  const now = migratedAt;
-  if (await ensurePlaceholder(join(dataDir, IDENTITY_FILE), JSON.stringify({
-    version: 1,
-    createdAt: now,
-    name: null,
-  }, null, 2))) {
-    createdFiles.push(IDENTITY_FILE);
-  }
-  if (await ensurePlaceholder(join(dataDir, SETTINGS_FILE), JSON.stringify({
-    version: 1,
-    createdAt: now,
-    pushBudget: null,
-  }, null, 2))) {
-    createdFiles.push(SETTINGS_FILE);
-  }
-  if (await ensurePlaceholder(join(dataDir, PROFILE_SUMMARY_FILE), [
-    '# profile-summary（派生摘要）',
-    '',
-    '> S1 占位：由反思时从图谱增量生成（S2/S4），不独立维护。',
-    '',
-  ].join('\n'))) {
-    createdFiles.push(PROFILE_SUMMARY_FILE);
-  }
-  if (await ensurePlaceholder(join(dataDir, CURIOSITY_FILE), JSON.stringify(
-    createDefaultCuriosityData(),
-    null,
-    2,
-  ))) {
-    createdFiles.push(CURIOSITY_FILE);
-  }
+  // 占位文件：identity / settings / profile-summary / curiosity 骨架
+  createdFiles.push(...(await ensurePlaceholders(dataDir, migratedAt)));
 
-  // 6. 迁移报告
+  // 迁移报告
   const report: MigrationReport = {
     version: 1,
     migratedAt,
@@ -283,7 +342,7 @@ export async function migrateUserProfile(dataDir: string): Promise<MigrationRepo
     createdFiles,
     skipped: alreadyMigrated,
   };
-  await writeJson(join(dataDir, MIGRATION_REPORT_FILE), report);
+  await writeMigrationReport(dataDir, report);
   createdFiles.push(MIGRATION_REPORT_FILE);
 
   logger.info('用户画像迁移完成', {
@@ -296,4 +355,4 @@ export async function migrateUserProfile(dataDir: string): Promise<MigrationRepo
   });
 
   return report;
-}
+}

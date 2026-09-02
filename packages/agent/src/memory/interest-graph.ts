@@ -14,11 +14,12 @@
  * - 模块级单例：getInterestGraph() 按 dataPath 复用
  */
 
-import { readFile, writeFile, rename } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { z } from 'zod';
 import { consola } from '../logger.js';
 import { getDataPath } from '../config.js';
+import { atomicWriteJson } from '../utils/atomic-json.js';
 import { recordInterestSnapshot } from './interest-history.js';
 
 const logger = consola.withTag('InterestGraph');
@@ -31,9 +32,7 @@ export const USER_INTERESTS_FILE = 'user-profile/user-interests.json';
 /** 旧版扁平图谱文件路径（迁移来源） */
 export const LEGACY_INTERESTS_FILE = 'interests.json';
 
-// ============================================
 // Zod Schemas
-// ============================================
 
 export const InterestNodeSchema = z.object({
   id: z.string().min(1),
@@ -64,9 +63,7 @@ export const InterestGraphDataSchema = z.object({
   nodes: z.array(InterestNodeSchema),
 });
 
-// ============================================
 // Types
-// ============================================
 
 export type InterestSource = 'default' | 'reflection' | 'feedback' | 'migration';
 
@@ -114,23 +111,7 @@ export const DEFAULT_INTEREST_CONFIG: InterestGraphConfig = {
   minWeight: 0.05,
 };
 
-// ============================================
-// 原子写辅助（复用 memory-index.ts 模式）
-// ============================================
-
-async function atomicWriteJson(path: string, data: unknown): Promise<void> {
-  const dir = path.substring(0, path.lastIndexOf('/')) || '.';
-  const { mkdir } = await import('fs/promises');
-  await mkdir(dir, { recursive: true });
-  const tmp = `${path}.tmp.${process.pid}.${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const payload = JSON.stringify(data, null, 2);
-  await writeFile(tmp, payload, 'utf-8');
-  await rename(tmp, path);
-}
-
-// ============================================
 // InterestGraph 类
-// ============================================
 
 export class InterestGraph {
   private readonly filePath: string;
@@ -551,9 +532,7 @@ export class InterestGraph {
   }
 }
 
-// ============================================
 // 工厂 / 单例
-// ============================================
 
 function createDefaultGraphData(): InterestGraphData {
   return {
@@ -605,13 +584,28 @@ export function _resetInterestGraphCache(): void {
 
 /**
  * 初始化兴趣图谱（启动时调用）。
- * 加载文件 → 空则 seedDefaults → 应用一次衰减 → 持久化。
+ *
+ * 新文件存在 → 加载 + 衰减 + 持久化；
+ * 新文件缺失 + 遗留 `interests.json` 有内容 → **不 seedDefaults、不落盘**，
+ *   留给 `migrate:user-profile` 迁移（防启动竞态掩盖旧数据，见 #156）；
+ * 新文件缺失且无遗留 → seedDefaults + 持久化（新租户冷启动）。
  */
 export async function initializeInterestGraph(
   config?: InterestGraphConfig
 ): Promise<InterestGraph> {
   const graph = getInterestGraph(undefined, config);
   await graph.load();
+
+  // 新文件缺失 + 遗留图谱有内容：禁止 seedDefaults 与任何落盘。
+  // 一旦写下新文件（哪怕空图谱），migrate:user-profile 的幂等守卫
+  // `existsSync(userInterestsPath)` 即成立 → 核心迁移被静默跳过，
+  // 旧数据被默认种子永久掩盖（#156 启动竞态）。
+  if (!graph.isInitialized() && (await hasLegacyInterests())) {
+    logger.warn('检测到遗留 interests.json，跳过默认种子初始化（等待迁移）', {
+      path: getDataPath(LEGACY_INTERESTS_FILE),
+    });
+    return graph;
+  }
 
   if (!graph.isInitialized() && graph.getNodeCount() === 0) {
     graph.seedDefaults();
@@ -625,4 +619,22 @@ export async function initializeInterestGraph(
   await graph.persist();
 
   return graph;
+}
+
+/**
+ * 遗留扁平图谱存在且有节点（迁移来源）。
+ * 文件存在但不可解析 → 视为有内容（交迁移记录报错，不在此兜底处理）。
+ */
+async function hasLegacyInterests(): Promise<boolean> {
+  const legacyPath = getDataPath(LEGACY_INTERESTS_FILE);
+  if (!existsSync(legacyPath)) return false;
+  try {
+    const raw: unknown = JSON.parse(await readFile(legacyPath, 'utf-8'));
+    // 宽松检查：nodes 缺失/非数组视为格式异常 → 返回 true（交迁移报告，不在此兜底）
+    if (raw === null || typeof raw !== 'object' || !('nodes' in raw)) return true;
+    const nodes = (raw as { nodes: unknown }).nodes;
+    return Array.isArray(nodes) && nodes.length > 0;
+  } catch {
+    return true;
+  }
 }

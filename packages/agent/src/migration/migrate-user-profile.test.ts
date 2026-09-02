@@ -143,6 +143,22 @@ describe('migrateUserProfile（S1 #150）', () => {
     expect(report.stats.unmappedLikes).toEqual([]);
   });
 
+  it('旧文件损坏：诊断进 notes，不污染 unmappedDislikes', async () => {
+    const h = useTempDataDir();
+    cleanup = h.cleanup;
+    await mkdir(join(h.dataDir, 'memory'), { recursive: true });
+    await writeFile(join(h.dataDir, 'interests.json'), 'not-json{{{', 'utf-8');
+    await writeFile(join(h.dataDir, 'memory/user-profile.json'), 'bad-json', 'utf-8');
+
+    const report = await migrateUserProfile(h.dataDir);
+
+    // 诊断标记（坏节点/不可读）进 notes[]，与 unmapped 原文分离
+    expect(report.stats.notes.some((n) => n.startsWith('[legacy-interests-unreadable]'))).toBe(true);
+    expect(report.stats.notes.some((n) => n.startsWith('[legacy-profile-unreadable]'))).toBe(true);
+    expect(report.stats.unmappedDislikes).toEqual([]);
+    expect(report.stats.unmappedLikes).toEqual([]);
+  });
+
   it('幂等：重跑跳过核心迁移（already-migrated，图谱不覆盖）', async () => {
     const h = useTempDataDir();
     cleanup = h.cleanup;
