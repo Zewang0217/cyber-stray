@@ -39,7 +39,14 @@ cd "$DEPLOY_DIR"
 export IMAGE_TAG="$TAG"
 
 echo "==> [1/4] 拉取镜像（IMAGE_TAG=$TAG）"
-docker compose pull
+# GHCR 偶发 manifest EOF（瞬态网络中断）；重试比整体部署回滚便宜得多
+attempt=0
+until docker compose pull; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -ge 3 ] && { echo "错误: 连续 ${attempt} 次拉取失败" >&2; exit 1; }
+  echo "    第 ${attempt} 次拉取失败，5s 后重试…" >&2
+  sleep 5
+done
 
 echo "==> [2/4] 重建容器"
 docker compose up -d --remove-orphans
@@ -66,7 +73,7 @@ echo "    全部健康：控制面 healthz / web / Casdoor OIDC ✓"
 
 echo "==> [4/4] 镜像清理（仅本项目镜像；保留在用 tag）"
 docker image prune -f >/dev/null 2>&1 || true
-for repo in ghcr.io/zewang0217/cyber-stray-app ghcr.io/zewang0217/cyber-stray-web; do
+for repo in ghcr.1ms.run/zewang0217/cyber-stray-app ghcr.1ms.run/zewang0217/cyber-stray-web; do
   docker images "$repo" --format '{{.Repository}}:{{.Tag}}' \
     | grep -v ":$TAG$" \
     | xargs -r -n1 docker rmi -f >/dev/null 2>&1 || true

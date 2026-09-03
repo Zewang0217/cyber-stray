@@ -20,7 +20,7 @@ name: cyber-stray
 
 services:
   control-plane:
-    image: ghcr.io/zewang0217/cyber-stray-app:${IMAGE_TAG:-sha}
+    image: ghcr.1ms.run/zewang0217/cyber-stray-app:${IMAGE_TAG:-sha}
     container_name: cyber-stray-control-plane
     restart: always
     # 优雅停机预算（CP_SHUTDOWN_BUDGET_MS 默认 90s）+ 余量：在飞游荡收口再退出
@@ -43,7 +43,7 @@ services:
       start_period: 20s
 
   web:
-    image: ghcr.io/zewang0217/cyber-stray-web:${IMAGE_TAG:-sha}
+    image: ghcr.1ms.run/zewang0217/cyber-stray-web:${IMAGE_TAG:-sha}
     container_name: cyber-stray-web
     restart: always
     depends_on:

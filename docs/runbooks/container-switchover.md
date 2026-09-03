@@ -8,7 +8,7 @@
 
 - 数据原路径：`/opt/cyber-stray/data`（控制面）、`/opt/casdoor/{conf,casdoor.db}`（Casdoor）
 - 旧拓扑：`control-plane.service` / `web.service` / `casdoor.service` 三个 systemd unit
-- 镜像：`ghcr.io/zewang0217/cyber-stray-{app,web}`，tag = commit sha（回滚 = 换 tag 重发）
+- 镜像：`ghcr.1ms.run/zewang0217/cyber-stray-{app,web}`（1ms 加速前缀代理 ghcr.io），tag = commit sha（回滚 = 换 tag 重发）
 - 编排真相源：仓库 `packages/control-plane/deploy/`（compose.yaml / container-update.sh / nginx 模板）
 
 ## 1. 产机一次性前置
@@ -17,16 +17,8 @@
 # 1) docker + compose 插件（本机已有多个 compose 栈 → 通常已具备）
 docker --version && docker compose version
 
-# 2) docker 拉镜像走本机代理（GHCR 直连不通；一次性，见调研文档）
-sudo mkdir -p /etc/systemd/system/docker.service.d
-sudo tee /etc/systemd/system/docker.service.d/http-proxy.conf >/dev/null <<'EOF'
-[Service]
-Environment="HTTP_PROXY=http://127.0.0.1:<代理端口>"
-Environment="HTTPS_PROXY=http://127.0.0.1:<代理端口>"
-Environment="NO_PROXY=localhost,127.0.0.1"
-EOF
-sudo systemctl daemon-reload && sudo systemctl restart docker
-docker pull ghcr.io/zewang0217/cyber-stray-app:latest 2>/dev/null || true  # 连通性验证（可删）
+# 2) 拉镜像走 1ms 加速：从 ghcr.1ms.run 拉取（代理 ghcr.io，无需本机代理）
+sudo docker pull ghcr.1ms.run/zewang0217/cyber-stray-app:latest 2>/dev/null || true  # 连通性验证（可删）
 
 # 3) 部署目录（发布流水线同步 compose/脚本到此）
 sudo mkdir -p /opt/cyber-stray/deploy
@@ -148,14 +140,12 @@ curl -si -H 'Connection: Upgrade' -H 'Upgrade: websocket' https://<HOST>/api/eve
 | ---------------------------- | ----------------------------------------------------------------------------------------------- |
 | 健康门失败（容器 unhealthy） | `docker compose ps`、`docker compose logs --tail 100 <svc>`；控制面 healthz 需 `.env` 完整      |
 | casdoor 无法写库             | `/opt/casdoor` 属主非 uid 1000（`chown -R 1000:1000`）；db 文件被误建为目录（删目录重 `touch`） |
-| docker pull 超时             | docker.service 代理 drop-in 未生效（`systemctl show docker -p Environment`）                    |
+| docker pull 超时             | 1ms 前缀拉取失败（镜像存在 ghcr.io，见 compose 镜像地址）；已被 pull 重试兜底 |
 | 登录失败 / discovery 不通    | `.env` 的 `CASDOOR_ISSUER` 必须是对外 https 地址（经 nginx /casdoor/）                          |
 | 部署后行为异常需退版本       | 按第 6 节回滚；SQLite 迁移单向——旧代码必须兼容新 schema（ADR-0009 约束）                        |
 | 停机期间宠物数据半写         | 优雅停机（默认 90s 预算）后仍超时被杀的孤儿由既有 lease / DB 冷却自愈（S5）                     |
 
 ## 8. 验收清单（issue #138 User Stories）
-
-- [ ] develop push 自动跑质量门；develop 不产镜像
 - [ ] main merge 自动构建 + 部署；镜像带 commit sha tag
 - [ ] 产机无 self-hosted runner、无构建依赖（bun/node/pnpm 可卸）
 - [ ] compose / 镜像定义 / nginx 模板真相源在仓库；部署自动同步 compose
