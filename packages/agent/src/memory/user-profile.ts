@@ -1,8 +1,9 @@
-import { readFile, writeFile, mkdir, rename } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { z } from 'zod';
 import { consola } from '../logger.js';
 import { getDataPath } from '../config.js';
+import { atomicWriteJson } from '../utils/atomic-json.js';
 
 const logger = consola.withTag('UserProfile');
 
@@ -16,8 +17,6 @@ function userProfilePath(): string {
   return getDataPath('memory/user-profile.json');
 }
 
-/** 单个话题最多保留的喜欢/不喜欢条目数 */
-const MAX_TOPIC_ITEMS = 20;
 
 /** 画像修改冷却时间（毫秒） */
 const PROFILE_UPDATE_COOLDOWN_MS = 30 * 60 * 1000;
@@ -28,26 +27,13 @@ const CONFIDENCE_K = 10;
 /** 置信度上限 */
 const CONFIDENCE_CAP = 0.95;
 
-// ============================================
-// 原子写（与 interest-graph.ts 统一模式）
-// ============================================
-
-async function atomicWriteJson(path: string, data: unknown): Promise<void> {
-  const dir = path.substring(0, path.lastIndexOf('/')) || '.';
-  await mkdir(dir, { recursive: true });
-  const tmp = `${path}.tmp.${process.pid}.${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const payload = JSON.stringify(data, null, 2);
-  await writeFile(tmp, payload, 'utf-8');
-  await rename(tmp, path);
-}
-
-// ============================================
 // Zod Schema（防 schema 漂移）
-// ============================================
 
 export const UserProfileSchema = z.object({
-  likes: z.array(z.string()),
-  dislikes: z.array(z.string()),
+  /** S1(#150)：likes/dislikes 概念消解为图谱叶子权重；旧文件兼容，新写入不再产生 */
+  likes: z.array(z.string()).default([]),
+  /** S1(#150)：同上；dislike 信号只落图谱叶子（S2 语义），不再写数组 */
+  dislikes: z.array(z.string()).default([]),
   lastUpdated: z.string().refine((s) => !Number.isNaN(new Date(s).getTime()), {
     message: 'lastUpdated must be a valid date string',
   }),
@@ -69,11 +55,7 @@ export const UserProfileSchema = z.object({
     .nullable(),
 });
 
-// ============================================
 // Types
-// ============================================
-
-/** 用户画像数据结构 */
 export interface UserProfile {
   likes: string[];
   dislikes: string[];
@@ -88,9 +70,7 @@ export interface UserProfile {
   lastProfileUpdateAt: string | null;
 }
 
-// ============================================
-// 工厂 / 加载 / 持久化
-// ============================================
+// 默认画像 / 加载 / 持久化
 
 /** 默认用户画像 */
 function createDefaultUserProfile(): UserProfile {
@@ -159,8 +139,16 @@ export async function loadUserProfile(): Promise<UserProfile> {
  * 保存用户画像
  */
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
+  // S1（#150）：likes/dislikes 概念消解——空数组不再落盘（迁移后无第二份数据）
+  const payload: Record<string, unknown> = { ...profile };
+  if (Array.isArray(payload.likes) && (payload.likes as unknown[]).length === 0) {
+    delete payload.likes;
+  }
+  if (Array.isArray(payload.dislikes) && (payload.dislikes as unknown[]).length === 0) {
+    delete payload.dislikes;
+  }
   try {
-    await atomicWriteJson(userProfilePath(), profile);
+    await atomicWriteJson(userProfilePath(), payload);
     logger.debug('用户画像已保存');
   } catch (error) {
     logger.error('保存用户画像失败', { error });
@@ -168,9 +156,7 @@ export async function saveUserProfile(profile: UserProfile): Promise<void> {
   }
 }
 
-// ============================================
 // 置信度计算
-// ============================================
 
 /**
  * 计算置信度（sigmoid 校准）。
@@ -184,9 +170,7 @@ function computeConfidence(sampleCount: number): number {
   return Math.min(CONFIDENCE_CAP, raw);
 }
 
-// ============================================
 // 画像更新
-// ============================================
 
 /**
  * 更新用户画像（基于反馈）。
@@ -203,25 +187,9 @@ export async function updateUserProfile(
 ): Promise<UserProfile> {
   const profile = await loadUserProfile();
 
-  if (type === 'like') {
-    // 从不喜欢列表中移除（可能改变主意了）
-    profile.dislikes = profile.dislikes.filter(
-      (d) => d.toLowerCase() !== topic.toLowerCase(),
-    );
-    // 添加到喜欢列表（避免重复，限制数量）
-    if (!profile.likes.some((l) => l.toLowerCase() === topic.toLowerCase())) {
-      profile.likes = [...profile.likes, topic].slice(-MAX_TOPIC_ITEMS);
-    }
-  } else {
-    // 从喜欢列表中移除
-    profile.likes = profile.likes.filter(
-      (l) => l.toLowerCase() !== topic.toLowerCase(),
-    );
-    // 添加到不喜欢列表
-    if (!profile.dislikes.some((d) => d.toLowerCase() === topic.toLowerCase())) {
-      profile.dislikes = [...profile.dislikes, topic].slice(-MAX_TOPIC_ITEMS);
-    }
-  }
+  // S1（#150）：likes/dislikes 概念消解为图谱叶子权重——本函数只维护样本计数与
+  // 置信度（S2 阻尼参数），不再写 likes/dislikes 数组；信号落图谱由 feedback-pipeline
+  // 的图谱操作完成（S2 再做精确叶子归因 + 权重公式）。
 
   profile.feedbackCount += 1;
   profile.sampleCount += 1;
@@ -230,11 +198,9 @@ export async function updateUserProfile(
 
   await saveUserProfile(profile);
 
-  logger.info('用户画像已更新', {
+  logger.info('用户画像已更新（样本计数）', {
     type,
     topic,
-    likesCount: profile.likes.length,
-    dislikesCount: profile.dislikes.length,
     sampleCount: profile.sampleCount,
     confidence: profile.confidence,
   });
@@ -261,35 +227,19 @@ export async function updateUserProfileBatch(
 ): Promise<UserProfile> {
   const profile = await loadUserProfile();
 
-  for (const { type, topic } of entries) {
-    if (type === 'like') {
-      profile.dislikes = profile.dislikes.filter(
-        (d) => d.toLowerCase() !== topic.toLowerCase(),
-      );
-      if (!profile.likes.some((l) => l.toLowerCase() === topic.toLowerCase())) {
-        profile.likes = [...profile.likes, topic].slice(-MAX_TOPIC_ITEMS);
-      }
-    } else {
-      profile.likes = profile.likes.filter(
-        (l) => l.toLowerCase() !== topic.toLowerCase(),
-      );
-      if (!profile.dislikes.some((d) => d.toLowerCase() === topic.toLowerCase())) {
-        profile.dislikes = [...profile.dislikes, topic].slice(-MAX_TOPIC_ITEMS);
-      }
-    }
+  // S1（#150）：likes/dislikes 消解——多信号归因只累加样本计数与置信度，
+  // 不再写 likes/dislikes 数组；信号落图谱叶子由 feedback-pipeline 图谱操作完成。
 
-    profile.feedbackCount += 1;
-    profile.sampleCount += 1;
-  }
+  profile.feedbackCount += entries.length;
+  profile.sampleCount += entries.length;
 
   profile.lastUpdated = new Date().toISOString();
   profile.confidence = computeConfidence(profile.sampleCount);
 
   await saveUserProfile(profile);
 
-  logger.info('用户画像已批量更新', {
+  logger.info('用户画像已批量更新（样本计数）', {
     entryCount: entries.length,
-    topics: entries.map((e) => e.topic),
     sampleCount: profile.sampleCount,
     confidence: profile.confidence,
   });
@@ -341,23 +291,7 @@ export async function tryUpdateUserProfile(
     }
   }
 
-  // 每次只加 1 条
-  if (type === 'like') {
-    if (!profile.likes.some((l) => l.toLowerCase() === trimmedTopic.toLowerCase())) {
-      profile.likes = [...profile.likes, trimmedTopic].slice(-MAX_TOPIC_ITEMS);
-    }
-    profile.dislikes = profile.dislikes.filter(
-      (d) => d.toLowerCase() !== trimmedTopic.toLowerCase(),
-    );
-  } else {
-    if (!profile.dislikes.some((d) => d.toLowerCase() === trimmedTopic.toLowerCase())) {
-      profile.dislikes = [...profile.dislikes, trimmedTopic].slice(-MAX_TOPIC_ITEMS);
-    }
-    profile.likes = profile.likes.filter(
-      (l) => l.toLowerCase() !== trimmedTopic.toLowerCase(),
-    );
-  }
-
+  // S1（#150）：likes/dislikes 消解——Agent 观察信号只维护样本计数与置信度。
   profile.lastProfileUpdateAt = new Date().toISOString();
   profile.lastUpdated = new Date().toISOString();
   profile.feedbackCount += 1;
@@ -366,15 +300,14 @@ export async function tryUpdateUserProfile(
 
   await saveUserProfile(profile);
 
-  logger.info('用户画像已通过 Agent 观察更新', {
+  logger.info('用户画像已通过 Agent 观察更新（样本计数）', {
     type,
     topic: trimmedTopic,
     reasoning,
     confidence: profile.confidence,
     sampleCount: profile.sampleCount,
-    likesCount: profile.likes.length,
-    dislikesCount: profile.dislikes.length,
   });
 
   return { success: true, profile };
 }
+

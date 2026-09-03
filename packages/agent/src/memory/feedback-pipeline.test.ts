@@ -90,9 +90,9 @@ describe('FeedbackPipeline', () => {
     expect(result.profileUpdated).toBe(true);
     expect(result.interestReinforced).toBe(true);
 
-    // 验证画像
+    // 验证画像：S1（#150）likes/dislikes 消解——只计样本数，信号已落图谱
     const profile = await loadUserProfile();
-    expect(profile.likes).toContain('量子计算');
+    expect(profile.likes).toEqual([]);
     expect(profile.sampleCount).toBe(1);
 
     // 验证兴趣权重增加
@@ -117,9 +117,9 @@ describe('FeedbackPipeline', () => {
     expect(result.topicsMatched).toBe(true);
     expect(result.profileUpdated).toBe(true);
 
-    // 验证画像
+    // 验证画像：S1 消解——dislike 只落图谱叶子（衰减），不再写 dislikes 数组
     const profile = await loadUserProfile();
-    expect(profile.dislikes).toContain('广告');
+    expect(profile.dislikes).toEqual([]);
 
     // 验证兴趣衰减
     const node = graph.getNode('广告');

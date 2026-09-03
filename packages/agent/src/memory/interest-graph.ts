@@ -2,7 +2,8 @@
  * 可进化兴趣图谱（InterestGraph）
  *
  * 替换冻住的 `state.agentInterests`，提供带权/来源/时间衰减的兴趣管理。
- * 持久化到 `data/interests.json`（JSON sidecar，同 `.index.json` 模式）。
+ * 持久化到 `data/user-profile/user-interests.json`（JSON sidecar，同 `.index.json` 模式；
+ * v2 层级结构：一级节点 = 领养种子/旧扁平节点原样兼容，二三级 = 分类管线产出）。
  *
  * Phase 2 只建骨架：source 预留 'reflection'/'feedback'，但只产生 'default'。
  * 反思写入(REF)和反馈加权(USR)由下游 Phase 3/4 接入。
@@ -13,28 +14,32 @@
  * - 模块级单例：getInterestGraph() 按 dataPath 复用
  */
 
-import { readFile, writeFile, rename } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { z } from 'zod';
 import { consola } from '../logger.js';
 import { getDataPath } from '../config.js';
+import { atomicWriteJson } from '../utils/atomic-json.js';
 import { recordInterestSnapshot } from './interest-history.js';
 
 const logger = consola.withTag('InterestGraph');
 
 // schema 漂移守卫
-const GRAPH_VERSION = 1 as const;
+const GRAPH_VERSION = 2 as const;
+/** 用户兴趣图谱文件路径（相对数据根；migration/CLI 复用，防路径漂移） */
+export const USER_INTERESTS_FILE = 'user-profile/user-interests.json';
 
-// ============================================
+/** 旧版扁平图谱文件路径（迁移来源） */
+export const LEGACY_INTERESTS_FILE = 'interests.json';
+
 // Zod Schemas
-// ============================================
 
 export const InterestNodeSchema = z.object({
   id: z.string().min(1),
   weight: z.number().min(0).max(1).refine((n) => Number.isFinite(n), {
     message: 'weight must be finite',
   }),
-  source: z.enum(['default', 'reflection', 'feedback']),
+  source: z.enum(['default', 'reflection', 'feedback', 'migration']),
   createdAt: z.string().refine((s) => !Number.isNaN(new Date(s).getTime()), {
     message: 'createdAt must be a valid date string',
   }),
@@ -42,19 +47,25 @@ export const InterestNodeSchema = z.object({
     message: 'lastReinforced must be a valid date string',
   }),
   reinforceCount: z.number().int().min(0),
+  /** v2：父节点路径（叶子路径的父级，如 `天文`）；根节点（一级）不写该字段 */
+  parent: z.string().optional(),
+  /** v2：节点在 taxonomy 中的路径（一级节点 = id 自身；叶子 = `天文/黑洞`） */
+  path: z.string().optional(),
+  /** v2：正向示例内容（like/boost 信号消解后的原文，S2 归因/展引用） */
+  exemplars: z.array(z.string()).optional(),
+  /** v2：负向示例内容（dislike 信号消解的原文；只落叶子，不碰父级——S2 语义） */
+  negativeExemplars: z.array(z.string()).optional(),
 });
 
 export const InterestGraphDataSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(2),
   lastUpdated: z.string(),
   nodes: z.array(InterestNodeSchema),
 });
 
-// ============================================
 // Types
-// ============================================
 
-export type InterestSource = 'default' | 'reflection' | 'feedback';
+export type InterestSource = 'default' | 'reflection' | 'feedback' | 'migration';
 
 export interface InterestNode {
   id: string;
@@ -63,10 +74,18 @@ export interface InterestNode {
   createdAt: string;
   lastReinforced: string;
   reinforceCount: number;
+  /** v2：父节点 id（叶子路径的父级）；根节点（一级）缺省 */
+  parent?: string;
+  /** v2：taxonomy 路径；一级节点 = id 自身 */
+  path?: string;
+  /** v2：正向示例内容 */
+  exemplars?: string[];
+  /** v2：负向示例内容（dislike 消解后） */
+  negativeExemplars?: string[];
 }
 
 export interface InterestGraphData {
-  version: 1;
+  version: 2;
   lastUpdated: string;
   nodes: InterestNode[];
 }
@@ -92,23 +111,7 @@ export const DEFAULT_INTEREST_CONFIG: InterestGraphConfig = {
   minWeight: 0.05,
 };
 
-// ============================================
-// 原子写辅助（复用 memory-index.ts 模式）
-// ============================================
-
-async function atomicWriteJson(path: string, data: unknown): Promise<void> {
-  const dir = path.substring(0, path.lastIndexOf('/')) || '.';
-  const { mkdir } = await import('fs/promises');
-  await mkdir(dir, { recursive: true });
-  const tmp = `${path}.tmp.${process.pid}.${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const payload = JSON.stringify(data, null, 2);
-  await writeFile(tmp, payload, 'utf-8');
-  await rename(tmp, path);
-}
-
-// ============================================
 // InterestGraph 类
-// ============================================
 
 export class InterestGraph {
   private readonly filePath: string;
@@ -393,6 +396,7 @@ export class InterestGraph {
       createdAt: nowIso,
       lastReinforced: nowIso,
       reinforceCount: 0,
+      path: id,
     });
 
     logger.info('新兴趣已添加', { id, weight, source });
@@ -443,6 +447,7 @@ export class InterestGraph {
         createdAt: now,
         lastReinforced: now,
         reinforceCount: 0,
+        path: seed,
       });
     }
 
@@ -500,6 +505,7 @@ export class InterestGraph {
           createdAt: now,
           lastReinforced: now,
           reinforceCount: 0,
+          path: seed,
         });
         logger.info('兴趣数量低于下限，从默认种子补充', { seed, weight: seedWeight });
       }
@@ -526,9 +532,7 @@ export class InterestGraph {
   }
 }
 
-// ============================================
 // 工厂 / 单例
-// ============================================
 
 function createDefaultGraphData(): InterestGraphData {
   return {
@@ -560,7 +564,7 @@ export function getInterestGraph(
   filePath?: string,
   config?: InterestGraphConfig
 ): InterestGraph {
-  const path = filePath ?? getDataPath('interests.json');
+  const path = filePath ?? getDataPath(USER_INTERESTS_FILE);
 
   if (!graphCache.has(path)) {
     const cfg = config ?? buildInterestConfig();
@@ -580,13 +584,28 @@ export function _resetInterestGraphCache(): void {
 
 /**
  * 初始化兴趣图谱（启动时调用）。
- * 加载文件 → 空则 seedDefaults → 应用一次衰减 → 持久化。
+ *
+ * 新文件存在 → 加载 + 衰减 + 持久化；
+ * 新文件缺失 + 遗留 `interests.json` 有内容 → **不 seedDefaults、不落盘**，
+ *   留给 `migrate:user-profile` 迁移（防启动竞态掩盖旧数据，见 #156）；
+ * 新文件缺失且无遗留 → seedDefaults + 持久化（新租户冷启动）。
  */
 export async function initializeInterestGraph(
   config?: InterestGraphConfig
 ): Promise<InterestGraph> {
   const graph = getInterestGraph(undefined, config);
   await graph.load();
+
+  // 新文件缺失 + 遗留图谱有内容：禁止 seedDefaults 与任何落盘。
+  // 一旦写下新文件（哪怕空图谱），migrate:user-profile 的幂等守卫
+  // `existsSync(userInterestsPath)` 即成立 → 核心迁移被静默跳过，
+  // 旧数据被默认种子永久掩盖（#156 启动竞态）。
+  if (!graph.isInitialized() && (await hasLegacyInterests())) {
+    logger.warn('检测到遗留 interests.json，跳过默认种子初始化（等待迁移）', {
+      path: getDataPath(LEGACY_INTERESTS_FILE),
+    });
+    return graph;
+  }
 
   if (!graph.isInitialized() && graph.getNodeCount() === 0) {
     graph.seedDefaults();
@@ -600,4 +619,22 @@ export async function initializeInterestGraph(
   await graph.persist();
 
   return graph;
+}
+
+/**
+ * 遗留扁平图谱存在且有节点（迁移来源）。
+ * 文件存在但不可解析 → 视为有内容（交迁移记录报错，不在此兜底处理）。
+ */
+async function hasLegacyInterests(): Promise<boolean> {
+  const legacyPath = getDataPath(LEGACY_INTERESTS_FILE);
+  if (!existsSync(legacyPath)) return false;
+  try {
+    const raw: unknown = JSON.parse(await readFile(legacyPath, 'utf-8'));
+    // 宽松检查：nodes 缺失/非数组视为格式异常 → 返回 true（交迁移报告，不在此兜底）
+    if (raw === null || typeof raw !== 'object' || !('nodes' in raw)) return true;
+    const nodes = (raw as { nodes: unknown }).nodes;
+    return Array.isArray(nodes) && nodes.length > 0;
+  } catch {
+    return true;
+  }
 }

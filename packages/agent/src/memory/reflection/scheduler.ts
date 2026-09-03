@@ -11,10 +11,11 @@
  * 状态持久化到 data/reflection-state.json。
  */
 
-import { readFile, writeFile, rename, mkdir } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { consola } from '../../logger.js';
 import { getDataPath } from '../../config.js';
+import { atomicWriteJson } from '../../utils/atomic-json.js';
 import { getReflectionEngine } from './engine.js';
 import {
   DEFAULT_REFLECTION_CONFIG,
@@ -27,22 +28,7 @@ const logger = consola.withTag('ReflectionScheduler');
 
 const STATE_PATH = 'reflection-state.json';
 
-// ============================================
-// 原子写
-// ============================================
-
-async function atomicWriteJson(path: string, data: unknown): Promise<void> {
-  const dir = path.substring(0, path.lastIndexOf('/')) || '.';
-  await mkdir(dir, { recursive: true });
-  const tmp = `${path}.tmp.${process.pid}.${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const payload = JSON.stringify(data, null, 2);
-  await writeFile(tmp, payload, 'utf-8');
-  await rename(tmp, path);
-}
-
-// ============================================
 // ReflectionScheduler
-// ============================================
 
 export class ReflectionScheduler {
   private cfg: ReflectionConfig;
@@ -134,9 +120,7 @@ export class ReflectionScheduler {
     return this.state;
   }
 
-  // ==========================================
   // Private
-  // ==========================================
 
   /** 检查是否应该触发反思 */
   private checkTrigger(): boolean {
@@ -199,10 +183,7 @@ export class ReflectionScheduler {
     });
   }
 }
-
-// ============================================
 // 单例
-// ============================================
 
 /** 按 statePath 键化——租户模式同一进程多租户各自持实例与状态文件 */
 const schedulerCache = new Map<string, ReflectionScheduler>();

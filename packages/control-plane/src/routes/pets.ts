@@ -17,7 +17,7 @@
 
 import { Hono } from 'hono';
 import { randomUUID } from 'crypto';
-import { writeFile } from 'fs/promises';
+import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { and, eq } from 'drizzle-orm';
 import type { ControlPlaneConfig } from '../config.js';
@@ -149,13 +149,14 @@ async function seedInterestsIfAbsent(
   tenantId: string,
   interests: string[],
 ): Promise<void> {
-  const seedPath = join(tenantDataDir(dataDir, tenantId), 'interests.json');
+  await mkdir(join(tenantDataDir(dataDir, tenantId), 'user-profile'), { recursive: true });
+  const seedPath = join(tenantDataDir(dataDir, tenantId), 'user-profile', 'user-interests.json');
   try {
     await writeFile(
       seedPath,
       JSON.stringify(
         {
-          version: 1,
+          version: 2,
           lastUpdated: new Date().toISOString(),
           nodes: interests.map((id) => ({
             id,
@@ -164,6 +165,7 @@ async function seedInterestsIfAbsent(
             createdAt: new Date().toISOString(),
             lastReinforced: new Date().toISOString(),
             reinforceCount: 0,
+            path: id,
           })),
         },
         null,

@@ -249,13 +249,14 @@ async function adoptDefaultPet(dataDir: string, tenantId: string): Promise<strin
   const existing = await db.select().from(pets).where(eq(pets.tenantId, tenantId)).get();
   if (existing) return existing.name;
 
-  const seedPath = join(tenantDataDir(dataDir, tenantId), 'interests.json');
+  await mkdir(join(tenantDataDir(dataDir, tenantId), 'user-profile'), { recursive: true });
+  const seedPath = join(tenantDataDir(dataDir, tenantId), 'user-profile', 'user-interests.json');
   try {
     await writeFile(
       seedPath,
       JSON.stringify(
         {
-          version: 1,
+          version: 2,
           lastUpdated: new Date().toISOString(),
           nodes: DEFAULT_ADOPTION_INTERESTS.map((id) => ({
             id,
@@ -264,6 +265,7 @@ async function adoptDefaultPet(dataDir: string, tenantId: string): Promise<strin
             createdAt: new Date().toISOString(),
             lastReinforced: new Date().toISOString(),
             reinforceCount: 0,
+            path: id,
           })),
         },
         null,
