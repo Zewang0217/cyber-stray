@@ -40,7 +40,7 @@ export function PetIntro({ pet, interests, onDone }: PetIntroProps): React.React
   const done = lineIndex >= introLines.length - 1;
 
   return (
-    <div className="spacing-lg flex items-center justify-center min-h-screen">
+    <div className="spacing-lg flex items-center justify-center min-h-dvh">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}

@@ -49,6 +49,35 @@ interface OidcDiscovery {
 }
 
 /** 真机实现：Casdoor OIDC（fetch + jose v5） */
+/** 拉取 JWKS 并校验结构；Casdoor SQLite 写锁会返回 200+错误体（无 keys），指数退避重试 */
+async function fetchJwksWithRetry(
+  jwksUri: string,
+  retries = 3,
+  baseDelayMs = 150,
+): Promise<jose.JSONWebKeySet> {
+  let lastError: string | null = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(jwksUri);
+    if (!res.ok) {
+      lastError = `HTTP ${res.status}`;
+    } else {
+      const parsed: unknown = await res.json();
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        Array.isArray((parsed as { keys?: unknown }).keys) &&
+        (parsed as { keys: unknown[] }).keys.length > 0
+      ) {
+        return parsed as jose.JSONWebKeySet;
+      }
+      lastError = '响应缺少 keys（疑似 Casdoor SQLite 锁错误体）';
+    }
+    if (attempt >= retries) break;
+    await new Promise((r) => setTimeout(r, baseDelayMs * 3 ** attempt));
+  }
+  throw new Error(`JWKS 获取失败: ${lastError ?? '未知错误'}`);
+}
+
 export function createCasdoorOidc(config: ControlPlaneConfig): OidcProvider {
   let discoveryPromise: Promise<OidcDiscovery> | null = null;
 
@@ -146,9 +175,10 @@ export function createCasdoorOidc(config: ControlPlaneConfig): OidcProvider {
       if (!tokenData.id_token) throw new Error('token 响应缺少 id_token');
 
       // 验 id_token：签名（JWKS）+ iss/aud/exp + nonce
-      const jwksRes = await fetch(discovery.jwks_uri);
-      if (!jwksRes.ok) throw new Error(`JWKS 获取失败: HTTP ${jwksRes.status}`);
-      const jwks = (await jwksRes.json()) as jose.JSONWebKeySet;
+      // Casdoor(SQLite) 在 token 交换写库后紧跟的 JWKS 读可能撞写锁，
+      // 返回 HTTP 200 + {"status":"error","msg":"database is locked..."}（无 keys）。
+      // → 内容校验失败时指数退避重试，专治该瞬态（登录路径，幂等只读）。
+      const jwks = await fetchJwksWithRetry(discovery.jwks_uri);
       const keys = jose.createLocalJWKSet(jwks);
 
       let payload: jose.JWTPayload;

@@ -23,7 +23,7 @@ export function Tooltip({ content, children, className }: TooltipProps): React.R
           <TooltipPrimitive.Content
             sideOffset={6}
             className={cn(
-              "z-[72] max-w-[220px] px-2.5 py-1 rounded-sm",
+              "z-tooltip max-w-[220px] px-2.5 py-1 rounded-sm",
               "bg-[var(--c-paper)] border border-[var(--c-engraving-fine)]",
               "shadow-[0_2px_8px_0_color-mix(in_oklch,var(--c-ink)_15%,transparent)]",
               "field-note text-sm text-text",

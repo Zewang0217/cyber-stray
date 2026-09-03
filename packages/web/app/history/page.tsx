@@ -33,7 +33,7 @@ export default function HistoryPage(): React.ReactElement {
 
   if (isLoading) {
     return (
-      <div className="spacing-lg flex flex-col items-center justify-center min-h-screen gap-4">
+      <div className="spacing-lg flex flex-col items-center justify-center min-h-dvh gap-4">
         <PetSprite size={120} state="walk" />
         <p className="field-note text-sm text-subtext">正在翻阅采集笔记…</p>
       </div>
@@ -42,7 +42,7 @@ export default function HistoryPage(): React.ReactElement {
 
   if (error) {
     return (
-      <div className="spacing-lg flex items-center justify-center min-h-screen">
+      <div className="spacing-lg flex items-center justify-center min-h-dvh">
         <div className="text-center paper-card p-8 max-w-md">
           <p className="mono-reading text-sm text-text mb-2">{error}</p>
           <p className="field-note text-sm text-subtext">采集记录读取失败,请稍后重试</p>
