@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
@@ -100,13 +100,13 @@ describe('pets 路由（领养）', () => {
     expect(tenant?.plan).toBe('free');
 
     // 种子落盘：与 agent InterestGraphData schema 兼容
-    const seedPath = join(dataDir, 'tenants', 'alice', 'interests.json');
+    const seedPath = join(dataDir, 'tenants', 'alice', 'user-profile', 'user-interests.json');
     expect(existsSync(seedPath)).toBe(true);
     const seed = JSON.parse(readFileSync(seedPath, 'utf-8')) as {
       version: number;
       nodes: Array<{ id: string; weight: number; source: string }>;
     };
-    expect(seed.version).toBe(1);
+    expect(seed.version).toBe(2);
     expect(seed.nodes.map((n) => n.id)).toEqual(['AI', '机器人']);
     expect(seed.nodes.every((n) => n.weight === 0.5 && n.source === 'default')).toBe(true);
     // GET /api/pets 现在返回 1 只；pets 表恰好 1 行
@@ -146,7 +146,7 @@ describe('pets 路由（领养）', () => {
     );
     expect(res.status).toBe(201);
     const seed = JSON.parse(
-      readFileSync(join(dataDir, 'tenants', 'alice', 'interests.json'), 'utf-8'),
+      readFileSync(join(dataDir, 'tenants', 'alice', 'user-profile', 'user-interests.json'), 'utf-8'),
     ) as { nodes: Array<{ id: string }> };
     expect(seed.nodes.map((n) => n.id)).toEqual(['科技', 'AI', '互联网']);
   });
@@ -174,10 +174,11 @@ describe('pets 路由（领养）', () => {
   });
 
   it('种子不覆盖：interests.json 已存在 → 不写只建宠物行', async () => {
-    const seedPath = join(dataDir, 'tenants', 'alice', 'interests.json');
+    const seedPath = join(dataDir, 'tenants', 'alice', 'user-profile', 'user-interests.json');
+    mkdirSync(join(dataDir, 'tenants', 'alice', 'user-profile'), { recursive: true });
     writeFileSync(
       seedPath,
-      JSON.stringify({ version: 1, lastUpdated: '2026-08-01T00:00:00Z', nodes: [] }),
+      JSON.stringify({ version: 2, lastUpdated: '2026-08-01T00:00:00Z', nodes: [] }),
     );
     const res = await app.request(
       await authed('http://x/api/pets/adopt', {

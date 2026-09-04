@@ -6,6 +6,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdir, writeFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import {
   InterestGraph,
   getInterestGraph,
@@ -14,6 +16,7 @@ import {
   initializeInterestGraph,
   DEFAULT_INTEREST_CONFIG,
 } from './interest-graph.js';
+import { getDataPath } from '../config.js';
 import { useTempDataDir } from '../test/helpers.js';
 
 describe('InterestGraph', () => {
@@ -373,6 +376,26 @@ describe('InterestGraph', () => {
     expect(graph.getNodeCount()).toBe(3);
     expect(graph.getNode('科技')).toBeDefined();
   });
+  it('should NOT seed defaults or persist when legacy interests.json has content', async () => {
+    // 遗留扁平图谱（迁移来源）— 启动竞态守卫：#156
+    await mkdir('data', { recursive: true });
+    await writeFile(
+      getDataPath('interests.json'),
+      JSON.stringify({
+        version: 1,
+        nodes: [{ id: '天文', weight: 0.6 }],
+      }),
+      'utf-8',
+    );
+
+    _resetInterestGraphCache();
+    const graph = await initializeInterestGraph();
+
+    // 不 seedDefaults（节点 0）也不落盘新文件 → 迁移路径不被启动竞态污染
+    expect(graph.getNodeCount()).toBe(0);
+    expect(graph.isInitialized()).toBe(false);
+    expect(existsSync(getDataPath('user-profile/user-interests.json'))).toBe(false);
+  });
 
   it('should load existing file on initialize', async () => {
     const { mkdir } = await import('fs/promises');
@@ -381,7 +404,7 @@ describe('InterestGraph', () => {
     // 而不是硬编码 'data/interests.json'，确保路径一致
     const { getInterestGraph, _resetInterestGraphCache } = await import('./interest-graph.js');
     const { getDataPath } = await import('../config.js');
-    const graphPath = getDataPath('interests.json');
+    const graphPath = getDataPath('user-profile/user-interests.json');
     const graph = new (await import('./interest-graph.js')).InterestGraph(graphPath, {
       ...DEFAULT_INTEREST_CONFIG,
       defaultSeeds: [],

@@ -39,8 +39,9 @@ describe('data 路由（租户数据 + 鉴权）', () => {
       join(aliceDir, 'state.json'),
       JSON.stringify({ mood: 'curious', boredom: 10, energy: 90 }),
     );
+    mkdirSync(join(aliceDir, 'user-profile'), { recursive: true });
     writeFileSync(
-      join(aliceDir, 'interests.json'),
+      join(aliceDir, 'user-profile', 'user-interests.json'),
       JSON.stringify({ nodes: [{ topic: 'ai', weight: 5 }], lastUpdated: '2026-08-15' }),
     );
     mkdirSync(join(aliceDir, 'history'), { recursive: true });
