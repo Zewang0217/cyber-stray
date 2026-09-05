@@ -13,7 +13,7 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { getDataPath } from '../../config.js';
-import { localDateKey, todaySpeaksFile } from './push-budget.js';
+import { speaksFile, todaySpeaksFile } from './push-budget.js';
 import type { SpeakRecord } from './history-record.js';
 
 /** prompt 展示的最近推送条数上限（再多挤占上下文空间） */
@@ -21,6 +21,9 @@ export const RECENT_SPEAKS_PROMPT_LIMIT = 8;
 
 /** 回看天数：speaks 文件按本地日分割，今天 + 昨天覆盖"最近"语义 */
 const RECENT_SPEAKS_LOOKBACK_DAYS = 1;
+
+/** 一天的毫秒数（回看窗口步长） */
+const DAY_MS = 86_400_000;
 
 /** 最近推送记录（prompt 展示所需字段） */
 export interface RecentSpeak {
@@ -38,8 +41,8 @@ export async function loadRecentPushedSpeaks(
 ): Promise<RecentSpeak[]> {
   const files: string[] = [];
   for (let d = 0; d <= RECENT_SPEAKS_LOOKBACK_DAYS; d++) {
-    const date = new Date(Date.now() - d * 86_400_000);
-    files.push(join(getDataPath('history'), d === 0 ? todaySpeaksFile() : `speaks-${localDateKey(date)}.jsonl`));
+    const file = d === 0 ? todaySpeaksFile() : speaksFile(new Date(Date.now() - d * DAY_MS));
+    files.push(join(getDataPath('history'), file));
   }
 
   const recent: RecentSpeak[] = [];
