@@ -340,6 +340,154 @@ layout: section
 
 # 04
 
+## 自进化
+
+### 从"会聊天"，到"会成长"
+
+---
+
+# 双图谱：它开始有了自己的品味
+
+<div class="grid grid-cols-2 gap-8 mt-8">
+
+<div v-click class="group">
+  <div class="p-8 rounded-2xl bg-gradient-to-br from-cyan-900/30 to-blue-900/30 border border-cyan-700/50 h-full transition-all duration-300 group-hover:border-cyan-500">
+    <div class="text-4xl mb-4">👤</div>
+    <h3 class="text-2xl font-bold text-cyan-400 mb-3">用户兴趣图谱</h3>
+    <p class="text-xs text-slate-500 font-mono mb-4">user-interests.json</p>
+    <div class="space-y-2 text-slate-300">
+      <p>主人想看什么 → 驱动<span class="text-cyan-400 font-bold">相关性</span></p>
+      <p class="text-sm text-slate-400">领养仪式种子 + 反馈信号 + 反思洞察，按强 / 中 / 弱分级注入决策</p>
+    </div>
+  </div>
+</div>
+
+<div v-click="+1" class="group">
+  <div class="p-8 rounded-2xl bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-700/50 h-full transition-all duration-300 group-hover:border-purple-500">
+    <div class="text-4xl mb-4">🐈</div>
+    <h3 class="text-2xl font-bold text-purple-400 mb-3">宠物好奇图谱</h3>
+    <p class="text-xs text-slate-500 font-mono mb-4">curiosity-interests.json</p>
+    <div class="space-y-2 text-slate-300">
+      <p>它自己想探索什么 → 驱动<span class="text-purple-400 font-bold">新奇</span></p>
+      <p class="text-sm text-slate-400">exploreCount 记录游荡足迹；selfInterest 是它反思时自己的判断："我对这个感兴趣吗"</p>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<div v-click="+2" class="mt-8 p-4 rounded-lg bg-gradient-to-r from-amber-900/20 to-cyan-900/20 border border-amber-700/50 text-center">
+  <p class="text-lg text-slate-200">
+    同一套话题树，两种视角——<span class="text-cyan-400">你想看的</span>与<span class="text-purple-400">它想聊的</span>，共同决定每一次分享
+  </p>
+</div>
+
+---
+
+# 权重更新：像免疫系统一样校准
+
+<div v-click class="mt-4 p-4 rounded-xl bg-slate-900/80 border border-cyan-800/50 text-center">
+  <p class="text-lg font-mono text-cyan-300">
+    新权重 = 旧权重 ± 强度 × <span class="text-amber-400">阻尼</span>(1/(1+0.2n)) × <span class="text-amber-400">(1 − 旧权重)</span>
+  </p>
+  <p class="text-xs text-slate-500 mt-1">like +1.0 · boost +2.0 · dislike −1.5，钳制在 [0, 0.8]</p>
+</div>
+
+<div class="grid grid-cols-2 gap-4 mt-4">
+  <div v-click="+1" class="p-4 rounded-xl bg-slate-800/50 border border-slate-700">
+    <h4 class="font-bold text-slate-200 mb-1">🧬 边际递减 · 饱和增长</h4>
+    <p class="text-sm text-slate-400">信号越多单次影响越小，防止单话题刷屏霸权；权重越高增益越窄</p>
+  </div>
+  <div v-click="+2" class="p-4 rounded-xl bg-slate-800/50 border border-slate-700">
+    <h4 class="font-bold text-slate-200 mb-1">🌙 60 天半衰期</h4>
+    <p class="text-sm text-slate-400">不互动的兴趣自然降温而非永久锁死——兴趣会漂移，就像人会成长</p>
+  </div>
+  <div v-click="+3" class="p-4 rounded-xl bg-slate-800/50 border border-slate-700">
+    <h4 class="font-bold text-slate-200 mb-1">🍃 点踩只落叶子</h4>
+    <p class="text-sm text-slate-400">踩一次"黑洞"，不封杀整个"天文"——强兴趣单次点踩仅小幅回撤（0.8 → 0.5）</p>
+  </div>
+  <div v-click="+4" class="p-4 rounded-xl bg-slate-800/50 border border-slate-700">
+    <h4 class="font-bold text-slate-200 mb-1">🛡️ 单写者纪律</h4>
+    <p class="text-sm text-slate-400">user-profile 目录化：identity / settings / 图谱 / 派生摘要，杜绝双份数据漂移</p>
+  </div>
+</div>
+
+---
+
+# 门控重构：从评分防火墙，到反馈抽样器
+
+<div class="grid grid-cols-2 gap-8 mt-8 items-stretch">
+
+<div v-click class="p-6 rounded-2xl bg-slate-800/40 border border-red-800/40">
+  <h3 class="text-lg font-bold text-red-400 mb-4">❌ 旧方案：评分公式硬拦</h3>
+  <div class="space-y-3 text-sm text-slate-300">
+    <p class="font-mono text-xs bg-slate-900/80 p-3 rounded">matchedWeight / totalWeight &lt; 0.5 → 拦截</p>
+    <p>公式倒挂：<span class="text-red-400">命中头号兴趣的内容只得 0.29 分</span>，数学上永远过不了 0.5 阈值</p>
+    <p class="text-slate-400">生产实证（2 天 37 条）：30 条被拦（85%），其中 21 条是主人最感兴趣的内容</p>
+  </div>
+</div>
+
+<div v-click="+1" class="p-6 rounded-2xl bg-gradient-to-br from-cyan-900/30 to-blue-900/30 border border-cyan-700/50">
+  <h3 class="text-lg font-bold text-cyan-400 mb-4">✅ 新方案：LLM 自判断 + 确定性护栏</h3>
+  <div class="space-y-3 text-sm text-slate-300">
+    <p>是否开口由 LLM 权衡：<span class="text-cyan-400">相关性优先 · 探索许可 · 预算感知</span>，可以保持沉默</p>
+    <p>防骚扰交给代码：日预算（会员等级决定）· 每游荡上限 · URL 去重冷却</p>
+    <p class="text-amber-400">每条推送都带"为什么推"的理由落盘——宠物自己解释自己的判断</p>
+  </div>
+</div>
+
+</div>
+
+<div v-click="+2" class="mt-8 text-center">
+  <p class="text-lg text-slate-400">
+    评分删掉后，误拦的 21 条"头号兴趣"内容<span class="text-cyan-400 font-bold">全部恢复可推送</span>
+  </p>
+</div>
+
+---
+
+# 一只猫 → 一群猫：平台化
+
+<div class="grid grid-cols-3 gap-6 mt-12">
+
+<div v-click class="group">
+  <div class="p-6 rounded-2xl bg-gradient-to-br from-cyan-900/30 to-blue-900/30 border border-cyan-700/50 h-full transition-all duration-300 group-hover:border-cyan-500">
+    <div class="text-4xl mb-4">🏠</div>
+    <h3 class="text-lg font-bold text-cyan-400 mb-2">多租户 SaaS</h3>
+    <p class="text-sm text-slate-400">控制面统一管理，每只宠物独立数据目录与进化状态；会员等级决定推送预算</p>
+  </div>
+</div>
+
+<div v-click="+1" class="group">
+  <div class="p-6 rounded-2xl bg-gradient-to-br from-amber-900/30 to-orange-900/30 border border-amber-700/50 h-full transition-all duration-300 group-hover:border-amber-500">
+    <div class="text-4xl mb-4">📡</div>
+    <h3 class="text-lg font-bold text-amber-400 mb-2">四通道触达</h3>
+    <p class="text-sm text-slate-400">飞书 · Telegram · PWA 仪表盘 · 微信（iLink）——主人在哪，宠物就在哪</p>
+  </div>
+</div>
+
+<div v-click="+2" class="group">
+  <div class="p-6 rounded-2xl bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-700/50 h-full transition-all duration-300 group-hover:border-purple-500">
+    <div class="text-4xl mb-4">🎨</div>
+    <h3 class="text-lg font-bold text-purple-400 mb-2">表情包图鉴</h3>
+    <p class="text-sm text-slate-400">宠物自主生成专属表情包，自动收录与语义检索——行业空白的差异化能力</p>
+  </div>
+</div>
+
+</div>
+
+<div v-click="+3" class="mt-10 text-center">
+  <p class="text-xl text-slate-300">
+    自进化系统已全链路落地：<span class="text-cyan-400">双图谱</span> · <span class="text-amber-400">反馈抽样器</span> · <span class="text-purple-400">平台化</span>
+  </p>
+</div>
+
+---
+layout: section
+---
+
+# 05
+
 ## 愿景
 
 ### 数字世界的游侠
