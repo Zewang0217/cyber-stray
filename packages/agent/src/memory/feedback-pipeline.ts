@@ -161,22 +161,23 @@ async function updateGraphForFeedback(
     const target = resolveLeafTarget(graph, topic);
     if (!target) {
       if (type === 'like') {
-        // 点赞新话题：入图后应用信号（feedback 来源）
+        // 点赞新话题：入图后应用信号（feedback 来源）；addInterest 可能因
+        // maxInterestCount 上限返回 false——以 applySignal 结果为准，不虚报
         graph.addInterest(topic, FEEDBACK_SEED_WEIGHT, 'feedback');
-        graph.applySignal(topic, type);
-        reinforced = true;
+        if (graph.applySignal(topic, type)) reinforced = true;
       } else {
         // dislike 目标不存在：无节点可降，跳过（不碰父级/兄弟，符合 S2）
         logger.debug('dislike 目标不存在，跳过', { topic });
       }
       continue;
     }
-    graph.applySignal(target, type);
+    const updated = graph.applySignal(target, type);
+    if (!updated) continue;
+    reinforced = true;
     // dislike 只落叶子：父级仅经重聚合间接受影响，兄弟节点完全不受影响
     if (type === 'dislike' && target !== topic) {
       logger.info('dislike 归因到叶子，父级未直击', { topic, leaf: target });
     }
-    reinforced = true;
   }
 
   // 所有 topic 处理完后一次持久化（N 个 topic → 1 次原子写）
@@ -337,12 +338,13 @@ export async function boostTopic(
     }
     const target = resolveLeafTarget(graph, topic);
     if (!target) {
+      // addInterest 可能因 maxInterestCount 上限返回 false——以 applySignal
+      // 结果为准，不虚报（review #159 二轮）
       graph.addInterest(topic, FEEDBACK_SEED_WEIGHT, 'feedback');
-      graph.applySignal(topic, 'boost');
+      result.interestReinforced = graph.applySignal(topic, 'boost') !== undefined;
     } else {
-      graph.applySignal(target, 'boost');
+      result.interestReinforced = graph.applySignal(target, 'boost') !== undefined;
     }
-    result.interestReinforced = true;
     await graph.persist();
     // S2 #151：反馈后增量重生成 profile-summary
     await regenerateProfileSummary(graph);

@@ -88,7 +88,7 @@ export interface InterestNode {
 /** 反馈信号类型（S2 #151 多信号权重） */
 export type InterestSignalType = 'like' | 'boost' | 'dislike';
 
-/** 信号强度（S2 #151）：like+1.0 / boost+2.0 / dislike-1.5（dislike 负向） */
+/** 信号强度幅值（S2 #151）：like 1.0 / boost 2.0 / dislike 1.5——dislike 的负号在 applySignal 应用时取，本表只存幅值 */
 export const SIGNAL_STRENGTH: Record<InterestSignalType, number> = {
   like: 1.0,
   boost: 2.0,
