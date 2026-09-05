@@ -386,29 +386,29 @@ layout: section
 
 # 权重更新：像免疫系统一样校准
 
-<div v-click class="mt-6 p-6 rounded-xl bg-slate-900/80 border border-cyan-800/50 text-center">
-  <p class="text-xl font-mono text-cyan-300">
+<div v-click class="mt-4 p-4 rounded-xl bg-slate-900/80 border border-cyan-800/50 text-center">
+  <p class="text-lg font-mono text-cyan-300">
     新权重 = 旧权重 ± 强度 × <span class="text-amber-400">阻尼</span>(1/(1+0.2n)) × <span class="text-amber-400">(1 − 旧权重)</span>
   </p>
-  <p class="text-sm text-slate-500 mt-2">like +1.0 · boost +2.0 · dislike −1.5，钳制在 [0, 0.8]</p>
+  <p class="text-xs text-slate-500 mt-1">like +1.0 · boost +2.0 · dislike −1.5，钳制在 [0, 0.8]</p>
 </div>
 
-<div class="grid grid-cols-2 gap-6 mt-6">
-  <div v-click="+1" class="p-5 rounded-xl bg-slate-800/50 border border-slate-700">
-    <h4 class="font-bold text-slate-200 mb-2">🧬 边际递减 · 饱和增长</h4>
-    <p class="text-sm text-slate-400">信号越多单次影响越小，防止单话题被刷屏霸权；权重越高增益越窄，自然收敛</p>
+<div class="grid grid-cols-2 gap-4 mt-4">
+  <div v-click="+1" class="p-4 rounded-xl bg-slate-800/50 border border-slate-700">
+    <h4 class="font-bold text-slate-200 mb-1">🧬 边际递减 · 饱和增长</h4>
+    <p class="text-sm text-slate-400">信号越多单次影响越小，防止单话题刷屏霸权；权重越高增益越窄</p>
   </div>
-  <div v-click="+2" class="p-5 rounded-xl bg-slate-800/50 border border-slate-700">
-    <h4 class="font-bold text-slate-200 mb-2">🌙 60 天半衰期</h4>
+  <div v-click="+2" class="p-4 rounded-xl bg-slate-800/50 border border-slate-700">
+    <h4 class="font-bold text-slate-200 mb-1">🌙 60 天半衰期</h4>
     <p class="text-sm text-slate-400">不互动的兴趣自然降温而非永久锁死——兴趣会漂移，就像人会成长</p>
   </div>
-  <div v-click="+3" class="p-5 rounded-xl bg-slate-800/50 border border-slate-700">
-    <h4 class="font-bold text-slate-200 mb-2">🍃 点踩只落叶子</h4>
-    <p class="text-sm text-slate-400">踩一次"黑洞"，不会封杀整个"天文"——强兴趣单次点踩仅小幅回撤（0.8 → 0.5）</p>
+  <div v-click="+3" class="p-4 rounded-xl bg-slate-800/50 border border-slate-700">
+    <h4 class="font-bold text-slate-200 mb-1">🍃 点踩只落叶子</h4>
+    <p class="text-sm text-slate-400">踩一次"黑洞"，不封杀整个"天文"——强兴趣单次点踩仅小幅回撤（0.8 → 0.5）</p>
   </div>
-  <div v-click="+4" class="p-5 rounded-xl bg-slate-800/50 border border-slate-700">
-    <h4 class="font-bold text-slate-200 mb-2">🛡️ 单写者纪律</h4>
-    <p class="text-sm text-slate-400">user-profile 目录化：identity / settings / 图谱 / 派生摘要，杜绝双份数据互相漂移</p>
+  <div v-click="+4" class="p-4 rounded-xl bg-slate-800/50 border border-slate-700">
+    <h4 class="font-bold text-slate-200 mb-1">🛡️ 单写者纪律</h4>
+    <p class="text-sm text-slate-400">user-profile 目录化：identity / settings / 图谱 / 派生摘要，杜绝双份数据漂移</p>
   </div>
 </div>
 
