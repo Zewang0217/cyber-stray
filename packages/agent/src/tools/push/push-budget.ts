@@ -43,9 +43,14 @@ export function localDateKey(now: Date = new Date()): string {
   return `${y}-${m}-${d}`;
 }
 
+/** speaks 历史文件名的单一出处（appendSpeakHistory / recent-speaks 共用，防命名漂移） */
+export function speaksFile(date: Date = new Date()): string {
+  return `speaks-${localDateKey(date)}.jsonl`;
+}
+
 /** 今日 speaks 历史文件名（与 appendSpeakHistory 完全同源） */
 export function todaySpeaksFile(): string {
-  return `speaks-${localDateKey()}.jsonl`;
+  return speaksFile();
 }
 
 /**
