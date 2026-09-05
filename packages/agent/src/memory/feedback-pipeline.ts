@@ -107,6 +107,11 @@ export function applyCatchphraseFeedback(
  * - 目标存在且为父级（有子节点）→ 返回其叶子后代（归因到叶子，不碰父级）
  * - 目标存在为纯父（无子节点）→ 视作叶子返回自身（当前扁平图谱下所有节点即叶子）
  * - 目标不存在 → 返回 undefined（调用方决定：like 新话题入图 / dislike 忽略）
+ *
+ * 多叶子父级当前取首个叶子（Phase A 过渡语义，#151 补充说明）：matchedTopics
+ * 粒度粗于叶子，且无内容证据支持在多叶间分摊，全强度落单叶比摊薄更贴近
+ * "用户对这条内容感兴趣"的原始信号；S4 分类管线（contentTopics）落地后
+ * 归因目标本身就是叶子，该分支退化为兼容回退。
  */
 function resolveLeafTarget(graph: ReturnType<typeof getInterestGraph>, topic: string): string | undefined {
   const node = graph.getNode(topic);
@@ -323,17 +328,20 @@ export async function boostTopic(
     logger.error('顶话题更新用户画像失败', { error, topic });
   }
 
-  // Step 3: 图谱强化（不存在则 feedback 来源入图）——persist 失败上抛
+  // Step 3: 图谱强化——与点赞同一叶子归因（boost 目标可能是父级，
+  // 直击父级会被 persist 重聚合覆盖）——persist 失败上抛
   try {
     const graph = getInterestGraph();
     if (!graph.isInitialized() && graph.getNodeCount() === 0) {
       await graph.load();
     }
-    if (!graph.getNode(topic)) {
+    const target = resolveLeafTarget(graph, topic);
+    if (!target) {
       graph.addInterest(topic, FEEDBACK_SEED_WEIGHT, 'feedback');
+      graph.applySignal(topic, 'boost');
+    } else {
+      graph.applySignal(target, 'boost');
     }
-    // S2 #151：boost 走统一多信号公式（SIGNAL_STRENGTH.boost = 2.0）
-    graph.applySignal(topic, 'boost');
     result.interestReinforced = true;
     await graph.persist();
     // S2 #151：反馈后增量重生成 profile-summary

@@ -19,6 +19,12 @@ import type { InterestGraph } from './interest-graph.js';
 
 const logger = consola.withTag('ProfileSummary');
 
+/** 摘要条目上限：prompt 注入用的派生摘要，10 条足够承载当前兴趣面 */
+const SUMMARY_TOP_N = 10;
+
+/** 低于此持久化权重的节点不进摘要（与 InterestGraphConfig.minWeight 的 dormancy 语义无关，仅排版降噪） */
+const SUMMARY_MIN_WEIGHT = 0.01;
+
 /** profile-summary 文件路径（调用时求值——测试在 import 后设 DATA_DIR） */
 export function profileSummaryPath(): string {
   return getDataPath('user-profile/profile-summary.md');
@@ -34,9 +40,9 @@ export function profileSummaryPath(): string {
 export function renderProfileSummary(graph: InterestGraph): string {
   const top = graph
     .getAllNodes()
-    .filter((n) => n.weight >= 0.01)
+    .filter((n) => n.weight >= SUMMARY_MIN_WEIGHT)
     .sort((a, b) => b.weight - a.weight)
-    .slice(0, 10);
+    .slice(0, SUMMARY_TOP_N);
   if (top.length === 0) {
     return '# profile-summary（派生摘要）\n\n图谱为空，暂无兴趣数据。\n';
   }

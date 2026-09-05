@@ -12,6 +12,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { InterestGraph, SIGNAL_STRENGTH } from './interest-graph.js';
+import { INTEREST_DECAY_LAMBDA } from './interest-constants.js';
 import { makeTestInterestGraph } from '../test/helpers.js';
 
 const MAX_WEIGHT = 0.8;
@@ -19,6 +20,19 @@ const MAX_WEIGHT = 0.8;
 function makeGraph(): InterestGraph {
   return makeTestInterestGraph();
 }
+
+describe('S2 时间衰减常量（#151：半衰期 60 天）', () => {
+  it('λ = ln2/60：60 天后有效权重恰好衰减为一半', () => {
+    const w0 = 1;
+    const w60 = w0 * Math.exp(-INTEREST_DECAY_LAMBDA * 60);
+    expect(w60).toBeCloseTo(0.5, 12);
+  });
+
+  it('默认配置引用单源常量（防 config.ts 与 DEFAULT_INTEREST_CONFIG 双同步回潮）', () => {
+    expect(INTEREST_DECAY_LAMBDA).toBeGreaterThan(0);
+    expect(INTEREST_DECAY_LAMBDA).toBeCloseTo(Math.LN2 / 60, 15);
+  });
+});
 
 describe('S2 多信号权重公式（#151 字面公式）', () => {
   it('like 饱和增长：0.3 + 1.0×(1−0.3) = 1.0 → 钳 maxWeight 0.8，到顶不越界', () => {
