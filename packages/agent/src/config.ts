@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { DEFAULT_PERSONALITY, getPersonality, isPersonalityId, type Catchphrase, type PersonalityId } from '@cyber-stray/shared';
+import { INTEREST_DECAY_LAMBDA } from './memory/interest-constants.js';
 import type { AgentConfig, AgentSecrets, EnergyRecoveryTier, PlanExecutionArgs } from './types.js';
 
 /**
@@ -148,9 +149,9 @@ const defaultBehavior: BehaviorConfig = {
     urlCleanupDays: 30,
   },
   interests: {
-    // λ = ln2/60 ≈ 0.0116/天 = 60 天半衰期（S2 #151：兴趣权重慢衰减，
-    // 避免原 0.1/天≈6.9 天半衰期导致兴趣快速凉透、图谱多样性死锁 #147）
-    decayLambda: 0.0116,
+    // 60 天半衰期慢衰减（S2 #151）：避免原 0.1/天≈6.9 天半衰期导致兴趣快速
+    // 凉透、图谱多样性死锁 #147。数值单源见 memory/interest-constants.ts
+    decayLambda: INTEREST_DECAY_LAMBDA,
     maxWeight: 0.8,
     minInterestCount: 3,
     maxInterestCount: 20,

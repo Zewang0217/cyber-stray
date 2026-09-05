@@ -8,15 +8,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readFile, stat } from 'fs/promises';
-import { join } from 'path';
-import { InterestGraph } from './interest-graph.js';
+import { mkdir, readFile, stat } from 'fs/promises';
 import {
   renderProfileSummary,
   regenerateProfileSummary,
   profileSummaryPath,
 } from './profile-summary.js';
-import { useTempDataDir } from '../test/helpers.js';
+import { useTempDataDir, makeTestInterestGraph } from '../test/helpers.js';
+import type { InterestGraph } from './interest-graph.js';
 import { _resetInterestGraphCache } from './interest-graph.js';
 
 describe('profile-summary', () => {
@@ -32,16 +31,9 @@ describe('profile-summary', () => {
     cleanup();
   });
 
+  /** 共享夹具（test/helpers）+ 按用例播种节点；配置单一来源防漂移 */
   function makeGraph(nodes: Array<{ id: string; weight: number }>): InterestGraph {
-    const g = new InterestGraph(join(useTempDataDir().dataDir, 'interests.json'), {
-      decayLambda: 0.0116,
-      maxWeight: 0.8,
-      minInterestCount: 5, // 冷启动期：addInterest 权重不被 novelty 预算钳制
-      maxInterestCount: 20,
-      noveltyBudget: 0.5,
-      defaultSeeds: [],
-      minWeight: 0.01,
-    });
+    const g = makeTestInterestGraph();
     for (const n of nodes) g.addInterest(n.id, n.weight, 'default');
     return g;
   }
@@ -77,6 +69,13 @@ describe('profile-summary', () => {
     expect(m1).toBe(m2); // 未重写
   });
 
+  it('读错误非 ENOENT 时上抛（禁兜底）', async () => {
+    makeGraph([]);
+    // 摘要路径被目录占用 → readFile 得 EISDIR，不是 ENOENT，必须上抛
+    await mkdir(profileSummaryPath(), { recursive: true });
+    await expect(regenerateProfileSummary(makeTestInterestGraph())).rejects.toThrow();
+  });
+
   it('图谱变化后重写，内容与图谱一致', async () => {
     const g = makeGraph([{ id: '天文', weight: 0.5 }]);
     await regenerateProfileSummary(g);
@@ -87,7 +86,7 @@ describe('profile-summary', () => {
     expect(changed).toBe(true);
     const after = await readFile(profileSummaryPath(), 'utf-8');
     expect(after).not.toBe(before);
-    // 新摘要反映新权重：50% → 80%（0.5+1.0×0.3）
+    // 新摘要反映新权重：50% → 80%（0.5 + 1.0×(1−0.5) 钳 maxWeight，持久化权重）
     expect(after).toContain('80%');
     // 仍是派生标记（无独立叙述）
     expect(after).toContain('本文件由用户兴趣图谱自动派生');

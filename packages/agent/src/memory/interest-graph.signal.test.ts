@@ -2,36 +2,26 @@
  * S2 #151：多信号权重公式 + 叶子归因 + 父聚合 测试
  *
  * 覆盖：
- * - applySignal 确定性数学（like 饱和增长 / dislike 比例衰减 / boost 强于 like）
- * - 边际递减（信号越多阻尼越小，1/(1+0.2n)）
+ * - applySignal 确定性数学（#151 字面公式：±强度 × 阻尼(1/(1+0.2n)) × (1−weight)，
+ *   clamp 到 [0, maxWeight]）
+ * - dislike 温和场景不退到 0（review #159 回归：防"点踩一次抹掉话题"的单信号污染）
+ * - 边际递减（同权重下信号越多阻尼越小）
  * - 叶子归因（父级目标 → 落叶子）与 dislike 隔离（兄弟/父级语义）
- * - 父节点权重 = 子加权聚合（attachChild / recomputeParentWeight / persist）
+ * - 父节点权重 = 子节点加权聚合（证据质量 = 1+reinforceCount）
  */
 
 import { describe, it, expect } from 'vitest';
-import { join } from 'path';
-import { tmpdir } from 'os';
 import { InterestGraph, SIGNAL_STRENGTH } from './interest-graph.js';
+import { makeTestInterestGraph } from '../test/helpers.js';
 
 const MAX_WEIGHT = 0.8;
-let seq = 0;
 
 function makeGraph(): InterestGraph {
-  // 独立临时路径：InterestGraph 构造不需要文件存在（persist 时才建）
-  const dir = join(tmpdir(), `s2-signal-${process.pid}-${Date.now()}-${seq++}`);
-  return new InterestGraph(join(dir, 'interests.json'), {
-    decayLambda: 0.0116,
-    maxWeight: MAX_WEIGHT,
-    minInterestCount: 5, // 冷启动期足够长：测试 addInterest 权重不被 novelty 预算钳制
-    maxInterestCount: 20,
-    noveltyBudget: 0.5,
-    defaultSeeds: [],
-    minWeight: 0.01,
-  });
+  return makeTestInterestGraph();
 }
 
-describe('S2 多信号权重公式', () => {
-  it('like 饱和增长：0.3 + 1.0×(0.8−0.3) = 0.8 到顶不越界', () => {
+describe('S2 多信号权重公式（#151 字面公式）', () => {
+  it('like 饱和增长：0.3 + 1.0×(1−0.3) = 1.0 → 钳 maxWeight 0.8，到顶不越界', () => {
     const g = makeGraph();
     g.addInterest('天文', 0.3, 'feedback');
     g.applySignal('天文', 'like');
@@ -41,37 +31,65 @@ describe('S2 多信号权重公式', () => {
     expect(g.getNode('天文')!.weight).toBeLessThanOrEqual(MAX_WEIGHT);
   });
 
-  it('dislike 比例衰减：0.8 − 1.5×0.8 → 钳 0', () => {
+  it('like 中段确定性：0.5（n=1 阻尼 1/1.2）→ 0.5 + 1/1.2×0.5 = 0.917 → 钳 0.8', () => {
+    // 构造 w=0.5、n=1：0.8 经 dislike（0.8−1.5×0.2）得到
     const g = makeGraph();
     g.addInterest('天文', 0.8, 'feedback');
     g.applySignal('天文', 'dislike');
-    expect(g.getNode('天文')!.weight).toBe(0);
+    expect(g.getNode('天文')!.weight).toBeCloseTo(0.5, 10);
+    // 旧实现 (maxWeight−weight) 饱和项在此得 0.75，spec 公式 (1−weight) 钳到 0.8
+    g.applySignal('天文', 'like');
+    expect(g.getNode('天文')!.weight).toBeCloseTo(0.8, 10);
   });
 
-  it('dislike 温和场景：0.5 − 1.5×1×0.5 → 钳 0（强度 1.5 一步到底）', () => {
+  it('dislike 强兴趣不退到 0（回归 #159）：0.8 − 1.5×(1−0.8) = 0.5', () => {
     const g = makeGraph();
-    g.addInterest('AI', 0.5, 'feedback');
+    g.addInterest('天文', 0.8, 'feedback');
+    g.applySignal('天文', 'dislike');
+    expect(g.getNode('天文')!.weight).toBeCloseTo(0.5, 10);
+  });
+
+  it('dislike 弱兴趣一步清零：0.3 − 1.5×0.7 < 0 → 钳 0', () => {
+    const g = makeGraph();
+    g.addInterest('AI', 0.3, 'feedback');
     g.applySignal('AI', 'dislike');
     expect(g.getNode('AI')!.weight).toBe(0);
   });
 
-  it('boost 强于 like（2.0 vs 1.0）', () => {
+  it('dislike 温和场景（n=5 阻尼 1/2）不退到 0：0.8 − 1.5×0.5×0.2 = 0.65（回归 #159）', () => {
+    const g = makeGraph();
+    g.addInterest('天文', 0.8, 'feedback');
+    // like 到顶不动权重但累计 n → 5
+    for (let i = 0; i < 5; i++) g.applySignal('天文', 'like');
+    expect(g.getNode('天文')!.reinforceCount).toBe(5);
+    g.applySignal('天文', 'dislike');
+    expect(g.getNode('天文')!.weight).toBeCloseTo(0.65, 10);
+  });
+
+  it('boost 强于 like（2.0 vs 1.0）：0.3 + 2.0×0.7 = 1.7 → 钳 0.8', () => {
     const g = makeGraph();
     g.addInterest('AI', 0.3, 'feedback');
     g.applySignal('AI', 'boost');
     expect(g.getNode('AI')!.weight).toBeCloseTo(0.8, 10);
   });
 
-  it('边际递减：dislike 两次下降量递减', () => {
+  it('边际递减（同权重不同 n）：n=0 点踩降 0.3，n=5 点踩只降 0.15', () => {
     const g = makeGraph();
     g.addInterest('科技', 0.8, 'feedback');
-    const w0 = g.getNode('科技')!.weight;
-    g.applySignal('科技', 'dislike'); // n=1 → 阻尼 1/1.2
-    const drop1 = w0 - g.getNode('科技')!.weight;
-    const w1 = g.getNode('科技')!.weight;
-    g.applySignal('科技', 'dislike'); // n=2 → 阻尼 1/1.4
-    const drop2 = w1 - g.getNode('科技')!.weight;
-    expect(drop1).toBeGreaterThan(drop2);
+    g.addInterest('AI', 0.8, 'feedback');
+    const dropN0 = 0.8 - (() => {
+      g.applySignal('科技', 'dislike');
+      return g.getNode('科技')!.weight;
+    })();
+    // AI 累计 5 次 like（到顶不动权重），n=5 → 阻尼 1/2
+    for (let i = 0; i < 5; i++) g.applySignal('AI', 'like');
+    const dropN5 = 0.8 - (() => {
+      g.applySignal('AI', 'dislike');
+      return g.getNode('AI')!.weight;
+    })();
+    expect(dropN0).toBeCloseTo(0.3, 10);
+    expect(dropN5).toBeCloseTo(0.15, 10);
+    expect(dropN5).toBeLessThan(dropN0);
   });
 
   it('信号强度表符合 #151 字面', () => {
@@ -94,16 +112,29 @@ describe('S2 多信号权重公式', () => {
 });
 
 describe('S2 层级：父聚合 + dislike 隔离', () => {
-  it('attachChild 建层级后父权重 = 子均值', () => {
+  it('attachChild 建层级后父权重 = 子均值（等证据质量退化为算术平均）', () => {
     const g = makeGraph();
     g.addInterest('科学', 0.5, 'default');
     g.addInterest('物理', 0.4, 'default');
     g.addInterest('化学', 0.6, 'default');
     expect(g.attachChild('科学', '物理')).toBe(true);
     expect(g.attachChild('科学', '化学')).toBe(true);
-    // 挂接即聚合：(0.4+0.6)/2 = 0.5
+    // 挂接即聚合：(0.4×1+0.6×1)/(1+1) = 0.5
     expect(g.getNode('科学')!.weight).toBeCloseTo(0.5, 10);
     expect(g.getNode('物理')!.parent).toBe('科学');
+  });
+
+  it('父聚合按证据质量加权：高反馈子节点主导父级（非算术平均）', () => {
+    const g = makeGraph();
+    g.addInterest('科学', 0.5, 'default');
+    // 物理：0.8 + like×3 → w=0.8、n=3（证据质量 4）
+    g.addInterest('物理', 0.8, 'default');
+    for (let i = 0; i < 3; i++) g.applySignal('物理', 'like');
+    g.addInterest('化学', 0.6, 'default');
+    g.attachChild('科学', '物理');
+    g.attachChild('科学', '化学');
+    // (0.8×4 + 0.6×1) / (4+1) = 0.76；算术平均是 0.7
+    expect(g.getNode('科学')!.weight).toBeCloseTo(0.76, 10);
   });
 
   it('attachChild 非法挂接返回 false', () => {
@@ -127,7 +158,7 @@ describe('S2 层级：父聚合 + dislike 隔离', () => {
     expect(g.getLeafDescendants('物理')).toEqual(['物理']);
   });
 
-  it('dislike 目标叶子 → 兄弟不受影响，父级经聚合反映', () => {
+  it('dislike 目标叶子 → 兄弟不受影响，父级经加权聚合反映', () => {
     const g = makeGraph();
     g.addInterest('科学', 0.5, 'default');
     g.addInterest('物理', 0.5, 'default');
@@ -136,12 +167,13 @@ describe('S2 层级：父聚合 + dislike 隔离', () => {
     g.attachChild('科学', '化学');
     expect(g.getNode('科学')!.weight).toBeCloseTo(0.5, 10);
 
-    const physBefore = g.getNode('物理')!.weight;
     const chemBefore = g.getNode('化学')!.weight;
     g.applySignal('物理', 'dislike');
-    expect(g.getNode('物理')!.weight).toBeLessThan(physBefore);
+    // 0.5 − 1.5×(1−0.5) → 钳 0，n=1（证据质量 2）；化学 n=0（质量 1）
+    expect(g.getNode('物理')!.weight).toBe(0);
     expect(g.getNode('化学')!.weight).toBe(chemBefore); // 兄弟完全不受影响
-    const expectedParent = (g.getNode('物理')!.weight + chemBefore) / 2;
+    // 父 = (0×2 + 0.5×1) / 3 = 1/6（算术平均是 0.25）
+    const expectedParent = (g.getNode('物理')!.weight * 2 + chemBefore * 1) / 3;
     expect(g.getNode('科学')!.weight).toBeCloseTo(expectedParent, 10);
   });
 
@@ -153,8 +185,10 @@ describe('S2 层级：父聚合 + dislike 隔离', () => {
     g.attachChild('科学', '物理');
     g.attachChild('科学', '化学');
     g.applySignal('物理', 'like');
-    expect(g.getNode('物理')!.weight).toBeCloseTo(0.8, 10); // 0.4+1.0×0.4
-    expect(g.getNode('科学')!.weight).toBeCloseTo(0.7, 10); // (0.8+0.6)/2
+    // 0.4 + 1.0×(1−0.4) = 1.0 → 钳 0.8（n=1，质量 2）
+    expect(g.getNode('物理')!.weight).toBeCloseTo(0.8, 10);
+    // 父 = (0.8×2 + 0.6×1) / 3 = 2.2/3
+    expect(g.getNode('科学')!.weight).toBeCloseTo(2.2 / 3, 10);
   });
 
   it('persist 前统一重聚合：手工改子后父同步落盘', async () => {

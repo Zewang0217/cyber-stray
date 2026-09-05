@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { consola } from '../logger.js';
 import { getDataPath } from '../config.js';
 import { atomicWriteJson } from '../utils/atomic-json.js';
+import { INTEREST_DECAY_LAMBDA } from './interest-constants.js';
 import { recordInterestSnapshot } from './interest-history.js';
 
 const logger = consola.withTag('InterestGraph');
@@ -105,7 +106,7 @@ export interface InterestGraphData {
 
 /** 兴趣图谱配置（来自 agent-config.json） */
 export interface InterestGraphConfig {
-  decayLambda: number;        // 衰减系数（每天）;λ=ln2/60≈0.0116=60 天半衰期(S2)
+  decayLambda: number;        // 衰减系数（每天）；单源见 interest-constants.ts（60 天半衰期）
   maxWeight: number;          // 单兴趣权重上限
   minInterestCount: number;   // 最少兴趣数量
   maxInterestCount: number;   // 最多兴趣数量，防止反思批量幻觉撑爆图谱
@@ -115,8 +116,7 @@ export interface InterestGraphConfig {
 }
 
 export const DEFAULT_INTEREST_CONFIG: InterestGraphConfig = {
-  // 与 config.ts interests.decayLambda 同步:ln2/60 ≈ 0.0116/天 = 60 天半衰期(S2 #151)
-  decayLambda: 0.0116,
+  decayLambda: INTEREST_DECAY_LAMBDA,
   maxWeight: 0.8,
   minInterestCount: 3,
   maxInterestCount: 20,
@@ -368,11 +368,12 @@ export class InterestGraph {
   }
 
   /**
-   * 应用反馈信号（S2 #151 多信号权重公式）。
+   * 应用反馈信号（S2 #151 多信号权重公式，字面实现）。
    *
-   * 饱和增长 + 边际递减：Δweight = ±强度 × 阻尼(1/(1+0.2n)) × (1−weight)（like/boost 正向饱和；dislike 负向）
-   * - like/boost:  新 weight = weight + 强度×阻尼×(1−weight)   → 渐近逼近 maxWeight（饱和）
-   * - dislike:     新 weight = weight − 强度×阻尼×weight       → 渐近逼近 0（衰减）
+   * 统一公式：new = clamp(weight + ±强度 × 阻尼(1/(1+0.2n)) × (1−weight), 0, maxWeight)
+   * - like/boost:  正向，(1−weight) 为饱和项 → 高权重增益收窄，渐近 maxWeight
+   * - dislike:     负向，同样乘 (1−weight) → 强兴趣单次点踩只小幅回撤
+   *   （0.8→0.5 而非按比例归零——防"点踩一次抹掉话题"的单信号污染，#147 教训）
    * - n = 该节点累计信号数（reinforceCount），信号越多单次影响越小（边际递减）
    * - 时间半衰期衰减（60 天）由 computeEffectiveWeight 在读取时承担，不在此重复
    *
@@ -389,19 +390,13 @@ export class InterestGraph {
       return undefined;
     }
 
-    const strength = SIGNAL_STRENGTH[signal];
+    const magnitude = SIGNAL_STRENGTH[signal];
+    const signedStrength = signal === 'dislike' ? -magnitude : magnitude;
     const damping = 1 / (1 + SIGNAL_DAMPING_FACTOR * node.reinforceCount);
     const now = new Date().toISOString();
 
-    if (signal === 'dislike') {
-      // 负向：按当前权重比例衰减，渐近逼近 0，可跌穿 maxWeight 下限
-      const delta = strength * damping * node.weight;
-      node.weight = Math.max(0, node.weight - delta);
-    } else {
-      // 正向：饱和增长，逼近 maxWeight
-      const room = this.config.maxWeight - node.weight;
-      node.weight = Math.min(this.config.maxWeight, node.weight + strength * damping * room);
-    }
+    const next = node.weight + signedStrength * damping * (1 - node.weight);
+    node.weight = Math.min(this.config.maxWeight, Math.max(0, next));
 
     node.lastReinforced = now;
     node.reinforceCount += 1;
@@ -440,7 +435,14 @@ export class InterestGraph {
     return leaves;
   }
 
-  /** 父节点权重 = 子节点有效权重加权聚合（S2 #151）。子为空 → 父保持自身权重。 */
+  /**
+   * 父节点权重 = 子节点加权聚合（S2 #151「加权」的字面实现）。
+   *
+   * 证据质量 m = 1 + reinforceCount：零信号子节点保有基线质量 1（等价算术平均），
+   * 每条反馈信号增加一份质量——反馈积累更多的叶子主导父级方向，
+   * 与阻尼参数共用同一置信度量（confidence/sampleCount 语义）。
+   * 子为空 → 父保持自身权重。
+   */
   recomputeParentWeight(id: string): void {
     const parent = this.data.nodes.find((n) => n.id === id);
     if (!parent) return;
@@ -449,8 +451,14 @@ export class InterestGraph {
 
     // 聚合使用子节点的"原始权重"（已含各自 lastReinforced 时间戳；聚合时不二次衰减，
     // 父节点的时间衰减由父自身 lastReinforced 控制，不被子聚合重置）
-    const sum = children.reduce((acc, child) => acc + child.weight, 0);
-    const aggregated = Math.min(this.config.maxWeight, sum / children.length);
+    let weightedSum = 0;
+    let totalMass = 0;
+    for (const child of children) {
+      const mass = 1 + child.reinforceCount;
+      weightedSum += child.weight * mass;
+      totalMass += mass;
+    }
+    const aggregated = Math.min(this.config.maxWeight, weightedSum / totalMass);
     parent.weight = aggregated;
     logger.debug('父节点权重已重聚合', { id, aggregated, childCount: children.length });
   }
