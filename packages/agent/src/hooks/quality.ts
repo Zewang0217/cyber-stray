@@ -1,19 +1,71 @@
 /**
- * Quality Hook — 推送价值门控（PushGate）
+ * Quality Hook — speak 护栏（P3 #152：门控从评分防火墙 → 反馈抽样器）
  *
- * 迁移自 speak.ts 的 PushGate 逻辑（L41-88, L94-115）。
- * beforeToolCall：评估门控，不通过则 deny（返回 gated 结果）。
- * afterToolCall：附加门控分数、记录 URL、触发校准。
+ * speak 是否推送由 LLM 在 ReAct 循环内自判断（可保持沉默），本 hook 不再做
+ * 价值评分与阈值 deny。beforeToolCall 只做确定性工作：
+ * - 内容扫描：prompt injection 特征 → deny（安全红线，不交给 LLM 判断）；
+ *   URL 数量异常 → 警告随 gateReasons 落盘（价值判断仍归 LLM）
+ * - 护栏：每游荡 speak 上限 / URL 冷却期 → deny + planLimited 留痕
+ *   （内容落盘不丢，供仪表盘解释；与日预算 planLimited 同标记，原因见 reasons）
+ * - 话题归因：内容命中的图谱话题写入 ctx.matchedTopics（S2 Phase A 反馈归因）
+ *
+ * afterToolCall：推送成功记录 URL；附加归因信息到结果；发 speak 事件。
  */
 
 import type { HookDefinition } from './types.js';
-import { getPushGate, type SpeakType } from '../memory/push-gate.js';
-import { extractUrl, addVisitedUrl } from '../tools/dedup/url-tracker.js';
+import {
+  DEFAULT_PUSH_GATE_CONFIG,
+  attributeTopics,
+  scanContentWarnings,
+  type SpeakType,
+} from '../memory/push-gate.js';
+import { extractUrl, addVisitedUrl, isInCooldown } from '../tools/dedup/url-tracker.js';
 import { pushWanderStep } from '../tools/registry/context.js';
 import { recordGatedSpeak } from '../tools/push/speak.js';
+import type { HookContext } from './types.js';
 import { consola } from '../logger.js';
 
 const logger = consola.withTag('hook:quality');
+
+/**
+ * speak deny 的统一留痕（复用旧门控拦截路径的不变量维护）：
+ * stepCount/wanderHistory 照常维护，历史记录落盘（gated 或 planLimited），
+ * ctx.spokeTimes 不自增——被拦的内容不算推送。
+ */
+async function denySpeak(
+  ctx: HookContext,
+  content: string,
+  type: SpeakType,
+  reason: string,
+  recordMeta: { gated?: boolean; planLimited?: boolean; gateReasons?: string[] },
+): Promise<{ action: 'deny'; reason: string }> {
+  logger.info(`[${ctx.traceId}] speak 被护栏拦截: ${reason}`);
+
+  ctx.toolCtx.stepCount++;
+  pushWanderStep(ctx.toolCtx, {
+    timestamp: new Date().toISOString(),
+    tool: 'speak',
+    spoke: content,
+    thought: `[${type}] 内容被护栏拦截 (${reason})`,
+  });
+
+  await recordGatedSpeak(content, type, {
+    mood: ctx.toolCtx.state.mood,
+    gateReasons: recordMeta.gateReasons,
+    ...(recordMeta.gated ? { gated: true } : {}),
+    ...(recordMeta.planLimited ? { planLimited: true } : {}),
+  });
+
+  // F8：speak 事件（deny 路径不经过 afterToolCall，需在此显式发）
+  ctx.emit({
+    type: 'speak',
+    content: String(content).slice(0, 200),
+    speakType: type,
+    gated: true,
+  });
+
+  return { action: 'deny', reason };
+}
 
 export const qualityHook = {
   name: 'quality',
@@ -22,79 +74,56 @@ export const qualityHook = {
   async beforeToolCall(ctx, tool, params) {
     if (tool !== 'speak') return { action: 'allow' };
 
+    const pg = { ...DEFAULT_PUSH_GATE_CONFIG, ...ctx.config.pushGate };
+    if (!pg.enabled) return { action: 'allow' };
+
     const { content, type } = params as { content: string; type: string };
-    const gate = getPushGate(ctx.config.pushGate);
 
-    try {
-      // 先清上一轮残留：evaluate 抛错走默认放行时，不能把上个内容的
-      // 门控理由透传给本次 speak
-      ctx.toolCtx.gateReasons = undefined;
-      ctx.toolCtx.matchedTopics = undefined;
-      const gateResult = await gate.evaluate(content, type as SpeakType);
+    // 先清上一轮残留：护栏走 deny 时，不能把上个内容的归因/理由透传给本次
+    ctx.toolCtx.gateReasons = undefined;
+    ctx.toolCtx.matchedTopics = undefined;
 
-      // 存储分数供 afterToolCall 使用
-      ctx.data['quality:gateScore'] = gateResult.score;
-      ctx.data['quality:gateReasons'] = gateResult.reasons;
-      // 实际命中的兴趣话题 → 供 speak() 反馈归因（与工具共享同一 toolCtx）
-      ctx.toolCtx.matchedTopics = gateResult.matchedTopics;
-      // 推送理由 → 供 speak() 随推送历史落盘（S8 推送流展示）
-      ctx.toolCtx.gateReasons = gateResult.reasons;
+    // 1. 内容扫描（确定性安全护栏）
+    const scan = scanContentWarnings(content, pg.contentScan);
+    if (scan.hasInjection) {
+      return denySpeak(ctx, content, type as SpeakType, '检测到 prompt injection 特征', {
+        gated: true,
+        gateReasons: scan.warnings,
+      });
+    }
 
-      if (!gateResult.passed) {
-        logger.info(
-          `[${ctx.traceId}] speak 被门控拦截 [type=${type} score=${gateResult.score.toFixed(2)} threshold=${gateResult.threshold.toFixed(2)}]`,
-        );
+    // 2. 每游荡 speak 上限（防话痨护栏）
+    if (pg.maxSpeaksPerWander > 0 && ctx.toolCtx.spokeTimes >= pg.maxSpeaksPerWander) {
+      return denySpeak(
+        ctx,
+        content,
+        type as SpeakType,
+        `本次游荡 speak 已达上限 ${pg.maxSpeaksPerWander} 条`,
+        {
+          planLimited: true,
+          gateReasons: [`每游荡推送上限 ${pg.maxSpeaksPerWander} 条已用完`],
+        },
+      );
+    }
 
-        // 门控拦截时也记录 URL 去重（避免 LLM 反复尝试推同一链接）
-        const url = extractUrl(content);
-        if (url) {
-          await addVisitedUrl(url, content).catch((err) => {
-            logger.error('记录门控 URL 失败', { url, error: err });
-          });
-        }
+    // 3. URL 冷却期（同链短期内不重复推）
+    const url = extractUrl(content);
+    if (url && (await isInCooldown(url, ctx.config.urlCooldownDays))) {
+      return denySpeak(ctx, content, type as SpeakType, 'URL 在冷却期内（已推送过）', {
+        planLimited: true,
+        gateReasons: [`URL 冷却中：${ctx.config.urlCooldownDays} 天内已推送过`],
+      });
+    }
 
-        // 维护 stepCount 和 wanderHistory（原 speak.ts 行为）
-        ctx.toolCtx.stepCount++;
-        pushWanderStep(ctx.toolCtx, {
-          timestamp: new Date().toISOString(),
-          tool: 'speak',
-          spoke: content,
-          thought: `[${type}] 内容被门控拦截 (score=${gateResult.score.toFixed(2)})`,
-        });
+    // 4. 话题归因（S2 Phase A：命中图谱话题随 speak 落盘，反馈按 messageId 反查）
+    const matched = await attributeTopics(content);
+    if (matched.length > 0) {
+      ctx.toolCtx.matchedTopics = matched;
+    }
 
-        // 留痕"学了但没推"，供仪表盘展示；ctx.spokeTimes 不自增——
-        // 它会累加进 state.totalPushes，被拦截的内容不算推送。
-        await recordGatedSpeak(content, type as SpeakType, {
-          mood: ctx.toolCtx.state.mood,
-          gateScore: gateResult.score,
-          gateReasons: gateResult.reasons,
-        });
-
-        // F8：gated:true 的 speak 事件（deny 路径不经过 afterToolCall，需在此显式发）
-        ctx.emit({
-          type: 'speak',
-          content: String(content).slice(0, 200),
-          speakType: type,
-          gated: true,
-          score: gateResult.score,
-        });
-
-        return {
-          action: 'deny',
-          reason: `PushGate score ${gateResult.score.toFixed(2)} < threshold`,
-          result: {
-            success: true,
-            pushed: false,
-            gated: true,
-            gateScore: gateResult.score,
-            gateReasons: gateResult.reasons,
-            timestamp: new Date().toISOString(),
-          },
-        };
-      }
-    } catch (error) {
-      // 门控失败不阻断 speak——默认放行
-      logger.warn(`[${ctx.traceId}] PushGate 评估失败，默认放行`, { error });
+    // URL 数量异常等非安全警告随 gateReasons 落盘（不拦截）
+    if (scan.warnings.length > 0) {
+      ctx.toolCtx.gateReasons = scan.warnings;
     }
 
     return { action: 'allow' };
@@ -103,31 +132,22 @@ export const qualityHook = {
   async afterToolCall(ctx, tool, params, result) {
     if (tool !== 'speak') return { result };
 
-    const { content } = params as { content: string };
-    const gateScore = ctx.data['quality:gateScore'] as number | undefined;
-    const gateReasons = ctx.data['quality:gateReasons'] as string[] | undefined;
-
+    const { content, type } = params as { content: string; type?: string };
     const r = result as Record<string, unknown>;
 
-    // 附加门控信息到结果
-    if (gateScore !== undefined) {
-      r.gateScore = gateScore;
-      r.gateReasons = gateReasons;
-    }
+    // 附加归因信息到结果（供 TUI/测试断言；落盘由 speak() 的 meta 承担）
+    if (ctx.toolCtx.gateReasons) r.gateReasons = ctx.toolCtx.gateReasons;
+    if (ctx.toolCtx.matchedTopics) r.matchedTopics = ctx.toolCtx.matchedTopics;
 
-    // RFC #59 事件协议：speak 行为事件（门控放行后才会到这里）
-    const speakType = params && typeof params === 'object' && 'type' in params && typeof params.type === 'string'
-      ? params.type
-      : 'unknown';
+    // RFC #59 事件协议：speak 行为事件（护栏放行后才会到这里）
     ctx.emit({
       type: 'speak',
       content: String(content).slice(0, 200),
-      speakType,
+      speakType: type ?? 'unknown',
       gated: false,
-      score: gateScore,
     });
 
-    // 推送成功后记录 URL 到去重系统 + 触发校准
+    // 推送成功后记录 URL 到去重系统
     if (r.pushed) {
       const url = extractUrl(content);
       if (url) {
@@ -135,11 +155,6 @@ export const qualityHook = {
           logger.error('记录推送 URL 失败', { url, error: err });
         });
       }
-
-      const gate = getPushGate(ctx.config.pushGate);
-      gate.calibrate().catch((err) => {
-        logger.warn('阈值校准失败', { err });
-      });
     }
 
     return { result: r };

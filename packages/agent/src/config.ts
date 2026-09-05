@@ -161,19 +161,8 @@ const defaultBehavior: BehaviorConfig = {
   },
   pushGate: {
     enabled: true,
-    threshold: 0.5,
-    weights: {
-      interestRelevance: 0.4,
-      userPreference: 0.4,
-      contentQuality: 0.2,
-    },
-    calibration: {
-      enabled: true,
-      windowSize: 20,
-      likeRateHigh: 0.7,
-      dislikeRateHigh: 0.3,
-      adjustStep: 0.05,
-    },
+    // 防话痨护栏：单次游荡最多 3 条（0 = 不限；日预算由 plan 承担）
+    maxSpeaksPerWander: 3,
     contentScan: {
       enabled: true,
       maxUrlCount: 5,
@@ -217,18 +206,10 @@ function loadBehaviorConfig(dataDir?: string): BehaviorConfig {
           ...defaultBehavior.interests,
           ...(file.interests ?? {}),
         },
-        // Phase 5: 推送门控配置嵌套合并
+        // Phase 5: 推送门控配置嵌套合并（P3 后 = 护栏 + 扫描配置，#152）
         pushGate: {
           ...defaultBehavior.pushGate,
           ...(file.pushGate ?? {}),
-          weights: {
-            ...defaultBehavior.pushGate.weights,
-            ...(file.pushGate?.weights ?? {}),
-          },
-          calibration: {
-            ...defaultBehavior.pushGate.calibration,
-            ...(file.pushGate?.calibration ?? {}),
-          },
           contentScan: {
             ...defaultBehavior.pushGate.contentScan,
             ...(file.pushGate?.contentScan ?? {}),
