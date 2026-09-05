@@ -13,7 +13,40 @@ import { join } from 'path';
 import type { AgentState } from '../types.js';
 import { _resetMemoryStore } from '../memory/long-term/index.js';
 import { _resetMemoryIndex } from '../memory/long-term/memory-index.js';
-import { _resetInterestGraphCache } from '../memory/interest-graph.js';
+import {
+  _resetInterestGraphCache,
+  InterestGraph,
+  type InterestGraphConfig,
+} from '../memory/interest-graph.js';
+import { INTEREST_DECAY_LAMBDA } from '../memory/interest-constants.js';
+
+// ----------------------------------------
+// 兴趣图谱测试夹具（S2 #151，signal / profile-summary 测试共享）
+// ----------------------------------------
+
+/** 图谱测试配置：minInterestCount=5 保证冷启动期 addInterest 不被 novelty 预算钳制 */
+export const INTEREST_TEST_CONFIG: InterestGraphConfig = {
+  decayLambda: INTEREST_DECAY_LAMBDA,
+  maxWeight: 0.8,
+  minInterestCount: 5,
+  maxInterestCount: 20,
+  noveltyBudget: 0.5,
+  defaultSeeds: [],
+  minWeight: 0.01,
+};
+
+let graphSeq = 0;
+
+/**
+ * 独立临时路径的空 InterestGraph（构造不要求文件存在，persist 时才建）。
+ * 信号数学测试与摘要渲染测试共享，避免配置漂移。
+ */
+export function makeTestInterestGraph(
+  config: InterestGraphConfig = INTEREST_TEST_CONFIG,
+): InterestGraph {
+  const dir = join(tmpdir(), `s2-graph-${process.pid}-${Date.now()}-${graphSeq++}`);
+  return new InterestGraph(join(dir, 'interests.json'), config);
+}
 
 /**
  * 构造一个完整有效的 AgentState 测试夹具，可通过 overrides 覆盖任意字段

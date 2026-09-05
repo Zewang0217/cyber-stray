@@ -29,6 +29,7 @@ import { recordUsage } from '../../usage/usage.js';
 import { getConfig } from '../../config.js';
 import { getMemoryStore } from '../long-term/index.js';
 import { getInterestGraph } from '../interest-graph.js';
+import { regenerateProfileSummary } from '../profile-summary.js';
 import type { MemoryEntry, MemoryType } from '../long-term/types.js';
 import {
   ReflectionResultSchema,
@@ -461,6 +462,9 @@ export class ReflectionEngine {
       }
 
       await graph.persist();
+      // S2 #151：反思改图谱后从图谱重生成派生摘要（spec：反思时从图谱重新生成，
+      // 不独立维护）；复用本方法的 best-effort 容错域
+      await regenerateProfileSummary(graph);
     } catch (error) {
       logger.error('更新兴趣图谱失败', { error });
     }
