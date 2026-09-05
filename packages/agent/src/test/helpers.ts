@@ -20,9 +20,7 @@ import {
 } from '../memory/interest-graph.js';
 import { INTEREST_DECAY_LAMBDA } from '../memory/interest-constants.js';
 
-// ----------------------------------------
 // 兴趣图谱测试夹具（S2 #151，signal / profile-summary 测试共享）
-// ----------------------------------------
 
 /** 图谱测试配置：minInterestCount=5 保证冷启动期 addInterest 不被 novelty 预算钳制 */
 export const INTEREST_TEST_CONFIG: InterestGraphConfig = {

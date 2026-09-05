@@ -144,9 +144,7 @@ function formatStrategyDirective(strategy: WanderStrategy): string {
   return lines.join('\n');
 }
 
-// ============================================
 // 推送判断上下文（S3 #152 门控 P3：LLM 自判断的四段依据）
-// ============================================
 
 /** 用户兴趣图谱强/中/弱分级阈值（展示引导用，非加权打分） */
 const STRONG_TOPIC_WEIGHT = 0.6;
