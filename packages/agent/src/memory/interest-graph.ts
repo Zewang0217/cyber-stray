@@ -407,9 +407,7 @@ export class InterestGraph {
     return node;
   }
 
-  // ----------------------------------------
   // 层级（parent / leaf）——S2 #151 叶子归因
-  // ----------------------------------------
 
   /** 获取某节点的直接子节点 */
   getChildren(id: string): InterestNode[] {

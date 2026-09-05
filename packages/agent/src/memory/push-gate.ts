@@ -16,9 +16,7 @@ import { getInterestGraph } from './interest-graph.js';
 
 const logger = consola.withTag('PushGate');
 
-// ============================================
 // Zod 校验（防 schema 漂移）
-// ============================================
 
 export const PushGateContentScanSchema = z.object({
   enabled: z.boolean(),
