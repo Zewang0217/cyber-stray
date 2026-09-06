@@ -32,6 +32,17 @@ describe("stray-boy.sprite.v2 契约", () => {
     expect(contract.overlays.hungry).toEqual({ image: "eyes.png", frames: 2, duration: 1.2 });
   });
 
+  it("坏契约显式抛错（禁兜底）", () => {
+    const bad = { ...contract, animations: { fly: { from: 5, frames: 2, duration: 0.4, loop: true } } };
+    expect(() => parseSpriteContract({ ...bad, frame: { w: 32.5, h: 32, groundRow: 30 } })).toThrow(/帧尺寸/);
+    expect(() => parseSpriteContract(bad)).toThrow(/动画 fly from/);
+  });
+
+  it("globals 携带 sprite 的 reduced-motion 停帧规则（组件按 sbp- 类命中）", () => {
+    const css = readFileSync(join(process.cwd(), "app/globals.css"), "utf8");
+    expect(css).toMatch(/prefers-reduced-motion[\s\S]*\[class\*=\"sbp-\"\]/);
+  });
+
   it("全部 11 动作合计 26 帧", () => {
     const total = Object.values(contract.animations).reduce((s, a) => s + a.frames, 0);
     expect(total).toBe(26);
@@ -48,18 +59,18 @@ describe("stray-boy.sprite.v2 契约", () => {
 describe("播放换算", () => {
   const contract = loadContract();
 
-  it("keyframes 以 --sbp-step 变量落在帧边界（缩放无关）并带 reduced-motion 兜底", () => {
+  it("keyframes 帧边界：loop 回绕下一首帧，forwards 定格本动画最后一帧", () => {
     const css = animationCss(contract);
     for (const [name, a] of Object.entries(contract.animations)) {
       expect(css).toContain(
         `sbp-catpng-${name}{from{background-position:calc(var(--sbp-step) * ${-a.from}) 0}`,
       );
+      const to = a.loop ? -(a.from + a.frames) : -(a.from + a.frames - 1);
       expect(css).toContain(
-        `to{background-position:calc(var(--sbp-step) * ${-(a.from + a.frames)}) 0}}`,
+        `to{background-position:calc(var(--sbp-step) * ${to}) 0}}`,
       );
     }
     expect(css).toContain("sbp-catpng-hungry{0%,69%{background-position:0 0}");
-    expect(css).toContain("prefers-reduced-motion");
   });
 
   it("frameStyle：backgroundSize = 总帧 × 帧宽 × scale，位置落在首帧", () => {

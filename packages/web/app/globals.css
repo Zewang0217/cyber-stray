@@ -587,3 +587,10 @@ body.sb-hidden .sb-led,
 body.sb-hidden * {
   animation-play-state: paused !important;
 }
+
+/* motion.md §5：prefers-reduced-motion 用户 sprite 停帧于首帧（首帧由内联 background-position 给出） */
+@media (prefers-reduced-motion: reduce) {
+  [class*="sbp-"] {
+    animation: none !important;
+  }
+}

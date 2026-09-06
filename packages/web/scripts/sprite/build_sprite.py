@@ -285,8 +285,12 @@ def build_eyes() -> list[list[str]]:
             for x in range(W):
                 ch = base[y][x]
                 if ch in ("y", "w", "k"):
-                    g[y][x] = ch if (map_open and ch != "k") or ch == "k" and map_open else (
-                        "o" if not map_open and ch in ("y", "w") else ch)
+                    if map_open:
+                        g[y][x] = ch
+                    elif ch in ("y", "w"):
+                        g[y][x] = "o"  # 闭眼：盖住烘焙睁眼块
+                    else:
+                        g[y][x] = ch
         frames.append(text_of(g))
     return frames
 
@@ -307,18 +311,25 @@ ORDER = ([f"idle-{i}" for i in range(1, 5)] + [f"walk-{i}" for i in range(1, 5)]
 
 def validate(frames: dict[str, list[str]]) -> None:
     for name, rows in frames.items():
-        assert len(rows) == H, f"{name}: {len(rows)} 行"
+        if len(rows) != H:
+            raise ValueError(f"{name}: {len(rows)} 行")
         for i, r in enumerate(rows):
-            assert len(r) == W, f"{name} r{i}: {len(r)} 列"
-            assert not (set(r) - set(PALETTE) - {"."}), f"{name} r{i}: 非法字符"
-        assert rows[H - 1] == BLANK or name.startswith(("celebrate-1", "pounce-2")), \
-            f"{name}: r31 非空且非腾空帧"
-    assert set(frames) == set(ORDER), f"帧集合不符: {set(frames) ^ set(ORDER)}"
+            if len(r) != W:
+                raise ValueError(f"{name} r{i}: {len(r)} 列")
+            if set(r) - set(PALETTE) - {"."}:
+                raise ValueError(f"{name} r{i}: 非法字符")
+        grounded = not name.startswith(("celebrate-1", "pounce-2"))
+        if rows[H - 1] != BLANK and grounded:
+            raise ValueError(f"{name}: r31 非空且非腾空帧")
+        if grounded and all(c == "." for c in rows[GROUND_ROW]):
+            raise ValueError(f"{name}: 脚底接触行 r{GROUND_ROW} 无内容")
+    if set(frames) != set(ORDER):
+        raise ValueError(f"帧集合不符: {set(frames) ^ set(ORDER)}")
 
 
-def render(frames: dict[str, list[str]], path: Path) -> None:
-    img = Image.new("RGBA", (W * len(frames), H), (0, 0, 0, 0))
-    for i, name in enumerate(ORDER if set(frames) == set(ORDER) else list(frames)):
+def render(frames: dict[str, list[str]], path: Path, order: list[str]) -> None:
+    img = Image.new("RGBA", (W * len(order), H), (0, 0, 0, 0))
+    for i, name in enumerate(order):  # 帧排布顺序由调用方给定（frames.json 的 from 依赖它）
         rows = frames[name]
         for y in range(H):
             for x in range(W):
@@ -336,9 +347,10 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
 
     cat_path = OUT / "cat.png"
-    render(frames, cat_path)
+    render(frames, cat_path, ORDER)
     eyes = build_eyes()
-    render({f"eyes-{i}": eyes[i] for i in range(2)}, OUT / "eyes.png")
+    render({f"eyes-{i}": eyes[i] for i in range(2)}, OUT / "eyes.png",
+           [f"eyes-{i}" for i in range(2)])
 
     anims, cursor = {}, 0
     for name, (count, dur, loop) in ANIMS.items():
@@ -359,7 +371,8 @@ def main() -> None:
     (OUT / "frames.json").write_text(json.dumps(contract, ensure_ascii=False, indent=2) + "\n")
 
     size = cat_path.stat().st_size
-    assert size <= BUDGET, f"sheet {size}B 超预算 {BUDGET}B"
+    if size > BUDGET:
+        raise ValueError(f"sheet {size}B 超预算 {BUDGET}B")
     print(f"OK: cat.png {len(frames)} 帧 {size}B（≤{BUDGET}B）+ eyes.png 2 帧 + frames.json")
 
 
