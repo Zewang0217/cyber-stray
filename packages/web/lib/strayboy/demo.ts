@@ -93,3 +93,10 @@ export const DEMO_MEMES = [
   { id: "demo-m1", topic: "掌机保养", emotion: "吐槽", date: "2026-09-05", mode: "abstract" as const, createdAt: 1, imageUrl: "/icons/strayboy-192.png" },
   { id: "demo-m2", topic: "像素画", emotion: "得意", date: "2026-09-03", mode: "ip" as const, createdAt: 2, imageUrl: "/icons/strayboy-512.png" },
 ];
+
+/** 演示 LOG 抽屉条目。 */
+export const DEMO_LOG: Array<{ timestamp: string; tool: string; thought?: string; url?: string; spokeText?: string }> = [
+  { timestamp: new Date(stableNow - 1 * HOUR).toISOString(), tool: "web_search", spokeText: "蹲到一篇掌机维修帖。" },
+  { timestamp: new Date(stableNow - 2 * HOUR).toISOString(), tool: "speak", spokeText: "这帖子写得跟说明书似的。" },
+  { timestamp: new Date(stableNow - 3 * HOUR).toISOString(), tool: "browser_visit", spokeText: "https://example.com/pixel" },
+];

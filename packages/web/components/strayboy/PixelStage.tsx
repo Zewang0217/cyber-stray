@@ -32,11 +32,15 @@ const STARS = Array.from({ length: 12 }, (_, i) => ({
  * 像素夜城街景（DESIGN.md §1 主屏）：sky/楼/窗/星/路缘 + 猫的活动层。
  * 装饰全部静态定位（motion.md §5），只有窗灯允许闪烁；月相/作息联动随 delight 票。
  */
-export function PixelStage({ children, onStreet, demo }: { children: ReactNode; onStreet: boolean; demo?: boolean }) {
+export function PixelStage({ children, onStreet, demo, daytime = false }: { children: ReactNode; onStreet: boolean; demo?: boolean; daytime?: boolean }) {
   const rand = seeded(20260906);
   return (
-    <div className="relative h-[300px] overflow-hidden border-2 border-black bg-[var(--sky)]">
-      {STARS.map((star, i) => (
+    <div
+      className="relative h-[300px] overflow-hidden border-2 border-black"
+      style={{ backgroundColor: daytime ? "#5C94FC" : "var(--sky)" }}
+    >
+      {/* 星/月仅夜间（宪法 §7 白天：星月隐藏） */}
+      {!daytime && STARS.map((star, i) => (
         <span
           key={i}
           aria-hidden
@@ -44,8 +48,9 @@ export function PixelStage({ children, onStreet, demo }: { children: ReactNode; 
           style={{ left: star.left, top: star.top }}
         />
       ))}
-      {/* 月亮：方块（像素语法；真实月相随 delight 票） */}
-      <span aria-hidden className="absolute right-[8%] top-[10%] h-6 w-6 bg-[var(--star)]" />
+      {!daytime && (
+      /* 月亮：方块（像素语法；真实月相随 delight 票） */
+      <span aria-hidden className="absolute right-[8%] top-[10%] h-6 w-6 bg-[var(--star)]" />)}
       {demo && (
         <span className="absolute right-1 top-1 z-10 border border-[var(--neon)] bg-[var(--sky)] px-1 py-0.5 font-ps2p text-xs leading-none text-[var(--neon)]">
           DEMO
