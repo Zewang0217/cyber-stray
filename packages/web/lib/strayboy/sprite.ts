@@ -67,10 +67,11 @@ export function animationCss(contract: SpriteContract): string {
         `to{background-position:calc(var(--sbp-step) * ${-(a.from + a.frames)}) 0}}`,
     );
   }
+  // 饥饿眼神：70% 闭眼（下垂）+ 30% 睁眼 peek——f1=闭、f2=睁（build_sprite.py 帧序）
   const hungry = contract.overlays.hungry;
   rules.push(
-    `@keyframes sbp-${id}-hungry{from{background-position:0 0}` +
-      `to{background-position:calc(var(--sbp-step) * ${-hungry.frames}) 0}}`,
+    `@keyframes sbp-${id}-hungry{0%,69%{background-position:0 0}` +
+      `70%,100%{background-position:calc(var(--sbp-step) * ${-(hungry.frames - 1)}) 0}}`,
   );
   rules.push(
     `@media (prefers-reduced-motion:reduce){.sbp-${id}{animation:none!important}}`,

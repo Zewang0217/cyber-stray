@@ -275,14 +275,18 @@ def build_walk_frame(legs: list[tuple[int, str]], phase_p: bool) -> list[str]:
 # ── eyes 叠加（饥饿 .eyes 独立层：f1 睁 / f2 闭，取自 base 眼带）──
 
 def build_eyes() -> list[list[str]]:
+    """饥饿眼睛叠加（帧序 f1 闭 / f2 睁）。闭眼帧必须盖住烘焙的睁眼块：
+    眼区（r9-11）的黄/白像素替换为本体色 + 保留墨线；睁眼帧原样。"""
     base = sit_frame(sit_common(), [], 3)
     frames = []
-    for keep in ({"y", "w"}, {"k"}):  # f1 睁眼色 / f2 闭眼线
+    for map_open in (False, True):
         g = grid_of([BLANK] * H)
         for y in range(9, 12):
             for x in range(W):
-                if base[y][x] in keep:
-                    g[y][x] = base[y][x]
+                ch = base[y][x]
+                if ch in ("y", "w", "k"):
+                    g[y][x] = ch if (map_open and ch != "k") or ch == "k" and map_open else (
+                        "o" if not map_open and ch in ("y", "w") else ch)
         frames.append(text_of(g))
     return frames
 

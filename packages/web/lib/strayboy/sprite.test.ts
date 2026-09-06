@@ -58,7 +58,7 @@ describe("播放换算", () => {
         `to{background-position:calc(var(--sbp-step) * ${-(a.from + a.frames)}) 0}}`,
       );
     }
-    expect(css).toContain("sbp-catpng-hungry{from{background-position:0 0}");
+    expect(css).toContain("sbp-catpng-hungry{0%,69%{background-position:0 0}");
     expect(css).toContain("prefers-reduced-motion");
   });
 
