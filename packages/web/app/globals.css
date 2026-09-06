@@ -465,3 +465,108 @@ html[data-theme="night"] .pet-player {
 .spacing-xl {
   padding: var(--spacing-fluid-xl);
 }
+
+/* ============================================================
+   STRAY-BOY 像素街区（design-v3 宪法 token 层，与旧世界并存；
+   旧世界随重写票逐段摘除，见 docs/spec/web-rewrite.md）
+   ============================================================ */
+:root {
+  /* 14 色宇宙（DESIGN.md §2）+ 猫本体色组（17 色豁免，#169） */
+  --sky: #1a1c2c;
+  --bld-far: #29366f;
+  --bld-near: #3b5dc9;
+  --window: #f7d51d;
+  --street: #333c57;
+  --curb: #566c86;
+  --star: #f4f4f4;
+  --ok: #92cc41;
+  --bad: #e76e55;
+  --act: #209cee;
+  --hi: #f7d51d;
+  --neon: #ff004d;
+  --paper: #f8f5f5;
+  --ink: #212529;
+  --panel: #2c3136;
+  --cat-body: #e8a15d;
+  --cat-stripe: #b4693b;
+  --cat-cream: #f6e6c8;
+  /* 窗灯熄灭态（宪法外唯一派生暗色，components.md .win.off） */
+  --window-off: #141626;
+  /* 字体栈（DESIGN.md §3；@fontsource 本地化，layout 引入） */
+  --font-ps2p: "Press Start 2P";
+  --font-fusion-pixel: "Fusion Pixel 12px Proportional SC";
+  --font-vt323: "VT323";
+  --font-noto: "Noto Sans SC Variable";
+}
+
+.sb {
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+}
+
+.font-ps2p {
+  font-family: var(--font-ps2p), monospace;
+}
+.font-vt323 {
+  font-family: var(--font-vt323), monospace;
+}
+.font-noto {
+  font-family: var(--font-noto), sans-serif;
+}
+
+/* 宪法 §8-1：一切直角（全局强制） */
+.sb,
+.sb * {
+  border-radius: 0 !important;
+}
+
+/* 宪法 §8-9：像素图必须 pixelated */
+.pixelated {
+  image-rendering: pixelated;
+}
+
+/* 签名手法 2：实色偏移阴影（禁 blur） */
+.sb-shadow {
+  box-shadow:
+    inset -4px -4px 0 rgba(0, 0, 0, 0.35),
+    6px 6px 0 #000;
+}
+.sb-shadow-sm {
+  box-shadow:
+    inset -2px -2px 0 rgba(0, 0, 0, 0.35),
+    3px 3px 0 #000;
+}
+
+/* 签名手法 3：两帧法则——只有 steps()；motion.md §2 闪烁类统一 steps(1) 1s 全站同频 */
+@keyframes sb-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+.sb-blink {
+  animation: sb-blink 1s steps(1) infinite;
+}
+
+@keyframes sb-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.sb-breathe {
+  animation: sb-breathe 1s steps(2) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-blink,
+  .sb-breathe {
+    animation: none;
+  }
+}
