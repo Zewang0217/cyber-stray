@@ -8,7 +8,7 @@ import { usePlan } from "@/hooks/usePlan";
 import { useWechatStatus } from "@/hooks/useWechatStatus";
 import { usePets } from "@/hooks/usePets";
 import { CatchphraseEditor } from "@/components/dashboard/CatchphraseEditor";
-import type { Catchphrase } from "@cyber-stray/shared";
+
 
 type View = "root" | "channels" | "pet" | "account" | "admin";
 
