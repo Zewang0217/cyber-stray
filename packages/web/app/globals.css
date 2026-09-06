@@ -636,3 +636,13 @@ body.sb-hidden * {
     animation: none;
   }
 }
+
+/* 子屏换屏：黑场熄灭 → 点亮（motion.md §4，f8） */
+@keyframes sb-boot {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

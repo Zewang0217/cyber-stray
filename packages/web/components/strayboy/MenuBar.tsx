@@ -2,6 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
+
+const SUB_SCREENS = [
+  { href: "/diary", label: "日记本" },
+  { href: "/dream", label: "梦呓集" },
+  { href: "/meme", label: "贴纸册" },
+] as const;
 
 const TABS = [
   { href: "/", label: "街角" },
@@ -17,6 +24,7 @@ const TABS = [
  */
 export function MenuBar() {
   const pathname = usePathname();
+  const [startOpen, setStartOpen] = useState(false);
 
   return (
     <nav
@@ -42,11 +50,35 @@ export function MenuBar() {
       })}
       <button
         type="button"
-        title="START · 子屏菜单随 T1-7 接线"
+        onClick={() => setStartOpen(true)}
         className="px-3 py-2 text-center text-[12px] leading-none text-[var(--hi)] hover:bg-[var(--street)]"
       >
         ▶ START
       </button>
+      {startOpen && (
+        <div className="fixed inset-0 z-[70] bg-black/95 p-6" role="dialog" aria-label="START 子屏菜单">
+          <div className="mx-auto flex max-w-sm flex-col gap-3 pt-10">
+            <p className="font-ps2p text-xs text-[var(--hi)]">▶ SELECT</p>
+            {SUB_SCREENS.map((s) => (
+              <Link
+                key={s.href}
+                href={s.href}
+                onClick={() => setStartOpen(false)}
+                className="border-2 border-[var(--curb)] bg-[var(--panel)] px-4 py-3 text-[15px] text-[var(--paper)] hover:border-[var(--act)]"
+              >
+                {s.label}
+              </Link>
+            ))}
+            <button
+              type="button"
+              onClick={() => setStartOpen(false)}
+              className="mt-4 border-2 border-[var(--ink)] bg-[var(--bad)] px-4 py-2 font-ps2p text-xs text-[var(--paper)]"
+            >
+              ✕ CLOSE
+            </button>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
