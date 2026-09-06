@@ -41,14 +41,19 @@ export function deriveStreetView(
   const temper = state?.temper ?? 0;
   // 心情→分值：Mood 联合（curious/playful/excited 偏正，lazy 居中，grumpy/emo 偏负）
   const POSITIVE_MOODS: Mood[] = ["curious", "playful", "excited"];
-  const moodScore = state ? (POSITIVE_MOODS.includes(state.mood) ? 80 : state.mood === "lazy" ? 55 : 20) : 80;
+  const MOOD_SCORE = { positive: 80, neutral: 55, negative: 20 } as const;
+  const moodScore = state
+    ? (POSITIVE_MOODS.includes(state.mood) ? MOOD_SCORE.positive
+      : state.mood === "lazy" ? MOOD_SCORE.neutral : MOOD_SCORE.negative)
+    : MOOD_SCORE.positive;
   const sleeping = isSleeping(now.getHours(), pet.sleepStart, pet.sleepEnd);
   const hungry = energy < HUNGRY_ENERGY_THRESHOLD;
+  const FAILURE_GRUMPY_THRESHOLD = 3;
   const anim: StreetView["anim"] = wandering
     ? "walk"
     : sleeping
       ? "sleep"
-      : state?.consecutiveFailures != null && state.consecutiveFailures >= 3
+      : (state?.consecutiveFailures ?? 0) >= FAILURE_GRUMPY_THRESHOLD
         ? "grumpy"
         : "idle";
   const day = Math.max(
@@ -57,7 +62,7 @@ export function deriveStreetView(
   );
   return {
     anim,
-    away: wandering && !sleeping,
+    away: wandering,
     hungry,
     sleeping,
     bars: {

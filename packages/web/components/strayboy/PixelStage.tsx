@@ -47,7 +47,7 @@ export function PixelStage({ children, onStreet, demo }: { children: ReactNode; 
       {/* 月亮：方块（像素语法；真实月相随 delight 票） */}
       <span aria-hidden className="absolute right-[8%] top-[10%] h-6 w-6 bg-[var(--star)]" />
       {demo && (
-        <span className="absolute right-1 top-1 z-10 border border-[var(--neon)] bg-[var(--sky)] px-1 py-0.5 font-ps2p text-[8px] leading-none text-[var(--neon)]">
+        <span className="absolute right-1 top-1 z-10 border border-[var(--neon)] bg-[var(--sky)] px-1 py-0.5 font-ps2p text-xs leading-none text-[var(--neon)]">
           DEMO
         </span>
       )}

@@ -15,7 +15,7 @@ export function HeartBurst() {
       {hearts.map((h, i) => (
         <span
           key={i}
-          className="absolute bottom-0 text-[16px] leading-none text-[var(--neon)] sb-heart"
+          className="absolute bottom-0 text-[16px] leading-none text-[var(--hi)] sb-heart"
           style={{ left: h.left, animationDelay: h.delay }}
         >
           ♥

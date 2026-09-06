@@ -5,14 +5,19 @@
 export function HudBar({
   label,
   value,
-  warnAt = 80,
+  warnAt,
+  warnBelow,
 }: {
   label: string;
   value: number;
+  /** 高值告警（饥饿/无聊：越高越糟） */
   warnAt?: number;
+  /** 低值告警（心情：低分才危险） */
+  warnBelow?: number;
 }) {
   const cells = Math.round((Math.min(100, Math.max(0, value)) / 100) * 10);
-  const warn = value >= warnAt;
+  const warn = warnAt !== undefined ? value >= warnAt
+    : warnBelow !== undefined ? value <= warnBelow : false;
   return (
     <div className="flex items-center gap-2">
       <span className="w-10 shrink-0 text-[12px] text-[var(--paper)]">{label}</span>

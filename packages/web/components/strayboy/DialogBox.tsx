@@ -4,7 +4,7 @@
 export function DialogBox({ name, text }: { name: string; text: string }) {
   return (
     <div className="relative max-w-[260px]">
-      <span className="absolute -top-3 left-3 border-2 border-[var(--ink)] bg-[var(--paper)] px-1.5 py-0.5 font-ps2p text-[8px] leading-none text-[var(--ink)]">
+      <span className="absolute -top-3 left-3 border-2 border-[var(--ink)] bg-[var(--paper)] px-1.5 py-0.5 font-ps2p text-xs leading-none text-[var(--ink)]">
         {name}
       </span>
       <div className="border-4 border-[var(--ink)] bg-[var(--paper)] px-3 py-2.5 text-[14px] leading-[1.6] text-[var(--ink)] shadow-[6px_6px_0_#000]">
