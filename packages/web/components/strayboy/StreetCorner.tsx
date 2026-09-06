@@ -14,6 +14,7 @@ import { HeartBurst } from "@/components/strayboy/HeartBurst";
 import { PixelStage } from "@/components/strayboy/PixelStage";
 import { PetSprite } from "@/components/strayboy/PetSprite";
 import { WanderLog } from "@/components/strayboy/WanderLog";
+import { AdoptionRitual } from "@/components/strayboy/AdoptionRitual";
 import { DEMO_PET, DEMO_STATE, demoEventStream } from "@/lib/strayboy/demo";
 
 /** 「让它去溜达」需 POST /api/walk（spec Decision 8，动 CP 侧须持机人同意）——落地前按钮不上。 */
@@ -42,6 +43,7 @@ export function StreetCorner({ contract, demo = false }: { contract: SpriteContr
   const [grumpyOn, setGrumpyOn] = useState(false);
   const [overrideAnim, setOverrideAnim] = useState<"pat" | "joy" | null>(null);
   const [now, setNow] = useState<Date>(() => new Date());
+  const [adoptedGate, setAdoptedGate] = useState(false);
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
@@ -92,6 +94,22 @@ export function StreetCorner({ contract, demo = false }: { contract: SpriteContr
     setOverrideAnim(reaction);
     setTimeout(() => setOverrideAnim(null), PAT_ANIM_MS);
   };
+
+  // 未领养（或刚领养完还在入场演出）→ 全屏开机仪式；adopted 门控避免列表刷新打断演出
+  if (adoptedGate || !pet) {
+    return (
+      <AdoptionRitual
+        contract={contract}
+        adopt={async (input) => {
+          const result = await livePets.adopt(input);
+          if (result) setAdoptedGate(true);
+          return result;
+        }}
+        adopting={livePets.adopting}
+        onAdopted={() => setAdoptedGate(false)}
+      />
+    );
+  }
 
   const view = deriveStreetView(state, pet, now, wandering);
   const onStreet = !view.away && !view.sleeping;

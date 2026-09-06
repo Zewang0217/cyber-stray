@@ -42,6 +42,8 @@ interface UsePetsReturn {
     catchphrases?: Catchphrase[];
   }) => Promise<Pet | null>;
   adopting: boolean;
+  /** 手动重拉宠物列表（领养/改动作后同步） */
+  refresh: () => Promise<void>;
   /** 设置作息（本地小时；跨午夜合法）。成功返回 true */
   setSleepSchedule: (startHour: number, endHour: number) => Promise<boolean>;
   /** 清除作息（回永不睡眠，与现状一致）。成功返回 true */
@@ -191,6 +193,7 @@ export function usePets(options: { enabled?: boolean } = {}): UsePetsReturn {
     error,
     adopt,
     adopting,
+    refresh,
     setSleepSchedule,
     clearSleepSchedule,
     setDiaryStyle,
