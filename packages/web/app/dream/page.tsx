@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { BootFrame } from "@/components/strayboy/BootFrame";
 import { DEMO_DREAMS } from "@/lib/strayboy/demo";
 
@@ -12,8 +13,8 @@ interface DreamEntry {
 }
 
 /** START 子屏·梦呓集（#170）：sky 底 + 星点 + 梦卡浮空；抽象叙事斜体。 */
-export default function DreamPage() {
-  const demo = typeof window !== "undefined" && window.location.search.includes("demo=1");
+function DreamInner() {
+  const demo = useSearchParams().get("demo") === "1";
   const [entries, setEntries] = useState<DreamEntry[]>(demo ? DEMO_DREAMS : []);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(!demo);
@@ -64,5 +65,13 @@ export default function DreamPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense>
+      <DreamInner />
+    </Suspense>
   );
 }

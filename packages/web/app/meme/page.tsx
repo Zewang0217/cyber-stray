@@ -1,23 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { BootFrame } from "@/components/strayboy/BootFrame";
 import { useMeme } from "@/hooks/useMeme";
+import { DEMO_MEMES } from "@/lib/strayboy/demo";
 
 /**
  * START 子屏·贴纸册（#170）：像素贴纸墙——白描边贴纸 + 像素胶带钉册页。
  * 数据走 useMeme；删除带确认（旧页无确认，#170 补上）；QC 不过不收录（管线侧）。
  */
-export default function StickerAlbumPage() {
-  const demo = typeof window !== "undefined" && window.location.search.includes("demo=1");
+function StickerInner() {
+  const demo = useSearchParams().get("demo") === "1";
   const meme = useMeme();
   const memes = demo ? DEMO_MEMES : (meme.memes ?? []);
   const [confirming, setConfirming] = useState<string | null>(null);
 
   const remove = async (id: string): Promise<void> => {
     const ok = await meme.remove(id);
-    if (!ok) window.alert("删除失败（网络/权限）");
     setConfirming(null);
+    if (!ok) throw new Error("删除失败（网络/权限）");
   };
 
   return (
@@ -50,12 +52,12 @@ export default function StickerAlbumPage() {
               {!demo && (
                 confirming === m.id ? (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/85 p-2">
-                    <p className="text-[11px] leading-[1.5] text-[var(--paper)]">撕掉这张贴纸？</p>
+                    <p className="text-[12px] leading-[1.5] text-[var(--paper)]">撕掉这张贴纸？</p>
                     <div className="flex gap-1.5">
                       <button type="button" onClick={() => void remove(m.id)}
-                        className="border-2 border-[var(--bad)] px-2 py-1 text-[11px] text-[var(--bad)]">撕</button>
+                        className="border-2 border-[var(--bad)] px-2 py-1 text-xs text-[var(--bad)]">撕</button>
                       <button type="button" onClick={() => setConfirming(null)}
-                        className="border-2 border-[var(--curb)] px-2 py-1 text-[11px] text-[var(--paper)]">留</button>
+                        className="border-2 border-[var(--curb)] px-2 py-1 text-xs text-[var(--paper)]">留</button>
                     </div>
                   </div>
                 ) : (
@@ -63,7 +65,7 @@ export default function StickerAlbumPage() {
                     type="button"
                     aria-label={`删除贴纸：${m.topic}`}
                     onClick={() => setConfirming(m.id)}
-                    className="absolute right-1 top-1 border border-[var(--curb)] bg-black px-1 text-[10px] text-[var(--bad)]"
+                    className="absolute right-1 top-1 border border-[var(--curb)] bg-black px-1 text-xs text-[var(--bad)]"
                   >
                     ✕
                   </button>
@@ -80,4 +82,11 @@ export default function StickerAlbumPage() {
   );
 }
 
-import { DEMO_MEMES } from "@/lib/strayboy/demo";
+
+export default function Page() {
+  return (
+    <Suspense>
+      <StickerInner />
+    </Suspense>
+  );
+}

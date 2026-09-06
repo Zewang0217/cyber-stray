@@ -69,7 +69,7 @@ export function useEvolution(options: { enabled?: boolean } = {}): UseEvolutionR
   useEffect(() => {
     if (!enabled) return;
     void refresh();
-  }, [refresh]);
+  }, [enabled, refresh]);
 
   const rollback = useCallback(
     async (hash: string): Promise<boolean> => {

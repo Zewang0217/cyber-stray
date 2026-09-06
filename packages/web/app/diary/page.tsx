@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { BootFrame } from "@/components/strayboy/BootFrame";
 import { DEMO_DIARY } from "@/lib/strayboy/demo";
 
@@ -38,8 +39,8 @@ function useDiaryEntries(demo: boolean): { entries: DiaryEntry[]; error: string 
  * START 子屏·日记本（#170）：跨页纸面（paper+ink），按月列表 → 单页。
  * 长文一律 Noto Sans SC（宪法 §3）。
  */
-export default function DiaryPage() {
-  const demo = typeof window !== "undefined" && window.location.search.includes("demo=1");
+function DiaryInner() {
+  const demo = useSearchParams().get("demo") === "1";
   const { entries, error, loading } = useDiaryEntries(demo);
   const months = useMemo(() => [...new Set(entries.map((e) => e.date.slice(0, 7)))].sort().reverse(), [entries]);
   const [month, setMonth] = useState<string | null>(null);
@@ -111,5 +112,13 @@ export default function DiaryPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense>
+      <DiaryInner />
+    </Suspense>
   );
 }

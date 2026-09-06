@@ -125,7 +125,7 @@ export function useInterestGraph(
     // 30 秒轮询（兴趣变化较缓慢）
     const interval = setInterval(() => void fetchRef.current(), 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     if (refreshSignal > 0) void fetchRef.current();

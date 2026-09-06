@@ -83,7 +83,7 @@ export function usePets(options: { enabled?: boolean } = {}): UsePetsReturn {
     } finally {
       setIsLoaded(true);
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {

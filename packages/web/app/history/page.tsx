@@ -70,6 +70,7 @@ function WallInner() {
     }, 4_000);
     return () => clearTimeout(id);
     // items.length 有意不入依赖：loadMore 追加旧卡不应重臂到达计时器（评审 #188）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demo, newestMs]);
 
   const onFeedback = (type: "like" | "dislike", card: PushContent): void => {
