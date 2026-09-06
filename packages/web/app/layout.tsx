@@ -5,6 +5,7 @@ import "@fontsource/vt323/400.css";
 import "@fontsource-variable/noto-sans-sc";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
+import { Toaster } from "sonner";
 import "./globals.css";
 import { TopBar } from "@/components/strayboy/TopBar";
 import { MenuBar } from "@/components/strayboy/MenuBar";
@@ -68,6 +69,7 @@ export default function RootLayout({
         </main>
         <MenuBar />
         <PauseAnims />
+        <Toaster position="top-center" theme="dark" />
       </body>
     </html>
   );
