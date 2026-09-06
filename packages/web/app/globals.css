@@ -594,3 +594,25 @@ body.sb-hidden * {
     animation: none !important;
   }
 }
+
+/* 拍拍爱心：上飘 8 帧后消隐（motion.md §4，f8 each） */
+@keyframes sb-heart-rise {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-56px);
+    opacity: 0;
+  }
+}
+.sb-heart {
+  animation: sb-heart-rise 0.4s steps(8) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-heart {
+    animation: none;
+    opacity: 0;
+  }
+}
