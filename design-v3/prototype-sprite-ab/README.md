@@ -12,6 +12,7 @@
 python3 a/render_a.py     # A 侧：校验 a/cat-grids.txt → a/out/cat-a.png + frames.json
 python3 a/build_grids.py  # （A 侧画布由段定义生成，改段后重跑上一步）
 python3 b/pixelize_b.py   # B 侧：存量生图资产 → b/out/cat-b.png + frames.json
+python3 b/derive_pat.py   # B 侧 pat 派生 → b/out/cat-b-hybrid.png + frames-hybrid.json
 ```
 
 ## 两侧是什么
@@ -19,8 +20,12 @@ python3 b/pixelize_b.py   # B 侧：存量生图资产 → b/out/cat-b.png + fra
 | | A · agent 自绘 | B · 像素风生图 |
 |---|---|---|
 | 管线 | LLM 字符网格（本目录画布）→ 确定性渲染器（硬校验：行列/字符白名单/脚底线）→ spritesheet + frames.json | 旧管线存量生图资产（`packages/web/public/pet/*.png`，灰白猫 3 变体/状态）→ alpha 腐蚀 → bicubic 32×32 降采样 → 毛色重映射（灰→橘，DESIGN.md §7 皮肤能力）→ 17 色硬量化 → 底中基线对齐 |
-| 产出 | idle 4 / walk 4 / pat 2，1.1KB | idle 3 / walk 3 / pat 0（原料缺），2.2KB |
+| 产出 | idle 4 / walk 4 / pat 2，1.1KB | idle 3 / walk 3 / pat 2（派生），2.5KB 混合版 `cat-b-hybrid.png` |
 | 色板 | 7/17 色，出界 0（结构性保证） | 5/17 色，出界 0（量化保证） |
+
+## 为什么 B 侧 pat 是"派生"的
+
+旧管线 9 状态契约（`packages/shared/src/pet.ts` 的 `PET_STATES`：idle/walk/joy/eat/sleep/think/celebrate/grumpy/welcome）里**没有 pat**——pat/pounce 是 design-v3/motion.md §3 新帧接口才有的动作，所以 `packages/web/public/pet/` 原料里就没有。B 侧的 pat 2 帧由 `b/derive_pat.py` 从 idle-1 base 程序下压派生（d=1/3，非生图直出）——这同时是「**B 生图出 base + A 式程序派生出动画帧**」混合管线的小型实证：生图负责"好看的单帧"，程序派生负责"帧间一致"。
 
 ## 诚实边界（评审前必读）
 
