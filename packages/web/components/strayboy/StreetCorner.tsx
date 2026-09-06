@@ -96,6 +96,9 @@ export function StreetCorner({ contract, demo = false }: { contract: SpriteContr
   };
 
   // 未领养（或刚领养完还在入场演出）→ 全屏开机仪式；adopted 门控避免列表刷新打断演出
+  if (!livePets.isLoaded) {
+    return <div className="sb p-6 text-center text-[13px] text-[var(--curb)]">开机自检中……</div>;
+  }
   if (adoptedGate || !pet) {
     return (
       <AdoptionRitual
@@ -106,6 +109,7 @@ export function StreetCorner({ contract, demo = false }: { contract: SpriteContr
           return result;
         }}
         adopting={livePets.adopting}
+        adoptError={livePets.error}
         onAdopted={() => setAdoptedGate(false)}
       />
     );

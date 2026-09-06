@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import confetti from "canvas-confetti";
-import { listPersonalities, type PersonalityId } from "@cyber-stray/shared";
-import type { Catchphrase } from "@cyber-stray/shared";
+import { CATCHPHRASE_LIST_MAX, CATCHPHRASE_TEXT_MAX, listPersonalities, type Catchphrase, type PersonalityId } from "@cyber-stray/shared";
 import { PetSprite } from "@/components/strayboy/PetSprite";
 import type { SpriteContract } from "@/lib/strayboy/sprite";
 
@@ -44,6 +43,7 @@ export function AdoptionRitual({
   contract,
   adopt,
   adopting,
+  adoptError,
   onAdopted,
 }: {
   contract: SpriteContract;
@@ -54,6 +54,7 @@ export function AdoptionRitual({
     catchphrases?: Catchphrase[];
   }) => Promise<unknown>;
   adopting: boolean;
+  adoptError: string | null;
   onAdopted: () => void;
 }) {
   const [step, setStep] = useState<"title" | "name" | "personality" | "catchphrase" | "interests" | "entered">("title");
@@ -66,7 +67,6 @@ export function AdoptionRitual({
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [batches, setBatches] = useState<{ name: number; catchphrase: number }>({ name: 0, catchphrase: 0 });
   const [customInput, setCustomInput] = useState("");
-  const [entered, setEntered] = useState(false);
   const requestIdRef = useRef(0);
 
   const loadCandidates = useCallback(async (step: "name" | "catchphrase", batch: number, extra: { name?: string; personality?: PersonalityId }) => {
@@ -85,9 +85,17 @@ export function AdoptionRitual({
     }
   }, []);
 
-  // 口头禅候选依赖 name+personality，进步骤时取一批
+  // 起名/口头禅步进入即取首批（ADR-0005：含首次共 4 次请求）
+  useEffect(() => {
+    if (step !== "name") return;
+    setCandidates([]);
+    void loadCandidates("name", batches.name, {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
   useEffect(() => {
     if (step !== "catchphrase") return;
+    setCandidates([]);
     void loadCandidates("catchphrase", batches.catchphrase, { name, personality: personality ?? undefined });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
@@ -111,7 +119,6 @@ export function AdoptionRitual({
       disableForReducedMotion: true,
     });
     setStep("entered");
-    setEntered(true);
   };
 
   if (step === "title") {
@@ -132,7 +139,7 @@ export function AdoptionRitual({
   if (step === "entered") {
     return (
       <div className="sb flex min-h-[70vh] flex-col items-center justify-center gap-6 bg-[var(--sky)]">
-        <PetSprite contract={contract} anim={entered ? "walk" : "idle"} scale={3} />
+        <PetSprite contract={contract} anim="walk" scale={3} />
         <div className="relative max-w-[300px]">
           <span className="absolute -top-3 left-3 border-2 border-[var(--ink)] bg-[var(--paper)] px-1.5 py-0.5 font-ps2p text-xs leading-none text-[var(--ink)]">
             {name}
@@ -205,7 +212,7 @@ export function AdoptionRitual({
               onClick={() => setPersonality(p.id)}
               className={`border-2 p-3 text-left ${personality === p.id ? "border-[var(--act)] bg-[var(--panel)]" : "border-[var(--curb)] bg-[var(--panel)]"}`}
             >
-              <p className="text-[15px] text-[var(--paper)]">{p.id} · {p.description}</p>
+              <p className="text-[15px] text-[var(--paper)]">{p.name} · {p.description}</p>
             </button>
           ))}
           <div className="flex justify-between">
@@ -242,17 +249,25 @@ export function AdoptionRitual({
               );
             })}
           </div>
+          <button
+            type="button"
+            disabled={loadingCandidates || batches.catchphrase >= MAX_BATCH}
+            onClick={() => { const b = batches.catchphrase + 1; setBatches((cur) => ({ ...cur, catchphrase: b })); void loadCandidates("catchphrase", b, { name, personality: personality ?? undefined }); }}
+            className="self-start border-2 border-[var(--curb)] bg-[var(--panel)] px-3 py-1.5 text-[13px] text-[var(--hi)]"
+          >
+            换一批（剩 {MAX_BATCH - batches.catchphrase} 次）
+          </button>
           <div className="flex gap-2">
             <input
               value={customInput}
               onChange={(e) => setCustomInput(e.target.value)}
               placeholder="自定义口头禅"
-              maxLength={30}
+              maxLength={CATCHPHRASE_TEXT_MAX}
               className="flex-1 border-2 border-[var(--curb)] bg-[var(--paper)] px-3 py-2 text-[14px] text-[var(--ink)]"
             />
             <button
               type="button"
-              disabled={customInput.trim().length === 0}
+              disabled={customInput.trim().length === 0 || catchphrases.length >= CATCHPHRASE_LIST_MAX}
               onClick={() => { setCatchphrases((cur) => [...cur, { text: customInput.trim(), weight: 1 }]); setCustomInput(""); }}
               className="border-2 border-[var(--curb)] bg-[var(--panel)] px-3 text-[13px] text-[var(--paper)]"
             >
@@ -291,6 +306,7 @@ export function AdoptionRitual({
           </div>
           <div className="flex justify-between">
             <button type="button" onClick={() => setStep("catchphrase")} className="px-3 py-2 text-[13px] text-[var(--curb)]">◀ 上一步</button>
+            {adoptError && <p className="text-[13px] text-[var(--bad)]">领养失败：{adoptError}</p>}
             <button
               type="button"
               disabled={adopting}
