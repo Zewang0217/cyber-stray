@@ -1,447 +1,155 @@
 "use client";
+
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { useWebPush } from "@/hooks/useWebPush";
 import { useChannels } from "@/hooks/useChannels";
-import { usePlan } from "@/hooks/usePlan";
-import { useWechatStatus } from "@/hooks/useWechatStatus";
 import { usePets } from "@/hooks/usePets";
-import { CatchphraseEditor } from "@/components/dashboard/CatchphraseEditor";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Button } from "@/components/ui/Button";
-import { Switch } from "@/components/ui/Switch";
-import { spring } from "@/components/ui/motion";
+
+type View = "root" | "channels" | "pet" | "account" | "admin";
+
+const ROWS: Array<[View, string, string]> = [
+  ["channels", "通道", "飞书推送绑定"],
+  ["pet", "宠物", "作息与口头禅"],
+  ["account", "账号", "登录信息"],
+  ["admin", "维修口", "管理员功能"],
+];
 
 /**
- * 设置页面
- * 只读展示当前配置，提示修改需编辑后端 .env 文件
+ * 设置（/settings，#170 映射 T2）：游戏系统菜单——单列菜单行 → 子屏。
+ * 通道（飞书绑定）/ 宠物（作息/口头禅清单）/ 账号 / 维修口入口。
  */
-export default function SettingsPage(): React.ReactElement {
-  const { state: pushState, error: pushError, enable, disable } = useWebPush();
+export default function SettingsPage() {
+  const [view, setView] = useState<View>("root");
   const { channels, bindFeishu, unbindFeishu, error: channelError } = useChannels();
-  const {
-    plan,
-    error: planError,
-    switchPlan,
-    setPushWindow,
-    clearPushWindow,
-    bindByokKey,
-  } = usePlan();
-  const { status: wechatStatus } = useWechatStatus();
-  const [sleepSaved, setSleepSaved] = useState(false);
-  const { pets, setSleepSchedule, clearSleepSchedule, setDiaryStyle, setDiaryPush, setCatchphrases, error: petsError } = usePets();
-  const sleepPet = pets[0] ?? null;
-  const hasSleepSchedule =
-    sleepPet !== null && sleepPet.sleepStart !== null && sleepPet.sleepEnd !== null;
+  const { pets } = usePets();
+  const pet = pets[0];
+
   return (
-    <div className="spacing-lg max-w-6xl mx-auto">
-      <PageHeader
-        kicker="Praefatio"
-        title="设置"
-        subtitle={<>查看当前 Agent 配置（修改需编辑后端 .env 文件）</>}
-      />
+    <div className="sb mx-auto max-w-2xl p-4">
+      <h1 className="font-ps2p mb-4 text-xs text-[var(--hi)]">OPTION · 设置</h1>
 
-      <motion.div
-        className="grid grid-cols-1 lg:grid-cols-2 gap-6"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...spring, delay: 0.1 }}
-      >
-        {/* 心跳配置 */}
-        <div className="p-6 paper-card rounded-sm">
-          <h2 className="font-heading text-heading font-semibold text-text mb-4">
-            心跳与状态
-          </h2>
-          <div className="space-y-4 font-mono text-sm">
-            <div className="flex justify-between">
-              <span className="text-subtext">心跳间隔</span>
-              <span className="text-text">5 分钟</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-subtext">无聊增长速率</span>
-              <span className="text-text">+5 / 心跳</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-subtext">精力恢复速率</span>
-              <span className="text-text">+2 / 心跳</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-subtext">无聊阈值</span>
-              <span className="text-text">50</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-subtext">精力阈值</span>
-              <span className="text-text">20</span>
-            </div>
-          </div>
+      {view === "root" && (
+        <div className="flex flex-col gap-2">
+          {ROWS.map(([id, label, desc]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setView(id)}
+              className="flex items-center justify-between border-2 border-[var(--curb)] bg-[var(--panel)] px-4 py-3 text-left shadow-[3px_3px_0_#000] hover:border-[var(--act)]"
+            >
+              <span className="text-[15px] text-[var(--paper)]">{label}</span>
+              <span className="text-[12px] text-[var(--curb)]">{desc} ▶</span>
+            </button>
+          ))}
         </div>
+      )}
 
-        {/* LLM 配置 */}
-        <div className="p-6 paper-card rounded-sm">
-          <h2 className="font-heading text-heading font-semibold text-text mb-4">
-            LLM 配置
-          </h2>
-          <div className="space-y-4 font-mono text-sm">
-            <div className="flex justify-between">
-              <span className="text-subtext">模型</span>
-              <span className="text-text">deepseek-chat</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-subtext">Temperature</span>
-              <span className="text-text">0.8</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 搜索配置 */}
-        <div className="p-6 paper-card rounded-sm">
-          <h2 className="font-heading text-heading font-semibold text-text mb-4">
-            搜索配置
-          </h2>
-          <div className="space-y-4 font-mono text-sm">
-            <div className="flex justify-between">
-              <span className="text-subtext">最大结果数</span>
-              <span className="text-text">10</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-subtext">搜索 API</span>
-              <span className="text-text">Tavily</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 推送配置 */}
-        <div className="p-6 paper-card rounded-sm">
-          <h2 className="font-heading text-heading font-semibold text-text mb-4">
-            推送渠道
-          </h2>
-          <div className="space-y-4 font-mono text-sm">
-            <div className="flex justify-between items-center">
-              <span className="text-subtext">飞书 Webhook</span>
-              <span className="text-success text-xs">已配置</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-subtext">Telegram Bot</span>
-              <span className="text-subtext text-xs">未配置</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 系统推送（S10）：Web Push 订阅开关 */}
-        <div className="p-6 paper-card rounded-sm">
-          <h2 className="font-heading text-heading font-semibold text-text mb-2">系统推送</h2>
-          <p className="text-small text-subtext mb-4">
-            关掉 App 也能收到它的推送（浏览器系统级通知）
-          </p>
-          {pushState === "unsupported" ? (
-            <p className="text-small text-subtext">当前浏览器不支持系统推送</p>
-          ) : pushState === "denied" ? (
-            <p className="text-small text-danger">
-              通知权限被拒绝——请在浏览器站点设置中允许通知后重试
+      {view === "channels" && (
+        <SubView title="通道" onBack={() => setView("root")}>
+          {channelError && (
+            <p className="mb-3 border-2 border-[var(--bad)] bg-[var(--sky)] p-2 text-[13px] text-[var(--bad)]">
+              {channelError}
             </p>
-          ) : (
-            <div className="flex items-center gap-3">
-              <Switch
-                checked={pushState === "on"}
-                onCheckedChange={(on) => void (on ? enable() : disable())}
-                disabled={pushState === "subscribing"}
-                aria-label="系统推送开关"
-              />
-              <span className="text-small text-subtext">
-                {pushState === "subscribing"
-                  ? "订阅中…"
-                  : pushState === "on"
-                    ? "已开启——关掉 App 也能收到"
-                    : "已关闭"}
-              </span>
-              {pushError ? <span className="text-small text-danger">{pushError}</span> : null}
-            </div>
           )}
-        </div>
-
-        {/* 飞书通道（S10）：可选绑定 */}
-        <div className="p-6 paper-card rounded-sm">
-          <h2 className="font-heading text-heading font-semibold text-text mb-2">飞书通道（可选）</h2>
-          <p className="text-small text-subtext mb-4">
-            绑定后推送同步发到飞书群机器人（高级用户）
+          <ChannelRow
+            name="飞书"
+            bound={channels?.feishu === true}
+            onBind={(webhook) => void bindFeishu(webhook)}
+            onUnbind={() => void unbindFeishu()}
+          />
+          <p className="mt-3 text-[12px] leading-[1.7] text-[var(--curb)]">
+            Web Push 默认开启（浏览器授权后生效），无需在此配置。
           </p>
-          {channels?.feishu ? (
-            <div className="flex items-center gap-3">
-              <span className="text-small text-success">已绑定</span>
-              <Button variant="danger" size="sm" onClick={() => void unbindFeishu()}>
-                解绑
-              </Button>
+        </SubView>
+      )}
+
+      {view === "pet" && (
+        <SubView title="宠物" onBack={() => setView("root")}>
+          {pet ? (
+            <div className="flex flex-col gap-2 text-[14px] leading-[1.8] text-[var(--paper)]">
+              <p>名字：{pet.name}</p>
+              <p>作息：{pet.sleepStart !== null && pet.sleepEnd !== null ? `${pet.sleepStart}:00 – ${pet.sleepEnd}:00` : "未设置（全天活动）"}</p>
+              <p>口头禅：{(pet.catchphrases ?? []).map((c) => c.text).join(" / ") || "（性格默认组）"}</p>
+              <p className="text-[12px] text-[var(--curb)]">编辑入口随后续票接入。</p>
             </div>
           ) : (
-            <form
-              className="flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const form = e.currentTarget;
-                const webhook = new FormData(form).get("webhook");
-                if (typeof webhook === "string") void bindFeishu(webhook);
-                form.reset();
-              }}
-            >
-              <input
-                name="webhook"
-                type="url"
-                required
-                placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/…"
-                className="flex-1 px-3 py-2 rounded-sm bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
-              />
-              <Button type="submit">绑定</Button>
-            </form>
+            <p className="text-[13px] text-[var(--curb)]">还没有宠物。</p>
           )}
-          {channelError ? <p className="text-small text-danger mt-2">{channelError}</p> : null}
-        </div>
+        </SubView>
+      )}
 
-        {/* 微信通道（#97）：扫码即用 + 过期提示 */}
-        <div className="p-6 paper-card rounded-sm">
-          <h2 className="font-heading text-heading font-semibold text-text mb-2">
-            微信通道（可选）
-          </h2>
-          <p className="text-small text-subtext mb-4">
-            扫码绑定后可在微信里和宠物聊天（双向 DM + 每日受限推送）
+      {view === "account" && (
+        <SubView title="账号" onBack={() => setView("root")}>
+          <p className="text-[14px] leading-[1.9] text-[var(--paper)]">
+            登录经 Casdoor 统一认证；会话由控制面管理。
+            <br />
+            退出登录：<a href="/api/auth/logout" className="text-[var(--act)] underline">/api/auth/logout</a>
           </p>
-          {!wechatStatus ? (
-            <p className="text-small text-subtext">加载中…</p>
-          ) : !wechatStatus.bound ? (
-            <Button asChild>
-              <a href="/wechat">扫码绑定</a>
-            </Button>
-          ) : wechatStatus.status === "expired" ? (
-            <div className="flex items-center gap-3">
-              <span className="text-small text-danger">
-                {wechatStatus.expiredHint ?? "微信通道已过期,发条消息重新激活"}
-              </span>
-              <Button asChild size="sm">
-                <a href={`/wechat?rebind=${encodeURIComponent(wechatStatus.tenantId ?? "")}`}>
-                  重新激活
-                </a>
-              </Button>
-            </div>
-          ) : (
-            <span className="text-small text-success">
-              已绑定（{wechatStatus.status === "active" ? "活跃中" : "等待激活"}）——
-              在微信里给宠物发条消息开始聊天
-            </span>
-          )}
-        </div>
+        </SubView>
+      )}
 
-        {/* 套餐（S11）：Plan 门控与节流 */}
-        <div className="p-6 paper-card rounded-sm">
-          <h2 className="font-heading text-heading font-semibold text-text mb-2">套餐</h2>
-          <p className="text-small text-subtext mb-4">
-            {plan
-              ? `当前 ${plan.plan.toUpperCase()} · 每日推送上限 ${plan.limits.pushesPerDay} 条`
-              : "加载中…"}
-            。宠物自进化永不设限，套餐只卡「到达主人」的频率。
+      {view === "admin" && (
+        <SubView title="维修口" onBack={() => setView("root")}>
+          <p className="text-[13px] leading-[1.8] text-[var(--paper)]">
+            管理员功能在 <a href="/admin" className="text-[var(--act)] underline">/admin</a>（维修口形态，随维修口票重铸）。
           </p>
-          <div className="flex gap-2 mb-4">
-            {(["free", "pro", "byok"] as const).map((p) => (
-              <Button
-                key={p}
-                variant={plan?.plan === p ? "primary" : "secondary"}
-                disabled={plan?.plan === p}
-                onClick={() => void switchPlan(p)}
-              >
-                {p === "free" ? "免费" : p === "pro" ? "Pro" : "BYOK"}
-              </Button>
-            ))}
-          </div>
+        </SubView>
+      )}
+    </div>
+  );
+}
 
-          {/* 推送窗口（Pro/BYOK） */}
-          {plan && plan.plan !== "free" ? (
-            <form
-              className="flex gap-2 items-center mb-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const s = Number(new FormData(e.currentTarget).get("start"));
-                const en = Number(new FormData(e.currentTarget).get("end"));
-                if (Number.isInteger(s) && Number.isInteger(en)) void setPushWindow(s, en);
-              }}
-            >
-              <span className="text-small text-subtext">推送时间</span>
-              <input
-                name="start"
-                type="number"
-                min={0}
-                max={23}
-                defaultValue={plan.pushWindow?.startHour ?? 9}
-                className="w-16 px-2 py-1.5 rounded-lg bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
-              />
-              <span className="text-small text-subtext">点到</span>
-              <input
-                name="end"
-                type="number"
-                min={0}
-                max={23}
-                defaultValue={plan.pushWindow?.endHour ?? 22}
-                className="w-16 px-2 py-1.5 rounded-lg bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
-              />
-              <span className="text-small text-subtext">点</span>
-              <Button type="submit" size="sm">保存</Button>
-              {plan.pushWindow ? (
-                <Button variant="danger" size="sm" onClick={() => void clearPushWindow()}>
-                  清除
-                </Button>
-              ) : null}
-            </form>
-          ) : null}
+function SubView({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) {
+  return (
+    <div>
+      <button type="button" onClick={onBack} className="mb-3 text-[13px] text-[var(--curb)]">◀ 返回</button>
+      <h2 className="font-ps2p mb-3 text-xs text-[var(--hi)]">{title}</h2>
+      {children}
+    </div>
+  );
+}
 
-          {/* BYOK key 绑定 */}
-          {plan?.plan === "byok" ? (
-            <form
-              className="flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const form = e.currentTarget;
-                const key = new FormData(form).get("apiKey");
-                if (typeof key === "string") void bindByokKey(key);
-                form.reset();
-              }}
-            >
-              <input
-                name="apiKey"
-                type="password"
-                required
-                placeholder={
-                  plan.byok.keyBound ? "已绑定（输入新 key 可更换）" : "sk-…（DeepSeek API key）"
-                }
-                className="flex-1 px-3 py-2 rounded-sm bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
-              />
-              <Button type="submit">
-                {plan.byok.keyBound ? "更换" : "绑定"}
-              </Button>
-            </form>
-          ) : null}
-          {planError ? <p className="text-small text-danger mt-2">{planError}</p> : null}
+function ChannelRow({ name, bound, onBind, onUnbind }: {
+  name: string;
+  bound: boolean;
+  onBind: (webhook: string) => void;
+  onUnbind: () => void;
+}) {
+  const [webhook, setWebhook] = useState("");
+  return (
+    <div className="border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[15px] text-[var(--paper)]">{name}</span>
+        <span className={`text-[12px] ${bound ? "text-[var(--ok)]" : "text-[var(--curb)]"}`}>
+          {bound ? "已绑定" : "未绑定"}
+        </span>
+      </div>
+      {!bound && (
+        <div className="mt-2 flex gap-2">
+          <input
+            value={webhook}
+            onChange={(e) => setWebhook(e.target.value)}
+            placeholder="飞书群机器人 Webhook"
+            className="flex-1 border-2 border-[var(--curb)] bg-[var(--sky)] px-2 py-1.5 text-[13px] text-[var(--paper)]"
+          />
+          <button
+            type="button"
+            disabled={webhook.trim().length === 0}
+            onClick={() => onBind(webhook.trim())}
+            className="border-2 border-[var(--curb)] bg-[var(--panel)] px-3 text-[13px] text-[var(--paper)]"
+          >
+            绑定
+          </button>
         </div>
-
-        {/* 宠物 IP 定制（#94）：Pro/BYOK 专属入口；免费用户无入口（平台预置 IP 系列） */}
-        {plan && plan.plan !== "free" ? (
-          <div className="p-6 paper-card rounded-sm">
-            <h2 className="font-heading text-heading font-semibold text-text mb-2">
-              宠物 IP 定制
-            </h2>
-            <p className="text-small text-subtext mb-4">
-              描述你的专属街溜子 → 确认概念图 → 全自动生成 9 种状态的完整素材
-              （四宫格主路径 + 两层质检；每月限 2 套）。确认后的概念图是角色锚点，
-              后续表情包等生成都复用它。
-            </p>
-            <Button asChild>
-              <a href="/pet/customize">去定制</a>
-            </Button>
-          </div>
-        ) : null}
-
-        {/* 作息（#91）：宠物睡眠时间段——睡眠期停止游荡，前端展示睡觉 */}
-        <div className="p-6 paper-card rounded-sm">
-          <h2 className="font-heading text-heading font-semibold text-text mb-2">作息</h2>
-          <p className="text-small text-subtext mb-4">
-            设置宠物的睡眠时间段（本地时区，跨午夜合法）。睡眠期宠物停止游荡，前端展示睡觉状态。
-          </p>
-          {!sleepPet ? (
-            <p className="text-small text-subtext">尚未领养宠物</p>
-          ) : (
-            <form
-              className="flex gap-2 items-center"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const s = Number(new FormData(e.currentTarget).get("start"));
-                const en = Number(new FormData(e.currentTarget).get("end"));
-                if (Number.isInteger(s) && Number.isInteger(en)) {
-                  void setSleepSchedule(s, en).then(() => {
-                    setSleepSaved(true);
-                    window.setTimeout(() => setSleepSaved(false), 2000);
-                  });
-                }
-              }}
-            >
-              <span className="text-small text-subtext">睡眠</span>
-              <input
-                name="start"
-                type="number"
-                min={0}
-                max={23}
-                defaultValue={sleepPet.sleepStart ?? 22}
-                className="w-16 px-2 py-1.5 rounded-lg bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
-              />
-              <span className="text-small text-subtext">点到</span>
-              <input
-                name="end"
-                type="number"
-                min={0}
-                max={23}
-                defaultValue={sleepPet.sleepEnd ?? 7}
-                className="w-16 px-2 py-1.5 rounded-lg bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
-              />
-              <span className="text-small text-subtext">点</span>
-              <Button type="submit" size="sm">保存</Button>
-              {hasSleepSchedule ? (
-                <Button variant="danger" size="sm" onClick={() => void clearSleepSchedule()}>
-                  清除
-                </Button>
-              ) : null}
-            </form>
-          )}
-          {petsError ? <p className="text-small text-danger mt-2">{petsError}</p> : null}
-          {sleepSaved ? (
-            <p className="text-small text-[var(--c-amber)] mt-2">已保存 — 睡眠期宠物停止游荡并展示睡觉状态</p>
-          ) : null}
-        </div>
-
-        {/* 日记（#92）：风格选择 + 每日推送开关 */}
-        <div className="p-6 paper-card rounded-sm">
-          <h2 className="font-heading text-heading font-semibold text-text mb-2">日记</h2>
-          <p className="text-small text-subtext mb-4">
-            宠物每天睡前生成一篇性格化日记。风格可自定义（默认跟随宠物性格），可开启每日推送。
-          </p>
-          {!sleepPet ? (
-            <p className="text-small text-subtext">尚未领养宠物</p>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex gap-2 items-center">
-                <span className="text-small text-subtext">风格</span>
-                {(
-                  [
-                    { value: "personality", label: "随性格" },
-                    { value: "casual", label: "随意" },
-                    { value: "careful", label: "认真" },
-                    { value: "literary", label: "文艺" },
-                  ] as const
-                ).map((opt) => (
-                  <Button
-                    key={opt.value}
-                    variant={sleepPet.diaryStyle === opt.value ? "primary" : "secondary"}
-                    size="sm"
-                    disabled={sleepPet.diaryStyle === opt.value}
-                    onClick={() => void setDiaryStyle(opt.value)}
-                  >
-                    {opt.label}
-                  </Button>
-                ))}
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-small text-subtext">每日推送</span>
-                <Switch
-                  checked={sleepPet.diaryPushEnabled}
-                  onCheckedChange={(on) => void setDiaryPush(on)}
-                  aria-label="每日日记推送开关"
-                />
-                <span className="text-xs text-subtext">
-                  {sleepPet.diaryPushEnabled ? "日记生成后推送给你" : "仅生成，不推送"}
-                </span>
-              </div>
-            </div>
-          )}
-          {petsError ? <p className="text-small text-danger mt-2">{petsError}</p> : null}
-        </div>
-
-        {/* 口头禅编辑（#114 切片 6） */}
-        <CatchphraseEditor pet={sleepPet} onSave={(list) => setCatchphrases(list)} />
-      </motion.div>
+      )}
+      {bound && (
+        <button
+          type="button"
+          onClick={onUnbind}
+          className="mt-2 border-2 border-[var(--bad)] bg-[var(--panel)] px-3 py-1 text-[12px] text-[var(--bad)]"
+        >
+          解绑
+        </button>
+      )}
     </div>
   );
 }
