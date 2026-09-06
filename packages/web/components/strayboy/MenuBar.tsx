@@ -21,7 +21,7 @@ export function MenuBar() {
   return (
     <nav
       aria-label="游戏菜单"
-      className="sb fixed inset-x-0 bottom-0 z-40 flex items-stretch gap-1 border-2 border-black bg-[var(--panel)] p-1 shadow-[0_-2px_0_rgba(0,0,0,0.4)] md:inset-x-auto md:bottom-3 md:left-1/2 md:-translate-x-1/2 md:rounded-none md:border-2 md:shadow-[4px_4px_0_#000]"
+      className="sb fixed inset-x-0 bottom-0 z-40 flex items-stretch gap-1 border-2 border-black bg-[var(--panel)] p-1 shadow-[0_-2px_0_rgba(0,0,0,0.4)] md:inset-x-auto md:bottom-3 md:left-1/2 md:-translate-x-1/2 md:shadow-[4px_4px_0_#000]"
     >
       {TABS.map((t) => {
         const active = pathname === t.href;

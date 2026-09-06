@@ -551,22 +551,39 @@ html[data-theme="night"] .pet-player {
   animation: sb-blink 1s steps(1) infinite;
 }
 
-@keyframes sb-breathe {
+/* 电源灯：闪烁类 steps(1) 1s（motion.md §2），暗相 .25 保留"呼吸绿点"读感 */
+@keyframes sb-led {
   0%,
-  100% {
+  49% {
     opacity: 1;
   }
-  50% {
-    opacity: 0.35;
+  50%,
+  100% {
+    opacity: 0.25;
   }
 }
-.sb-breathe {
-  animation: sb-breathe 1s steps(2) infinite;
+.sb-led {
+  animation: sb-led 1s steps(1) infinite;
+}
+
+/* 键盘焦点：像素描边（宪法内用 act 蓝实线，不用浏览器默认光环） */
+.sb a:focus-visible,
+.sb button:focus-visible,
+.sb [tabindex]:focus-visible {
+  outline: 2px solid var(--act);
+  outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .sb-blink,
-  .sb-breathe {
+  .sb-led {
     animation: none;
   }
+}
+
+/* motion.md §5：页面不可见时停所有无限动画（body.sb-hidden 由 PauseAnims 切换） */
+body.sb-hidden .sb-blink,
+body.sb-hidden .sb-led,
+body.sb-hidden * {
+  animation-play-state: paused !important;
 }

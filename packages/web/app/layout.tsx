@@ -8,6 +8,7 @@ import "@fontsource/ibm-plex-mono/500.css";
 import "./globals.css";
 import { TopBar } from "@/components/strayboy/TopBar";
 import { MenuBar } from "@/components/strayboy/MenuBar";
+import { PauseAnims } from "@/components/strayboy/PauseAnims";
 
 /**
  * Direction contract（design-v3 世界宪法，2026-09 重写）：
@@ -47,11 +48,22 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning className="h-full antialiased">
       <body className="sb flex min-h-full flex-col bg-[var(--sky)] text-[var(--paper)]">
+        {/* 键盘直达主内容（无障碍；像素描边焦点态见 globals.css） */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:border-2 focus:border-[var(--curb)] focus:bg-[var(--panel)] focus:px-3 focus:py-2 focus:text-xs focus:text-[var(--paper)]"
+        >
+          跳到主内容
+        </a>
         <TopBar />
-        <main id="main-content" className="relative flex-1 pb-16 md:pb-0">
+        <main
+          id="main-content"
+          className="relative flex-1 pb-16 md:pb-24"
+        >
           {children}
         </main>
         <MenuBar />
+        <PauseAnims />
       </body>
     </html>
   );
