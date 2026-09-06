@@ -13,6 +13,7 @@ export interface EvolutionSnapshot {
   timestamp: string;
   hash: string;
   entropy: number;
+  nodeCount: number;
   nodes: SnapshotNode[];
   source?: string;
 }

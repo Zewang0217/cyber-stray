@@ -57,3 +57,19 @@ export function demoEventStream(onEvent: (type: TenantEvent["type"]) => void): (
   }, 8_000);
   return () => clearInterval(id);
 }
+
+/** 演示兴趣节点（图鉴 ?demo=1）。 */
+export const DEMO_NODES = [
+  { id: "复古掌机", weight: 0.9, effectiveWeight: 0.82, source: "feedback", reinforceCount: 6 },
+  { id: "像素画教程", weight: 0.7, effectiveWeight: 0.61, source: "reflection", reinforceCount: 3 },
+  { id: "猫行为学", weight: 0.5, effectiveWeight: 0.44, source: "feedback", reinforceCount: 2 },
+  { id: "独立游戏", weight: 0.4, effectiveWeight: 0.35, source: "reflection", reinforceCount: 1 },
+] as const;
+
+/** 演示快照（时间机器 SAVE 槽）。 */
+export const DEMO_SNAPSHOTS = [
+  { timestamp: new Date(Date.now() - 6 * DAY).toISOString(), hash: "a1b2c3d4e5", entropy: 1.42, nodeCount: 3,
+    nodes: [{ id: "复古掌机", weight: 0.8, source: "default", reinforceCount: 3 }] },
+  { timestamp: new Date(Date.now() - 3 * DAY).toISOString(), hash: "f6e5d4c3b2", entropy: 1.71, nodeCount: 4,
+    nodes: [{ id: "像素画教程", weight: 0.6, source: "reflection", reinforceCount: 2 }] },
+] as const;
