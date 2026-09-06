@@ -47,7 +47,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" suppressHydrationWarning className="h-full antialiased">
-      <body className="sb flex min-h-full flex-col bg-[var(--sky)] text-[var(--paper)]">
+      {/* 内联压掉旧世界 body 纸纹底图/底色（旧规则未分层，Tailwind 类压不掉，见 #186） */}
+      <body
+        className="sb flex min-h-full flex-col bg-[var(--sky)] text-[var(--paper)]"
+        style={{ backgroundImage: "none", backgroundColor: "var(--sky)" }}
+      >
         {/* 键盘直达主内容（无障碍；像素描边焦点态见 globals.css） */}
         <a
           href="#main-content"
