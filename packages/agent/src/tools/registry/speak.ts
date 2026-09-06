@@ -12,6 +12,8 @@ const logger = consola.withTag('tool:speak');
 function buildSpeakDescription(): string {
   return `分享内容或者碎碎念，表达你的想法。
 
+**是否推送由你自己判断（可保持沉默）：** 与主人兴趣相关、或你自己真心觉得有意思/好奇的内容才值得推；没有值得说的就完全不调用本工具——沉默是合法且正确的选择。每次推送会消耗一条当日推送预算，判断"这条值不值得用掉配额"。主人强兴趣方向的内容相关性优先；你自己好奇图谱里的新奇话题也鼓励分享（给主人小惊喜）。最近已推送过的同主题内容（换来源也算）不要重复推。
+
 **语言要求：** 推送内容应使用 ${getConfig().outputLanguage} 语言。即使你搜索时用了英文/中文，最终分享时应整理为指定语言。
 
 **内容类型：**
@@ -34,16 +36,24 @@ export const speakToolDef: ToolDefinition = {
       type: z.enum(['share', 'nonsense', 'article']).describe(
         'share=分享链接/资源, nonsense=无厘头碎碎念, article=正经文章/评论',
       ),
+      reason: z.string().optional().describe(
+        '一句话说明为什么这条值得推给主人（相关性/新奇/有用），会随记录落盘展示',
+      ),
     }),
-    execute: async ({ content, type }) => {
+    execute: async ({ content, type, reason }) => {
       ctx.stepCount++;
       const stepStart = Date.now();
 
-// 门控评估在 quality hook 的 beforeToolCall 完成，命中的兴趣话题已写入 ctx.matchedTopics。
-      // 门控拦截由 hook 侧 deny 处理（含 gated 历史留痕），工具 execute 只走放行路径。
+      // 护栏与归因在 quality hook 的 beforeToolCall 完成（ctx.gateReasons =
+      // 扫描警告，ctx.matchedTopics = 命中话题）。P3 #152：reason 是 LLM
+      // 自判断的"为什么推"，与扫描警告合并落盘，仪表盘展示推送理由。
+      const gateReasons = [
+        ...(reason ? [reason] : []),
+        ...(ctx.gateReasons ?? []),
+      ];
       const result = await speak(content, type, {
         mood: ctx.state.mood,
-        gateReasons: ctx.gateReasons,
+        ...(gateReasons.length > 0 ? { gateReasons } : {}),
         matchedTopics: ctx.matchedTopics,
       });
       const elapsed = Date.now() - stepStart;

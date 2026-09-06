@@ -16,7 +16,7 @@ import {
   DEFAULT_INTEREST_CONFIG,
   InterestGraph,
 } from '../memory/interest-graph.js';
-import { _resetPushGate, PushGate, DEFAULT_PUSH_GATE_CONFIG } from '../memory/push-gate.js';
+import { attributeTopics } from '../memory/push-gate.js';
 import { _clearMessageTopicMap, registerSpeakTopics, getMessageTopicMapSize } from '../memory/feedback-pipeline.js';
 import { getInterestHistory } from '../memory/interest-history.js';
 
@@ -30,7 +30,6 @@ describe('E2E 闭环验证', () => {
   beforeEach(() => {
     ({ cleanup } = useTempDataDir());
     _resetInterestGraphCache();
-    _resetPushGate();
     _clearMessageTopicMap();
   });
 
@@ -202,85 +201,32 @@ describe('E2E 闭环验证', () => {
   });
 
   // ==========================================
-  // 场景 4: PushGate 使用兴趣数据
+  // 场景 4: 话题归因使用兴趣数据（P3 #152：评分门控已移除，归因保留）
   // ==========================================
 
-  test('PushGate 评分应受兴趣图谱影响', async () => {
+  test('话题归因应受兴趣图谱影响', async () => {
     const graph = getInterestGraph();
     graph.seedDefaults();
     // 强化"科技"使其远高于其他
     graph.reinforce('科技', 0.3);
     await graph.persist();
 
-    // 创建 PushGate，只用兴趣相关度
-    const gate = new PushGate({
-      ...DEFAULT_PUSH_GATE_CONFIG,
-      weights: { interestRelevance: 1.0, userPreference: 0, contentQuality: 0 },
-      threshold: 0.1,
-      contentScan: { enabled: false, maxUrlCount: 5 },
-    });
+    const matchResult = await attributeTopics('科技新闻：最新 AI 芯片发布');
+    const noMatchResult = await attributeTopics('美食推荐：最好吃的火锅店');
 
-    const matchResult = await gate.evaluate('科技新闻：最新 AI 芯片发布', 'article');
-    const noMatchResult = await gate.evaluate('美食推荐：最好吃的火锅店', 'article');
-
-    // 匹配兴趣的内容得分应更高
-    expect(matchResult.factors.interestRelevance).toBeGreaterThan(
-      noMatchResult.factors.interestRelevance,
-    );
+    // 命中兴趣的内容归因到图谱话题，无关内容归因为空
+    expect(matchResult).toContain('科技');
+    expect(noMatchResult).toEqual([]);
   });
 
-  test('门控阈值决定是否推送', async () => {
+  test('归因结果随 speak 落盘语义：命中列表可直接作反馈归因依据', async () => {
     const graph = getInterestGraph();
     graph.seedDefaults();
     await graph.persist();
 
-    const looseGate = new PushGate({
-      ...DEFAULT_PUSH_GATE_CONFIG,
-      threshold: 0.2,
-      contentScan: { enabled: false, maxUrlCount: 5 },
-    });
-
-    const strictGate = new PushGate({
-      ...DEFAULT_PUSH_GATE_CONFIG,
-      threshold: 0.9,
-      contentScan: { enabled: false, maxUrlCount: 5 },
-    });
-
-    const resultLoose = await looseGate.evaluate('一般内容', 'nonsense');
-    const resultStrict = await strictGate.evaluate('一般内容', 'nonsense');
-
-    expect(typeof resultLoose.passed).toBe('boolean');
-    expect(typeof resultStrict.passed).toBe('boolean');
-    expect(resultLoose.threshold).toBe(0.2);
-    expect(resultStrict.threshold).toBe(0.9);
-  });
-
-  test('推送价值分由三因子组成', async () => {
-    const graph = getInterestGraph();
-    graph.seedDefaults();
-    await graph.persist();
-
-    const gate = new PushGate({
-      ...DEFAULT_PUSH_GATE_CONFIG,
-      contentScan: { enabled: false, maxUrlCount: 5 },
-    });
-
-    const result = await gate.evaluate(
-      'AI 技术最新进展：大语言模型的应用与挑战',
-      'article',
-    );
-
-    // 三因子都存在且在 [0,1]
-    expect(result.factors.interestRelevance).toBeGreaterThanOrEqual(0);
-    expect(result.factors.interestRelevance).toBeLessThanOrEqual(1);
-    expect(result.factors.userPreference).toBeGreaterThanOrEqual(0);
-    expect(result.factors.userPreference).toBeLessThanOrEqual(1);
-    expect(result.factors.contentQuality).toBeGreaterThanOrEqual(0);
-    expect(result.factors.contentQuality).toBeLessThanOrEqual(1);
-
-    // 总分是加权和
-    expect(result.score).toBeGreaterThanOrEqual(0);
-    expect(result.score).toBeLessThanOrEqual(1);
+    const matched = await attributeTopics('AI 技术最新进展：大语言模型的应用与挑战');
+    expect(Array.isArray(matched)).toBe(true);
+    expect(matched).toContain('AI');
   });
 
   // ==========================================
@@ -368,28 +314,13 @@ describe('E2E 闭环验证', () => {
     const history = await getInterestHistory();
     expect(history.length).toBeGreaterThanOrEqual(1);
 
-    // Step 5: 验证门控使用进化后的兴趣
-    const gate = new PushGate({
-      ...DEFAULT_PUSH_GATE_CONFIG,
-      weights: { interestRelevance: 0.5, userPreference: 0.25, contentQuality: 0.25 },
-      contentScan: { enabled: false, maxUrlCount: 5 },
-    });
-
-    const result = await gate.evaluate(
+    // Step 5: 验证归因使用进化后的兴趣（P3 #152：评分门控已移除）
+    const matched = await attributeTopics(
       '科技领域的最新突破：AI 芯片性能翻倍，量子计算迈向商业化',
-      'article',
     );
 
-    // 验证评分落在合理范围
-    expect(result.score).toBeGreaterThanOrEqual(0);
-    expect(result.score).toBeLessThanOrEqual(1);
-    // 三因子都参与了评分
-    expect(result.factors.interestRelevance).toBeDefined();
-    expect(result.factors.userPreference).toBeDefined();
-    expect(result.factors.contentQuality).toBeDefined();
-    // 决策明确
-    expect(typeof result.passed).toBe('boolean');
-    expect(result.reasons.length).toBeGreaterThan(0);
+    // 进化后的"科技"被内容命中，可作反馈归因依据
+    expect(matched).toContain('科技');
   });
 
   test('全链路：兴趣图谱完整生命周期', async () => {

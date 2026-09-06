@@ -13,13 +13,32 @@ import {
 import { useTempDataDir } from '../../test/helpers.js';
 
 describe('url-tracker 纯函数', () => {
-  test('normalizeUrl 去协议/查询参数/锚点', () => {
-    expect(normalizeUrl('https://a.com/b?x=1#y')).toBe('a.com/b');
+  test('normalizeUrl 去协议/锚点，保留语义 query（L1 修复 #152）', () => {
+    expect(normalizeUrl('https://a.com/b?x=1#y')).toBe('a.com/b?x=1');
     expect(normalizeUrl('http://a.com/b')).toBe('a.com/b');
+    // 语义参数保留：不同 id 是不同内容，不再误判同链
+    expect(normalizeUrl('https://news.com/item?id=123')).toBe('news.com/item?id=123');
+    expect(normalizeUrl('https://news.com/item?id=456')).toBe('news.com/item?id=456');
+  });
+
+  test('normalizeUrl 删 tracking 参数（utm_* 家族 + 已知点击 ID）', () => {
+    expect(normalizeUrl('https://a.com/b?utm_source=x&utm_medium=y&id=1')).toBe('a.com/b?id=1');
+    expect(normalizeUrl('https://a.com/b?fbclid=ABC&spm=123.45')).toBe('a.com/b');
+    // 仅 tracking 参数被删光 → query 整段消失
+    expect(normalizeUrl('https://a.com/b?utm_campaign=z')).toBe('a.com/b');
+  });
+
+  test('normalizeUrl 参数排序归一（顺序差异不影响去重）', () => {
+    expect(normalizeUrl('https://a.com/b?id=1&type=x')).toBe(
+      normalizeUrl('https://a.com/b?type=x&id=1'),
+    );
   });
 
   test('getUrlHash 对相同归一化 URL 返回相同 hash', () => {
-    expect(getUrlHash('https://a.com/b?x=1')).toBe(getUrlHash('http://a.com/b'));
+    expect(getUrlHash('https://a.com/b?utm_source=x')).toBe(getUrlHash('http://a.com/b'));
+    expect(getUrlHash('https://news.com/item?id=123')).not.toBe(
+      getUrlHash('https://news.com/item?id=456'),
+    );
   });
 
   test('extractUrl 提取完整 URL（含域名中的点）', () => {

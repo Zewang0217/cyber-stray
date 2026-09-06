@@ -35,6 +35,13 @@
 - 分支：`feat/xxx`、`fix/xxx`、`refactor/xxx`
 - Push 前查 diff：无 `console.log` / `print` / TODO 遗留，无敏感信息（密码/token/私钥）
 
+## 分支流程（硬规则，ADR-0009）
+
+- **只在 develop 分支开发**：功能/修复分支从 develop 切出 → PR 合并到 **develop**（CI 只对 base=develop 的 PR 跑质量门）。
+- **开发前必拉**：每次开始开发前先 `git fetch origin` 并检查 develop 有无新改动——有则 `git pull --ff-only origin develop`（或 rebase 到最新 develop），确保基于最新 develop 开发，避免合并冲突堆叠。
+- 发布 = 单独 PR（develop → main，squash 合并，不重复跑质量门；main 保护要求 Approve + 管理员合并）。
+- 禁止直接向 main 提功能 PR（main 只接受 develop 的发布 PR）。
+
 ## 思维指南（Trellis 自带方法论）
 
 - [code-reuse-thinking-guide.md](code-reuse-thinking-guide.md) — 动手写新代码前，先想"能不能复用既有实现"
