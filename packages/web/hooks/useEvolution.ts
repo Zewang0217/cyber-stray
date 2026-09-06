@@ -13,7 +13,8 @@ export interface EvolutionSnapshot {
   timestamp: string;
   hash: string;
   entropy: number;
-  nodeCount: number;
+  /** CP 旧契约未透传；客户端以 nodes.length 派生 */
+  nodeCount?: number;
   nodes: SnapshotNode[];
   source?: string;
 }
@@ -41,7 +42,8 @@ interface UseEvolutionReturn {
 /**
  * 进化可视化 Hook（S13）：GET /api/evolution + POST /api/evolution/rollback。
  */
-export function useEvolution(): UseEvolutionReturn {
+export function useEvolution(options: { enabled?: boolean } = {}): UseEvolutionReturn {
+  const { enabled = true } = options;
   const [data, setData] = useState<EvolutionState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +67,7 @@ export function useEvolution(): UseEvolutionReturn {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     void refresh();
   }, [refresh]);
 

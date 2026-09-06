@@ -58,7 +58,7 @@ export function TimeMachine({
               <span className="font-vt323 text-[20px] text-[var(--curb)]">熵 {s.entropy.toFixed(2)}</span>
             </div>
             <p className="mt-1 font-vt323 text-[16px] text-[var(--curb)]">
-              {s.nodeCount} 个话题 · hash {s.hash.slice(0, 8)}
+              {s.nodes.length} 个话题 · hash {s.hash.slice(0, 8)}
             </p>
             <button
               type="button"

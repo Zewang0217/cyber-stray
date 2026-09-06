@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { InterestNodeData } from "@/lib/types";
 
 /** 兴趣来源方签（NES 语义色：reflection=act / feedback=ok / default=curb）。 */
@@ -15,11 +15,16 @@ const SOURCE_STYLE: Record<string, string> = {
  * 强化计数/来源方签。新条目首次出现翻转亮起（f12，motion.md §4）。
  */
 export function InterestAtlas({ nodes }: { nodes: InterestNodeData[] }) {
-  const sorted = [...nodes].sort((a, b) => b.effectiveWeight - a.effectiveWeight);
+  const sorted = useMemo(
+    () => [...nodes].sort((a, b) => b.effectiveWeight - a.effectiveWeight),
+    [nodes],
+  );
   const seen = useRef<Set<string> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
 
-  // 新条目检测：首帧记录基线，其后新出现的 id 标记为「刚叼回来」并翻转亮起
+  // 新条目检测：首帧记录基线，其后新出现的 id 标记「刚叼回来」并翻转亮起。
+  // 定时器持 ref——重渲染不重置 2s 收尾（评审 #190 P1）。
   useEffect(() => {
     if (seen.current === null) {
       seen.current = new Set(sorted.map((n) => n.id));
@@ -29,10 +34,16 @@ export function InterestAtlas({ nodes }: { nodes: InterestNodeData[] }) {
     if (freshIds.length > 0) {
       setFresh(new Set(freshIds.map((n) => n.id)));
       for (const n of freshIds) seen.current!.add(n.id);
-      const id = setTimeout(() => setFresh(new Set()), 2000);
-      return () => clearTimeout(id);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        setFresh(new Set());
+      }, 2000);
     }
   }, [sorted]);
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
 
   if (sorted.length === 0) {
     return <p className="py-12 text-center text-[14px] text-[var(--curb)]">图鉴空空如也。等它第一次带回话题。</p>;

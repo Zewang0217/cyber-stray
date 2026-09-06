@@ -616,3 +616,23 @@ body.sb-hidden * {
     opacity: 0;
   }
 }
+
+/* 图鉴新条目翻转亮起（motion.md §4：f12 steps） */
+@keyframes sb-flip-in {
+  0% {
+    transform: perspective(300px) rotateX(90deg);
+    opacity: 0;
+  }
+  100% {
+    transform: perspective(300px) rotateX(0deg);
+    opacity: 1;
+  }
+}
+.sb-flip-in {
+  animation: sb-flip-in 0.2s steps(12);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sb-flip-in {
+    animation: none;
+  }
+}
