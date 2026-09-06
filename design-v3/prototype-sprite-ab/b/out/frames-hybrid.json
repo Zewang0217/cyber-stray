@@ -1,0 +1,30 @@
+{
+  "contract": "manifest v2 提案（#168）— design-v3/motion.md §3 帧接口",
+  "image": "cat-b-hybrid.png",
+  "frame": {
+    "w": 32,
+    "h": 32,
+    "groundRow": 30
+  },
+  "animations": {
+    "idle": {
+      "from": 0,
+      "frames": 3,
+      "duration": 0.8,
+      "loop": true
+    },
+    "walk": {
+      "from": 3,
+      "frames": 3,
+      "duration": 0.6,
+      "loop": true
+    },
+    "pat": {
+      "from": 6,
+      "frames": 2,
+      "duration": 0.4,
+      "loop": false,
+      "note": "pat 2 帧 = idle-1 base 程序下压派生（d=1/d=2），非生图直出——混合管线实证"
+    }
+  }
+}

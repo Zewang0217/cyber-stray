@@ -1,0 +1,38 @@
+{
+  "contract": "manifest v2 提案（#168）— design-v3/motion.md §3 帧接口",
+  "image": "cat-a.png",
+  "frame": {
+    "w": 32,
+    "h": 32,
+    "groundRow": 30
+  },
+  "palette": {
+    "o": "#E8A15D",
+    "s": "#B4693B",
+    "c": "#F6E6C8",
+    "k": "#212529",
+    "y": "#F7D51D",
+    "p": "#E76E55",
+    "w": "#F4F4F4"
+  },
+  "animations": {
+    "idle": {
+      "from": 0,
+      "frames": 4,
+      "duration": 0.8,
+      "loop": true
+    },
+    "walk": {
+      "from": 4,
+      "frames": 4,
+      "duration": 0.6,
+      "loop": true
+    },
+    "pat": {
+      "from": 8,
+      "frames": 2,
+      "duration": 0.4,
+      "loop": false
+    }
+  }
+}
