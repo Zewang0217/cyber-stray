@@ -3,15 +3,15 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { useFeedback } from "@/hooks/useFeedback";
 import { useHistory } from "@/hooks/useHistory";
 import { usePets } from "@/hooks/usePets";
 import { useTenantEvents } from "@/hooks/useTenantEvents";
 import { MailCard } from "@/components/strayboy/MailCard";
-import { getSeenTimestamp, markAllSeen } from "@/lib/strayboy/mail";
+import { DAY_MS, getSeenTimestamp, markAllSeen } from "@/lib/strayboy/mail";
 import type { PushContent } from "@/lib/types";
 
-const DAY = 86_400_000;
 
 /** 演示夹具（?demo=1）：无会话时的墙上视觉验收数据。 */
 const DEMO_CARDS: PushContent[] = [
@@ -26,7 +26,7 @@ const DEMO_CARDS: PushContent[] = [
     messageId: "demo-2", matchedTopics: ["复古掌机"], pushed: true,
   },
   {
-    message: "评测全文……", timestamp: new Date(Date.now() - 2 * DAY).toISOString(),
+    message: "评测全文……", timestamp: new Date(Date.now() - 2 * DAY_MS).toISOString(),
     title: "2026 像素画工具横评", summary: "从 Aseprite 到浏览器像素编辑器，九款工具的取舍。",
     messageId: "demo-3", pushed: true,
   },
@@ -44,40 +44,42 @@ function WallInner() {
   const feedback = useFeedback();
   const adoptedAt = pets[0]?.createdAt ?? 0;
 
+  const [animateParent] = useAutoAnimate();
+  // demo 未读推导隔离：夹具恒视为未读（NEW! 验收项不读真实 localStorage）
   const [seenMs, setSeenMs] = useState<number>(() => getSeenTimestamp());
+  const seen = demo ? 0 : seenMs;
   const newestRef = useRef<number>(0);
   const items = demo ? DEMO_CARDS : history.items;
   const newestMs = items.length > 0 ? new Date(items[0].timestamp).getTime() : 0;
 
-  // 到达编排：最新一签比已见新 → 震动 + toast；4s 后全墙标记已读
+  // 到达编排 + 打开即读：newest 变化（到达 → 震动+toast；首载 → 仅计时），
+  // 4s 后全墙标记已读。依赖只挂 newestMs——loadMore 追加旧卡不触发。
   useEffect(() => {
     if (demo || items.length === 0) return;
     if (newestRef.current === 0) {
       newestRef.current = newestMs;
-      return;
-    }
-    if (newestMs > newestRef.current) {
+    } else if (newestMs > newestRef.current) {
       newestRef.current = newestMs;
-      if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(30);
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!reduced && typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(30);
       toast("新明信片寄回来了！");
-      const id = setTimeout(() => {
-        markAllSeen(newestMs);
-        setSeenMs(getSeenTimestamp());
-      }, 4_000);
-      return () => clearTimeout(id);
     }
-  }, [demo, items.length, newestMs]);
-
-  useEffect(() => {
-    if (!demo) markAllSeen(newestMs);
+    const id = setTimeout(() => {
+      markAllSeen(newestMs);
+      setSeenMs(getSeenTimestamp());
+    }, 4_000);
+    return () => clearTimeout(id);
+    // items.length 有意不入依赖：loadMore 追加旧卡不应重臂到达计时器（评审 #188）
   }, [demo, newestMs]);
 
   const onFeedback = (type: "like" | "dislike", card: PushContent): void => {
-    void feedback.sendFeedback(type, card.messageId ?? "").then(() => {
-      toast(type === "like" ? "已记下：你喜欢这类货。" : "已记下：少送这类货。");
+    void feedback.sendFeedback(type, card.messageId ?? "").then((ok) => {
+      if (ok) toast(type === "like" ? "已记下：你喜欢这类货。" : "已记下：少送这类货。");
+      else toast("反馈没送到（网络/权限）");
     });
   };
   const onPin = (card: PushContent): void => {
+    if (demo) return; // 演示通道不写真实 CP
     void feedback.boostTopic(card.matchedTopics?.[0] ?? "").then((ok) => {
       if (ok) toast(`话题「${card.matchedTopics?.[0]}」顶到最前。`);
       else toast("置顶没送到");
@@ -92,16 +94,21 @@ function WallInner() {
           {demo ? "DEMO FEED · " : ""}{demo ? items.length : history.total} 张
         </span>
       </header>
-      <div className="grid gap-5 sm:grid-cols-2">
+      {!demo && history.error && (
+        <div className="mb-3 border-2 border-[var(--bad)] bg-[var(--panel)] p-3 text-[13px] text-[var(--bad)]">
+          取件失败：{history.error}（可能未登录或网络中断）
+        </div>
+      )}
+      <div className="grid gap-5 sm:grid-cols-2" ref={animateParent}>
         {items.map((card) => (
           <MailCard
             key={`${card.timestamp}|${card.message}`}
             card={card}
             adoptedAt={adoptedAt}
-            seenMs={seenMs}
+            seenMs={seen}
             onFeedback={onFeedback}
             onPin={onPin}
-            pending={feedback.pending}
+            pending={feedback.pending || demo}
           />
         ))}
       </div>

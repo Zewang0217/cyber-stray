@@ -59,13 +59,15 @@ interface UsePetsReturn {
  * 空列表 = 未领养 → 前端走领养流程。前端状态是便捷，
  * 服务端 session claim 才是租户真相（issue #74）。
  */
-export function usePets(): UsePetsReturn {
+export function usePets(options: { enabled?: boolean } = {}): UsePetsReturn {
+  const { enabled = true } = options;
   const [pets, setPets] = useState<Pet[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adopting, setAdopting] = useState(false);
 
   const refresh = useCallback(async () => {
+    if (!enabled) return;
     try {
       const res = await fetch("/api/pets");
       const json = (await res.json()) as ApiResponse<Pet[]>;
@@ -82,8 +84,12 @@ export function usePets(): UsePetsReturn {
   }, []);
 
   useEffect(() => {
+    if (!enabled) {
+      setIsLoaded(true);
+      return;
+    }
     void refresh();
-  }, [refresh]);
+  }, [enabled, refresh]);
 
   const adopt = useCallback(
     async (input: {

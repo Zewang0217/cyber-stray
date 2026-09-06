@@ -69,7 +69,7 @@ export function MailCard({
       </span>
       {/* 未读 NEW! 黄徽章 */}
       {unread && (
-        <span className="sb-blink absolute -left-2 -top-3 border-2 border-[var(--ink)] bg-[var(--hi)] px-1.5 py-0.5 font-ps2p text-[8px] leading-none text-[var(--ink)]">
+        <span className="sb-blink absolute -left-2 -top-3 border-2 border-[var(--ink)] bg-[var(--hi)] px-1.5 py-0.5 font-ps2p text-xs leading-none text-[var(--ink)]">
           NEW!
         </span>
       )}

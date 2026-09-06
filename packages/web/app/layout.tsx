@@ -69,7 +69,19 @@ export default function RootLayout({
         </main>
         <MenuBar />
         <PauseAnims />
-        <Toaster position="top-center" theme="dark" />
+        <Toaster
+  position="top-center"
+  toastOptions={{
+    style: {
+      borderRadius: 0,
+      border: "2px solid var(--ink)",
+      background: "var(--paper)",
+      color: "var(--ink)",
+      boxShadow: "4px 4px 0 #000",
+      fontFamily: "var(--font-noto)",
+    },
+  }}
+/>
       </body>
     </html>
   );

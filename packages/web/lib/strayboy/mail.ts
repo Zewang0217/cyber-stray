@@ -32,14 +32,16 @@ export function pickStamp(timestampIso: string): StampKind {
   return STAMPS[hash % STAMPS.length];
 }
 
+/** 一天的毫秒数（DAY 派生共用）。 */
+export const DAY_MS = 86_400_000;
+
 /** 左上 mono 竖排日期签：DAY N（领养日起）· HH:MM。 */
-export function stampLabel(timestampIso: string, adoptedAt: number, now = new Date()): {
+export function stampLabel(timestampIso: string, adoptedAt: number): {
   day: number;
   hhmm: string;
 } {
   const t = new Date(timestampIso);
-  const day = adoptedAt ? Math.max(1, Math.floor((t.getTime() - adoptedAt) / 86_400_000) + 1) : 1;
+  const day = adoptedAt ? Math.max(1, Math.floor((t.getTime() - adoptedAt) / DAY_MS) + 1) : 1;
   const hhmm = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
-  void now;
   return { day, hhmm };
 }

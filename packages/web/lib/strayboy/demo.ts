@@ -6,11 +6,14 @@ import type { AgentState } from "@/lib/types";
 import type { PetRecord } from "@/lib/strayboy/pet-view";
 import type { TenantEvent } from "@/hooks/useTenantEvents";
 
-const DAY = 86_400_000;
+const HOUR = 3_600_000;
+// 量化到小时桶：服务端与客户端各自 import 也能得到同一批时间戳（避免水合不匹配，#188）
+const stableNow = Math.floor(Date.now() / HOUR) * HOUR;
+const DAY = 24 * HOUR;
 
 export const DEMO_PET: PetRecord = {
   name: "年糕",
-  createdAt: Date.now() - 3 * DAY,
+  createdAt: stableNow - 3 * DAY,
   sleepStart: null,
   sleepEnd: null,
 };
