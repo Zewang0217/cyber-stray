@@ -29,49 +29,30 @@ export default function UsagePanel(): React.ReactElement {
     <div className="space-y-6">
       {/* 汇总卡片 + 模型下拉 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <motion.div
-          className="p-5 paper-card rounded-sm"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="text-xs text-subtext mb-1">总费用</div>
-          <div className="font-heading text-heading font-semibold text-text">
+        <div className="border-2 border-[var(--curb)] bg-[var(--panel)] p-4">
+          <div className="text-[12px] text-[var(--curb)] mb-1">总费用</div>
+          <div className="font-vt323 text-[22px] text-[var(--paper)]">
             ¥{summary ? summary.totalCost.toFixed(2) : "…"}
           </div>
-        </motion.div>
-        <motion.div
-          className="p-5 paper-card rounded-sm"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-        >
-          <div className="text-xs text-subtext mb-1">LLM token</div>
-          <div className="font-heading text-heading font-semibold text-text">
+        </div>
+        <div className="border-2 border-[var(--curb)] bg-[var(--panel)] p-4">
+          <div className="text-[12px] text-[var(--curb)] mb-1">LLM token</div>
+          <div className="font-vt323 text-[22px] text-[var(--paper)]">
             {summary ? formatTokens(summary.totalLlmTokens) : "…"}
           </div>
-        </motion.div>
-        <motion.div
-          className="p-5 paper-card rounded-sm"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <div className="text-xs text-subtext mb-1">生图张数</div>
-          <div className="font-heading text-heading font-semibold text-text">
+        </div>
+        <div className="border-2 border-[var(--curb)] bg-[var(--panel)] p-4">
+          <div className="text-[12px] text-[var(--curb)] mb-1">生图张数</div>
+          <div className="font-vt323 text-[22px] text-[var(--paper)]">
             {summary ? summary.totalImages : "…"}
           </div>
-        </motion.div>
-        <motion.div
-          className="p-5 paper-card rounded-sm"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-        >
-          <div className="text-xs text-subtext mb-1">质检次数</div>
-          <div className="font-heading text-heading font-semibold text-text">
+        </div>
+        <div className="border-2 border-[var(--curb)] bg-[var(--panel)] p-4">
+          <div className="text-[12px] text-[var(--curb)] mb-1">质检次数</div>
+          <div className="font-vt323 text-[22px] text-[var(--paper)]">
             {summary ? summary.totalVisionQc : "…"}
           </div>
-        </motion.div>
+        </div>
       </div>
 
       {/* 筛选 + 模型切换 */}
@@ -92,12 +73,12 @@ export default function UsagePanel(): React.ReactElement {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2 text-small text-subtext">
+        <div className="flex items-center gap-2 text-[12px] text-[var(--curb)]">
           <span>生图模型</span>
           <select
             value={modelConfig?.imageModel ?? ""}
             onChange={(e) => void updateModel({ imageModel: e.target.value })}
-            className="px-2 py-1.5 rounded-sm bg-surface text-small text-text border border-[var(--c-engraving-fine)]"
+            className="px-2 py-1.5 border-2 border-[var(--curb)] bg-[var(--sky)] text-[13px] text-[var(--paper)]"
           >
             {modelConfig
               ? [...modelConfig.candidates.image, modelConfig.imageModel]
@@ -112,15 +93,13 @@ export default function UsagePanel(): React.ReactElement {
         </div>
       </div>
 
-      {error ? <p className="text-small text-danger">{error}</p> : null}
+      {error ? <p className="text-[13px] text-[var(--bad)]">{error}</p> : null}
 
       {/* 每宠物表格 */}
-      <motion.div
-        className="p-6 paper-card rounded-sm"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
+      <div
+        className="border-2 border-[var(--curb)] bg-[var(--panel)] p-4"
       >
-        <h2 className="font-heading text-heading font-semibold text-text mb-4">每宠物用量</h2>
+        <h2 className="font-vt323 text-[22px] text-[var(--paper)] mb-4">每宠物用量</h2>
         <table className="w-full text-small">
           <thead>
             <tr className="text-left text-subtext border-b border-[var(--c-engraving-fine)]">
@@ -159,18 +138,15 @@ export default function UsagePanel(): React.ReactElement {
             ) : null}
           </tbody>
         </table>
-      </motion.div>
+      </div>
 
       {/* 最近明细 */}
-      <motion.div
-        className="p-6 paper-card rounded-sm"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
+      <div
+        className="border-2 border-[var(--curb)] bg-[var(--panel)] p-4"
       >
-        <h2 className="font-heading text-heading font-semibold text-text mb-4">最近调用</h2>
+        <h2 className="font-vt323 text-[22px] text-[var(--paper)] mb-4">最近调用</h2>
         {(data?.recent ?? []).length === 0 ? (
-          <p className="text-small text-subtext">暂无调用记录</p>
+          <p className="text-[12px] text-[var(--curb)]">暂无调用记录</p>
         ) : (
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {(data?.recent ?? []).map((r, i) => (
@@ -197,7 +173,7 @@ export default function UsagePanel(): React.ReactElement {
             ))}
           </div>
         )}
-      </motion.div>
+      </div>
     </div>
   );
 }
