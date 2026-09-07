@@ -106,7 +106,7 @@ function WallInner() {
           取件失败：{history.error}（可能未登录或网络中断）
         </div>
       )}
-      <div className="grid gap-5 sm:grid-cols-2" ref={animateParent}>
+      <div className="grid gap-5 sm:grid-cols-2 lg:block lg:columns-3 lg:gap-5" ref={animateParent}>
         {items.map((card) => (
           <MailCard
             key={`${card.timestamp}|${card.message}`}

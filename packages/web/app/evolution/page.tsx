@@ -62,24 +62,30 @@ function EvolutionInner() {
   };
 
   return (
-    <div className="sb mx-auto max-w-3xl p-3">
-      <header className="mb-4 flex items-baseline justify-between">
+    <div className="sb mx-auto max-w-3xl p-3 lg:grid lg:max-w-5xl lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-4">
+      <header className="mb-4 flex items-baseline justify-between lg:col-span-2 lg:col-start-1 lg:row-start-1">
         <h1 className="font-ps2p text-xs text-[var(--hi)]">DEX · 兴趣图鉴</h1>
         <span className="font-vt323 text-[20px] text-[var(--curb)]">
           {demo ? "DEMO FEED · " : ""}熵 {entropy.toFixed(2)}
         </span>
       </header>
 
-      <InterestAtlas nodes={nodes} />
-
-      <h2 className="font-ps2p mb-3 mt-8 text-xs text-[var(--hi)]">SKIN · 图鉴皮肤</h2>
-      <div className="mb-2 border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
-        <CoatPicker />
-        <p className="mt-1.5 text-[11px] text-[var(--curb)]">选择后街角同步换色（橘/黑/三花，DESIGN.md §7）。</p>
+      <div className="lg:col-start-1 lg:row-start-2">
+        <InterestAtlas nodes={nodes} />
       </div>
 
-      <h2 className="font-ps2p mb-3 mt-8 text-xs text-[var(--hi)]">TIME MACHINE · 存档</h2>
-      <TimeMachine snapshots={snapshots} onLoad={onLoad} rolling={rolling} />
+      <div className="lg:col-start-2 lg:row-start-2">
+        <h2 className="font-ps2p mb-3 text-xs text-[var(--hi)]">SKIN · 图鉴皮肤</h2>
+        <div className="mb-2 border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
+          <CoatPicker />
+          <p className="mt-1.5 text-[11px] text-[var(--curb)]">选择后街角同步换色（橘/黑/三花，DESIGN.md §7）。</p>
+        </div>
+      </div>
+
+      <div className="lg:col-span-2 lg:col-start-1 lg:row-start-3">
+        <h2 className="font-ps2p mb-3 text-xs text-[var(--hi)]">TIME MACHINE · 存档</h2>
+        <TimeMachine snapshots={snapshots} onLoad={onLoad} rolling={rolling} />
+      </div>
     </div>
   );
 }

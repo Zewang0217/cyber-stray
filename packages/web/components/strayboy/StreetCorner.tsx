@@ -286,7 +286,8 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
     : theaterAnim ?? view.anim;
 
   return (
-    <div className="sb mx-auto flex max-w-3xl flex-col gap-3 p-3">
+    <div className="sb mx-auto flex max-w-3xl flex-col gap-3 p-3 lg:grid lg:max-w-5xl lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+      <div className="lg:col-start-1 lg:row-start-1">
       <PixelStage
         onStreet={!view.away}
         demo={demo}
@@ -305,6 +306,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
           </span>
         )}
       </PixelStage>
+      </div>
       {/* 霓虹换牌（delight B13）：图鉴 No.1 更替时短暂换文案 */}
       {neonTopic && (
         <p aria-hidden className="font-ps2p absolute right-6 top-6 z-[6] text-[10px] text-[var(--neon)] sb-blink">
@@ -319,7 +321,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
         </div>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between lg:col-start-1 lg:row-start-2">
         <button
           type="button"
           onClick={() => setAttrCardOpen(true)}
@@ -342,8 +344,8 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
       </div>
 
       {/* HUD 三墨条 + 心情标签（ADR-0013 §4 / #217：后端原始值零换算，精力高=好；
-          心情 = 枚举原文非分数；state 缺失显未知态不伪装健康） */}
-      <div className="flex flex-col gap-1.5 border-2 border-black bg-[var(--panel)] p-3 shadow-[4px_4px_0_#000]">
+          心情 = 枚举原文非分数；state 缺失显未知态不伪装健康。lg 桌面入右列） */}
+      <div className="flex flex-col gap-1.5 border-2 border-black bg-[var(--panel)] p-3 shadow-[4px_4px_0_#000] lg:col-start-2 lg:row-start-1">
         <HudBar label="精力" value={view.bars.energy} warnBelow={20} />
         <HudBar label="无聊" value={view.bars.boredom} warnAt={80} />
         <HudBar label="脾气" value={view.bars.temper} warnAt={80} />
@@ -355,9 +357,13 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
         </div>
       </div>
 
-      <DialogBox name={pet.name} text={dialog} />
+      <div className="lg:col-start-2 lg:row-start-2">
+        <DialogBox name={pet.name} text={dialog} />
+      </div>
 
-      <WanderLog history={state?.wanderHistory ?? []} />
+      <div className="lg:col-span-2 lg:col-start-1 lg:row-start-3">
+        <WanderLog history={state?.wanderHistory ?? []} />
+      </div>
 
       {SHOW_WANDER_BUTTON && (
         <button type="button" className="sb-shadow border-2 border-black bg-[var(--act)] px-3 py-2 text-[13px] text-[var(--sky)]">

@@ -57,7 +57,7 @@ export function MailCard({
   const pinTopic = card.matchedTopics?.[0];
 
   return (
-    <article className="relative border-4 border-[var(--ink)] bg-[var(--paper)] p-4 pt-6 shadow-[6px_6px_0_#000]">
+    <article className="relative border-4 border-[var(--ink)] bg-[var(--paper)] p-4 pt-6 shadow-[6px_6px_0_#000] lg:mb-5 lg:break-inside-avoid">
       {/* 左上 mono 竖排日期签 */}
       <span
         aria-hidden
