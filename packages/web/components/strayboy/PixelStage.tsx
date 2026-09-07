@@ -72,16 +72,16 @@ export function PixelStage({ children, onStreet, demo, daytime = false, onPasser
   };
   const moon = MOON_PHASES[phase]; // phase 经 modulo 恒在界内
 
-  // 路人偶遇（#212）：约 45s 一次，路人出镜（夜场景）时由宿主报一句台词。
-  // 门控 = !daytime 与路人渲染条件一致——不能用 onStreet（= !sleeping）：
-  // onStreet 蕴含白天景，与夜出镜恒矛盾，台词将永不触发（评审 LOW-1 的修正教训）
+  // 路人偶遇（#212）：约 45s 一次。门控 = 夜场景（路人出镜）且猫在家街上
+  //（onStreet prop = !away；猫出游不在场时不报「蹲得像个路灯」）。
+  // 注意勿混淆：这里用的是 prop（!away），非 StreetCornerMain 的局部 onStreet（!away && !sleeping）
   useEffect(() => {
     if (!onPasserbyGreet) return;
     const id = setInterval(() => {
-      if (!daytime) onPasserbyGreet();
+      if (onStreet && !daytime) onPasserbyGreet();
     }, 45_000);
     return () => clearInterval(id);
-  }, [onPasserbyGreet, daytime]);
+  }, [onPasserbyGreet, onStreet, daytime]);
 
   return (
     <div
@@ -175,9 +175,11 @@ export function PixelStage({ children, onStreet, demo, daytime = false, onPasser
           ))}
         </div>
       ))}
-      {/* 街角变体氛围层（#219）：全静态，色板内取色 */}
+      {/* 街角变体氛围层（#219）：全静态 + pointer-events-none（装饰不拦交互） */}
+      <div aria-hidden className="pointer-events-none absolute inset-0">
       {variant === 0 && (
         <>
+          {/* 远景电线（天空背景层，不锚接楼顶） */}
           <Wires top="28%" left="12%" width="12%" />
           <Wires top="22%" left="58%" width="16%" />
           <LampPost left="70%" />
@@ -202,6 +204,7 @@ export function PixelStage({ children, onStreet, demo, daytime = false, onPasser
           <Wires top="26%" left="55%" width="14%" />
         </>
       )}
+      </div>
       {/* 动物邻居：远处楼顶偶尔蹲一只剪影猫（#212，纯显隐无动画） */}
       {!daytime && <NeighborCat />}
       {/* 路人 NPC（#212）：剪影平移循环（transform 线性）；并发预算 = 2 路人 + 猫 = 3 */}
