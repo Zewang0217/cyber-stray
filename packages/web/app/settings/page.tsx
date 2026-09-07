@@ -187,6 +187,16 @@ export default function SettingsPage() {
 
       {view === "account" && (
         <SubView title="账号" onBack={() => setView("root")}>
+          {/* #207：账号机制说明（用户反馈⑦：困惑 Casdoor/账号鉴权是否存在） */}
+          <section className="mb-4 border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
+            <h3 className="mb-1 text-[14px] text-[var(--paper)]">账号是怎么工作的</h3>
+            <p className="text-[12px] leading-[1.7] text-[var(--curb)]">
+              登录走 Casdoor 统一身份（跳转外部登录页，支持已有账号直接登）；
+              本站只持有会话凭证，密码不经手。你的宠物、记忆、兴趣图谱都挂在
+              这个账号下隔离存放——退出登录后宠物还在，重新登录即接回。
+            </p>
+          </section>
+
           <section className="mb-4 border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
             <h3 className="mb-1 text-[14px] text-[var(--paper)]">套餐</h3>
             <p className="mb-2 text-[12px] leading-[1.6] text-[var(--curb)]">

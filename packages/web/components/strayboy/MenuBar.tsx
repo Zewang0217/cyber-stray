@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+/** 首访 START 提示标记（localStorage；写入 = 已提示过，不再闪） */
+const START_HINT_KEY = "sb_start_hint_seen";
+/** 首访提示闪烁时长（motion.md：blink 1s steps(1)，闪 6 声足够注意到） */
+const START_HINT_MS = 6_000;
 
 const SUB_SCREENS = [
   { href: "/diary", label: "日记本" },
@@ -26,6 +31,25 @@ const TABS = [
 export function MenuBar() {
   const pathname = usePathname();
   const [startOpen, setStartOpen] = useState(false);
+  // #207：首次进入 START 键闪烁提示一次（useEffect 里读 localStorage，
+  // SSR 首帧不闪——避免 hydration 类名错位）
+  const [hintBlink, setHintBlink] = useState(false);
+
+  useEffect(() => {
+    if (localStorage.getItem(START_HINT_KEY) === "1") return;
+    setHintBlink(true);
+    const id = setTimeout(() => {
+      setHintBlink(false);
+      localStorage.setItem(START_HINT_KEY, "1");
+    }, START_HINT_MS);
+    return () => clearTimeout(id);
+  }, []);
+
+  const openStart = (): void => {
+    setStartOpen(true);
+    setHintBlink(false);
+    localStorage.setItem(START_HINT_KEY, "1");
+  };
 
   return (
     <nav
@@ -51,10 +75,12 @@ export function MenuBar() {
       })}
       <button
         type="button"
-        onClick={() => setStartOpen(true)}
-        className="px-3 py-2 text-center text-[12px] leading-none text-[var(--hi)] hover:bg-[var(--street)]"
+        onClick={openStart}
+        className={`px-3 py-2 text-center text-[12px] leading-none text-[var(--hi)] hover:bg-[var(--street)] ${
+          hintBlink ? "sb-blink" : ""
+        }`}
       >
-        ▶ START
+        ▶ START · 更多
       </button>
       {/* START 子屏菜单：底部面板（贴在菜单条上方，不遮底栏——反馈：全屏黑覆盖藏起 tab） */}
       {startOpen && (
@@ -65,7 +91,7 @@ export function MenuBar() {
             aria-label="START 子屏菜单"
             className="fixed inset-x-0 bottom-[52px] z-40 mx-auto flex max-w-sm flex-col gap-2 border-2 border-black bg-[var(--panel)] p-3 shadow-[4px_4px_0_#000] md:bottom-[68px]"
           >
-            <p className="font-ps2p px-1 pb-1 text-xs text-[var(--hi)]">▶ SELECT · 子屏</p>
+            <p className="font-ps2p px-1 pb-1 text-xs text-[var(--hi)]">▶ SELECT · 更多去处</p>
             {SUB_SCREENS.map((s) => (
               <Link
                 key={s.href}
