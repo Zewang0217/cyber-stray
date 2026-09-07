@@ -12,7 +12,7 @@ export function WanderLog({ history }: { history: WanderStep[] }) {
       {history.slice(0, 4).map((step, i) => (
         <p key={i}>&gt; {step.spoke ?? step.thought ?? step.url ?? `${step.tool} 逛了一圈。`}</p>
       ))}
-      {history.length === 0 && <p>&gt; 还没出过门。它在等天黑。</p>}
+      {history.length === 0 && <p>&gt; 等待第一次出门的信号……</p>}
     </section>
   );
 }

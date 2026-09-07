@@ -78,6 +78,18 @@ export function createDataRoutes({ config }: DataDeps): Hono {
         state.mood = pet.mood;
         state.temper = pet.temper;
       }
+      // 游荡历史（#204）：state.json 从无此字段（AgentState 不含），真实记录在
+      // agent 的 wander-history.json（尾部最新）——读边界注入，前端不再恒空态
+      try {
+        const history = JSON.parse(
+          await readFile(join(scoped.dir, 'wander-history.json'), 'utf-8'),
+        ) as unknown;
+        if (Array.isArray(history)) {
+          state.wanderHistory = history.slice(-20);
+        }
+      } catch (error) {
+        if (!isEnoent(error)) throw error; // 无历史 = 合法空态；损坏显式抛（禁兜底）
+      }
       return c.json({ success: true, data: state });
     } catch (error) {
       if (isEnoent(error)) {
