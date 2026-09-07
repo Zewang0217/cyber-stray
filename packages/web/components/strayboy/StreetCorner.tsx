@@ -284,17 +284,17 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
   // 二者分离——失败过几天不等于从此臭脸）
   const failures = state?.consecutiveFailures ?? 0;
   useEffect(() => {
-    // 回落（游荡成功清零）时显式复位：cleanup 会清掉待触发的关闭定时器，
-    // 不复位则 grumpyOn 卡 true 永久臭脸（评审 HIGH-1）
-    if (failures < 3) {
-      setGrumpyOn(false);
-      return;
-    }
+    if (failures < 3) return;
     setGrumpyOn(true);
     const id = setTimeout(() => setGrumpyOn(false), GRUMPY_MS);
-    return () => clearTimeout(id);
+    // 复位放 cleanup 而非 <3 分支：回落（游荡成功清零）时 cleanup 清定时器并复位，
+    // 滞留路径封死（评审 HIGH-1）；failures 从未 ≥3 则 cleanup 不注册，
+    // 不压制 #190 时间机器记仇的 grumpy（复审 MEDIUM-1）
+    return () => {
+      clearTimeout(id);
+      setGrumpyOn(false);
+    };
   }, [failures]);
-
 
   const theaterAnim = theater && onStreet ? theater.anim : null;
   const anim = grumpyOn && onStreet
