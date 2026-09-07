@@ -8,6 +8,7 @@ const SUB_SCREENS = [
   { href: "/diary", label: "日记本" },
   { href: "/dream", label: "梦呓集" },
   { href: "/meme", label: "贴纸册" },
+  { href: "/achievements", label: "成就墙" },
 ] as const;
 
 const TABS = [

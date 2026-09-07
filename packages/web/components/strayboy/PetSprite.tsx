@@ -15,14 +15,19 @@ export function PetSprite({
   anim,
   scale = 3,
   hungry = false,
+  coat = "orange",
   className,
 }: {
   contract: SpriteContract;
   anim: string;
   scale?: number;
   hungry?: boolean;
+  /** 毛色皮肤滤镜（delight B12，DESIGN.md §7 图鉴皮肤） */
+  coat?: "orange" | "black" | "calico";
   className?: string;
 }) {
+  const coatFilterCss = coat === "black" ? "brightness(0.25) saturate(0.3)"
+    : coat === "calico" ? "hue-rotate(-40deg) saturate(1.2)" : "none";
   const id = contractId(contract);
   const inject = !injected.has(id);
   injected.add(id);
@@ -34,7 +39,7 @@ export function PetSprite({
       style={{ position: "relative", lineHeight: 0 }}
     >
       {inject && <style dangerouslySetInnerHTML={{ __html: animationCss(contract) }} />}
-      <span className={`pixelated sbp-${id}`} style={frameStyle({ contract, anim, scale })} />
+      <span className={`pixelated sbp-${id}`} style={{ ...frameStyle({ contract, anim, scale }), filter: coatFilterCss }} />
       {hungry && (
         <span
           aria-hidden

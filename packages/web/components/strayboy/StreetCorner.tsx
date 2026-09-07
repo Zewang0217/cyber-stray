@@ -18,6 +18,7 @@ import { PetSprite } from "@/components/strayboy/PetSprite";
 import { WanderLog } from "@/components/strayboy/WanderLog";
 import { AdoptionRitual } from "@/components/strayboy/AdoptionRitual";
 import { DEMO_PET, DEMO_STATE, demoEventStream } from "@/lib/strayboy/demo";
+import type { CoatId } from "@/components/strayboy/CoatPicker";
 import type { AgentState } from "@/lib/types";
 import type { PetRecord } from "@/lib/strayboy/pet-view";
 
@@ -109,6 +110,10 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [theater, setTheater] = useState<(typeof THEATER)[number] | null>(null);
   const [lvFlash, setLvFlash] = useState(false);
+  const [coat, setCoat] = useState<"orange" | "black" | "calico">("orange");
+  const [attract, setAttract] = useState(false);
+  const [mailman, setMailman] = useState(false);
+  const [neonTopic, setNeonTopic] = useState<string | null>(null);
   const lastActivityRef = useRef(0);
   const prevLevel = useRef<number | null>(null);
   const { onPat, reset } = usePatStreak();
@@ -155,6 +160,51 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
     }
   }, [lastEvent]);
 
+  // 毛色皮肤（delight B12）：初始读 + CoatPicker 事件刷新
+  useEffect(() => {
+    const raw = window.localStorage.getItem("sb_coat");
+    if (raw === "black" || raw === "calico") setCoat(raw);
+    const onCoat = (e: Event): void => {
+      const id = (e as CustomEvent<string>).detail;
+      if (id === "black" || id === "calico" || id === "orange") setCoat(id);
+    };
+    window.addEventListener("sb-coat", onCoat);
+    return () => window.removeEventListener("sb-coat", onCoat);
+  }, []);
+
+  // 霓虹换牌（delight B13）：图鉴 No.1 更替时写入，此处短暂换招牌文案
+  useEffect(() => {
+    const raw = window.localStorage.getItem("sb_neon_topic");
+    const until = Number(window.localStorage.getItem("sb_neon_until") ?? 0);
+    if (raw && until > Date.now()) setNeonTopic(raw);
+  }, []);
+
+  // attract mode（delight B10）：5min 无交互进街机待机画面；任意交互退出
+  useEffect(() => {
+    const idle = setInterval(() => {
+      if (Date.now() - lastActivityRef.current > 300_000) setAttract(true);
+    }, 15_000);
+    const wake = (): void => {
+      lastActivityRef.current = Date.now();
+      setAttract(false);
+    };
+    window.addEventListener("pointerdown", wake);
+    window.addEventListener("keydown", wake);
+    return () => {
+      clearInterval(idle);
+      window.removeEventListener("pointerdown", wake);
+      window.removeEventListener("keydown", wake);
+    };
+  }, []);
+
+  // 邮差动画（delight B9）：回家事件触发剪影走场
+  useEffect(() => {
+    if (!lastEvent || lastEvent.type !== "worker_succeeded") return;
+    setMailman(true);
+    const id = setTimeout(() => setMailman(false), 2600);
+    return () => clearTimeout(id);
+  }, [lastEvent]);
+
   // 回滚记仇旗标（#190 时间机器写入，街角消费）
   useEffect(() => {
     const raw = window.localStorage.getItem(GRUMPY_KEY);
@@ -190,6 +240,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
 
   const pat = useCallback((): void => {
     lastActivityRef.current = Date.now();
+    setAttract(false);
     setTheater(null);
     vibrate(15);
     if (view.sleeping) {
@@ -223,11 +274,29 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
       <PixelStage onStreet={!view.away} demo={demo} daytime={!view.sleeping}>
         {!view.away && (
           <button type="button" aria-label={`拍拍${pet.name}`} className="cursor-pointer" onClick={pat}>
-            <PetSprite contract={contract} anim={anim} scale={3} hungry={view.hungry && view.anim === "idle"} />
+            <PetSprite contract={contract} anim={anim} scale={3} hungry={view.hungry && view.anim === "idle"} coat={coat} />
           </button>
         )}
         {hearts > 0 && <HeartBurst key={hearts} />}
+        {mailman && (
+          <span aria-hidden className="sb-mailman absolute bottom-[26px] z-[5] text-[14px] leading-none text-[var(--ink)]">
+            ▟
+          </span>
+        )}
       </PixelStage>
+      {/* 霓虹换牌（delight B13）：图鉴 No.1 更替时短暂换文案 */}
+      {neonTopic && (
+        <p aria-hidden className="font-ps2p absolute right-6 top-6 z-[6] text-[10px] text-[var(--neon)] sb-blink">
+          {neonTopic}
+        </p>
+      )}
+      {attract && (
+        <div className="fixed inset-0 z-[75] flex flex-col items-center justify-center gap-6 bg-[var(--sky)]" onClick={() => setAttract(false)}>
+          <p className="font-ps2p text-sm text-[var(--neon)] sb-blink">STREET MODE</p>
+          <PetSprite contract={contract} anim="walk" scale={3} coat={coat} />
+          <p className="text-[12px] text-[var(--curb)]">点按任意处回到掌机</p>
+        </div>
+      )}
 
       <div className="flex items-center justify-between">
         <span className={`border-2 border-[var(--ink)] bg-[var(--paper)] px-2 py-1 font-ps2p text-xs text-[var(--ink)] ${lvFlash ? "sb-blink" : ""}`}>

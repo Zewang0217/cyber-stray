@@ -646,3 +646,22 @@ body.sb-hidden * {
     opacity: 0;
   }
 }
+
+/* 邮差剪影走场（delight B9）：从屏侧走到街角放下信 */
+@keyframes sb-mailman-walk {
+  0% {
+    left: -8%;
+  }
+  100% {
+    left: 105%;
+  }
+}
+.sb-mailman {
+  animation: sb-mailman-walk 2.6s steps(16) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sb-mailman {
+    animation: none;
+    opacity: 0;
+  }
+}
