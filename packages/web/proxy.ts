@@ -30,5 +30,6 @@ export const config = {
   // 排除静态资源、认证 API 与公开页（API 由控制面接管；#97 微信绑定页是
   // 扫码即用入口——无 Casdoor 会话也能访问）。pet/ 不再整体豁免——
   // /pet/customize（#94）需登录，public/pet 素材在 proxy 内按扩展名直通
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/|wechat/).*)"],
+  // /login（#195）为免登录像素页（电源键发起 Casdoor 流程），同样豁免登录墙
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/|wechat(?:/|$)|login(?:/|$)).*)"],
 };

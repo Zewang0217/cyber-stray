@@ -27,7 +27,8 @@ interface UseMemeReturn {
  * 表情包图鉴 Hook（#96）：列表 + 删除。
  * 数据源 /api/meme（agent 生成管线收录，仅展示过质检的）。
  */
-export function useMeme(): UseMemeReturn {
+export function useMeme(options: { enabled?: boolean } = {}): UseMemeReturn {
+  const { enabled = true } = options;
   const [memes, setMemes] = useState<MemeEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +36,7 @@ export function useMeme(): UseMemeReturn {
   const refresh = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
+      if (!enabled) return;
       const res = await fetch("/api/meme");
       const json = (await res.json()) as ApiResponse<MemeEntry[]>;
       if (json.success && json.data) {
@@ -48,7 +50,7 @@ export function useMeme(): UseMemeReturn {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     void refresh();

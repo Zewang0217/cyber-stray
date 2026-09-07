@@ -45,12 +45,14 @@ interface UseTenantEventsReturn {
  * 降级：连接失败/中断 → connected=false，消费方回落轮询；EventSource
  * 自带重连（服务端 retry: 5000），恢复后重新 connected=true。
  */
-export function useTenantEvents(): UseTenantEventsReturn {
+export function useTenantEvents(options: { enabled?: boolean } = {}): UseTenantEventsReturn {
+  const { enabled = true } = options;
   const [connected, setConnected] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [lastEvent, setLastEvent] = useState<TenantEvent | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
     const source = new EventSource("/api/events");
 
     source.onopen = () => setConnected(true);
@@ -68,7 +70,7 @@ export function useTenantEvents(): UseTenantEventsReturn {
     };
 
     return () => source.close();
-  }, []);
+  }, [enabled]);
 
   return { connected, refreshSignal, lastEvent };
 }
