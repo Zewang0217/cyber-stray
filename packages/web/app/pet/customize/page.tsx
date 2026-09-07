@@ -35,8 +35,20 @@ export default function CustomizePage() {
           <p className="mb-4 border-2 border-[var(--bad)] bg-[var(--panel)] p-2.5 text-[13px] text-[var(--bad)]">{error}</p>
         )}
 
-        {/* 问卷纸：spec 输入 */}
-        <section className="mb-5 border-2 border-[var(--ink)] bg-[var(--paper)] p-4 shadow-[5px_5px_0_#000]">
+        {/* failed：显式呈现失败原因 + 重试引导（禁静默） */}
+        {task?.status === "failed" && (
+          <section className="mb-5 border-2 border-[var(--bad)] bg-[var(--panel)] p-4">
+            <h2 className="mb-1 text-[14px] text-[var(--bad)]">生成失败</h2>
+            <p className="text-[13px] leading-[1.7] text-[var(--paper)]">{task.error ?? "未知原因"}</p>
+            <p className="text-[12px] text-[var(--curb)]">调整下面的描述重新提交；配额未消耗。</p>
+          </section>
+        )}
+
+        {/* 问卷纸：spec 输入（任务进行中隐藏防重复提交烧配额） */}
+        <section
+          className="mb-5 border-2 border-[var(--ink)] bg-[var(--paper)] p-4 shadow-[5px_5px_0_#000]"
+          hidden={!!task && ["awaiting_confirmation", "generating_states", "qc"].includes(task.status)}
+        >
           <h2 className="mb-2 text-[14px] text-[var(--ink)]">问卷纸 · 描述你的街溜子</h2>
           <form
             onSubmit={(e) => {
@@ -57,13 +69,18 @@ export default function CustomizePage() {
             />
             <div className="flex items-center justify-between">
               <span className="text-[12px] text-[var(--curb)]">
-                {quota ? `剩余 ${quota.remaining} 套` : "风格固定：像素街区"}
+                {quota === null
+                  ? "配额加载中……"
+                  : quota.available
+                    ? `剩余 ${quota.remaining}/${quota.limit} 套`
+                    : "当前套餐无自助生成入口（免费档用平台预置 IP）"}
               </span>
               <button
                 type="submit"
-                className="border-2 border-black bg-[var(--act)] px-4 py-2 text-[13px] text-[var(--sky)] shadow-[3px_3px_0_#000]"
+                disabled={loading}
+                className="border-2 border-black bg-[var(--act)] px-4 py-2 text-[13px] text-[var(--sky)] shadow-[3px_3px_0_#000] disabled:opacity-40"
               >
-                生成概念图 ▶
+                {loading ? "提交中……" : "生成概念图 ▶"}
               </button>
             </div>
           </form>

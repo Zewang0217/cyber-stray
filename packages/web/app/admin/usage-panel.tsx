@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { formatTokens, useUsage, type UsageRange } from "@/hooks/useUsage";
 
 const RANGES: Array<{ key: UsageRange; label: string }> = [

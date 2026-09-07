@@ -1,7 +1,6 @@
 "use client";
 
 import { useAgentState } from "@/hooks/useAgentState";
-import { usePets } from "@/hooks/usePets";
 
 interface Badge {
   id: string;

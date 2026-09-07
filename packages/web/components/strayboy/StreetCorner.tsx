@@ -18,7 +18,6 @@ import { PetSprite } from "@/components/strayboy/PetSprite";
 import { WanderLog } from "@/components/strayboy/WanderLog";
 import { AdoptionRitual } from "@/components/strayboy/AdoptionRitual";
 import { DEMO_PET, DEMO_STATE, demoEventStream } from "@/lib/strayboy/demo";
-import type { CoatId } from "@/components/strayboy/CoatPicker";
 import type { AgentState } from "@/lib/types";
 import type { PetRecord } from "@/lib/strayboy/pet-view";
 

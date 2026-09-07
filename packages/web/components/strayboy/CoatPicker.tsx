@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DEMO_PET } from "@/lib/strayboy/demo";
-import type { PetRecord } from "@/lib/strayboy/pet-view";
 
 /**
  * 图鉴毛色皮肤（delight B12，DESIGN.md §7）：橘/黑/三花三套重映射 + 名牌。
@@ -31,7 +29,7 @@ export function coatFilter(id: CoatId): string {
 }
 
 /** 毛色选择器（图鉴皮肤设置行）。 */
-export function CoatPicker({ pet }: { pet?: PetRecord }) {
+export function CoatPicker() {
   const [coat, setCoat] = useState<CoatId>("orange");
   useEffect(() => {
     setCoat(getCoat());
@@ -43,7 +41,7 @@ export function CoatPicker({ pet }: { pet?: PetRecord }) {
   };
   return (
     <div className="flex items-center gap-2">
-      <span className="text-[12px] text-[var(--curb)]">毛色皮肤{pet ? `（${pet.name}）` : ""}：</span>
+      <span className="text-[12px] text-[var(--curb)]">毛色皮肤：</span>
       {COATS.map((c) => (
         <button
           key={c.id}
