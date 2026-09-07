@@ -36,10 +36,30 @@ describe("deriveStreetView", () => {
     expect(v.level).toBe(0);
   });
 
-  it("游荡进行中 → 出屏 walk；连续失败 ≥3 → grumpy", () => {
+  it("游荡进行中 → 出屏 walk；连续失败不再入 baseline（#218：失败态是瞬时覆盖，归街角）", () => {
     expect(deriveStreetView(state({}), PET, new Date(), true).away).toBe(true);
     expect(deriveStreetView(state({}), PET, new Date(), true).anim).toBe("walk");
-    expect(deriveStreetView(state({ consecutiveFailures: 3 }), PET, new Date(), false).anim).toBe("grumpy");
+    expect(deriveStreetView(state({ consecutiveFailures: 3 }), PET, new Date(), false).anim).toBe("idle");
+  });
+
+  it("#218 数值联动：无聊 ≥80 → grumpy 常态；精力 ≤25 且非睡眠期 → 打盹", () => {
+    const bored = deriveStreetView(state({ boredom: 85 }), PET, new Date(), false);
+    expect(bored.bored).toBe(true);
+    expect(bored.anim).toBe("grumpy");
+    const nap = deriveStreetView(state({ energy: 20 }), PET, new Date(), false);
+    expect(nap.napping).toBe(true);
+    expect(nap.anim).toBe("sleep");
+    // 睡眠期优先于打盹（作息窗口内）
+    const pet = { ...PET, sleepStart: 0, sleepEnd: 23 };
+    const nightNap = deriveStreetView(state({ energy: 10 }), pet, new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 2), false);
+    expect(nightNap.sleeping).toBe(true);
+    expect(nightNap.napping).toBe(false);
+  });
+
+  it("#218 未知态不联动：数值 null → bored/napping 均 false", () => {
+    const v = deriveStreetView(null, PET, new Date(), false);
+    expect(v.bored).toBe(false);
+    expect(v.napping).toBe(false);
   });
 
   it("精力低于阈值 → 饿演出；睡眠窗口 → sleep", () => {

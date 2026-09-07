@@ -24,6 +24,11 @@ export interface StreetView {
   away: boolean;
   hungry: boolean;
   sleeping: boolean;
+  /** #218 数值联动（ADR-0013 注入值为真相源；null 不联动）：
+   * 无聊 ≥ 80 的 grumpy 常态演出（失败态是瞬时覆盖，见 StreetCorner） */
+  bored: boolean;
+  /** 精力 ≤ 25 的非睡眠期打盹演出（复用 sleep 帧 + 街角 zZ 角标区分 #91 睡眠期） */
+  napping: boolean;
   /**
    * HUD 三墨条 = 后端原始值（ADR-0013 §4：精力/无聊/脾气，0-100，精力高=好）。
    * state 缺失 → null（HUD 显未知态「--」）；禁伪装健康兜底（#214 审计 B 类：
@@ -51,14 +56,21 @@ export function deriveStreetView(
   const sleeping = isSleeping(now.getHours(), pet.sleepStart, pet.sleepEnd);
   // state 缺失 = 未知，不触发饿演出（拿 null 冒充健康/饥饿都是编造）
   const hungry = energy !== null && energy < HUNGRY_ENERGY_THRESHOLD;
-  const FAILURE_GRUMPY_THRESHOLD = 3;
+  // #218 数值常态演出：优先级 游荡 > 睡眠 > 打盹 > 无聊 grumpy > idle；
+  // 连续失败不再入 baseline——它移到 StreetCorner 作瞬时覆盖（票面：失败态是瞬时的）
+  const BORED_GRUMPY_THRESHOLD = 80;
+  const NAP_ENERGY_THRESHOLD = 25;
+  const bored = boredom !== null && boredom >= BORED_GRUMPY_THRESHOLD;
+  const napping = !sleeping && energy !== null && energy <= NAP_ENERGY_THRESHOLD;
   const anim: StreetView["anim"] = wandering
     ? "walk"
     : sleeping
       ? "sleep"
-      : (state?.consecutiveFailures ?? 0) >= FAILURE_GRUMPY_THRESHOLD
-        ? "grumpy"
-        : "idle";
+      : napping
+        ? "sleep"
+        : bored
+          ? "grumpy"
+          : "idle";
   const day = Math.max(
     1,
     Math.floor((now.getTime() - pet.createdAt) / 86_400_000) + 1,
@@ -70,6 +82,8 @@ export function deriveStreetView(
     sleeping,
     bars: { energy, boredom, temper },
     mood: state?.mood ?? null,
+    bored,
+    napping,
     level: Math.floor((state?.totalWanders ?? 0) / 10),
     day,
   };

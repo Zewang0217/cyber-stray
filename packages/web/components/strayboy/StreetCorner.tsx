@@ -279,6 +279,32 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
   }, [view.sleeping, onPat, reset]);
 
   const onStreet = !view.away && !view.sleeping;
+
+  // #218 失败态 = 瞬时覆盖：连续失败 ≥3 触发一段 grumpy（数值态 bored 才是常态，
+  // 二者分离——失败过几天不等于从此臭脸）
+  const failures = state?.consecutiveFailures ?? 0;
+  useEffect(() => {
+    if (failures < 3) return;
+    setGrumpyOn(true);
+    const id = setTimeout(() => setGrumpyOn(false), GRUMPY_MS);
+    return () => clearTimeout(id);
+  }, [failures]);
+
+  // #218 随机 joy 闪烁：低频（约 2 分钟一次四成概率）、仅站街 idle 时，动画复用 pat 时长
+  useEffect(() => {
+    if (!onStreet) return;
+    const id = setInterval(() => {
+      setOverrideAnim((cur) => {
+        if (cur) return cur;
+        if (Math.random() < 0.4) {
+          setTimeout(() => setOverrideAnim(null), PAT_ANIM_MS);
+          return "joy";
+        }
+        return null;
+      });
+    }, 120_000);
+    return () => clearInterval(id);
+  }, [onStreet]);
   const theaterAnim = theater && onStreet ? theater.anim : null;
   const anim = grumpyOn && onStreet
     ? "grumpy"
@@ -295,8 +321,14 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
         onPasserbyGreet={onPasserbyGreet}
       >
         {!view.away && (
-          <button type="button" aria-label={`拍拍${pet.name}`} className="cursor-pointer" onClick={pat}>
+          <button type="button" aria-label={`拍拍${pet.name}`} className="relative cursor-pointer" onClick={pat}>
             <PetSprite contract={contract} anim={anim} scale={3} hungry={view.hungry && view.anim === "idle"} coat={coat} />
+            {/* 打盹角标（#218）：非睡眠期的精力低打盹，复用 sleep 帧 + zZ 与 #91 睡眠期区分 */}
+            {view.napping && (
+              <span aria-hidden className="sb-blink absolute -top-2 right-0 font-vt323 text-[13px] leading-none text-[var(--curb)]">
+                zZ
+              </span>
+            )}
           </button>
         )}
         {hearts > 0 && <HeartBurst key={hearts} />}
