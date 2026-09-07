@@ -8,6 +8,7 @@ import { useInterestGraph } from "@/hooks/useInterestGraph";
 import { useTenantEvents } from "@/hooks/useTenantEvents";
 import { InterestAtlas } from "@/components/strayboy/InterestAtlas";
 import { TimeMachine } from "@/components/strayboy/TimeMachine";
+import { CoatPicker } from "@/components/strayboy/CoatPicker";
 import { DEMO_NODES, DEMO_SNAPSHOTS } from "@/lib/strayboy/demo";
 import { GRUMPY_MS } from "@/hooks/usePatStreak";
 import type { InterestNodeData } from "@/lib/types";
@@ -69,6 +70,12 @@ function EvolutionInner() {
       </header>
 
       <InterestAtlas nodes={nodes} />
+
+      <h2 className="font-ps2p mb-3 mt-8 text-xs text-[var(--hi)]">SKIN · 图鉴皮肤</h2>
+      <div className="mb-2 border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
+        <CoatPicker />
+        <p className="mt-1.5 text-[11px] text-[var(--curb)]">选择后街角同步换色（橘/黑/三花，DESIGN.md §7）。</p>
+      </div>
 
       <h2 className="font-ps2p mb-3 mt-8 text-xs text-[var(--hi)]">TIME MACHINE · 存档</h2>
       <TimeMachine snapshots={snapshots} onLoad={onLoad} rolling={rolling} />
