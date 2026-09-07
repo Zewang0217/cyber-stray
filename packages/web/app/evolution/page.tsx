@@ -12,7 +12,6 @@ import { CoatPicker } from "@/components/strayboy/CoatPicker";
 import { DEMO_NODES, DEMO_SNAPSHOTS } from "@/lib/strayboy/demo";
 import { GRUMPY_MS } from "@/hooks/usePatStreak";
 import type { InterestNodeData } from "@/lib/types";
-import type { EvolutionSnapshot } from "@/hooks/useEvolution";
 
 const GRUMPY_KEY = "sb_grumpy_until";
 const DEMO_ENTROPY = 1.71;
@@ -32,7 +31,9 @@ function EvolutionInner() {
   const [rolling, setRolling] = useState(false);
   const nodeCountRef = useRef<number | null>(null);
   const nodes = (demo ? DEMO_NODES : graph.nodes) as InterestNodeData[];
-  const snapshots = (demo ? DEMO_SNAPSHOTS : evolution.data) as unknown as EvolutionSnapshot[];
+  // useEvolution.data 初始为 null（加载前）——快照取其 .snapshots，空态兜 []。
+  // 此前把整个 data 硬转数组，TimeMachine 读 null.length 直接崩（#202 根因）
+  const snapshots = demo ? DEMO_SNAPSHOTS : (evolution.data?.snapshots ?? []);
 
   // 新话题到达（nodeCount 增加）→ toast（街角猫的 pounce 演出在街角页）
   useEffect(() => {
