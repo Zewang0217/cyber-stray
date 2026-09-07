@@ -28,9 +28,9 @@ function Stamp({ kind }: { kind: string }) {
 }
 
 /**
- * 明信片（DESIGN.md §6 / components.md）：paper 底 4px 墨描边 + 实色落影、
- * 右上像素邮票、左上 mono 竖排日期签、未读 NEW! 黄徽章 steps 闪烁、
- * 标题像素短串 + 摘要 Noto Sans SC、👍/👎 + 顶话题。
+ * 明信片（DESIGN.md §6 / components.md §MailCard #205 修订）：paper 底 4px 墨描边 +
+ * 实色落影、右上像素邮票、左上 mono 竖排日期签、未读 NEW! 黄徽章 steps 闪烁、
+ * 卡片只显像素标题（点开 = PostcardDetail 读全文）、👍/👎 + 顶话题。
  */
 export function MailCard({
   card,
