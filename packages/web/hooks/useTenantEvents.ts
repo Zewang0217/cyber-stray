@@ -10,7 +10,8 @@ export interface TenantEvent {
     | "worker_succeeded"
     | "worker_retry"
     | "worker_failed"
-    | "worker_timeout";
+    | "worker_timeout"
+    | "diary_generated";
   tenantId: string;
   petId: string;
   at: number;
@@ -23,6 +24,7 @@ const REFRESH_EVENT_TYPES = new Set<TenantEvent["type"]>([
   "worker_failed",
   "worker_timeout",
   "worker_retry",
+  "diary_generated",
 ]);
 
 interface UseTenantEventsReturn {

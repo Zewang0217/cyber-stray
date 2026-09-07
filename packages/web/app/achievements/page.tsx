@@ -1,6 +1,7 @@
 "use client";
 
 import { useAgentState } from "@/hooks/useAgentState";
+import { useInterestGraph } from "@/hooks/useInterestGraph";
 
 interface Badge {
   id: string;
@@ -30,7 +31,8 @@ function deriveBadges(state: { totalWanders: number; totalPushes: number; totalS
  */
 export default function AchievementsPage() {
   const { state } = useAgentState();
-  const badges = deriveBadges(state, 0);
+  const graph = useInterestGraph();
+  const badges = deriveBadges(state, graph.nodes.length);
   const earnedCount = badges.filter((b) => b.earned).length;
 
   return (

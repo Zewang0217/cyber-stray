@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { SpriteContract } from "@/lib/strayboy/sprite";
 import { deriveStreetView } from "@/lib/strayboy/pet-view";
 import { useAgentState } from "@/hooks/useAgentState";
@@ -13,6 +14,7 @@ import { DialogBox } from "@/components/strayboy/DialogBox";
 import { HudBar } from "@/components/strayboy/HudBar";
 import { HeartBurst } from "@/components/strayboy/HeartBurst";
 import { LogDrawer } from "@/components/strayboy/LogDrawer";
+import { AttrCard } from "@/components/strayboy/AttrCard";
 import { PixelStage } from "@/components/strayboy/PixelStage";
 import { PetSprite } from "@/components/strayboy/PetSprite";
 import { WanderLog } from "@/components/strayboy/WanderLog";
@@ -109,6 +111,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [theater, setTheater] = useState<(typeof THEATER)[number] | null>(null);
   const [lvFlash, setLvFlash] = useState(false);
+  const [attrCardOpen, setAttrCardOpen] = useState(false);
   const [coat, setCoat] = useState<"orange" | "black" | "calico">("orange");
   const [attract, setAttract] = useState(false);
   const [mailman, setMailman] = useState(false);
@@ -116,6 +119,11 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
   const lastActivityRef = useRef(0);
   const prevLevel = useRef<number | null>(null);
   const { onPat, reset } = usePatStreak();
+  // /footprint 重定向 ?drawer=log → 自动开 LOG 存档抽屉
+  const openDrawerViaRoute = useSearchParams().get("drawer") === "log";
+  useEffect(() => {
+    if (openDrawerViaRoute) setDrawerOpen(true);
+  }, [openDrawerViaRoute]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30_000);
@@ -298,9 +306,14 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
       )}
 
       <div className="flex items-center justify-between">
-        <span className={`border-2 border-[var(--ink)] bg-[var(--paper)] px-2 py-1 font-ps2p text-xs text-[var(--ink)] ${lvFlash ? "sb-blink" : ""}`}>
+        <button
+          type="button"
+          onClick={() => setAttrCardOpen(true)}
+          aria-label="查看角色属性卡"
+          className={`border-2 border-[var(--ink)] bg-[var(--paper)] px-2 py-1 font-ps2p text-xs text-[var(--ink)] ${lvFlash ? "sb-blink" : ""}`}
+        >
           LV{view.level} · {pet.name}
-        </span>
+        </button>
         {/* 存档抽屉入口（/footprint 重定向至此） */}
         <button
           type="button"
@@ -332,6 +345,9 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
       )}
 
       <LogDrawer open={drawerOpen} onOpenChange={setDrawerOpen} demo={demo} />
+      {attrCardOpen && (
+        <AttrCard pet={pet} state={state} level={view.level} onClose={() => setAttrCardOpen(false)} />
+      )}
     </div>
   );
 }

@@ -11,6 +11,8 @@ export interface PetRecord {
   createdAt: number;
   sleepStart: number | null;
   sleepEnd: number | null;
+  personality?: string;
+  catchphrases?: Array<{ text: string }>;
 }
 
 /** 精力低于该值 → 饥饿演出（眼睛叠加 + 告警墨条色）。 */
