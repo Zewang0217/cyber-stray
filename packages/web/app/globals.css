@@ -714,10 +714,17 @@ body.sb-hidden * {
    105vw 保证任何容器宽都完整穿场；overflow-hidden 由舞台裁切 */
 .sb-passerby {
   left: 0;
+  /* 基态在屏外：fill 前不站桩；reduced-motion 下动画瞬结也不冻在屏内 */
+  transform: translateX(-40px);
   animation: sb-passerby-walk linear infinite;
 }
 .sb-passerby[data-flip="true"] {
-  top: 2px;
+  bottom: 28px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sb-passerby {
+    visibility: hidden;
+  }
 }
 @keyframes sb-passerby-walk {
   from {

@@ -74,10 +74,11 @@ export function PixelStage({ children, onStreet, demo, daytime = false, onPasser
   useEffect(() => {
     if (!onPasserbyGreet) return;
     const id = setInterval(() => {
-      if (onStreet) onPasserbyGreet();
+      // 路人只在夜间场景出镜（!daytime 渲染门控）——白天不报偶遇台词
+      if (onStreet && !daytime) onPasserbyGreet();
     }, 45_000);
     return () => clearInterval(id);
-  }, [onPasserbyGreet, onStreet]);
+  }, [onPasserbyGreet, onStreet, daytime]);
 
   return (
     <div
