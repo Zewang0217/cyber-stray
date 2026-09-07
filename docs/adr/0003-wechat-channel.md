@@ -1,5 +1,7 @@
 # 0003 — 微信通道：官方 iLink 自研适配器 + 扫码即用 + 每租户一 bot
 
+> **Superseded by ADR-0010（2026-09-04）**：iLink 硬约束实测导致微信获客路径不可用，通道整体判死，以下仅存历史。
+
 给赛博宠物接入微信,定位为**获客通道 + 双向互动主体验**(飞书/TG/PWA 保持主力,微信为第四可选通道)。三个决策锁定:
 
 **1. 通道技术 = 腾讯官方 iLink Bot API,自研薄适配器(400-600 行 TS)**。不选逆向方案(wechaty+padlocal / wechatferry / itchat——2026 全线衰退 + 封号风险,wechatferry 社区版明示禁止商用),不引入 hermes-agent 整体(自研 agent 架构下网关层套完整框架是污染)。参考实现:官方 Tencent/openclaw-weixin(TS 全模块 + 单测)为主,hermes weixin.py 的错误处理为辅,@wechatbot/wechatbot 作兜底脚手架。iLink 官方硬约束(issue #202 官方受理确认):主动推送 ≈10 条/24h 有效会话、24h 无交互 token 失效、需主人先发消息激活、仅 DM。
