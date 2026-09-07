@@ -18,13 +18,22 @@ function state(over: Partial<AgentState>): AgentState {
 }
 
 describe("deriveStreetView", () => {
-  it("HUD 三墨条：饥饿=精力反向、心情扣脾气，LV=totalWanders÷10、DAY=领养日起算", () => {
+  it("HUD 三墨条 = 后端原始值零换算；心情 = 枚举原文；LV/DAY 不变", () => {
     const v = deriveStreetView(state({ energy: 80, boredom: 30, temper: 10, totalWanders: 23 }), PET, new Date(), false);
-    expect(v.bars).toEqual({ hunger: 20, boredom: 30, mood: 75 });
+    expect(v.bars).toEqual({ energy: 80, boredom: 30, temper: 10 });
+    expect(v.mood).toBe("playful");
     expect(v.level).toBe(2);
     expect(v.day).toBe(4);
     expect(v.anim).toBe("idle");
     expect(v.away).toBe(false);
+  });
+
+  it("#217 未知态：state=null → 三墨条 null + 心情 null，禁伪装健康兜底", () => {
+    const v = deriveStreetView(null, PET, new Date(), false);
+    expect(v.bars).toEqual({ energy: null, boredom: null, temper: null });
+    expect(v.mood).toBeNull();
+    expect(v.hungry).toBe(false); // null 不冒充饥饿
+    expect(v.level).toBe(0);
   });
 
   it("游荡进行中 → 出屏 walk；连续失败 ≥3 → grumpy", () => {
@@ -33,7 +42,7 @@ describe("deriveStreetView", () => {
     expect(deriveStreetView(state({ consecutiveFailures: 3 }), PET, new Date(), false).anim).toBe("grumpy");
   });
 
-  it("精力低于阈值 → 饥饿；睡眠窗口 → sleep", () => {
+  it("精力低于阈值 → 饿演出；睡眠窗口 → sleep", () => {
     expect(deriveStreetView(state({ energy: HUNGRY_ENERGY_THRESHOLD - 1 }), PET, new Date(), false).hungry).toBe(true);
     const night = new Date();
     const pet = { ...PET, sleepStart: 0, sleepEnd: 23 };

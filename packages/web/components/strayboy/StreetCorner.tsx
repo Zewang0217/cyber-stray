@@ -327,11 +327,18 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
         </span>
       </div>
 
-      {/* HUD 三墨条（spec Decision 6：饥饿↔精力反向 / 无聊 / 心情↔脾气反向）；心情高分=好，低值才告警 */}
+      {/* HUD 三墨条 + 心情标签（ADR-0013 §4 / #217：后端原始值零换算，精力高=好；
+          心情 = 枚举原文非分数；state 缺失显未知态不伪装健康） */}
       <div className="flex flex-col gap-1.5 border-2 border-black bg-[var(--panel)] p-3 shadow-[4px_4px_0_#000]">
-        <HudBar label="饥饿" value={view.bars.hunger} warnAt={80} />
+        <HudBar label="精力" value={view.bars.energy} warnBelow={20} />
         <HudBar label="无聊" value={view.bars.boredom} warnAt={80} />
-        <HudBar label="心情" value={view.bars.mood} warnBelow={20} />
+        <HudBar label="脾气" value={view.bars.temper} warnAt={80} />
+        <div className="flex items-center gap-2">
+          <span className="w-10 shrink-0 text-[12px] text-[var(--paper)]">心情</span>
+          <span className="border-2 border-[var(--curb)] bg-[var(--sky)] px-2 py-0.5 font-vt323 text-[14px] uppercase text-[var(--paper)]">
+            {view.mood ?? "--"}
+          </span>
+        </div>
       </div>
 
       <DialogBox name={pet.name} text={dialog} />
