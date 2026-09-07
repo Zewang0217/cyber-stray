@@ -88,13 +88,17 @@ describe('migratePetStats（state.json mood/temper → pets）', () => {
   it('无 state.json → no-state-file；形状非法 → invalid-source', async () => {
     await getOrCreateTenant(dataDir, 't1');
     await getOrCreateTenant(dataDir, 't2');
+    await getOrCreateTenant(dataDir, 't3');
     await addPet('p-none', 't1'); // 无 state.json
     await addPet('p-bad', 't2');
     writeState('t2', { mood: 'not-a-mood', temper: 'x' });
+    await addPet('p-range', 't3');
+    writeState('t3', { mood: 'lazy', temper: 150 }); // 越界（schema 承诺 0-100）
 
     const report = await migratePetStats(dataDir);
     expect(entryOf(report, 'p-none')?.status).toBe('no-state-file');
     expect(entryOf(report, 'p-bad')?.status).toBe('invalid-source');
+    expect(entryOf(report, 'p-range')?.status).toBe('invalid-source');
 
     const db = await getDb(dataDir);
     for (const id of ['p-none', 'p-bad']) {

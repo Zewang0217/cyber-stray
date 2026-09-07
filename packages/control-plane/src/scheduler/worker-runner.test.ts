@@ -18,7 +18,9 @@ import { openTenantSecrets } from '../secrets/tenant-secrets.js';
 import {
   createWorkerRunner,
   appendWorkerLog,
+  appendStdoutTail,
   MAX_WORKER_LOG_BYTES,
+  type StdoutTail,
   type SpawnLike,
 } from './worker-runner.js';
 
@@ -99,6 +101,15 @@ describe('worker runner', () => {
     const result = await runner(makeJob());
     expect(result.ok).toBe(true);
     expect(result.stats).toEqual(stats);
+  });
+
+  it('stdout 超 64KiB：保尾弃头，末行 stats JSON 仍完整（P1-1 回归）', () => {
+    const buf: StdoutTail = { chunks: [], bytes: 0 };
+    const statsLine = `${JSON.stringify({ ok: true, result: { stats: { energy: 55, boredom: 45 } } })}\n`;
+    for (let i = 0; i < 100; i++) appendStdoutTail(buf, 'x'.repeat(1024));
+    appendStdoutTail(buf, statsLine);
+    expect(buf.bytes).toBeLessThanOrEqual(64 * 1024 + statsLine.length);
+    expect(buf.chunks.join('').endsWith(statsLine)).toBe(true);
   });
 
   it('exit 0 但 stdout 无 stats：stats 为 undefined（落库方显式告警）', async () => {

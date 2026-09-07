@@ -118,17 +118,11 @@ const realSpawn: SpawnLike = (cmd, args, { timeoutMs, logFile }) => {
   // result.stats 在 stdout 末行——必须保尾弃头，环形丢弃最旧的块）
   const stdoutDecoder = new StringDecoder('utf8');
   const stderrDecoder = new StringDecoder('utf8');
-  const stdoutChunks: string[] = [];
-  let stdoutBytes = 0;
+  const stdoutBuf: StdoutTail = { chunks: [], bytes: 0 };
   child.stdout?.on('data', (chunk: Buffer) => {
     const text = stdoutDecoder.write(chunk);
     if (logFile) appendWorkerLog(logFile, text);
-    stdoutChunks.push(text);
-    stdoutBytes += chunk.length;
-    while (stdoutBytes > STDERR_CAP_BYTES && stdoutChunks.length > 1) {
-      const dropped = stdoutChunks.shift();
-      stdoutBytes -= dropped ? Buffer.byteLength(dropped) : 0;
-    }
+    appendStdoutTail(stdoutBuf, text);
   });
   const stderr: string[] = [];
   let stderrBytes = 0;
@@ -149,10 +143,30 @@ const realSpawn: SpawnLike = (cmd, args, { timeoutMs, logFile }) => {
     if (code !== 0 && stderr.length > 0) {
       console.error(`[worker-runner] stderr: ${stderr.join('').slice(0, 2000)}`);
     }
-    resolve({ exitCode: code ?? -1, stdout: stdoutChunks.join('') });
+    resolve({ exitCode: code ?? -1, stdout: stdoutBuf.chunks.join('') });
   });
   return promise;
 };
+
+/** stdout 保尾缓冲（环形丢弃最旧块，保末行 JSON 写回契约） */
+export interface StdoutTail {
+  chunks: string[];
+  bytes: number;
+}
+
+/** 追加一块并保尾：总字节超 cap 时从头丢弃最旧块（至少保留最新一块） */
+export function appendStdoutTail(
+  buf: StdoutTail,
+  text: string,
+  cap = STDERR_CAP_BYTES,
+): void {
+  buf.chunks.push(text);
+  buf.bytes += Buffer.byteLength(text);
+  while (buf.bytes > cap && buf.chunks.length > 1) {
+    const dropped = buf.chunks.shift();
+    buf.bytes -= dropped ? Buffer.byteLength(dropped) : 0;
+  }
+}
 
 /** 在飞子进程（优雅关停时统一杀；单 runner 实例内有效） */
 const activeChildren = new Set<ReturnType<typeof spawn>>();

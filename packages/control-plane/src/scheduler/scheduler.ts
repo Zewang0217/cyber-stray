@@ -250,7 +250,6 @@ export class Scheduler {
       });
       this.launch(
         { ...pet, plan: planByTenant.get(pet.tenantId) ?? 'free' },
-        state,
         // 守卫已保证 mood/temper 非空：注入值 = 前推瞬时值 + 库中心情/脾气
         { energy: state.energy, boredom: state.boredom, mood: pet.mood, temper: pet.temper },
         dataDir,
@@ -398,7 +397,6 @@ export class Scheduler {
    */
   private launch(
     pet: { id: string; tenantId: string; plan: string; pushWindowStart: number | null; pushWindowEnd: number | null; personality: PersonalityId; catchphrases?: string | null },
-    state: PropagatedState,
     stats: PetStats,
     dataRoot: string,
     bus: EventBus,
