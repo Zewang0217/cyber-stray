@@ -63,6 +63,10 @@ Issues 存于 GitHub Issues，用 `gh` CLI 操作（创建/读取/评论/标签�
 
 五个规范角色用同名标签：`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`。见 `docs/agents/triage-labels.md`。
 
+### Issue labels
+
+完整标签体系（类型 / 形态 / triage / `待验收`）与流转规则见 `docs/agents/issue-labels.md`。关键规则：实施 PR 合并后摘 `ready-for-agent`，有验收项改挂 `待验收`，验收通过才关闭。
+
 ### Domain docs
 
 单上下文：根 `CONTEXT.md`（领域词汇）+ `docs/adr/`（架构决策）。见 `docs/agents/domain.md`。

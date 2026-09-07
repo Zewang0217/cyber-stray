@@ -14,9 +14,9 @@ When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the 
 
 ## Existing repo labels
 
-`wontfix` already exists on the GitHub repo. The other four (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`) do not yet exist — create them lazily when first applied (e.g. `gh label create needs-triage --description "Maintainer needs to evaluate this issue"`), or let `/triage` create them on first run.
+All five triage labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) exist on the GitHub repo.
 
-The repo also carries topic labels that are orthogonal to triage state — `bug`, `enhancement`, `documentation`, `design`, `discussion`, `epic`, `saas`, `高优先级`, `重要`, `低优先级`, `help wanted`, `good first issue`, `question`, `duplicate`, `invalid`. These coexist with the triage labels and are not part of the triage state machine.
+The repo also carries type / acceptance / topic labels that are orthogonal to triage state — `bug`, `enhancement`, `chore`, `documentation`, `design`, `discussion`, `epic`, `待验收`, `测试`, `saas`, `高优先级`, `重要`, `低优先级`, `help wanted`, `good first issue`, `question`, `duplicate`, `invalid`. The full taxonomy and the state-transition rules (when to swap `ready-for-agent` for `待验收`, etc.) are specified in [issue-labels.md](issue-labels.md) — follow that file when labeling issues.
 
 ## Editing this mapping
 
