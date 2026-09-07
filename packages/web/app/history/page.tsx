@@ -9,6 +9,7 @@ import { useHistory } from "@/hooks/useHistory";
 import { usePets } from "@/hooks/usePets";
 import { useTenantEvents } from "@/hooks/useTenantEvents";
 import { MailCard } from "@/components/strayboy/MailCard";
+import { PostcardDetail } from "@/components/strayboy/PostcardDetail";
 import { DAY_MS, getSeenTimestamp, markAllSeen } from "@/lib/strayboy/mail";
 import type { PushContent } from "@/lib/types";
 
@@ -45,6 +46,8 @@ function WallInner() {
   const adoptedAt = pets[0]?.createdAt ?? 0;
 
   const [animateParent] = useAutoAnimate();
+  // #205：详情模态（墙上卡片只显标题，点开读全文）
+  const [detail, setDetail] = useState<PushContent | null>(null);
   // demo 未读推导隔离：夹具恒视为未读（NEW! 验收项不读真实 localStorage）
   const [seenMs, setSeenMs] = useState<number>(() => getSeenTimestamp());
   const seen = demo ? 0 : seenMs;
@@ -110,9 +113,20 @@ function WallInner() {
             onFeedback={onFeedback}
             onPin={onPin}
             pending={feedback.pending || demo}
+            onOpen={setDetail}
           />
         ))}
       </div>
+      {detail && (
+        <PostcardDetail
+          card={detail}
+          adoptedAt={adoptedAt}
+          onFeedback={onFeedback}
+          onPin={onPin}
+          pending={feedback.pending || demo}
+          onClose={() => setDetail(null)}
+        />
+      )}
       {!demo && history.hasMore && (
         <div className="mt-4 text-center">
           <button
