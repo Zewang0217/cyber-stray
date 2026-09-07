@@ -284,27 +284,30 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
   // 二者分离——失败过几天不等于从此臭脸）
   const failures = state?.consecutiveFailures ?? 0;
   useEffect(() => {
-    if (failures < 3) return;
+    // 回落（游荡成功清零）时显式复位：cleanup 会清掉待触发的关闭定时器，
+    // 不复位则 grumpyOn 卡 true 永久臭脸（评审 HIGH-1）
+    if (failures < 3) {
+      setGrumpyOn(false);
+      return;
+    }
     setGrumpyOn(true);
     const id = setTimeout(() => setGrumpyOn(false), GRUMPY_MS);
     return () => clearTimeout(id);
   }, [failures]);
 
-  // #218 随机 joy 闪烁：低频（约 2 分钟一次四成概率）、仅站街 idle 时，动画复用 pat 时长
+  // #218 随机 joy 闪烁：低频（约 2 分钟一次四成概率）、仅合成后站街 idle——
+  // 打盹/无聊 grumpy 不被 joy 打断（评审 MEDIUM-1）；updater 内不带副作用（LOW-1）。
+  // anim 变化即重挂 interval（覆盖期间不计时，回 idle 重新低频起算）
   useEffect(() => {
-    if (!onStreet) return;
+    if (anim !== "idle") return;
     const id = setInterval(() => {
-      setOverrideAnim((cur) => {
-        if (cur) return cur;
-        if (Math.random() < 0.4) {
-          setTimeout(() => setOverrideAnim(null), PAT_ANIM_MS);
-          return "joy";
-        }
-        return null;
-      });
+      if (Math.random() < 0.4) {
+        setOverrideAnim("joy");
+        setTimeout(() => setOverrideAnim(null), PAT_ANIM_MS);
+      }
     }, 120_000);
     return () => clearInterval(id);
-  }, [onStreet]);
+  }, [anim]);
   const theaterAnim = theater && onStreet ? theater.anim : null;
   const anim = grumpyOn && onStreet
     ? "grumpy"
@@ -322,9 +325,9 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
       >
         {!view.away && (
           <button type="button" aria-label={`拍拍${pet.name}`} className="relative cursor-pointer" onClick={pat}>
-            <PetSprite contract={contract} anim={anim} scale={3} hungry={view.hungry && view.anim === "idle"} coat={coat} />
+            <PetSprite contract={contract} anim={anim} scale={3} hungry={view.hungry && (anim === "idle" || view.napping)} coat={coat} />
             {/* 打盹角标（#218）：非睡眠期的精力低打盹，复用 sleep 帧 + zZ 与 #91 睡眠期区分 */}
-            {view.napping && (
+            {view.napping && anim === "sleep" && (
               <span aria-hidden className="sb-blink absolute -top-2 right-0 font-vt323 text-[13px] leading-none text-[var(--curb)]">
                 zZ
               </span>
