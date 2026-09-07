@@ -143,6 +143,20 @@ describe('runOneWander 双租户隔离', () => {
     expect(bState2.totalWanders).toBe(1);
   });
 
+  test('ADR-0013 写回保性格差异：playful 耗能更多/解无聊更快（系数 × 实际步数）', async () => {
+    const tP = makeTenantDir('playful');
+    dirs = [tP];
+    const r = await runOneWander({
+      ...tP,
+      personality: 'playful',
+      petStats: { energy: 80, boredom: 70, mood: 'curious', temper: 20 },
+    });
+    expect(r.stats).toEqual({
+      energy: Math.round(80 - r.steps * 2 * 1.15), // playful energyCost 1.15
+      boredom: Math.round(70 - r.steps * 2 * 1.1), // playful boredomRelief 1.1
+    });
+  });
+
   test('租户配置隔离：各租户读自己的 agent-config.json 行为参数', async () => {
     const tA = makeTenantDir('a');
     const tB = makeTenantDir('b');

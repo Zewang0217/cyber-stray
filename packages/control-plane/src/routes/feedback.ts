@@ -23,7 +23,7 @@ import type { ControlDb } from '../db/client.js';
 import { getDb } from '../db/client.js';
 import { pets, tenants, userTenants } from '../db/schema.js';
 import type { Catchphrase } from '@cyber-stray/shared';
-import type { PetMood } from '@cyber-stray/shared/pet-stats';
+import { isPetMood, type PetMood } from '@cyber-stray/shared/pet-stats';
 import { appendCatchphraseHistory } from '../catchphrase-history.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { tenantDataDir } from '../tenant.js';
@@ -138,13 +138,20 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
     return ['--pet-state', JSON.stringify({ mood: pet.mood, temper: pet.temper })];
   }
 
-  /** ADR-0013 写回：worker 的 statsUpdated（mood/temper 增量）落 pets；失败仅记日志（反馈本体已成功） */
+  /** ADR-0013 写回：worker 的 statsUpdated（mood/temper 增量）落 pets；失败仅记日志（反馈本体已成功）。
+   * 跨进程回报先校验再落库（mood 合法枚举、temper 0-100），非法显式告警不写 */
   async function applyStatsWriteBack(
     tenantId: string,
     workerResult: { statsUpdated?: { mood?: PetMood; temper: number } | null } | undefined,
   ): Promise<void> {
     const stats = workerResult?.statsUpdated;
     if (!stats) return;
+    if ((stats.mood !== undefined && !isPetMood(stats.mood)) ||
+        typeof stats.temper !== 'number' || !Number.isFinite(stats.temper) ||
+        stats.temper < 0 || stats.temper > 100) {
+      console.error(`[feedback] statsUpdated 形状非法，拒绝落库（${tenantId}）：`, JSON.stringify(stats));
+      return;
+    }
     try {
       const db = await getDb(config.dataDir);
       await db

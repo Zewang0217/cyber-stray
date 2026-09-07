@@ -55,10 +55,15 @@ async function readTenantMoodTemper(
     throw error;
   }
   const parsed = JSON.parse(raw) as { mood?: unknown; temper?: unknown };
-  if (!isPetMood(parsed.mood) || typeof parsed.temper !== 'number' || !Number.isFinite(parsed.temper)) {
+  const temper: unknown = parsed.temper;
+  if (
+    !isPetMood(parsed.mood) ||
+    typeof temper !== 'number' || !Number.isFinite(temper) ||
+    temper < 0 || temper > 100
+  ) {
     throw new Error(`state.json 心情/脾气形状非法: mood=${JSON.stringify(parsed.mood)} temper=${JSON.stringify(parsed.temper)}`);
   }
-  return { mood: parsed.mood, temper: parsed.temper };
+  return { mood: parsed.mood, temper };
 }
 
 /**

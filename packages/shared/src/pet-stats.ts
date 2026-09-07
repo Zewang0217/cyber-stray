@@ -47,3 +47,22 @@ export interface WanderStatsReport {
   energy: number;
   boredom: number;
 }
+
+/** 反馈通道注入形状（心情增量计算只需 mood/temper——worker 不消耗精力/无聊） */
+export interface FeedbackPetState {
+  mood: PetMood;
+  temper: number;
+}
+
+/**
+ * 解析反馈通道的注入对象；形状非法返回 null（调用方显式 exit 2，禁兜底）。
+ * 与 parsePetStats 分立：feedback/boost 只需要心情/脾气两字段，用全量校验器
+ * 会把合法注入误判为非法（评审 #216 P0-1 的教训——跨进程形状要按通道定）。
+ */
+export function parseFeedbackPetState(raw: unknown): FeedbackPetState | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (!isPetMood(r.mood)) return null;
+  if (typeof r.temper !== 'number' || !Number.isFinite(r.temper)) return null;
+  return { mood: r.mood, temper: r.temper };
+}

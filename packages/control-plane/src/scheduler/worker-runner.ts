@@ -114,16 +114,21 @@ const realSpawn: SpawnLike = (cmd, args, { timeoutMs, logFile }) => {
   activeChildren.add(child);
   child.on('exit', () => activeChildren.delete(child));
   // #122：全量落盘（best-effort）；StringDecoder 增量解码防多字节 UTF-8
-  // 跨 chunk 截断成 U+FFFD；stderr 同时累积留非零退出尾巴
+  // 跨 chunk 截断成 U+FFFD；stdout/stderr 各留 64KiB 尾巴（写回契约的
+  // result.stats 在 stdout 末行——必须保尾弃头，环形丢弃最旧的块）
   const stdoutDecoder = new StringDecoder('utf8');
   const stderrDecoder = new StringDecoder('utf8');
-  const stdoutTail: string[] = [];
+  const stdoutChunks: string[] = [];
   let stdoutBytes = 0;
   child.stdout?.on('data', (chunk: Buffer) => {
     const text = stdoutDecoder.write(chunk);
     if (logFile) appendWorkerLog(logFile, text);
+    stdoutChunks.push(text);
     stdoutBytes += chunk.length;
-    if (stdoutBytes <= STDERR_CAP_BYTES) stdoutTail.push(text);
+    while (stdoutBytes > STDERR_CAP_BYTES && stdoutChunks.length > 1) {
+      const dropped = stdoutChunks.shift();
+      stdoutBytes -= dropped ? Buffer.byteLength(dropped) : 0;
+    }
   });
   const stderr: string[] = [];
   let stderrBytes = 0;
@@ -144,7 +149,7 @@ const realSpawn: SpawnLike = (cmd, args, { timeoutMs, logFile }) => {
     if (code !== 0 && stderr.length > 0) {
       console.error(`[worker-runner] stderr: ${stderr.join('').slice(0, 2000)}`);
     }
-    resolve({ exitCode: code ?? -1, stdout: stdoutTail.join('') });
+    resolve({ exitCode: code ?? -1, stdout: stdoutChunks.join('') });
   });
   return promise;
 };

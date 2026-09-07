@@ -21,7 +21,7 @@ import { readdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import { loadConfig, setTenantContext } from '../config.js';
 import { parseCatchphraseList, type Catchphrase } from '@cyber-stray/shared';
-import { parsePetStats, type PetStats } from '@cyber-stray/shared/pet-stats';
+import { parseFeedbackPetState, type FeedbackPetState } from '@cyber-stray/shared/pet-stats';
 import { processFeedback, boostTopic } from '../memory/feedback-pipeline.js';
 import type { FeedbackProcessResult } from '../memory/feedback-pipeline.js';
 
@@ -40,8 +40,8 @@ export interface FeedbackWorkerOptions {
   /** 宠物当前口头禅集合 JSON（#114：控制面从 pets 行注入——归因权重要落在
    * 真实集合上,不传则 loadConfig 回退性格默认组） */
   catchphrases?: Catchphrase[];
-  /** 宠物数值注入（ADR-0013：控制面从 pets 行带出；心情增量据此计算交 CP 写回） */
-  petStats?: PetStats;
+  /** 宠物心情/脾气注入（ADR-0013：控制面从 pets 行带出；增量据此计算交 CP 写回） */
+  petStats?: FeedbackPetState;
 }
 
 /**
@@ -193,7 +193,7 @@ async function main(): Promise<void> {
   // ADR-0013 注入：心情增量按注入值计算；缺失/形状非法显式 exit 2（禁兜底）
   const petStateRaw = parseArg('pet-state');
   const petStatsParsed =
-    petStateRaw !== undefined ? parsePetStats(safeJsonParse(petStateRaw)) : undefined;
+    petStateRaw !== undefined ? parseFeedbackPetState(safeJsonParse(petStateRaw)) : undefined;
   if (petStateRaw !== undefined && petStatsParsed === null) {
     console.error(JSON.stringify({ ok: false, error: '--pet-state 形状非法（须为 {mood,temper} JSON）' }));
     process.exit(2);

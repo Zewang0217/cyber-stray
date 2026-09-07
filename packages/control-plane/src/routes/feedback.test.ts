@@ -155,6 +155,30 @@ describe('feedback 路由（点赞/踩 + 顶话题）', () => {
     expect(pet?.temper).toBe(15);
   });
 
+  it('ADR-0013 写回校验：statsUpdated 形状非法（mood 非枚举）→ 拒绝落库', async () => {
+    await seedPet({ sub: 'alice', tenantId: 'alice' });
+    fake = makeFakeSpawn(0, JSON.stringify({
+      ok: true,
+      result: { recorded: true, statsUpdated: { mood: 'angry', temper: 15 } },
+    }));
+    app = new Hono();
+    const config = { dataDir, sessionSecret: SECRET } as Parameters<
+      typeof createFeedbackRoutes
+    >[0]['config'];
+    app.route('/api', createFeedbackRoutes({ config, spawnFn: fake.spawnFn }));
+
+    const req = await authed('http://x/api/feedback', {
+      method: 'POST',
+      body: JSON.stringify({ type: 'like', messageId: 'om-1' }),
+    });
+    expect((await app.request(req)).status).toBe(200); // 反馈本体成功
+
+    const db = await getDb(dataDir);
+    const pet = await db.select().from(pets).where(eq(pets.tenantId, 'alice')).get();
+    expect(pet?.mood).toBe('curious'); // 未被污染
+    expect(pet?.temper).toBe(20);
+  });
+
   it('ADR-0013 守卫：数值未迁移（mood null）→ feedback/boost 均 409 且不 spawn', async () => {
     await seedPet({ sub: 'alice', tenantId: 'alice' });
     const db = await getDb(dataDir);

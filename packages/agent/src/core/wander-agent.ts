@@ -28,6 +28,7 @@ import type { WanderEvent } from './events.js';
 import { wanderLoop } from './wander-loop.js';
 import { computeStrategy } from './strategy.js';
 import { pickFocusTopics } from './personality.js';
+import { getPersonality } from '@cyber-stray/shared';
 import type { WanderLoopConfig } from './wander-loop.js';
 import { HookChain } from '../hooks/chain.js';
 import type { HookContext } from '../hooks/types.js';
@@ -275,9 +276,18 @@ export class WanderAgent {
     // （S13 evolution 数据源；失败不阻断游荡结果）
     await this.reinforceInterestGraph(this.extractRecentTopics(ctx.wanderHistory, []));
 
+    // 游荡消耗保性格差异（原 CP 估算的 playful 耗能更多/慵懒更省语义，
+    // 基准从常量改为真实步数——性格系数沿用 shared 注册表，存量行为不回退）
+    const wanderRates = getPersonality(this.agentConfig.personality).wander;
     return {
-      energy: Math.max(0, state.energy - result.steps * this.agentConfig.energyCostPerStep),
-      boredom: Math.max(0, state.boredom - result.steps * this.agentConfig.boredomReductionPerStep),
+      energy: Math.max(
+        0,
+        Math.round(state.energy - result.steps * this.agentConfig.energyCostPerStep * wanderRates.energyCost),
+      ),
+      boredom: Math.max(
+        0,
+        Math.round(state.boredom - result.steps * this.agentConfig.boredomReductionPerStep * wanderRates.boredomRelief),
+      ),
     };
   }
 

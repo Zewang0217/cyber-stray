@@ -144,6 +144,8 @@ export class Scheduler {
   private readonly wasSleeping = new Map<string, boolean>();
   /** #96 表情包：日记写完是否触发生成（缺省 true） */
   private readonly memeEnabled: boolean;
+  /** ADR-0013：数值未迁移已告警过的宠物（进程内去抖） */
+  private readonly unmigratedWarned = new Set<string>();
   private timer?: ReturnType<typeof setInterval>;
 
   constructor(private readonly deps: SchedulerDeps) {
@@ -226,11 +228,14 @@ export class Scheduler {
 
       // #90 性格：按宠物性格解析速率（好奇=基准，存量行为不变）
       // ADR-0013：注入需要 mood/temper（migrate:pet-stats 回填前为 null）——
-      // 显式跳过并告警，绝不回退 state.json 陈旧副本
+      // 显式跳过，绝不回退 state.json 陈旧副本；每宠物只告警一次（防分钟级刷屏）
       if (pet.mood === null || pet.temper === null) {
-        console.error(
-          `[scheduler] ${pet.tenantId}/${pet.id} 数值未迁移（mood/temper 为 null），先执行 pnpm --filter @cyber-stray/control-plane migrate:pet-stats`,
-        );
+        if (!this.unmigratedWarned.has(pet.id)) {
+          this.unmigratedWarned.add(pet.id);
+          console.error(
+            `[scheduler] ${pet.tenantId}/${pet.id} 数值未迁移（mood/temper 为 null），先执行 pnpm --filter @cyber-stray/control-plane migrate:pet-stats`,
+          );
+        }
         continue;
       }
 
@@ -434,7 +439,7 @@ export class Scheduler {
         await this.handleSuccess(petId, tenantId, result.stats, bus, now);
       } catch (error) {
         if (!isOwner()) return; // 已被 TTL 重认领：旧失败不干预新任务
-        await this.handleFailure(petId, tenantId, state, bus, now, config, error);
+        await this.handleFailure(petId, tenantId, bus, now, config, error);
       } finally {
         // 只删自己持有的条目（TTL 重认领后条目属于新任务）
         if (isOwner()) this.running.delete(petId);
@@ -502,7 +507,6 @@ export class Scheduler {
   private async handleFailure(
     petId: string,
     tenantId: string,
-    state: PropagatedState,
     bus: EventBus,
     now: () => number,
     config: SchedulerConfig,
