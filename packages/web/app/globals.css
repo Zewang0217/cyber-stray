@@ -672,8 +672,7 @@ body.sb-hidden * {
 .neon-sign {
   opacity: 0.45;
 }
-.neon-sign:hover,
-.neon-sign:focus-visible {
+.neon-sign:hover {
   opacity: 1;
   text-shadow: 0 0 6px var(--neon);
 }

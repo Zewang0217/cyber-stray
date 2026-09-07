@@ -67,7 +67,7 @@ export function PixelStage({ children, onStreet, demo, daytime = false }: { chil
   const toggleLamp = (key: string): void => {
     setLamps((prev) => ({ ...prev, [key]: !(prev[key] ?? false) }));
   };
-  const moon = MOON_PHASES[phase] ?? MOON_PHASES[0];
+  const moon = MOON_PHASES[phase]; // phase 经 modulo 恒在界内
 
   return (
     <div
@@ -129,7 +129,10 @@ export function PixelStage({ children, onStreet, demo, daytime = false }: { chil
             <div key={row} className="flex gap-2 p-2">
               {Array.from({ length: Math.max(1, Math.floor((b.width - 16) / 18)) }, (_, col) => {
                 const key = `${i}-${row}-${col}`;
-                const lit = lamps[key] ?? rand() > 0.45;
+                // rand() 必须无条件消耗：?? 短路会让被 toggle 的格跳过消耗，
+                // 后续窗灯基态整体前移一位（评审 HIGH-1 实证）
+                const base = rand() > 0.45;
+                const lit = lamps[key] ?? base;
                 return (
                   /* 点窗亮灯（#208）：基态由 seed 决定，点按在亮/灭间切换 */
                   <button
@@ -151,7 +154,7 @@ export function PixelStage({ children, onStreet, demo, daytime = false }: { chil
         {/* 水沟盖（#208）：点按抖一下 + 冒蒸汽（一次性事件动效） */}
         <button
           type="button"
-          aria-label="路缘水沟盖，点按敲一敲"
+          aria-label="路缘水沟盖，点按冒蒸汽"
           onClick={() => setSteam((n) => n + 1)}
           className="absolute bottom-2 right-[12%] h-3 w-10 cursor-pointer border-y-2 border-[var(--curb)] bg-[var(--window-off)]"
         />
