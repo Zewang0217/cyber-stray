@@ -246,6 +246,14 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
     prevLevel.current = view.level;
   }, [view.level]);
 
+  // 路人偶遇台词（#212）：稳定引用——内联箭头会让 PixelStage 的 45s interval
+  // 每次渲染被 clear+重建，台词永不触发（评审 HIGH-1）。不回写 lastActivityRef：
+  // 它是「用户输入」语义，环境事件刷新会杀掉待机小剧场与 attract mode（评审 MEDIUM-3）
+  const onPasserbyGreet = useCallback((): void => {
+    const line = PASSERBY_LINES[Math.floor(Math.random() * PASSERBY_LINES.length)];
+    setDialog(line);
+  }, []);
+
   const pat = useCallback((): void => {
     lastActivityRef.current = Date.now();
     setAttract(false);
@@ -283,11 +291,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
         onStreet={!view.away}
         demo={demo}
         daytime={!view.sleeping}
-        onPasserbyGreet={() => {
-          lastActivityRef.current = Date.now();
-          const line = PASSERBY_LINES[Math.floor(Math.random() * PASSERBY_LINES.length)];
-          setDialog(line);
-        }}
+        onPasserbyGreet={onPasserbyGreet}
       >
         {!view.away && (
           <button type="button" aria-label={`拍拍${pet.name}`} className="cursor-pointer" onClick={pat}>
