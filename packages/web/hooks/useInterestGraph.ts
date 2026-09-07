@@ -52,6 +52,8 @@ function detectCollapse(entropy: number, nodeCount: number): CollapseDetection {
 interface UseInterestGraphOptions {
   /** S8：SSE 刷新信号（worker 跑完图谱可能已强化/新增节点，变化即拉取） */
   refreshSignal?: number;
+  /** false 时不发起任何请求（demo 模式视觉验收用） */
+  enabled?: boolean;
 }
 
 /**
@@ -61,7 +63,7 @@ interface UseInterestGraphOptions {
 export function useInterestGraph(
   options: UseInterestGraphOptions = {},
 ): UseInterestGraphReturn {
-  const { refreshSignal = 0 } = options;
+  const { refreshSignal = 0, enabled = true } = options;
   const [nodes, setNodes] = useState<InterestNodeData[]>([]);
   const [entropy, setEntropy] = useState(0);
   const [nodeCount, setNodeCount] = useState(0);
@@ -78,6 +80,7 @@ export function useInterestGraph(
   const fetchRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
+    if (!enabled) return;
     const fetchData = async (): Promise<void> => {
       try {
         // 并行获取当前状态和历史
@@ -122,7 +125,7 @@ export function useInterestGraph(
     // 30 秒轮询（兴趣变化较缓慢）
     const interval = setInterval(() => void fetchRef.current(), 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     if (refreshSignal > 0) void fetchRef.current();

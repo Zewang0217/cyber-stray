@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { Moon } from "lucide-react";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { BootFrame } from "@/components/strayboy/BootFrame";
+import { DEMO_DREAMS } from "@/lib/strayboy/demo";
 
 interface DreamEntry {
   date: string;
@@ -12,88 +12,66 @@ interface DreamEntry {
   excerpt?: string;
 }
 
-/**
- * 梦境页（#93）：宠物睡前的抽象叙事时间线。
- * 数据源 diary/dreams/YYYY-MM-DD.md，由睡前任务与日记同刻预生成（ADR-0002），
- * 夜间访问零延迟读取。入口在首页睡眠态（"查看今晚的梦"）；无作息配置租户
- * 无入口（issue 注记：后续彩蛋）。梦境是活物感叙事，不是事实记录。
- */
-export default function DreamPage(): React.ReactElement {
-  const [entries, setEntries] = useState<DreamEntry[] | null>(null);
+/** START 子屏·梦呓集（#170）：sky 底 + 星点 + 梦卡浮空；抽象叙事斜体。 */
+function DreamInner() {
+  const demo = useSearchParams().get("demo") === "1";
+  const [entries, setEntries] = useState<DreamEntry[]>(demo ? DEMO_DREAMS : []);
   const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(async (): Promise<void> => {
-    try {
-      const res = await fetch("/api/dream");
-      const json = (await res.json()) as { success: boolean; error?: string; data?: DreamEntry[] };
-      if (json.success && json.data) {
-        setEntries(json.data);
-        setError(null);
-      } else {
-        setError(json.error ?? "加载失败");
-      }
-    } catch {
-      setError("网络错误");
-    }
-  }, []);
+  const [loading, setLoading] = useState(!demo);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  /** 显示日期（2026-08-20 → 8月20日） */
-  const prettyDate = (date: string): string => {
-    const m = Number(date.slice(5, 7));
-    const d = Number(date.slice(8, 10));
-    return `${m}月${d}日`;
-  };
+    if (demo) return;
+    (async () => {
+      try {
+        const res = await fetch("/api/dream");
+        const json = (await res.json()) as { success: boolean; data?: DreamEntry[]; error?: string };
+        if (!json.success) throw new Error(json.error ?? "获取梦境失败");
+        setEntries(json.data ?? []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "网络错误");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [demo]);
 
   return (
-    <div className="spacing-lg max-w-4xl mx-auto">
-      <PageHeader
-        kicker="Somnia"
-        icon={<Moon className="w-5 h-5" />}
-        title="梦境"
-        subtitle={<>宠物睡前的抽象叙事 {entries ? `· 共 ${entries.length} 个梦` : ""}</>}
-      />
-
-      {!entries ? (
-        <p className="text-body text-subtext">加载中…</p>
-      ) : entries.length === 0 ? (
-        <motion.div className="p-6 paper-card rounded-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <p className="text-body text-subtext">
-            还没有梦——宠物入睡后会做第一个梦，把白天见闻打散成奇怪的想象。
-          </p>
-        </motion.div>
-      ) : (
-        <div className="relative pl-6 border-l-2 border-[var(--c-engraving-fine)]">
+    <div className="sb relative min-h-screen overflow-hidden bg-[var(--sky)] p-4">
+      <BootFrame />
+      {Array.from({ length: 14 }, (_, i) => (
+        <span key={i} aria-hidden className="absolute h-[2px] w-[2px] bg-[var(--star)]"
+          style={{ left: `${(i * 61) % 96}%`, top: `${(i * 29) % 88}%` }} />
+      ))}
+      <div className="mx-auto max-w-2xl">
+        <h1 className="font-ps2p mb-1 text-xs text-[var(--hi)]">DREAM · 梦呓集</h1>
+        {demo && <p className="mb-2 text-[12px] text-[var(--bad)]">演示数据</p>}
+        {error && (
+          <p className="mb-3 border-2 border-[var(--bad)] bg-[var(--panel)] p-2 text-[13px] text-[var(--bad)]">取梦失败：{error}</p>
+        )}
+        {loading && <p className="py-10 text-[13px] text-[var(--curb)]">潜入梦境……</p>}
+        <div className="mt-4 flex flex-col gap-5">
           {entries.map((e, i) => (
-            <motion.div
-              key={e.date}
-              className="relative mb-6"
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: Math.min(i * 0.05, 0.4) }}
-            >
-              {/* 时间轴节点：梦境用月牙色 */}
-              <span className="absolute -left-[30px] top-2 w-3 h-3 rounded-full bg-[var(--c-faded-ink)]" />
-              <div className="p-5 paper-card rounded-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="font-heading text-body font-semibold text-text">{e.title}</h2>
-                  <span className="text-xs text-subtext font-mono">{prettyDate(e.date)}</span>
-                </div>
-                <div className="text-small text-text whitespace-pre-wrap leading-relaxed italic">
-                  {e.content
-                    .split("\n")
-                    .filter((line) => !line.startsWith("#") && !line.startsWith("---") && line.trim() !== "")
-                    .join("\n")}
-                </div>
-              </div>
-            </motion.div>
+            <article key={e.date}
+              className={`border-2 border-[var(--curb)] bg-[var(--panel)] p-4 shadow-[5px_5px_0_#000] ${i % 2 === 0 ? "-rotate-1" : "rotate-1"}`}
+              style={{ transform: `translateY(${(i % 3) * 6}px)` }}>
+              <span className="font-vt323 text-[20px] text-[var(--curb)]">{e.date}</span>
+              <h2 className="mb-1.5 text-[15px] text-[var(--paper)]">{e.title}</h2>
+              <p className="font-noto text-[13.5px] italic leading-[1.75] text-[var(--paper)]">{e.excerpt ?? e.content}</p>
+            </article>
           ))}
+          {entries.length === 0 && !loading && (
+            <p className="py-12 text-[13px] text-[var(--curb)]">今晚没有梦。它在等一次真正的深夜。</p>
+          )}
         </div>
-      )}
-      {error ? <p className="text-small text-danger mt-3">{error}</p> : null}
+      </div>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense>
+      <DreamInner />
+    </Suspense>
   );
 }

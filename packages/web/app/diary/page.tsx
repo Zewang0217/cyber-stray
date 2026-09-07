@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { spring } from "@/components/ui/motion";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { BootFrame } from "@/components/strayboy/BootFrame";
+import { DEMO_DIARY } from "@/lib/strayboy/demo";
 
 interface DiaryEntry {
   date: string;
@@ -12,95 +12,113 @@ interface DiaryEntry {
   excerpt?: string;
 }
 
-/**
- * 日记页（#92）：宠物每天睡前生成的性格化日记时间线。
- * 数据源 diary/YYYY-MM-DD.md，由睡前任务（diary-cli）落盘。
- */
-export default function DiaryPage(): React.ReactElement {
-  const [entries, setEntries] = useState<DiaryEntry[] | null>(null);
+/** 显式拉取日记（无兜底；失败呈现错误）。 */
+function useDiaryEntries(demo: boolean): { entries: DiaryEntry[]; error: string | null; loading: boolean } {
+  const [entries, setEntries] = useState<DiaryEntry[]>(demo ? DEMO_DIARY : []);
   const [error, setError] = useState<string | null>(null);
-  // prefers-reduced-motion:时间轴节点弹跳降级为淡入
-  const reduced = useReducedMotion();
-
-  const refresh = useCallback(async (): Promise<void> => {
-    try {
-      const res = await fetch("/api/diary");
-      const json = (await res.json()) as { success: boolean; error?: string; data?: DiaryEntry[] };
-      if (json.success && json.data) {
-        setEntries(json.data);
-        setError(null);
-      } else {
-        setError(json.error ?? "加载失败");
-      }
-    } catch {
-      setError("网络错误");
-    }
-  }, []);
-
+  const [loading, setLoading] = useState(!demo);
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (demo) return;
+    (async () => {
+      try {
+        const res = await fetch("/api/diary");
+        const json = (await res.json()) as { success: boolean; data?: DiaryEntry[]; error?: string };
+        if (!json.success) throw new Error(json.error ?? "获取日记失败");
+        setEntries(json.data ?? []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "网络错误");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [demo]);
+  return { entries, error, loading };
+}
 
-  /** 显示日期（2026-08-20 → 8月20日） */
-  const prettyDate = (date: string): string => {
-    const m = Number(date.slice(5, 7));
-    const d = Number(date.slice(8, 10));
-    return `${m}月${d}日`;
-  };
+/**
+ * START 子屏·日记本（#170）：跨页纸面（paper+ink），按月列表 → 单页。
+ * 长文一律 Noto Sans SC（宪法 §3）。
+ */
+function DiaryInner() {
+  const demo = useSearchParams().get("demo") === "1";
+  const { entries, error, loading } = useDiaryEntries(demo);
+  const months = useMemo(() => [...new Set(entries.map((e) => e.date.slice(0, 7)))].sort().reverse(), [entries]);
+  const [month, setMonth] = useState<string | null>(null);
+  const [openEntry, setOpenEntry] = useState<DiaryEntry | null>(null);
+  const visible = month ? entries.filter((e) => e.date.startsWith(month)) : entries;
 
   return (
-    <div className="spacing-lg max-w-4xl mx-auto">
-      <PageHeader
-        kicker="Ephemeris"
-        title="日记"
-        subtitle={<>宠物每天睡前的性格化日记 {entries ? `· 共 ${entries.length} 篇` : ""}</>}
-      />
-
-      {!entries ? (
-        <p className="text-body text-subtext">加载中…</p>
-      ) : entries.length === 0 ? (
-        <motion.div className="p-6 paper-card rounded-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <p className="text-body text-subtext">
-            还没有日记——宠物睡前会生成第一篇，每天一篇，按它的性格来写。
+    <div className="sb min-h-screen bg-[var(--paper)] p-4">
+      <BootFrame />
+      <div className="mx-auto max-w-2xl">
+        <h1 className="font-ps2p mb-1 text-xs text-[var(--ink)]">DIARY · 日记本</h1>
+        {demo && <p className="mb-2 text-[12px] text-[var(--bad)]">演示数据</p>}
+        {error && (
+          <p className="mb-3 border-2 border-[var(--bad)] bg-[var(--sky)] p-2 text-[13px] text-[var(--bad)]">
+            取日记失败：{error}
           </p>
-        </motion.div>
-      ) : (
-        <div className="relative pl-6 border-l-2 border-[var(--c-engraving-fine)]">
-          {entries.map((e, i) => (
-            <motion.div
-              key={e.date}
-              className="relative mb-6"
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: Math.min(i * 0.05, 0.4) }}
-            >
-              {/* 时间轴节点 */}
-              <motion.span
-                className="absolute -left-[30px] top-2 w-3 h-3 rounded-full bg-[var(--c-amber)]"
-                initial={reduced ? { opacity: 0 } : { scale: 0 }}
-                animate={reduced ? { opacity: 1 } : { scale: 1 }}
-                transition={{
-                  ...spring,
-                  delay: Math.min(i * 0.05, 0.4) + 0.15,
-                }}
-              />
-              <div className="p-5 paper-card rounded-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="font-heading text-body font-semibold text-text">{e.title}</h2>
-                  <span className="text-xs text-subtext font-mono">{prettyDate(e.date)}</span>
-                </div>
-                <div className="text-small text-text whitespace-pre-wrap leading-relaxed">
-                  {e.content
-                    .split("\n")
-                    .filter((line) => !line.startsWith("#") && !line.startsWith("---") && line.trim() !== "")
-                    .join("\n")}
-                </div>
-              </div>
-            </motion.div>
+        )}
+        {months.length > 1 && (
+          <div className="mb-4 flex gap-2">
+            {months.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMonth(month === m ? null : m)}
+                className={`border-2 px-2 py-1 text-[12px] ${month === m ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]" : "border-[var(--curb)] text-[var(--ink)]"}`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        )}
+        {loading && <p className="py-10 text-[13px] text-[var(--curb)]">翻开日记本……</p>}
+        <div className="flex flex-col gap-4">
+          {visible.map((e) => (
+            <article key={e.date} className="border-2 border-[var(--ink)] bg-[#FDFBF5] p-4 shadow-[4px_4px_0_rgba(33,37,41,0.25)]">
+              <button type="button" className="w-full text-left" onClick={() => setOpenEntry(e)}>
+                <span className="font-vt323 text-[20px] text-[var(--curb)]">{e.date}</span>
+                <h2 className="text-[15px] font-medium text-[var(--ink)]">{e.title}</h2>
+                <p className="font-noto mt-1 line-clamp-2 text-[13.5px] leading-[1.7] text-[#4A4238]">
+                  {e.excerpt ?? e.content}
+                </p>
+              </button>
+            </article>
           ))}
+          {visible.length === 0 && !loading && (
+            <p className="py-10 text-[13px] text-[var(--curb)]">这一页还没写字。</p>
+          )}
+        </div>
+      </div>
+      {openEntry && (
+        <div className="fixed inset-0 z-[65] overflow-auto bg-black/90 p-4" role="dialog" onClick={() => setOpenEntry(null)}>
+          <article
+            className="mx-auto my-8 max-w-2xl border-4 border-[var(--ink)] bg-[#FDFBF5] p-6 shadow-[8px_8px_0_#000]"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <span className="font-vt323 text-[20px] text-[var(--curb)]">{openEntry.date}</span>
+            <h2 className="mb-3 text-[17px] font-medium text-[var(--ink)]">{openEntry.title}</h2>
+            <p className="font-noto whitespace-pre-wrap text-[14px] leading-[1.75] text-[var(--ink)]">
+              {openEntry.content}
+            </p>
+            <button
+              type="button"
+              onClick={() => setOpenEntry(null)}
+              className="mt-5 border-2 border-[var(--ink)] bg-[var(--panel)] px-3 py-1.5 text-[12px] text-[var(--paper)]"
+            >
+              合上 ◀
+            </button>
+          </article>
         </div>
       )}
-      {error ? <p className="text-small text-danger mt-3">{error}</p> : null}
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense>
+      <DiaryInner />
+    </Suspense>
   );
 }
