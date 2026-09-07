@@ -70,15 +70,16 @@ export function PixelStage({ children, onStreet, demo, daytime = false, onPasser
   };
   const moon = MOON_PHASES[phase]; // phase 经 modulo 恒在界内
 
-  // 路人偶遇（#212）：约 45s 一次，猫在街上时由宿主报一句台词；纯定时无动画，不占并发预算
+  // 路人偶遇（#212）：约 45s 一次，路人出镜（夜场景）时由宿主报一句台词。
+  // 门控 = !daytime 与路人渲染条件一致——不能用 onStreet（= !sleeping）：
+  // onStreet 蕴含白天景，与夜出镜恒矛盾，台词将永不触发（评审 LOW-1 的修正教训）
   useEffect(() => {
     if (!onPasserbyGreet) return;
     const id = setInterval(() => {
-      // 路人只在夜间场景出镜（!daytime 渲染门控）——白天不报偶遇台词
-      if (onStreet && !daytime) onPasserbyGreet();
+      if (!daytime) onPasserbyGreet();
     }, 45_000);
     return () => clearInterval(id);
-  }, [onPasserbyGreet, onStreet, daytime]);
+  }, [onPasserbyGreet, daytime]);
 
   return (
     <div
