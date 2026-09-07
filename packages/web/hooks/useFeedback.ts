@@ -16,7 +16,7 @@ interface FeedbackState {
 
 interface UseFeedbackReturn extends FeedbackState {
   /** 点赞/踩（不受限，低价值高频信号；S9 #76） */
-  sendFeedback: (type: "like" | "dislike", messageId: string) => Promise<void>;
+  sendFeedback: (type: "like" | "dislike", messageId: string) => Promise<boolean>;
   /** 顶话题（按 plan 节流；S9 #76）。返回是否成功（429/网络失败为 false） */
   boostTopic: (topic: string) => Promise<boolean>;
 }
@@ -58,9 +58,10 @@ export function useFeedback(): UseFeedbackReturn {
   );
 
   const sendFeedback = useCallback(
-    async (type: "like" | "dislike", messageId: string): Promise<void> => {
+    async (type: "like" | "dislike", messageId: string): Promise<boolean> => {
       const ok = await post("/api/feedback", { type, messageId });
       if (ok) setState((s) => ({ ...s, submitted: type }));
+      return ok;
     },
     [post],
   );

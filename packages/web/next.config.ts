@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 import { fileURLToPath } from "url";
 
 const nextConfig: NextConfig = {
+  /* 视觉验收走真机截图：dev 指示器浮层会遮挡菜单条（judge #188） */
+  devIndicators: false,
   // S12：standalone 产物自包含（.next/standalone 含 server.js + 最小依赖树），
   // 产机只需 node 运行时 + 静态资源——构建在 CI，产机零编译
   output: "standalone",
