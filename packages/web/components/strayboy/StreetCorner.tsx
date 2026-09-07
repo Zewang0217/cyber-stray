@@ -15,6 +15,7 @@ import { HudBar } from "@/components/strayboy/HudBar";
 import { HeartBurst } from "@/components/strayboy/HeartBurst";
 import { LogDrawer } from "@/components/strayboy/LogDrawer";
 import { AttrCard } from "@/components/strayboy/AttrCard";
+import { PASSERBY_LINES } from "@/components/strayboy/StreetLife";
 import { PixelStage } from "@/components/strayboy/PixelStage";
 import { PetSprite } from "@/components/strayboy/PetSprite";
 import { WanderLog } from "@/components/strayboy/WanderLog";
@@ -278,7 +279,16 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
 
   return (
     <div className="sb mx-auto flex max-w-3xl flex-col gap-3 p-3">
-      <PixelStage onStreet={!view.away} demo={demo} daytime={!view.sleeping}>
+      <PixelStage
+        onStreet={!view.away}
+        demo={demo}
+        daytime={!view.sleeping}
+        onPasserbyGreet={() => {
+          lastActivityRef.current = Date.now();
+          const line = PASSERBY_LINES[Math.floor(Math.random() * PASSERBY_LINES.length)];
+          setDialog(line);
+        }}
+      >
         {!view.away && (
           <button type="button" aria-label={`拍拍${pet.name}`} className="cursor-pointer" onClick={pat}>
             <PetSprite contract={contract} anim={anim} scale={3} hungry={view.hungry && view.anim === "idle"} coat={coat} />

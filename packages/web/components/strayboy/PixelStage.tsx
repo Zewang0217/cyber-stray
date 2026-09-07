@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { CafeFront, NeighborCat, Passerby, ShopFront } from "./StreetLife";
 
 /** 确定性伪随机（同 seed 同布局——避免每次渲染窗灯乱闪）。 */
 function seeded(seed: number): () => number {
@@ -59,7 +60,7 @@ const MOON_PHASES: Array<{ name: string; shadow: number }> = [
  * 动效纪律（motion.md §5）：装饰静态定位；新增动效仅水沟盖蒸汽一处一次性
  * transform/opacity（事件触发，reduced-motion 停帧），霓虹 hover 为静态 opacity 态。
  */
-export function PixelStage({ children, onStreet, demo, daytime = false }: { children: ReactNode; onStreet: boolean; demo?: boolean; daytime?: boolean }) {
+export function PixelStage({ children, onStreet, demo, daytime = false, onPasserbyGreet }: { children: ReactNode; onStreet: boolean; demo?: boolean; daytime?: boolean; onPasserbyGreet?: () => void }) {
   const rand = seeded(20260906);
   const [lamps, setLamps] = useState<Record<string, boolean>>({});
   const [phase, setPhase] = useState(0);
@@ -68,6 +69,15 @@ export function PixelStage({ children, onStreet, demo, daytime = false }: { chil
     setLamps((prev) => ({ ...prev, [key]: !(prev[key] ?? false) }));
   };
   const moon = MOON_PHASES[phase]; // phase 经 modulo 恒在界内
+
+  // 路人偶遇（#212）：约 45s 一次，猫在街上时由宿主报一句台词；纯定时无动画，不占并发预算
+  useEffect(() => {
+    if (!onPasserbyGreet) return;
+    const id = setInterval(() => {
+      if (onStreet) onPasserbyGreet();
+    }, 45_000);
+    return () => clearInterval(id);
+  }, [onPasserbyGreet, onStreet]);
 
   return (
     <div
@@ -117,7 +127,7 @@ export function PixelStage({ children, onStreet, demo, daytime = false }: { chil
           style={{ left: b.left, width: b.width, height: b.height }}
         >
           {b.neon && (
-            /* 霓虹招牌（#208）：hover/focus 亮起（静态 opacity 态，零动画） */
+            /* 霓虹招牌（#208）：hover 亮起（静态 opacity 态，零动画） */
             <span
               aria-hidden
               className="neon-sign absolute -top-5 left-1/2 -translate-x-1/2 border border-[var(--neon)] bg-[var(--sky)] px-1 font-ps2p text-[8px] leading-[1.4] text-[var(--neon)]"
@@ -125,6 +135,8 @@ export function PixelStage({ children, onStreet, demo, daytime = false }: { chil
               OPEN
             </span>
           )}
+          {i === 1 && <ShopFront />}
+          {i === 3 && <CafeFront />}
           {Array.from({ length: Math.floor(b.height / 34) }, (_, row) => (
             <div key={row} className="flex gap-2 p-2">
               {Array.from({ length: Math.max(1, Math.floor((b.width - 16) / 18)) }, (_, col) => {
@@ -149,9 +161,18 @@ export function PixelStage({ children, onStreet, demo, daytime = false }: { chil
           ))}
         </div>
       ))}
+      {/* 动物邻居：远处楼顶偶尔蹲一只剪影猫（#212，纯显隐无动画） */}
+      {!daytime && <NeighborCat />}
+      {/* 路人 NPC（#212）：剪影平移循环（transform 线性）；并发预算 = 2 路人 + 猫 = 3 */}
+      {!daytime && (
+        <>
+          <Passerby delay="0s" duration="38s" />
+          <Passerby delay="19s" duration="52s" flip />
+        </>
+      )}
       {/* 街道 + 路缘（猫站在路缘线上，components.md §游戏屏） */}
       <div className="absolute inset-x-0 bottom-0 h-10 border-t-2 border-[var(--curb)] bg-[var(--street)]">
-        {/* 水沟盖（#208）：点按抖一下 + 冒蒸汽（一次性事件动效） */}
+        {/* 水沟盖（#208）：点按冒蒸汽（一次性事件动效） */}
         <button
           type="button"
           aria-label="路缘水沟盖，点按冒蒸汽"

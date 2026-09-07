@@ -710,3 +710,20 @@ body.sb-hidden * {
     opacity: 0;
   }
 }
+/* 路人 NPC：横穿街面的平移循环（transform 线性；motion.md §5 允许路人循环）。
+   105vw 保证任何容器宽都完整穿场；overflow-hidden 由舞台裁切 */
+.sb-passerby {
+  left: 0;
+  animation: sb-passerby-walk linear infinite;
+}
+.sb-passerby[data-flip="true"] {
+  top: 2px;
+}
+@keyframes sb-passerby-walk {
+  from {
+    transform: translateX(-40px);
+  }
+  to {
+    transform: translateX(105vw);
+  }
+}
