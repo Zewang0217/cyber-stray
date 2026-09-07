@@ -26,40 +26,61 @@ describe('DuckDuckGoAdapter', () => {
   });
 
   test('搜索正常话题返回结果', async () => {
-    const query = 'typescript';
-    console.log(`[query] ${query}`);
-    const results = await adapter.search(query);
-    console.log(`[结果数量] ${results.length}`);
-    for (const r of results) {
-      console.log(`  - ${r.title} | ${r.url}`);
-      console.log(`    ${r.content.slice(0, 80)}`);
-    }
-    expect(results.length).toBeGreaterThanOrEqual(0);
+    // 全部走 mock：api.duckduckgo.com 在被污染的 DNS 环境下解析到 Facebook 段
+    // （face:b00c）直接 ETIMEDOUT——真网用例在任何此类网络必挂，改为确定性验证
+    // 请求构建 + 正常解析路径（解析细节由下方"解析 Abstract"用例承担）
+    const mockData = {
+      AbstractText: 'TypeScript is a strongly typed programming language',
+      AbstractURL: 'https://www.typescriptlang.org/',
+      AbstractSource: 'Wikipedia',
+      RelatedTopics: [
+        { Text: 'TypeScript - A typed superset of JavaScript', FirstURL: 'https://example.com/ts' },
+      ],
+    };
+    let requestedUrl = '';
+    globalThis.fetch = ((input: string | URL | Request) => {
+      requestedUrl = String(input);
+      return Promise.resolve(
+        new Response(JSON.stringify(mockData), { headers: { 'Content-Type': 'application/json' } }),
+      );
+    }) as unknown as typeof fetch;
 
-    if (results.length > 0) {
-      const first = results[0]!;
-      expect(first.url).toMatch(/^https?:\/\//);
-      expect(first.content).toBeTruthy();
-    }
+    const results = await adapter.search('typescript');
+
+    // 请求构建：查询与 json 格式参数正确
+    expect(requestedUrl).toContain('https://api.duckduckgo.com/');
+    expect(requestedUrl).toContain('q=typescript');
+    expect(requestedUrl).toContain('format=json');
+    expect(requestedUrl).toContain('skip_disambig=1');
+
+    // 正常路径返回可用的结果结构
+    expect(results.length).toBeGreaterThan(0);
+    const first = results[0]!;
+    expect(first.url).toMatch(/^https?:\/\//);
+    expect(first.content).toBeTruthy();
   });
 
   test('搜索无结果话题返回空数组', async () => {
-    const query = 'qwertyuiopasdfghjklzzzzz';
-    console.log(`[query] ${query}`);
-    const results = await adapter.search(query);
-    console.log(`[结果数量] ${results.length}`);
+    // DDG 对无结果查询返回空对象（无 Abstract / 无 RelatedTopics）
+    mockFetch(new Response(JSON.stringify({}), { headers: { 'Content-Type': 'application/json' } }));
+    const results = await adapter.search('qwertyuiopasdfghjklzzzzz');
     expect(Array.isArray(results)).toBe(true);
+    expect(results).toEqual([]);
   });
 
   test('maxResults 限制结果数量', async () => {
-    const query = 'javascript';
-    console.log(`[query] ${query} (maxResults: 3)`);
-    const results = await adapter.search(query, { maxResults: 3 });
-    console.log(`[结果数量] ${results.length}`);
-    for (const r of results) {
-      console.log(`  - ${r.title} | ${r.url}`);
-    }
-    expect(results.length).toBeLessThanOrEqual(3);
+    const topics = Array.from({ length: 8 }, (_, i) => ({
+      Text: `Topic ${i} - description ${i}`,
+      FirstURL: `https://example.com/${i}`,
+    }));
+    mockFetch(
+      new Response(JSON.stringify({ RelatedTopics: topics }), {
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const results = await adapter.search('javascript', { maxResults: 3 });
+    expect(results.length).toBe(3);
   });
 
   test('API 错误时抛出异常', async () => {

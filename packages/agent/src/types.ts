@@ -254,22 +254,12 @@ export interface AgentConfig {
     restore: boolean;
   };
 
-  // Phase 5: 推送价值门控配置（PUSH-01/02）
+  // 推送护栏配置（P3 #152：评分门控已移除，speak 由 LLM 自判断；
+  // 键名沿用 pushGate——已部署在各租户 agent-config.json，改名破坏存量）
   pushGate?: {
     enabled: boolean;
-    threshold: number;
-    weights: {
-      interestRelevance: number;
-      userPreference: number;
-      contentQuality: number;
-    };
-    calibration: {
-      enabled: boolean;
-      windowSize: number;
-      likeRateHigh: number;
-      dislikeRateHigh: number;
-      adjustStep: number;
-    };
+    /** 每次游荡最多 speak 次数（工具层护栏，防话痨；0 = 不限） */
+    maxSpeaksPerWander: number;
     contentScan: {
       enabled: boolean;
       maxUrlCount: number;

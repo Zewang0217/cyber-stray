@@ -1,10 +1,16 @@
 import type { AgentState, Mood, WanderStep, WanderStrategy } from '../types.js';
 import type { UserProfile } from '../memory/user-profile.js';
 import type { PageResult } from '../tools/page/reader.js';
-import { getConfig } from '../config.js';
+import { getConfig, getDataPath } from '../config.js';
 import { getPersonality } from '@cyber-stray/shared';
 import { consola } from '../logger.js';
 import { getInterestGraph } from '../memory/interest-graph.js';
+import { loadCuriosityGraph } from '../memory/curiosity-interests.js';
+import { countGatePassedToday, todaySpeaksFile } from '../tools/push/push-budget.js';
+import {
+  loadRecentPushedSpeaks,
+  type RecentSpeak,
+} from '../tools/push/recent-speaks.js';
 
 const logger = consola.withTag('prompts');
 
@@ -138,41 +144,105 @@ function formatStrategyDirective(strategy: WanderStrategy): string {
   return lines.join('\n');
 }
 
+// 推送判断上下文（S3 #152 门控 P3：LLM 自判断的四段依据）
+
+/** 用户兴趣图谱强/中/弱分级阈值（展示引导用，非加权打分） */
+const STRONG_TOPIC_WEIGHT = 0.6;
+const MEDIUM_TOPIC_WEIGHT = 0.3;
+
+/** 用户图谱展示条数与最低权重（弱兴趣也展示，让 LLM 看到"不推什么"的全貌） */
+const USER_GRAPH_TOP_N = 10;
+const USER_GRAPH_MIN_WEIGHT = 0.05;
+
+/**
+ * 双图谱上下文段：用户兴趣图谱（主人想看什么，强/中/弱分级）
+ * + 好奇图谱（宠物自己的探索方向，高新奇话题单独高亮）。
+ */
+async function formatDualGraphSection(): Promise<{ userGraph: string; curiosity: string }> {
+  let userGraph: string;
+  try {
+    const graph = getInterestGraph();
+    const top = graph.getTopInterestsWithWeights(USER_GRAPH_TOP_N, USER_GRAPH_MIN_WEIGHT);
+    if (top.length === 0) {
+      userGraph = '- 暂未了解主人的兴趣（图谱为空）';
+    } else {
+      const tier = (w: number): string =>
+        w >= STRONG_TOPIC_WEIGHT ? '强' : w >= MEDIUM_TOPIC_WEIGHT ? '中' : '弱';
+      userGraph = top
+        .map((i) => `- ${i.id}（${tier(i.weight)}，相关度 ${(i.weight * 100).toFixed(0)}%）`)
+        .join('\n');
+    }
+  } catch (err) {
+    // InterestGraph 不可用时的兼容 fallback（与旧兴趣段同语义）
+    logger.warn('用户兴趣图谱加载失败，推送判断段降级', { error: err });
+    userGraph = '- 暂未了解主人的兴趣';
+  }
+
+  let curiosity: string;
+  try {
+    const data = await loadCuriosityGraph();
+    const nodes = [...data.nodes]
+      .sort((a, b) => b.selfInterest - a.selfInterest || b.exploreCount - a.exploreCount)
+      .slice(0, 5);
+    curiosity =
+      nodes.length === 0
+        ? '还没有自己着迷的方向——保持好奇与开放。'
+        : nodes
+            .map((n) => `- ${n.id}（好奇度 ${(n.selfInterest * 100).toFixed(0)}%，探索过 ${n.exploreCount} 次）`)
+            .join('\n');
+  } catch (err) {
+    // 好奇图谱不可用不阻断游荡（S1 骨架，S4 接入读写）
+    logger.warn('好奇图谱加载失败，推送判断段降级', { error: err });
+    curiosity = '还没有自己着迷的方向——保持好奇与开放。';
+  }
+
+  return { userGraph, curiosity };
+}
+
+/** 剩余日预算段（plan 未启用 = 单用户模式不设限） */
+async function formatBudgetSection(): Promise<string> {
+  const plan = getConfig().plan;
+  if (!plan || plan.pushesPerDay <= 0) {
+    return '今日推送预算：不限（但仍要克制，只推值得推的）。';
+  }
+  const used = await countGatePassedToday(getDataPath(`history/${todaySpeaksFile()}`));
+  const remaining = Math.max(0, plan.pushesPerDay - used);
+  return [
+    `今日推送预算：已用 ${used}/${plan.pushesPerDay}，剩余 ${remaining}。`,
+    '每条 speak 消耗一条配额——判断"这条值不值得用掉配额"；用完就保持安静。',
+  ].join('\n');
+}
+
+/** 最近推送上下文段（L2 语义去重的依据） */
+function formatRecentSpeaksSection(recent: RecentSpeak[]): string {
+  if (recent.length === 0) {
+    return '最近还没有推送过内容。';
+  }
+  return recent
+    .map((r) => `- ${r.title}：${r.summary.slice(0, 60)}`)
+    .join('\n');
+}
+
 /**
  * 构建 ReAct Agent 的 system prompt
+ *
+ * P3 #152：动态段含推送判断四段上下文（双图谱 / 剩余日预算 / 最近推送 /
+ * 分享准则）——speak 是否推送由 LLM 自判断，不再有评分门控。
  *
  * @param state - Agent 状态
  * @param userProfile - 用户画像
  * @param memoryContext - 可选的长期记忆上下文
  * @param strategy - 游荡策略（兴趣驱动 + 状态映射）
  */
-export function buildReactSystemPrompt(
+export async function buildReactSystemPrompt(
   state: AgentState,
   userProfile: UserProfile,
   memoryContext?: string,
   strategy?: WanderStrategy,
-): string {
-  // Phase 2: 从 InterestGraph 获取动态兴趣（优先），fallback 到 state.agentInterests
-  let interestLines: string;
-  try {
-    const graph = getInterestGraph();
-    const topInterests = graph.getTopInterestsWithWeights(5, 0.05);
-    if (topInterests.length > 0) {
-      interestLines = topInterests
-        .map((i) => `- ${i.id} [热情度: ${(i.weight * 100).toFixed(0)}%]`)
-        .join('\n');
-    } else {
-      interestLines = state.agentInterests.length > 0
-        ? state.agentInterests.map((i) => `- ${i}`).join('\n')
-        : '- 什么都好奇';
-    }
-  } catch (err) {
-    // InterestGraph 不可用时的兼容 fallback
-    logger.warn('InterestGraph 加载失败，fallback 到 state.agentInterests', { error: err });
-    interestLines = state.agentInterests.length > 0
-      ? state.agentInterests.map((i) => `- ${i}`).join('\n')
-      : '- 什么都好奇';
-  }
+): Promise<string> {
+  const { userGraph, curiosity } = await formatDualGraphSection();
+  const budget = await formatBudgetSection();
+  const recentSpeaks = await loadRecentPushedSpeaks();
 
   const userLikes = userProfile.likes.length > 0
     ? userProfile.likes.slice(-5).join('、')
@@ -266,14 +336,31 @@ ${strategy ? `${formatStrategyDirective(strategy)}\n\n` : ''}**你当前的状�
 **你最近探索过的话题（避免重复搜索）：**
 ${state.recentTopics.length > 0 ? state.recentTopics.map((t) => `- ${t}`).join('\n') : '- 还没有探索过任何话题'}
 
-**你的兴趣（按当前热情排序）：**
-${interestLines}
+**双图谱（推送判断与探索的共同依据）：**
+
+_主人兴趣图谱（主人想看什么）：_
+${userGraph}
+
+_你的好奇图谱（你自己想探索什么——高新奇方向）：_
+${curiosity}
 
 你可以随时对你的兴趣产生新的想法。比如：
 - "量子计算听起来很酷，我想了解一下"
 - "看腻了 AI 新闻，今天想看点轻松的"
 - "突然对猫咪视频感兴趣了"
 在内心独白中自由表达，不需要专门更新。
+
+**推送预算：**
+${budget}
+
+**你最近已推送的内容（同主题换来源也不要再推）：**
+${formatRecentSpeaksSection(recentSpeaks)}
+
+**分享准则（speak 由你判断，可保持沉默）：**
+1. **相关性优先**：与主人强/中兴趣方向相关的内容，值得推。
+2. **探索许可**：你自己好奇图谱里的新奇话题，即使主人没表现过兴趣也可以分享——小惊喜是宠物的一部分。
+3. **预算感知**：看推送预算，判断"这条值不值得用掉配额"。
+4. **不重复**：与最近已推送内容同主题的（换来源也算），不再推。
 
 **你的主人画像（主人喜欢/不喜欢的东西）：**
 - 喜欢：${userLikes}

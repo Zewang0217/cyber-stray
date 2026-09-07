@@ -93,7 +93,7 @@ export class WanderAgent {
     // 2. 构建 prompt
     const userProfile = await loadUserProfile();
     const memoryContext = await buildMemoryPromptContext();
-    let systemPrompt = buildReactSystemPrompt(state, userProfile, memoryContext, strategy);
+    let systemPrompt = await buildReactSystemPrompt(state, userProfile, memoryContext, strategy);
     // 浏览器上下文（跨游荡持久，无浏览器时为 null）→ 追加注入 system prompt
     const browserContext = getBrowserContext();
     const browserSection = buildBrowserPromptSection(browserContext ?? null);

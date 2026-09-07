@@ -30,7 +30,6 @@ import { _resetMemoryStore } from '../memory/long-term/index.js';
 import { _resetMemoryIndex } from '../memory/long-term/memory-index.js';
 import { _resetInterestGraphCache } from '../memory/interest-graph.js';
 import { _resetReflectionScheduler } from '../memory/reflection/index.js';
-import { _resetPushGate } from '../memory/push-gate.js';
 import { _resetSkillIndex } from '../tools/browser/skills/skill-index.js';
 
 function mockGenerateTextWithSteps(steps: number): void {
@@ -79,7 +78,6 @@ describe('runOneWander 双租户隔离', () => {
     _resetMemoryIndex();
     _resetInterestGraphCache();
     _resetReflectionScheduler();
-    _resetPushGate();
     _resetSkillIndex();
     mockGenerateTextWithSteps(2);
   });

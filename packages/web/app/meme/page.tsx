@@ -1,105 +1,92 @@
 "use client";
 
-import { useCallback } from "react";
-import { motion } from "framer-motion";
-import { Download, Trash2, Sparkles } from "lucide-react";
-import { useMeme, type MemeEntry } from "@/hooks/useMeme";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { BootFrame } from "@/components/strayboy/BootFrame";
+import { useMeme } from "@/hooks/useMeme";
+import { DEMO_MEMES } from "@/lib/strayboy/demo";
 
 /**
- * 表情包图鉴页（#96）：宠物自动生成的表情包集合。
- * 每张带元数据（话题/情绪/日期/模式），支持下载/删除。
- * 数据源 /api/meme（只收录过质检的——质检不过不进图鉴）。
+ * START 子屏·贴纸册（#170）：像素贴纸墙——白描边贴纸 + 像素胶带钉册页。
+ * 数据走 useMeme；删除带确认（旧页无确认，#170 补上）；QC 不过不收录（管线侧）。
  */
-export default function MemePage(): React.ReactElement {
-  const { memes, error, remove } = useMeme();
+function StickerInner() {
+  const demo = useSearchParams().get("demo") === "1";
+  const meme = useMeme();
+  const memes = demo ? DEMO_MEMES : (meme.memes ?? []);
+  const [confirming, setConfirming] = useState<string | null>(null);
 
-  /** 显示日期（2026-08-20 → 2026年8月20日） */
-  const prettyDate = (date: string): string => {
-    const y = date.slice(0, 4);
-    const m = Number(date.slice(5, 7));
-    const d = Number(date.slice(8, 10));
-    return `${y}年${m}月${d}日`;
+  const remove = async (id: string): Promise<void> => {
+    const ok = await meme.remove(id);
+    setConfirming(null);
+    if (!ok) throw new Error("删除失败（网络/权限）");
   };
 
-  const handleDelete = useCallback(
-    (entry: MemeEntry) => {
-      // 不做 confirm 弹窗——删除可恢复性低但非破坏性（仅从图鉴移除）
-      void remove(entry.id);
-    },
-    [remove],
-  );
-
   return (
-    <div className="spacing-lg max-w-5xl mx-auto">
-      <PageHeader
-        kicker="Mimica"
-        icon={<Sparkles className="w-5 h-5" />}
-        title="表情包图鉴"
-        subtitle={<>宠物自动生成的表情包 · 每张带话题/情绪/日期 {memes ? `· 共 ${memes.length} 张` : ""}</>}
-      />
-
-      {!memes ? (
-        <p className="text-body text-subtext">加载中…</p>
-      ) : memes.length === 0 ? (
-        <motion.div className="p-6 paper-card rounded-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <p className="text-body text-subtext">
-            还没有表情包——宠物会在每天睡前和推送后自动生成（过质检的才进图鉴）。
+    <div className="sb min-h-screen bg-[var(--panel)] p-4">
+      <BootFrame />
+      <div className="mx-auto max-w-3xl">
+        <h1 className="font-ps2p mb-1 text-xs text-[var(--hi)]">STICKERS · 贴纸册</h1>
+        {demo && <p className="mb-3 text-[12px] text-[var(--bad)]">演示数据 · 删除被禁用</p>}
+        {!demo && meme.error && (
+          <p className="mb-3 border-2 border-[var(--bad)] bg-[var(--sky)] p-2 text-[13px] text-[var(--bad)]">
+            取贴纸失败：{meme.error}
           </p>
-        </motion.div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        )}
+        {meme.loading && <p className="py-10 text-[13px] text-[var(--curb)]">翻开册页……</p>}
+        <div className="grid grid-cols-2 gap-5 p-1 sm:grid-cols-3">
           {memes.map((m, i) => (
-            <motion.div
-              key={m.id}
-              className="paper-card rounded-sm overflow-hidden"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: Math.min(i * 0.04, 0.4) }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={m.imageUrl}
-                alt={`${m.topic} · ${m.emotion}`}
-                className="w-full aspect-square object-contain bg-white"
-                loading="lazy"
-              />
-              <div className="p-3">
-                <div className="flex items-center justify-between mb-1">
-                  <h2 className="font-heading text-body font-semibold text-text">
-                    {m.topic}
-                    {m.mode === "ip" ? " · IP" : ""}
-                  </h2>
-                  <span className="text-xs font-mono text-subtext">{prettyDate(m.date)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-small text-accent">{m.emotion}</span>
-                  <div className="flex items-center gap-2">
-                    {/* 下载：直接打开图片（同域，浏览器下载） */}
-                    <a
-                      href={m.imageUrl}
-                      download
-                      className="p-1.5 text-subtext hover:text-text transition-colors"
-                      aria-label="下载表情包"
-                    >
-                      <Download className="w-4 h-4" />
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(m)}
-                      className="p-1.5 text-subtext hover:text-danger transition-colors"
-                      aria-label="删除表情包"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+            <figure key={m.id} className={`relative border-4 border-[var(--paper)] bg-[var(--sky)] p-2 shadow-[4px_4px_0_#000] ${i % 2 ? "-rotate-2" : "rotate-1"}`}>
+              {/* 像素胶带 */}
+              <span aria-hidden className="absolute -top-2 left-1/2 h-3 w-12 -translate-x-1/2 -rotate-3 bg-[var(--window)] opacity-80" />
+              {m.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={m.imageUrl} alt={`贴纸：${m.topic}`} className="pixelated aspect-square w-full object-cover" />
+              ) : (
+                <div className="aspect-square w-full bg-[var(--bld-far)]" />
+              )}
+              <figcaption className="mt-1.5 text-center text-[12px] leading-[1.5] text-[var(--paper)]">
+                {m.topic} · {m.emotion}
+                <span className="block font-vt323 text-[14px] text-[var(--curb)]">{m.date}</span>
+              </figcaption>
+              {!demo && (
+                confirming === m.id ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/85 p-2">
+                    <p className="text-[12px] leading-[1.5] text-[var(--paper)]">撕掉这张贴纸？</p>
+                    <div className="flex gap-1.5">
+                      <button type="button" onClick={() => void remove(m.id)}
+                        className="border-2 border-[var(--bad)] px-2 py-1 text-xs text-[var(--bad)]">撕</button>
+                      <button type="button" onClick={() => setConfirming(null)}
+                        className="border-2 border-[var(--curb)] px-2 py-1 text-xs text-[var(--paper)]">留</button>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </motion.div>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={`删除贴纸：${m.topic}`}
+                    onClick={() => setConfirming(m.id)}
+                    className="absolute right-1 top-1 border border-[var(--curb)] bg-black px-1 text-xs text-[var(--bad)]"
+                  >
+                    ✕
+                  </button>
+                )
+              )}
+            </figure>
           ))}
         </div>
-      )}
-      {error ? <p className="text-small text-danger mt-3">{error}</p> : null}
+        {memes.length === 0 && !meme.loading && (
+          <p className="py-16 text-center text-[13px] text-[var(--curb)]">册子还空着。它还没攒下第一张梗图。</p>
+        )}
+      </div>
     </div>
+  );
+}
+
+
+export default function Page() {
+  return (
+    <Suspense>
+      <StickerInner />
+    </Suspense>
   );
 }

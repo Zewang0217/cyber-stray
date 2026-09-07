@@ -8,6 +8,8 @@ interface UseAgentStateOptions {
   refreshSignal?: number;
   /** SSE 是否连通（连通时降频轮询为健康心跳） */
   realtimeConnected?: boolean;
+  /** false 时不发起任何请求（demo 模式视觉验收用） */
+  enabled?: boolean;
 }
 
 interface UseAgentStateReturn {
@@ -24,13 +26,17 @@ interface UseAgentStateReturn {
 export function useAgentState(
   options: UseAgentStateOptions = {},
 ): UseAgentStateReturn {
-  const { refreshSignal = 0, realtimeConnected = false } = options;
+  const { refreshSignal = 0, realtimeConnected = false, enabled = true } = options;
   const [state, setState] = useState<AgentState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const fetchStateRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
+    if (!enabled) {
+      setIsLoading(false);
+      return;
+    }
     const fetchState = async (): Promise<void> => {
       try {
         const res = await fetch("/api/state");
@@ -51,7 +57,7 @@ export function useAgentState(
     };
     fetchStateRef.current = fetchState;
     void fetchState();
-  }, []);
+  }, [enabled]);
 
   // SSE 刷新信号：变化即拉取（worker 跑完状态/图谱/推送都可能变了）
   useEffect(() => {

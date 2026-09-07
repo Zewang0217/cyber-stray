@@ -17,6 +17,7 @@ import { consola } from '../logger.js';
 import { recordFeedback } from './feedback-store.js';
 import { updateUserProfileBatch, type ProfileUpdateEntry } from './user-profile.js';
 import { getInterestGraph } from './interest-graph.js';
+import { regenerateProfileSummary } from './profile-summary.js';
 import { updateMoodByFeedback } from '../agent/state.js';
 import {
   CATCHPHRASE_WEIGHT_FLOOR,
@@ -26,17 +27,9 @@ import {
 import { getConfig } from '../config.js';
 
 const logger = consola.withTag('FeedbackPipeline');
-/** 点赞强化权重增量 */
-const LIKE_REINFORCE_DELTA = 0.1;
 
-/** 踩的权重衰减 */
-const DISLIKE_DECAY_DELTA = 0.1;
-
-/** 顶话题强化权重增量（显式"我要更多"——强于点赞） */
-const BOOST_REINFORCE_DELTA = 0.25;
-
-/** 顶话题新节点种子权重（与反馈创建新兴趣一致） */
-const BOOST_SEED_WEIGHT = 0.3;
+/** 反馈创建新兴趣节点的种子权重（like 新话题 / boost 新话题共用，S2 #151） */
+const FEEDBACK_SEED_WEIGHT = 0.3;
 
 /** 消息-兴趣主题映射（messageId → 推送时的 Top 兴趣 ID 列表） */
 const messageTopicMap = new Map<string, string[]>();
@@ -107,6 +100,151 @@ export function applyCatchphraseFeedback(
 }
 
 /**
+ * 叶子优先归因（S2 #151）。
+ *
+ * 反馈目标是 speak 时的 matchedTopics（可能是父级节点）。规则：
+ * - 目标存在且为叶子 → 直接返回自身
+ * - 目标存在且为父级（有子节点）→ 返回其叶子后代（归因到叶子，不碰父级）
+ * - 目标存在为纯父（无子节点）→ 视作叶子返回自身（当前扁平图谱下所有节点即叶子）
+ * - 目标不存在 → 返回 undefined（调用方决定：like 新话题入图 / dislike 忽略）
+ *
+ * 多叶子父级当前取首个叶子（Phase A 过渡语义，#151 补充说明）：matchedTopics
+ * 粒度粗于叶子，且无内容证据支持在多叶间分摊，全强度落单叶比摊薄更贴近
+ * "用户对这条内容感兴趣"的原始信号；S4 分类管线（contentTopics）落地后
+ * 归因目标本身就是叶子，该分支退化为兼容回退。
+ */
+function resolveLeafTarget(graph: ReturnType<typeof getInterestGraph>, topic: string): string | undefined {
+  const node = graph.getNode(topic);
+  if (!node) return undefined;
+
+  const leafDesc = graph.getLeafDescendants(topic);
+  // 纯父（getLeafDescendants 返回自身）→ 当叶子处理
+  return leafDesc[0] ?? topic;
+}
+
+/** 画像批量更新（容错路径）：失败仅记日志——反馈已记录、配额已兑现，画像缺失可重算 */
+async function updateProfileForFeedback(
+  type: 'like' | 'dislike',
+  topics: string[],
+): Promise<boolean> {
+  const entries: ProfileUpdateEntry[] = topics.map((topic) => ({ type, topic }));
+  try {
+    await updateUserProfileBatch(entries);
+    return true;
+  } catch (error) {
+    logger.error('批量更新用户画像失败', { error, type, topics });
+    return false;
+  }
+}
+
+/**
+ * 兴趣图谱信号落盘（S2 #151）：叶子优先归因 → persist → 增量重生成摘要。
+ *
+ * persist / 摘要失败必须上抛：兴趣强化是反馈的核心承诺
+ * （S9 review 硬违规 #2：吞错 → 配额 consumed 但兴趣未强化）。
+ *
+ * @returns 是否有节点被强化/衰减
+ */
+async function updateGraphForFeedback(
+  type: 'like' | 'dislike',
+  topics: string[],
+): Promise<boolean> {
+  const graph = getInterestGraph();
+  // 确保 graph 已初始化
+  if (!graph.isInitialized() && graph.getNodeCount() === 0) {
+    await graph.load();
+  }
+
+  let reinforced = false;
+  for (const topic of topics) {
+    // 叶子优先归因：父级 → 叶子；纯父 → 自身
+    const target = resolveLeafTarget(graph, topic);
+    if (!target) {
+      if (type === 'like') {
+        // 点赞新话题：入图后应用信号（feedback 来源）；addInterest 可能因
+        // maxInterestCount 上限返回 false——以 applySignal 结果为准，不虚报
+        graph.addInterest(topic, FEEDBACK_SEED_WEIGHT, 'feedback');
+        if (graph.applySignal(topic, type)) reinforced = true;
+      } else {
+        // dislike 目标不存在：无节点可降，跳过（不碰父级/兄弟，符合 S2）
+        logger.debug('dislike 目标不存在，跳过', { topic });
+      }
+      continue;
+    }
+    const updated = graph.applySignal(target, type);
+    if (!updated) continue;
+    reinforced = true;
+    // dislike 只落叶子：父级仅经重聚合间接受影响，兄弟节点完全不受影响
+    if (type === 'dislike' && target !== topic) {
+      logger.info('dislike 归因到叶子，父级未直击', { topic, leaf: target });
+    }
+  }
+
+  // 所有 topic 处理完后一次持久化（N 个 topic → 1 次原子写）
+  await graph.persist();
+  // S2 #151：反馈后增量重生成 profile-summary（失败上抛——摘要过期=数据不一致）
+  await regenerateProfileSummary(graph);
+  return reinforced;
+}
+
+/**
+ * Step 2 话题归因解析：优先显式传入（S9 REST：worker 退出后内存 map 失效，
+ * 调用方从 speaks 历史 matchedTopics 反查），否则查内存映射。
+ * 命中与否写回 result（topicsMatched / matchedTopics）。
+ * @returns 归因到的话题；未命中返回 undefined
+ */
+function resolveFeedbackTopics(
+  type: 'like' | 'dislike',
+  messageId: string | undefined,
+  opts: { topics?: string[] },
+  result: FeedbackProcessResult,
+): string[] | undefined {
+  const explicitTopics = opts.topics?.filter((t) => t.length > 0);
+  const topics = explicitTopics?.length ? explicitTopics : messageTopicMap.get(messageId ?? '');
+  if (topics && topics.length > 0) {
+    result.topicsMatched = true;
+    result.matchedTopics = topics;
+    logger.info('反馈匹配到兴趣主题', { type, messageId, topics });
+    return topics;
+  }
+  logger.debug('反馈未匹配到兴趣主题（可能是旧消息或映射已清理）', { messageId });
+  return undefined;
+}
+
+/**
+ * Step 2b（#114）口头禅归因：调用方从 speaks 历史反查传入命中文本；
+ * 权重调整结果经 result 返回，由控制面写回 pets.catchphrases（DB 唯一写者）
+ */
+function attributeCatchphrases(
+  type: 'like' | 'dislike',
+  messageId: string | undefined,
+  opts: { catchphrases?: string[] },
+  result: FeedbackProcessResult,
+): void {
+  const matchedPhrases = (opts.catchphrases ?? []).filter((t) => t.length > 0);
+  if (matchedPhrases.length === 0) return;
+  const cfg = getConfig();
+  const current = cfg.catchphrases ?? getPersonality(cfg.personality).catchphrases;
+  result.matchedCatchphrases = matchedPhrases;
+  result.catchphrasesUpdated = applyCatchphraseFeedback(current, type, matchedPhrases);
+  logger.info('反馈归因口头禅', { type, messageId, matchedPhrases });
+}
+
+/** FeedbackProcessResult 初始值（各入口共用，防字段增减漏改） */
+function emptyResult(partial: Partial<FeedbackProcessResult> = {}): FeedbackProcessResult {
+  return {
+    recorded: false,
+    topicsMatched: false,
+    matchedTopics: [],
+    matchedCatchphrases: [],
+    catchphrasesUpdated: null,
+    profileUpdated: false,
+    interestReinforced: false,
+    ...partial,
+  };
+}
+
+/**
  * 处理用户反馈（飞书表情互动入口）。
  *
  * 链路：记录反馈 → 查消息-主题映射 → 更新画像 → 强化兴趣 → 更新心情
@@ -121,91 +259,21 @@ export async function processFeedback(
   userId?: string,
   opts: { topics?: string[]; catchphrases?: string[] } = {},
 ): Promise<FeedbackProcessResult> {
-  const result: FeedbackProcessResult = {
-    recorded: false,
-    topicsMatched: false,
-    matchedTopics: [],
-    matchedCatchphrases: [],
-    catchphrasesUpdated: null,
-    profileUpdated: false,
-    interestReinforced: false,
-  };
+  const result = emptyResult();
 
   // Step 1: 记录反馈到 feedback-store
   // 反馈丢失 = 用户表达未落盘，必须上抛（禁兜底）——否则 HTTP 200 假成功
   await recordFeedback({ type, messageId, userId });
   result.recorded = true;
 
-  // Step 2: 归因话题——优先显式传入（S9 REST：worker 退出后内存 map 失效，
-  // 调用方从 speaks 历史 matchedTopics 反查），否则查内存映射
-  const explicitTopics = opts.topics?.filter((t) => t.length > 0);
-  const topics = explicitTopics?.length ? explicitTopics : messageTopicMap.get(messageId ?? '');
-  if (topics && topics.length > 0) {
-    result.topicsMatched = true;
-    result.matchedTopics = topics;
-    logger.info('反馈匹配到兴趣主题', { type, messageId, topics });
-  } else {
-    logger.debug('反馈未匹配到兴趣主题（可能是旧消息或映射已清理）', { messageId });
-  }
+  const topics = resolveFeedbackTopics(type, messageId, opts, result);
+  attributeCatchphrases(type, messageId, opts, result);
 
-  // Step 2b（#114）：口头禅归因——调用方从 speaks 历史反查传入命中文本；
-  // 权重调整结果经 result 返回，由控制面写回 pets.catchphrases（DB 唯一写者）
-  const matchedPhrases = (opts.catchphrases ?? []).filter((t) => t.length > 0);
-  if (matchedPhrases.length > 0) {
-    const cfg = getConfig();
-    const current = cfg.catchphrases ?? getPersonality(cfg.personality).catchphrases;
-    result.matchedCatchphrases = matchedPhrases;
-    result.catchphrasesUpdated = applyCatchphraseFeedback(current, type, matchedPhrases);
-    logger.info('反馈归因口头禅', { type, messageId, matchedPhrases });
-  }
   // Step 3: 更新用户画像 + 兴趣图谱
   if (topics && topics.length > 0) {
-    // 3a: 批量更新用户画像（一次 I/O）
-    const profileEntries: ProfileUpdateEntry[] = topics.map((topic) => ({
-      type,
-      topic,
-    }));
+    result.profileUpdated = await updateProfileForFeedback(type, topics);
     try {
-      await updateUserProfileBatch(profileEntries);
-      result.profileUpdated = true;
-    } catch (error) {
-      logger.error('批量更新用户画像失败', { error, type, topics });
-    }
-
-    // 3b: 强化/衰减兴趣图谱——persist 失败必须上抛：兴趣强化是反馈的
-    // 核心承诺（S9 review 硬违规 #2：吞错 → 配额 consumed 但兴趣未强化）。
-    // profile 失败保留容错（反馈已记录、配额已兑现，画像缺失可重算）
-    try {
-      const graph = getInterestGraph();
-      // 确保 graph 已初始化
-      if (!graph.isInitialized() && graph.getNodeCount() === 0) {
-        await graph.load();
-      }
-
-      for (const topic of topics) {
-        if (type === 'like') {
-          // 点赞：检查节点是否存在，不存在则先创建
-          if (!graph.getNode(topic)) {
-            graph.addInterest(topic, 0.3, 'feedback');
-          }
-          graph.reinforce(topic, LIKE_REINFORCE_DELTA);
-          result.interestReinforced = true;
-        } else {
-          // 踩：衰减兴趣（不删除，让时间衰减自然处理）
-          const node = graph.getNode(topic);
-          if (node) {
-            const newWeight = Math.max(0, node.weight - DISLIKE_DECAY_DELTA);
-            if (newWeight > 0) {
-              node.weight = newWeight;
-              node.lastReinforced = new Date().toISOString();
-              result.interestReinforced = true;
-            }
-          }
-        }
-      }
-
-      // 所有 topic 处理完后一次持久化（N 个 topic → 1 次原子写）
-      await graph.persist();
+      result.interestReinforced = await updateGraphForFeedback(type, topics);
     } catch (error) {
       logger.error('兴趣图谱操作失败', { error, type, topics });
       throw error;
@@ -236,22 +304,17 @@ export async function processFeedback(
  *
  * 与点赞走同一存储/画像/图谱管道，差异：
  * - type=boost（节流在控制面按 plan 做，管道本身无限制）
- * - 强化幅度 BOOST_REINFORCE_DELTA（0.25 > 点赞 0.1）
- * - 新话题以 source=feedback 入图（种子 0.3）
+ * - 走统一多信号公式，强度 SIGNAL_STRENGTH.boost=2.0 > like=1.0（S2 #151）
+ * - 新话题以 source=feedback 入图（种子 FEEDBACK_SEED_WEIGHT）
  */
 export async function boostTopic(
   topic: string,
   userId?: string,
 ): Promise<FeedbackProcessResult> {
-  const result: FeedbackProcessResult = {
-    recorded: false,
+  const result = emptyResult({
     topicsMatched: true,
     matchedTopics: [topic],
-    matchedCatchphrases: [],
-    catchphrasesUpdated: null,
-    profileUpdated: false,
-    interestReinforced: false,
-  };
+  });
 
   // Step 1: 记录（type=boost）——配额语义核心：记录失败必须上抛，
   // 否则路由按 exit 0 保留 lastBoostAt（配额 consumed 但无任何落盘）
@@ -266,18 +329,25 @@ export async function boostTopic(
     logger.error('顶话题更新用户画像失败', { error, topic });
   }
 
-  // Step 3: 图谱强化（不存在则 feedback 来源入图）——persist 失败上抛
+  // Step 3: 图谱强化——与点赞同一叶子归因（boost 目标可能是父级，
+  // 直击父级会被 persist 重聚合覆盖）——persist 失败上抛
   try {
     const graph = getInterestGraph();
     if (!graph.isInitialized() && graph.getNodeCount() === 0) {
       await graph.load();
     }
-    if (!graph.getNode(topic)) {
-      graph.addInterest(topic, BOOST_SEED_WEIGHT, 'feedback');
+    const target = resolveLeafTarget(graph, topic);
+    if (!target) {
+      // addInterest 可能因 maxInterestCount 上限返回 false——以 applySignal
+      // 结果为准，不虚报（review #159 二轮）
+      graph.addInterest(topic, FEEDBACK_SEED_WEIGHT, 'feedback');
+      result.interestReinforced = graph.applySignal(topic, 'boost') !== undefined;
+    } else {
+      result.interestReinforced = graph.applySignal(target, 'boost') !== undefined;
     }
-    graph.reinforce(topic, BOOST_REINFORCE_DELTA);
-    result.interestReinforced = true;
     await graph.persist();
+    // S2 #151：反馈后增量重生成 profile-summary
+    await regenerateProfileSummary(graph);
   } catch (error) {
     logger.error('顶话题图谱强化失败', { error, topic });
     throw error;

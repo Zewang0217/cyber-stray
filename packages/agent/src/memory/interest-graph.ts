@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { consola } from '../logger.js';
 import { getDataPath } from '../config.js';
 import { atomicWriteJson } from '../utils/atomic-json.js';
+import { INTEREST_DECAY_LAMBDA } from './interest-constants.js';
 import { recordInterestSnapshot } from './interest-history.js';
 
 const logger = consola.withTag('InterestGraph');
@@ -84,6 +85,19 @@ export interface InterestNode {
   negativeExemplars?: string[];
 }
 
+/** 反馈信号类型（S2 #151 多信号权重） */
+export type InterestSignalType = 'like' | 'boost' | 'dislike';
+
+/** 信号强度幅值（S2 #151）：like 1.0 / boost 2.0 / dislike 1.5——dislike 的负号在 applySignal 应用时取，本表只存幅值 */
+export const SIGNAL_STRENGTH: Record<InterestSignalType, number> = {
+  like: 1.0,
+  boost: 2.0,
+  dislike: 1.5,
+};
+
+/** 信号阻尼系数分母系数（阻尼 = 1/(1+0.2×n)，n=该节点累计信号数，边际递减） */
+export const SIGNAL_DAMPING_FACTOR = 0.2;
+
 export interface InterestGraphData {
   version: 2;
   lastUpdated: string;
@@ -92,7 +106,7 @@ export interface InterestGraphData {
 
 /** 兴趣图谱配置（来自 agent-config.json） */
 export interface InterestGraphConfig {
-  decayLambda: number;        // 衰减系数（每天）
+  decayLambda: number;        // 衰减系数（每天）；单源见 interest-constants.ts（60 天半衰期）
   maxWeight: number;          // 单兴趣权重上限
   minInterestCount: number;   // 最少兴趣数量
   maxInterestCount: number;   // 最多兴趣数量，防止反思批量幻觉撑爆图谱
@@ -102,7 +116,7 @@ export interface InterestGraphConfig {
 }
 
 export const DEFAULT_INTEREST_CONFIG: InterestGraphConfig = {
-  decayLambda: 0.1,
+  decayLambda: INTEREST_DECAY_LAMBDA,
   maxWeight: 0.8,
   minInterestCount: 3,
   maxInterestCount: 20,
@@ -184,6 +198,13 @@ export class InterestGraph {
    * Phase 6: 持久化后记录兴趣快照到历史（best-effort，失败不阻断）。
    */
   async persist(): Promise<void> {
+    // S2 #151：持久化前统一重聚合所有父节点（父权重 = 子加权聚合），
+    // 防中途更新后未触达父级导致的 stale 值落盘
+    for (const node of this.data.nodes) {
+      if (this.getChildren(node.id).length > 0) {
+        this.recomputeParentWeight(node.id);
+      }
+    }
     this.data.lastUpdated = new Date().toISOString();
     this.persistChain = this.persistChain.then(async () => {
       await atomicWriteJson(this.filePath, this.data);
@@ -347,6 +368,111 @@ export class InterestGraph {
   }
 
   /**
+   * 应用反馈信号（S2 #151 多信号权重公式，字面实现）。
+   *
+   * 统一公式：new = clamp(weight + ±强度 × 阻尼(1/(1+0.2n)) × (1−weight), 0, maxWeight)
+   * - like/boost:  正向，(1−weight) 为饱和项 → 高权重增益收窄，渐近 maxWeight
+   * - dislike:     负向，同样乘 (1−weight) → 强兴趣单次点踩只小幅回撤
+   *   （0.8→0.5 而非按比例归零——防"点踩一次抹掉话题"的单信号污染，#147 教训）
+   * - n = 该节点累计信号数（reinforceCount），信号越多单次影响越小（边际递减）
+   * - 时间半衰期衰减（60 天）由 computeEffectiveWeight 在读取时承担，不在此重复
+   *
+   * 更新后触发父级重聚合（父权重 = 子加权聚合，S2 #151）。
+   *
+   * @param id - 叶子节点 ID
+   * @param signal - 信号类型
+   * @returns 更新后的节点；节点不存在返回 undefined
+   */
+  applySignal(id: string, signal: InterestSignalType): InterestNode | undefined {
+    const node = this.data.nodes.find((n) => n.id === id);
+    if (!node) {
+      logger.warn('应用信号失败：兴趣节点不存在', { id, signal });
+      return undefined;
+    }
+
+    const magnitude = SIGNAL_STRENGTH[signal];
+    const signedStrength = signal === 'dislike' ? -magnitude : magnitude;
+    const damping = 1 / (1 + SIGNAL_DAMPING_FACTOR * node.reinforceCount);
+    const now = new Date().toISOString();
+
+    const next = node.weight + signedStrength * damping * (1 - node.weight);
+    node.weight = Math.min(this.config.maxWeight, Math.max(0, next));
+
+    node.lastReinforced = now;
+    node.reinforceCount += 1;
+    logger.info('兴趣信号已应用', { id, signal, newWeight: node.weight, damping });
+
+    // 若该节点有父级，父级权重 = 子加权聚合（保持一致性）
+    this.recomputeAncestors(id);
+    return node;
+  }
+
+  // 层级（parent / leaf）——S2 #151 叶子归因
+
+  /** 获取某节点的直接子节点 */
+  getChildren(id: string): InterestNode[] {
+    return this.data.nodes.filter((n) => n.parent === id);
+  }
+
+  /** 某节点是否为叶子（无子节点）。当前扁平图谱所有节点均为叶子。 */
+  isLeaf(id: string): boolean {
+    return this.getChildren(id).length === 0;
+  }
+
+  /** 获取某节点的全部叶子后代（用于 dislike 归因降级/父级聚合）。无子节点时返回自身。 */
+  getLeafDescendants(id: string): string[] {
+    const children = this.getChildren(id);
+    if (children.length === 0) return [id]; // 自身即叶子
+    const leaves: string[] = [];
+    for (const child of children) {
+      const childLeaves = this.getLeafDescendants(child.id);
+      for (const leaf of childLeaves) {
+        if (!leaves.includes(leaf)) leaves.push(leaf);
+      }
+    }
+    return leaves;
+  }
+
+  /**
+   * 父节点权重 = 子节点加权聚合（S2 #151「加权」的字面实现）。
+   *
+   * 证据质量 m = 1 + reinforceCount：零信号子节点保有基线质量 1（等价算术平均），
+   * 每条反馈信号增加一份质量——反馈积累更多的叶子主导父级方向，
+   * 与阻尼参数共用同一置信度量（confidence/sampleCount 语义）。
+   * 子为空 → 父保持自身权重。
+   */
+  recomputeParentWeight(id: string): void {
+    const parent = this.data.nodes.find((n) => n.id === id);
+    if (!parent) return;
+    const children = this.getChildren(id);
+    if (children.length === 0) return;
+
+    // 聚合使用子节点的"原始权重"（已含各自 lastReinforced 时间戳；聚合时不二次衰减，
+    // 父节点的时间衰减由父自身 lastReinforced 控制，不被子聚合重置）
+    let weightedSum = 0;
+    let totalMass = 0;
+    for (const child of children) {
+      const mass = 1 + child.reinforceCount;
+      weightedSum += child.weight * mass;
+      totalMass += mass;
+    }
+    const aggregated = Math.min(this.config.maxWeight, weightedSum / totalMass);
+    parent.weight = aggregated;
+    logger.debug('父节点权重已重聚合', { id, aggregated, childCount: children.length });
+  }
+
+  /** 从指定节点向上重聚合全部祖先（叶→根路径）。 */
+  private recomputeAncestors(id: string): void {
+    let current = this.data.nodes.find((n) => n.id === id);
+    const visited = new Set<string>();
+    while (current?.parent && !visited.has(current.parent)) {
+      visited.add(current.parent);
+      this.recomputeParentWeight(current.parent);
+      current = this.data.nodes.find((n) => n.id === current!.parent);
+    }
+  }
+
+  /**
    * 添加新兴趣。
    *
    * novelty 预算的语义是"探索占总注意力的比例"：新兴趣是尚未被验证的猜测，
@@ -400,6 +526,37 @@ export class InterestGraph {
     });
 
     logger.info('新兴趣已添加', { id, weight, source });
+    return true;
+  }
+
+  /**
+   * 将子节点挂到父节点下（S2 #151 层级维护；S4 分类管线使用）。
+   *
+   * 建立 parent/child 关系后父权重即由子聚合驱动（recomputeParentWeight）。
+   * 挂接后立即重聚合父级。
+   *
+   * @param parentId - 父节点 ID（须存在）
+   * @param childId - 子节点 ID（须存在且未挂父）
+   * @returns 是否成功
+   */
+  attachChild(parentId: string, childId: string): boolean {
+    const parent = this.data.nodes.find((n) => n.id === parentId);
+    const child = this.data.nodes.find((n) => n.id === childId);
+    if (!parent || !child) {
+      logger.warn('挂接层级失败：节点不存在', { parentId, childId });
+      return false;
+    }
+    if (child.parent) {
+      logger.warn('挂接层级失败：子节点已有父级', { childId, currentParent: child.parent });
+      return false;
+    }
+    if (parentId === childId) {
+      logger.warn('挂接层级失败：不能自挂', { parentId });
+      return false;
+    }
+    child.parent = parentId;
+    this.recomputeParentWeight(parentId);
+    logger.info('层级已挂接', { parentId, childId });
     return true;
   }
 

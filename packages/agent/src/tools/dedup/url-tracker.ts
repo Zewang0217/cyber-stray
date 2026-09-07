@@ -46,10 +46,53 @@ function createDefaultStore(): VisitedUrlStore {
 }
 
 /**
- * 标准化 URL：去除协议前缀、查询参数和锚点
+ * tracking 参数名（L1 去重修复，#152）。
+ *
+ * 前缀匹配 utm_* 家族；显式集合为各平台点击/分享追踪 ID。
+ * 取舍：**宁漏勿误**——漏删只是去重变松（L2 语义层兜底），误删语义参数
+ * （如 news?id=）会把不同内容误判为同一 URL，比不删更糟。
+ */
+const TRACKING_PARAM_PREFIXES = ['utm_'];
+
+const TRACKING_PARAMS = new Set([
+  'fbclid', 'gclid', 'msclkid', 'dclid', 'yclid', 'ttclid', // 广告点击 ID
+  'igshid', 'si', // Instagram/YouTube 分享追踪
+  'spm', 'spm_id', 'scm', // ContentSPM 埋点（阿里系）
+  'share_token', 'share_source', 'share_medium', 'share_plat', // 分享埋点
+  'ref_src', 'ref_url', 'vd_source', 'vd_medium', 'from_source', 'from_medium',
+  'app_platform', 'app_version', 'sid_for_share', 'nsukey', 'isappinstalled',
+]);
+
+function isTrackingParam(key: string): boolean {
+  const lower = key.toLowerCase();
+  return (
+    TRACKING_PARAM_PREFIXES.some((p) => lower.startsWith(p)) || TRACKING_PARAMS.has(lower)
+  );
+}
+
+/**
+ * 标准化 URL（L1 去重，#152）：去协议与锚点，**选择性删除 tracking 查询参数**，
+ * 保留语义参数（`news?id=123` ≠ `news?id=456`）。保留参数按键排序，保证
+ * 参数顺序差异不影响去重判定。
+ *
+ * 旧实现删除全部 query（`.split('?')[0]`），导致 `news?id=123` 与
+ * `news?id=456` 误判同链——正是 #147 指出的去重缺陷。
  */
 export function normalizeUrl(url: string): string {
-  return url.replace(/^https?:\/\//, '').split('?')[0]?.split('#')[0] ?? '';
+  const withoutScheme = url.replace(/^https?:\/\//, '').split('#')[0] ?? '';
+  const queryIndex = withoutScheme.indexOf('?');
+  if (queryIndex === -1) return withoutScheme;
+
+  const base = withoutScheme.slice(0, queryIndex);
+  const kept = withoutScheme
+    .slice(queryIndex + 1)
+    .split('&')
+    .filter((pair) => {
+      const key = pair.split('=')[0] ?? '';
+      return key.length > 0 && !isTrackingParam(key);
+    })
+    .sort();
+  return kept.length > 0 ? `${base}?${kept.join('&')}` : base;
 }
 
 /**

@@ -31,6 +31,7 @@ function snapshot(mins: number, nodes: { id: string; weight: number; source?: st
     timestamp: new Date(T0 + mins * MIN).toISOString(),
     hash: `h-${mins}`,
     entropy: 1,
+    nodeCount: 3,
     source: 'snapshot',
     nodes: nodes.map((n, i) => ({ id: n.id, weight: n.weight, source: n.source ?? 'default', reinforceCount: i })),
   };

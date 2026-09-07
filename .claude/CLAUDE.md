@@ -23,3 +23,10 @@ pnpm test               # Vitest
 pnpm lint               # ESLint
 pnpm typecheck          # TS 类型检查
 ```
+
+## 分支流程（硬规则，ADR-0009）
+
+- **只在 develop 分支开发**：功能/修复分支从 develop 切出 → PR 合并到 **develop**（CI 只对 base=develop 的 PR 跑质量门）。
+- **开发前必拉**：每次开始开发前先 `git fetch origin` 并检查 develop 有无新改动——有则 `git pull --ff-only origin develop`（或 rebase 到最新 develop），确保基于最新 develop 开发，避免合并冲突堆叠。
+- 发布 = 单独 PR（develop → main，squash 合并，不重复跑质量门；main 保护要求 Approve + 管理员合并）。
+- 禁止直接向 main 提功能 PR（main 只接受 develop 的发布 PR）。

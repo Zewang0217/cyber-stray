@@ -42,6 +42,8 @@ interface UsePetsReturn {
     catchphrases?: Catchphrase[];
   }) => Promise<Pet | null>;
   adopting: boolean;
+  /** 手动重拉宠物列表（领养/改动作后同步） */
+  refresh: () => Promise<void>;
   /** 设置作息（本地小时；跨午夜合法）。成功返回 true */
   setSleepSchedule: (startHour: number, endHour: number) => Promise<boolean>;
   /** 清除作息（回永不睡眠，与现状一致）。成功返回 true */
@@ -59,13 +61,15 @@ interface UsePetsReturn {
  * 空列表 = 未领养 → 前端走领养流程。前端状态是便捷，
  * 服务端 session claim 才是租户真相（issue #74）。
  */
-export function usePets(): UsePetsReturn {
+export function usePets(options: { enabled?: boolean } = {}): UsePetsReturn {
+  const { enabled = true } = options;
   const [pets, setPets] = useState<Pet[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adopting, setAdopting] = useState(false);
 
   const refresh = useCallback(async () => {
+    if (!enabled) return;
     try {
       const res = await fetch("/api/pets");
       const json = (await res.json()) as ApiResponse<Pet[]>;
@@ -79,11 +83,15 @@ export function usePets(): UsePetsReturn {
     } finally {
       setIsLoaded(true);
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) {
+      setIsLoaded(true);
+      return;
+    }
     void refresh();
-  }, [refresh]);
+  }, [enabled, refresh]);
 
   const adopt = useCallback(
     async (input: {
@@ -185,6 +193,7 @@ export function usePets(): UsePetsReturn {
     error,
     adopt,
     adopting,
+    refresh,
     setSleepSchedule,
     clearSleepSchedule,
     setDiaryStyle,
