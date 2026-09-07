@@ -279,6 +279,19 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
   }, [view.sleeping, onPat, reset]);
 
   const onStreet = !view.away && !view.sleeping;
+  // #218 随机 joy 闪烁：低频（约 2 分钟一次四成概率）、仅合成后站街 idle——
+  // 打盹/无聊 grumpy 不被 joy 打断（评审 MEDIUM-1）；updater 内不带副作用（LOW-1）。
+  // anim 变化即重挂 interval（覆盖期间不计时，回 idle 重新低频起算）
+  useEffect(() => {
+    if (anim !== "idle") return;
+    const id = setInterval(() => {
+      if (Math.random() < 0.4) {
+        setOverrideAnim("joy");
+        setTimeout(() => setOverrideAnim(null), PAT_ANIM_MS);
+      }
+    }, 120_000);
+    return () => clearInterval(id);
+  }, [anim]);
 
   // #218 失败态 = 瞬时覆盖：连续失败 ≥3 触发一段 grumpy（数值态 bored 才是常态，
   // 二者分离——失败过几天不等于从此臭脸）
@@ -295,19 +308,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
     return () => clearTimeout(id);
   }, [failures]);
 
-  // #218 随机 joy 闪烁：低频（约 2 分钟一次四成概率）、仅合成后站街 idle——
-  // 打盹/无聊 grumpy 不被 joy 打断（评审 MEDIUM-1）；updater 内不带副作用（LOW-1）。
-  // anim 变化即重挂 interval（覆盖期间不计时，回 idle 重新低频起算）
-  useEffect(() => {
-    if (anim !== "idle") return;
-    const id = setInterval(() => {
-      if (Math.random() < 0.4) {
-        setOverrideAnim("joy");
-        setTimeout(() => setOverrideAnim(null), PAT_ANIM_MS);
-      }
-    }, 120_000);
-    return () => clearInterval(id);
-  }, [anim]);
+
   const theaterAnim = theater && onStreet ? theater.anim : null;
   const anim = grumpyOn && onStreet
     ? "grumpy"
