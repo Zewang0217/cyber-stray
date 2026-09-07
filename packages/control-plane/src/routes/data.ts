@@ -55,6 +55,32 @@ function isEnoent(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === 'ENOENT';
 }
 
+/**
+ * 注入游荡历史（#204）：state.json 从无 wanderHistory 字段（AgentState 不含），
+ * 真实记录在 agent 的 wander-history.json（尾部最新）——读边界注入最近 20 条，
+ * 前端不再恒空态。ENOENT = 合法空态（租户未游荡）；损坏/形状非法显式抛
+ * （消息带文件名，防外层日志归因误导）。
+ */
+async function withWanderHistory(dir: string, state: Record<string, unknown>): Promise<void> {
+  let raw: string;
+  try {
+    raw = await readFile(join(dir, 'wander-history.json'), 'utf-8');
+  } catch (error) {
+    if (isEnoent(error)) return;
+    throw error;
+  }
+  let history: unknown;
+  try {
+    history = JSON.parse(raw);
+  } catch {
+    throw new Error('wander-history.json 不是合法 JSON');
+  }
+  if (!Array.isArray(history)) {
+    throw new Error('wander-history.json 形状非法（须为数组）');
+  }
+  state.wanderHistory = history.slice(-20);
+}
+
 const jsonError = (message: string) => ({ success: false, error: message });
 
 export function createDataRoutes({ config }: DataDeps): Hono {
@@ -78,26 +104,15 @@ export function createDataRoutes({ config }: DataDeps): Hono {
         state.mood = pet.mood;
         state.temper = pet.temper;
       }
-      // 游荡历史（#204）：state.json 从无此字段（AgentState 不含），真实记录在
-      // agent 的 wander-history.json（尾部最新）——读边界注入，前端不再恒空态
-      try {
-        const history = JSON.parse(
-          await readFile(join(scoped.dir, 'wander-history.json'), 'utf-8'),
-        ) as unknown;
-        if (Array.isArray(history)) {
-          state.wanderHistory = history.slice(-20);
-        }
-      } catch (error) {
-        if (!isEnoent(error)) throw error; // 无历史 = 合法空态；损坏显式抛（禁兜底）
-      }
+      await withWanderHistory(scoped.dir, state);
       return c.json({ success: true, data: state });
     } catch (error) {
       if (isEnoent(error)) {
         // 租户尚未跑过游荡（无 state.json）→ 空态
         return c.json({ success: true, data: null });
       }
-      // 文件损坏/不可读：显式报错（不吞成空态掩盖损坏）
-      console.error('[data] state.json 读取失败：', error);
+      // 文件损坏/不可读：显式报错（不吞成空态掩盖损坏）；具体文件看 error 消息
+      console.error('[data] /api/state 读取失败：', error);
       return c.json(jsonError('状态数据损坏或不可读'), 500);
     }
   });

@@ -9,7 +9,8 @@ export function WanderLog({ history }: { history: WanderStep[] }) {
       aria-label="游荡日志"
       className="border-2 border-black bg-black p-3 font-vt323 text-[20px] leading-[1.5] text-[var(--ok)]"
     >
-      {history.slice(0, 4).map((step, i) => (
+      {/* 注入数组尾部最新（CP slice(-20)）——展示最新 4 条，按时间正序排终端行 */}
+      {history.slice(-4).map((step, i) => (
         <p key={i}>&gt; {step.spoke ?? step.thought ?? step.url ?? `${step.tool} 逛了一圈。`}</p>
       ))}
       {history.length === 0 && <p>&gt; 等待第一次出门的信号……</p>}

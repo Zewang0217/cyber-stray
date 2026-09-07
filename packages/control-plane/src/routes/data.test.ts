@@ -85,6 +85,36 @@ describe('data 路由（租户数据 + 鉴权）', () => {
     expect(body.data.mood).toBe('curious');
   });
 
+  it('state 注入游荡历史（#204）：wander-history.json 尾部 20 条', async () => {
+    const aliceDir = join(dataDir, 'tenants', 'alice');
+    writeFileSync(
+      join(aliceDir, 'wander-history.json'),
+      JSON.stringify(Array.from({ length: 25 }, (_, i) => ({ timestamp: String(i), tool: 'search_web', thought: `step-${i}` }))),
+    );
+    const res = await app.request(await authedAsync('http://x/api/state'));
+    const body = (await res.json()) as { data: { wanderHistory: Array<{ thought: string }> } };
+    expect(body.data.wanderHistory).toHaveLength(20);
+    expect(body.data.wanderHistory[0]?.thought).toBe('step-5'); // 25 取尾 20 → 首条是第 6 条
+    expect(body.data.wanderHistory.at(-1)?.thought).toBe('step-24'); // 尾部最新
+  });
+
+  it('state：无 wander-history.json → 无 wanderHistory 字段（合法空态）', async () => {
+    const res = await app.request(await authedAsync('http://x/api/state'));
+    const body = (await res.json()) as { data: Record<string, unknown> };
+    expect('wanderHistory' in body.data).toBe(false);
+  });
+
+  it('state：wander-history.json 损坏/形状非法 → 500（不吞成空态）', async () => {
+    const aliceDir = join(dataDir, 'tenants', 'alice');
+    writeFileSync(join(aliceDir, 'wander-history.json'), 'not-json{');
+    const res = await app.request(await authedAsync('http://x/api/state'));
+    expect(res.status).toBe(500);
+
+    writeFileSync(join(aliceDir, 'wander-history.json'), JSON.stringify({ nope: true }));
+    const res2 = await app.request(await authedAsync('http://x/api/state'));
+    expect(res2.status).toBe(500);
+  });
+
   it('interests：节点 + 熵值（shape 与 web 旧路由一致）', async () => {
     const res = await app.request(await authedAsync('http://x/api/interests'));
     expect(res.status).toBe(200);
