@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { consola } from '../logger.js';
 import { getDataPath } from '../config.js';
 import { atomicWriteJson } from '../utils/atomic-json.js';
+import { isPlausibleTopic } from './topic-validator.js';
 import { INTEREST_DECAY_LAMBDA } from './interest-constants.js';
 import { recordInterestSnapshot } from './interest-history.js';
 
@@ -490,6 +491,14 @@ export class InterestGraph {
    * @returns 是否成功（已存在或达到数量上限时返回 false）
    */
   addInterest(id: string, initialWeight: number, source: InterestSource = 'default'): boolean {
+    // 话题准入（#176）：URL 域名/搜索 query 长句/搜索算子不得入图——
+    // 归因链路曾把它们当话题写入，稀释强中弱分级（生产实证 wallstreetcn.com 0.8）。
+    // 调用方已处理 false（同 maxInterestCount 路径），拒绝即记 warn 可观测
+    if (!isPlausibleTopic(id)) {
+      logger.warn('添加兴趣失败：非话题形态', { id, source });
+      return false;
+    }
+
     // 已存在则不允许重复添加
     if (this.data.nodes.some((n) => n.id === id)) {
       logger.debug('添加兴趣失败：已存在', { id });
