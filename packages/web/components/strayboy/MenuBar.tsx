@@ -35,6 +35,8 @@ export function MenuBar() {
   // SSR 首帧不闪——避免 hydration 类名错位）
   const [hintBlink, setHintBlink] = useState(false);
 
+  const [hintTimer, setHintTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (localStorage.getItem(START_HINT_KEY) === "1") return;
     setHintBlink(true);
@@ -42,12 +44,14 @@ export function MenuBar() {
       setHintBlink(false);
       localStorage.setItem(START_HINT_KEY, "1");
     }, START_HINT_MS);
+    setHintTimer(id);
     return () => clearTimeout(id);
   }, []);
 
   const openStart = (): void => {
     setStartOpen(true);
     setHintBlink(false);
+    if (hintTimer) clearTimeout(hintTimer); // 提示已达成，6s 兜底 timer 一并撤
     localStorage.setItem(START_HINT_KEY, "1");
   };
 
