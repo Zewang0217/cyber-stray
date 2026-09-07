@@ -75,7 +75,7 @@ function EvolutionInner() {
       </div>
 
       <div className="lg:col-start-2 lg:row-start-2">
-        <h2 className="font-ps2p mb-3 text-xs text-[var(--hi)]">SKIN · 图鉴皮肤</h2>
+        <h2 className="font-ps2p mb-3 mt-8 text-xs text-[var(--hi)] lg:mt-0">SKIN · 图鉴皮肤</h2>
         <div className="mb-2 border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
           <CoatPicker />
           <p className="mt-1.5 text-[11px] text-[var(--curb)]">选择后街角同步换色（橘/黑/三花，DESIGN.md §7）。</p>
@@ -83,7 +83,7 @@ function EvolutionInner() {
       </div>
 
       <div className="lg:col-span-2 lg:col-start-1 lg:row-start-3">
-        <h2 className="font-ps2p mb-3 text-xs text-[var(--hi)]">TIME MACHINE · 存档</h2>
+        <h2 className="font-ps2p mb-3 mt-8 text-xs text-[var(--hi)] lg:mt-0">TIME MACHINE · 存档</h2>
         <TimeMachine snapshots={snapshots} onLoad={onLoad} rolling={rolling} />
       </div>
     </div>
