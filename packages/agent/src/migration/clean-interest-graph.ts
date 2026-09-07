@@ -5,11 +5,14 @@
  *
  * 用法：bun src/migration/clean-interest-graph.ts <tenant-data-dir>
  * 幂等：清洗后再跑 = 0 隔离（准入校验挡住新污染后存量只减不增）。
+ * 运维注意：先停 agent/调度再清洗——运行中的 agent 内存持有污染节点，
+ * persist 会整文件覆盖回污染状态。
  */
 
-import { readFile, writeFile, rename } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { isPlausibleTopic } from '../memory/topic-validator.js';
+import { atomicWriteJson } from '../utils/atomic-json.js';
 
 interface InterestNode {
   id: string;
@@ -41,11 +44,12 @@ export async function cleanInterestGraphFile(filePath: string): Promise<GraphCle
 
   if (quarantinedNodes.length > 0) {
     const cleaned = { ...graph, nodes: kept, lastUpdated: new Date().toISOString() };
-    const tmp = `${filePath}.tmp`;
-    await writeFile(tmp, JSON.stringify(cleaned, null, 2), 'utf-8');
-    await rename(tmp, filePath);
+    await atomicWriteJson(filePath, cleaned);
 
     const quarantinePath = filePath.replace(/\.json$/, '.quarantine.json');
+    if (quarantinePath === filePath) {
+      throw new Error(`quarantine 路径退化与源文件相同: ${filePath}`); // 非 .json 入参防覆盖源图
+    }
     let prior: InterestNode[] = [];
     try {
       const prev = JSON.parse(await readFile(quarantinePath, 'utf-8')) as InterestNode[];
@@ -53,9 +57,7 @@ export async function cleanInterestGraphFile(filePath: string): Promise<GraphCle
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
-    const qTmp = `${quarantinePath}.tmp`;
-    await writeFile(qTmp, JSON.stringify([...prior, ...quarantinedNodes], null, 2), 'utf-8');
-    await rename(qTmp, quarantinePath);
+    await atomicWriteJson(quarantinePath, [...prior, ...quarantinedNodes]);
   }
 
   return {

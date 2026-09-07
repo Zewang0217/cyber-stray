@@ -20,6 +20,14 @@ describe("isPlausibleTopic（#176 话题准入）", () => {
     expect(isPlausibleTopic("OpenAI Jalapeño chip 自研芯片 细节 架构")).toBe(false);
   });
 
+  it("已知误杀锚定（宁枉勿纵的代价，评审 LOW-1）", () => {
+    // 域名形态误伤技术名词；ASCII 冒号前缀误伤「标题: 正文」式话题。
+    // 被拒话题下次以干净形态（去 .js 后缀写法等）仍可入图——这里固化代价清单
+    expect(isPlausibleTopic("Node.js")).toBe(false);
+    expect(isPlausibleTopic("lopsop: 讲道理")).toBe(false);
+    expect(isPlausibleTopic("1.5")).toBe(false);
+  });
+
   it("边界：空白拒、超长拒、单算子词拒", () => {
     expect(isPlausibleTopic("   ")).toBe(false);
     expect(isPlausibleTopic("a".repeat(41))).toBe(false);
