@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { CafeFront, NeighborCat, Passerby, ShopFront } from "./StreetLife";
+import { AcUnit, LampPost, ParkCorner, ParkedCar, RoofKit, Wires, useStreetVariant } from "./StreetVariants";
 
 /** 确定性伪随机（同 seed 同布局——避免每次渲染窗灯乱闪）。 */
 function seeded(seed: number): () => number {
@@ -65,6 +66,7 @@ export function PixelStage({ children, onStreet, demo, daytime = false, onPasser
   const [lamps, setLamps] = useState<Record<string, boolean>>({});
   const [phase, setPhase] = useState(0);
   const [steam, setSteam] = useState(0);
+  const variant = useStreetVariant(); // #219：店铺街/住宅巷/公园口 按自然日轮换
   const toggleLamp = (key: string): void => {
     setLamps((prev) => ({ ...prev, [key]: !(prev[key] ?? false) }));
   };
@@ -128,7 +130,7 @@ export function PixelStage({ children, onStreet, demo, daytime = false, onPasser
           className={`absolute bottom-10 ${b.near ? "bg-[var(--bld-near)]" : "bg-[var(--bld-far)]"}`}
           style={{ left: b.left, width: b.width, height: b.height }}
         >
-          {b.neon && (
+          {b.neon && variant === 0 && (
             /* 霓虹招牌（#208）：hover 亮起（静态 opacity 态，零动画） */
             <span
               aria-hidden
@@ -137,8 +139,18 @@ export function PixelStage({ children, onStreet, demo, daytime = false, onPasser
               OPEN
             </span>
           )}
-          {i === 1 && <ShopFront />}
-          {i === 3 && <CafeFront />}
+          {variant === 0 && i === 1 && <ShopFront />}
+          {variant === 0 && i === 3 && <CafeFront />}
+          {/* 住宅巷：空调外机 + 天台物件（#219） */}
+          {variant === 1 && i === 2 && (
+            <>
+              <AcUnit top="28%" left="18%" />
+              <AcUnit top="52%" left="62%" />
+              <RoofKit left="30px" />
+            </>
+          )}
+          {variant === 1 && i === 3 && <AcUnit top="36%" left="30%" />}
+          {variant === 1 && i === 0 && <RoofKit left="14px" />}
           {Array.from({ length: Math.floor(b.height / 34) }, (_, row) => (
             <div key={row} className="flex gap-2 p-2">
               {Array.from({ length: Math.max(1, Math.floor((b.width - 16) / 18)) }, (_, col) => {
@@ -163,6 +175,33 @@ export function PixelStage({ children, onStreet, demo, daytime = false, onPasser
           ))}
         </div>
       ))}
+      {/* 街角变体氛围层（#219）：全静态，色板内取色 */}
+      {variant === 0 && (
+        <>
+          <Wires top="28%" left="12%" width="12%" />
+          <Wires top="22%" left="58%" width="16%" />
+          <LampPost left="70%" />
+          <ParkedCar left="40%" />
+          {/* 地面反光：橱窗/霓虹在湿路面上的低透明色条 */}
+          <span aria-hidden className="absolute bottom-[4px] left-[24%] h-[5px] w-[8px] bg-[var(--window)] opacity-20" />
+          <span aria-hidden className="absolute bottom-[6px] left-[59%] h-[6px] w-[6px] bg-[var(--neon)] opacity-20" />
+        </>
+      )}
+      {variant === 1 && (
+        <>
+          <Wires top="20%" left="6%" width="20%" />
+          <Wires top="32%" left="62%" width="14%" />
+          <LampPost left="88%" />
+          <ParkedCar left="30%" />
+        </>
+      )}
+      {variant === 2 && (
+        <>
+          <ParkCorner />
+          <LampPost left="86%" />
+          <Wires top="26%" left="55%" width="14%" />
+        </>
+      )}
       {/* 动物邻居：远处楼顶偶尔蹲一只剪影猫（#212，纯显隐无动画） */}
       {!daytime && <NeighborCat />}
       {/* 路人 NPC（#212）：剪影平移循环（transform 线性）；并发预算 = 2 路人 + 猫 = 3 */}
