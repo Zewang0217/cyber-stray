@@ -20,6 +20,7 @@ import { StringDecoder } from 'string_decoder';
 import { fileURLToPath } from 'url';
 import { openTenantSecrets, type TenantSecretsStore } from '../secrets/tenant-secrets.js';
 import { writeSecretsFile, resolveAgentSecrets } from '../secrets/worker-secrets.js';
+import type { WanderStatsReport } from '@cyber-stray/shared/pet-stats';
 import type { WorkerJob, WorkerResult, WorkerRunner } from './scheduler.js';
 
 /** agent 包 CLI 绝对路径（仓库内锚定，无硬编码全路径） */
@@ -96,18 +97,19 @@ export function sweepWorkerLogs(dataDir: string, retentionDays = WORKER_LOG_RETE
   }
 }
 
-/** 注入式 spawn（测试用 fake；真实实现见下方 realSpawn） */
+/** 注入式 spawn（测试用 fake；真实实现见下方 realSpawn）。stdout = 完整标准输出
+ * （真实实现捕获；worker 末行 JSON 的 result.stats 是数值写回通道，ADR-0013） */
 export type SpawnLike = (
   cmd: string,
   args: string[],
   opts: { timeoutMs: number; logFile?: string },
-) => Promise<{ exitCode: number }>;
+) => Promise<{ exitCode: number; stdout?: string }>;
 
 /** stderr 累积上限（64 KiB——防长命控制面无界增长，只留排障尾巴） */
 const STDERR_CAP_BYTES = 64 * 1024;
 
 const realSpawn: SpawnLike = (cmd, args, { timeoutMs, logFile }) => {
-  const { promise, resolve, reject } = Promise.withResolvers<{ exitCode: number }>();
+  const { promise, resolve, reject } = Promise.withResolvers<{ exitCode: number; stdout: string }>();
   const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   activeChildren.add(child);
   child.on('exit', () => activeChildren.delete(child));
@@ -115,8 +117,13 @@ const realSpawn: SpawnLike = (cmd, args, { timeoutMs, logFile }) => {
   // 跨 chunk 截断成 U+FFFD；stderr 同时累积留非零退出尾巴
   const stdoutDecoder = new StringDecoder('utf8');
   const stderrDecoder = new StringDecoder('utf8');
+  const stdoutTail: string[] = [];
+  let stdoutBytes = 0;
   child.stdout?.on('data', (chunk: Buffer) => {
-    if (logFile) appendWorkerLog(logFile, stdoutDecoder.write(chunk));
+    const text = stdoutDecoder.write(chunk);
+    if (logFile) appendWorkerLog(logFile, text);
+    stdoutBytes += chunk.length;
+    if (stdoutBytes <= STDERR_CAP_BYTES) stdoutTail.push(text);
   });
   const stderr: string[] = [];
   let stderrBytes = 0;
@@ -137,7 +144,7 @@ const realSpawn: SpawnLike = (cmd, args, { timeoutMs, logFile }) => {
     if (code !== 0 && stderr.length > 0) {
       console.error(`[worker-runner] stderr: ${stderr.join('').slice(0, 2000)}`);
     }
-    resolve({ exitCode: code ?? -1 });
+    resolve({ exitCode: code ?? -1, stdout: stdoutTail.join('') });
   });
   return promise;
 };
@@ -190,9 +197,16 @@ export function createWorkerRunner(deps: WorkerRunnerDeps): WorkerRunner {
       args.push('--plan-args', JSON.stringify(job.plan));
       args.push('--personality', job.personality);
       if (job.catchphrases !== undefined) args.push('--catchphrases', job.catchphrases);
+      // ADR-0013 注入：数值真相源在 pets 表，worker 不读库
+      args.push('--pet-state', JSON.stringify(job.petStats));
       const logFile = workerLogPath(deps.dataDir, 'worker', job.tenantId);
-      const { exitCode } = await spawnFn(command, args, { timeoutMs: deps.timeoutMs, logFile });
-      return { ok: exitCode === 0, exitCode };
+      const { exitCode, stdout } = await spawnFn(command, args, { timeoutMs: deps.timeoutMs, logFile });
+      if (exitCode !== 0) return { ok: false, exitCode };
+      const stats = parseWanderStatsReport(stdout ?? '');
+      if (!stats) {
+        console.error(`[worker-runner] worker exit 0 但无 stats 回报（${job.tenantId}/${job.petId}）`);
+      }
+      return { ok: true, exitCode, stats };
     } catch (error) {
       console.error(
         `[worker-runner] 拉起失败（${job.tenantId}/${job.petId}）：`,
@@ -205,4 +219,28 @@ export function createWorkerRunner(deps: WorkerRunnerDeps): WorkerRunner {
       }
     }
   };
+}
+
+/**
+ * 解析 worker stdout 末行 JSON 的 result.stats（cli.ts 成功出口的唯一行；
+ * 取末行防库/调试输出混入）。形状非法返回 undefined——调用方显式告警不落库。
+ */
+function parseWanderStatsReport(stdout: string): WanderStatsReport | undefined {
+  const last = stdout.trim().split('\n').filter(Boolean).pop();
+  if (!last) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(last) as unknown;
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return undefined;
+  const result = (parsed as { result?: unknown }).result;
+  if (typeof result !== 'object' || result === null) return undefined;
+  const stats = (result as { stats?: unknown }).stats;
+  if (typeof stats !== 'object' || stats === null) return undefined;
+  const r = stats as Record<string, unknown>;
+  if (typeof r.energy !== 'number' || !Number.isFinite(r.energy)) return undefined;
+  if (typeof r.boredom !== 'number' || !Number.isFinite(r.boredom)) return undefined;
+  return { energy: r.energy, boredom: r.boredom };
 }

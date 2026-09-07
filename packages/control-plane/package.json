@@ -8,7 +8,8 @@
     "dev": "bun run src/index.ts",
     "test": "vitest",
     "lint": "eslint src/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "migrate:pet-stats": "bun run src/migration/migrate-pet-stats.ts"
   },
   "dependencies": {
     "@cyber-stray/shared": "workspace:*",

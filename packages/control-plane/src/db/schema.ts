@@ -11,6 +11,7 @@
 
 import { sqliteTable, text, integer, primaryKey, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 import { PERSONALITY_IDS, DEFAULT_PERSONALITY } from '@cyber-stray/shared';
+import { PET_MOODS } from '@cyber-stray/shared/pet-stats';
 import { DIARY_STYLES, DEFAULT_DIARY_STYLE } from '@cyber-stray/shared/diary';
 
 /** 时间戳：unix 毫秒（SQLite 无原生 datetime，integer 跨方言最稳） */
@@ -68,6 +69,10 @@ export const pets = sqliteTable('pets', {
   lastBoostAt: integer('last_boost_at'),
   boredom: integer('boredom').notNull().default(30),
   energy: integer('energy').notNull().default(80),
+  /** 心情枚举（ADR-0013 数值归库；null = 待 migrate:pet-stats 从 state.json 回填） */
+  mood: text('mood', { enum: [...PET_MOODS] }),
+  /** 脾气 0-100（ADR-0013；null = 待回填；当前无自动更新点，#215 承接） */
+  temper: integer('temper'),
   /** 套餐（S11 门控：free/pro/byok） */
   plan: text('plan', { enum: ['free', 'pro', 'byok'] }).notNull().default('free'),
   /** 性格（认领时选择；好奇=基准参数，存量宠物默认 curious 行为不回退） */

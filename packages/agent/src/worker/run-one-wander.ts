@@ -19,6 +19,7 @@ import { loadState } from '../agent/state.js';
 import { WanderAgent } from '../core/wander-agent.js';
 import type { AgentSecrets, PlanExecutionArgs, WanderResult } from '../types.js';
 import type { Catchphrase, PersonalityId } from '@cyber-stray/shared';
+import type { PetStats } from '@cyber-stray/shared/pet-stats';
 
 /** runOneWander 入参 */
 export interface RunOneWanderOptions {
@@ -34,6 +35,11 @@ export interface RunOneWanderOptions {
   personality?: PersonalityId;
   /** 口头禅（#114：当前有效集合；未注入 = 性格默认组） */
   catchphrases?: Catchphrase[];
+  /**
+   * 宠物数值（ADR-0013 注入：真相源在 CP pets 表，调度器从库带出）。
+   * 必传——state.json 的数值是已退役的陈旧副本，缺注入即失败，禁兜底回退。
+   */
+  petStats: PetStats;
 }
 
 /**
@@ -52,7 +58,15 @@ export async function runOneWander(options: RunOneWanderOptions): Promise<Wander
 
   setTenantContext(ctx);
   try {
-    const state = await loadState();
+    const fileState = await loadState();
+    // 数值以注入为准（ADR-0013）；state.json 只出叙事字段（游荡计数/最近话题等）
+    const state = {
+      ...fileState,
+      boredom: options.petStats.boredom,
+      energy: options.petStats.energy,
+      mood: options.petStats.mood,
+      temper: options.petStats.temper,
+    };
     const agent = new WanderAgent(config);
     return await agent.wander(state);
   } finally {

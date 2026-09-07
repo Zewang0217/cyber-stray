@@ -2,7 +2,7 @@
  * worker CLI — 外部进程入口（调度器拉起：`tsx src/worker/cli.ts`）
  *
  * 用法：
- *   tsx src/worker/cli.ts --tenant <id> --data-dir <dir> [--secrets-file <path>]
+ *   tsx src/worker/cli.ts --tenant <id> --data-dir <dir> --pet-state <JSON> [--secrets-file <path>]
  *
  * 退出码：0 = 游荡完成；1 = 游荡失败；2 = 参数错误。
  * 输出：stdout 一行 JSON（{ ok, tenantId, result }）；失败时 stderr 一行 JSON。
@@ -16,6 +16,7 @@ import { readFileSync } from 'fs';
 import { initLogger } from '../logger.js';
 import { runOneWander } from './run-one-wander.js';
 import { isPersonalityId, parseCatchphraseList, type Catchphrase, type PersonalityId } from '@cyber-stray/shared';
+import { parsePetStats } from '@cyber-stray/shared/pet-stats';
 import type { AgentSecrets, PlanExecutionArgs } from '../types.js';
 
 function parseArg(name: string): string | undefined {
@@ -32,7 +33,20 @@ async function main(): Promise<void> {
 
   if (!tenantId || !dataDir) {
     console.error(
-      '用法: tsx src/worker/cli.ts --tenant <id> --data-dir <dir> [--secrets-file <path>] [--personality <id>]',
+      '用法: tsx src/worker/cli.ts --tenant <id> --data-dir <dir> --pet-state <JSON> [--secrets-file <path>] [--personality <id>]',
+    );
+    process.exit(2);
+  }
+
+  // ADR-0013 注入：宠物数值真相源在 CP pets 表，调度器必传——缺参/形状非法
+  // 显式失败（exit 2），绝不回退 state.json 陈旧副本（#173/#213 的根因）
+  const petStatsRaw = parseArg('pet-state');
+  const petStats = petStatsRaw
+    ? parsePetStats(safeJsonParse(petStatsRaw))
+    : undefined;
+  if (!petStats) {
+    console.error(
+      JSON.stringify({ ok: false, tenantId, error: '--pet-state 缺失或形状非法（须为 {energy,boredom,mood,temper} JSON）' }),
     );
     process.exit(2);
   }
@@ -79,9 +93,18 @@ async function main(): Promise<void> {
     catchphrases = parsed;
   }
 
-  const result = await runOneWander({ tenantId, dataDir, secrets, planArgs, personality, catchphrases });
+  const result = await runOneWander({ tenantId, dataDir, secrets, planArgs, personality, catchphrases, petStats });
   console.log(JSON.stringify({ ok: true, tenantId, result }));
   process.exit(0);
+}
+
+/** JSON.parse 失败返回 null（交给 parsePetStats 统一判非法，不在此抛） */
+function safeJsonParse(raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
 }
 
 main().catch((error: unknown) => {

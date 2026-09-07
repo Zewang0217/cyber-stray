@@ -68,6 +68,8 @@ async function fileExists(path: string): Promise<boolean> {
 describe('runOneWander 双租户隔离', () => {
   let dirs: { tenantId: string; dataDir: string }[] = [];
   const savedKey = process.env.DEEPSEEK_API_KEY;
+  /** ADR-0013：数值注入必传（真相源在 CP pets 表） */
+  const PET_STATS = { energy: 80, boredom: 70, mood: 'curious' as const, temper: 20 };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -99,7 +101,7 @@ describe('runOneWander 双租户隔离', () => {
     dirs = [tA, tB];
 
     // 租户 A 第一次游荡
-    const rA1 = await runOneWander(tA);
+    const rA1 = await runOneWander({ ...tA, petStats: PET_STATS });
     expect(rA1.endReason).not.toBe('error');
 
     const aStatePath = join(tA.dataDir, 'state.json');
@@ -112,7 +114,7 @@ describe('runOneWander 双租户隔离', () => {
     expect(await fileExists(join(tB.dataDir, 'state.json'))).toBe(false);
 
     // 租户 B 第一次游荡
-    const rB1 = await runOneWander(tB);
+    const rB1 = await runOneWander({ ...tB, petStats: PET_STATS });
     expect(rB1.endReason).not.toBe('error');
 
     const bStatePath = join(tB.dataDir, 'state.json');
@@ -124,8 +126,17 @@ describe('runOneWander 双租户隔离', () => {
     const aStateAfterB = JSON.parse(await readFile(aStatePath, 'utf-8'));
     expect(aStateAfterB.totalWanders).toBe(1);
 
+    // 数值退役（ADR-0013）：state.json 数值字段冻结为创建时的默认值，
+    // 游荡不再触碰（真相源在 CP pets 表）；新数值按实际步数随结果回报
+    expect(aStateAfterB.boredom).toBe(30); // loadState 默认值，未被动过
+    expect(aStateAfterB.energy).toBe(80);
+    expect(rB1.stats).toEqual({
+      energy: PET_STATS.energy - rB1.steps * 2, // energyCostPerStep=2
+      boredom: PET_STATS.boredom - rB1.steps * 2, // boredomReductionPerStep=2
+    });
+
     // 租户 A 第二次游荡：只增 A 自己的计数
-    await runOneWander(tA);
+    await runOneWander({ ...tA, petStats: PET_STATS });
     const aState2 = JSON.parse(await readFile(aStatePath, 'utf-8'));
     expect(aState2.totalWanders).toBe(2);
     const bState2 = JSON.parse(await readFile(bStatePath, 'utf-8'));
@@ -150,7 +161,7 @@ describe('runOneWander 双租户隔离', () => {
     const tA = makeTenantDir('a');
     dirs = [tA];
 
-    await runOneWander({ ...tA, secrets: { deepseekApiKey: 'tenant-a-key' } });
+    await runOneWander({ ...tA, petStats: PET_STATS, secrets: { deepseekApiKey: 'tenant-a-key' } });
 
     // 游荡结束后租户上下文已清除，回到单用户默认
     const { getTenantContext } = await import('../config.js');

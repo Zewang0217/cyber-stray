@@ -58,6 +58,8 @@ describe('feedback 路由（点赞/踩 + 顶话题）', () => {
       lastBoostAt,
       boredom: 30,
       energy: 80,
+      mood: 'curious',
+      temper: 20,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }).run();
@@ -113,6 +115,62 @@ describe('feedback 路由（点赞/踩 + 顶话题）', () => {
     }, { sub: 'mallory', tenantId: 'alice' }); // mallory 不在 alice 租户
     const res2 = await app.request(req);
     expect(res2.status).toBe(403);
+  });
+
+  it('ADR-0013 注入：feedback worker 收到 --pet-state（库值 mood/temper）', async () => {
+    await seedPet({ sub: 'alice', tenantId: 'alice' });
+    const req = await authed('http://x/api/feedback', {
+      method: 'POST',
+      body: JSON.stringify({ type: 'like', messageId: 'om-1' }),
+    });
+    const res = await app.request(req);
+    expect(res.status).toBe(200);
+    const args = fake.calls.at(-1)?.args ?? [];
+    const idx = args.indexOf('--pet-state');
+    expect(idx).toBeGreaterThan(-1);
+    expect(JSON.parse(args[idx + 1] ?? '{}')).toEqual({ mood: 'curious', temper: 20 });
+  });
+
+  it('ADR-0013 写回：worker statsUpdated → pets.mood/temper 落库', async () => {
+    await seedPet({ sub: 'alice', tenantId: 'alice' });
+    fake = makeFakeSpawn(0, JSON.stringify({
+      ok: true,
+      result: { recorded: true, statsUpdated: { mood: 'excited', temper: 15 } },
+    }));
+    app = new Hono();
+    const config = { dataDir, sessionSecret: SECRET } as Parameters<
+      typeof createFeedbackRoutes
+    >[0]['config'];
+    app.route('/api', createFeedbackRoutes({ config, spawnFn: fake.spawnFn }));
+
+    const req = await authed('http://x/api/feedback', {
+      method: 'POST',
+      body: JSON.stringify({ type: 'like', messageId: 'om-1' }),
+    });
+    expect((await app.request(req)).status).toBe(200);
+
+    const db = await getDb(dataDir);
+    const pet = await db.select().from(pets).where(eq(pets.tenantId, 'alice')).get();
+    expect(pet?.mood).toBe('excited');
+    expect(pet?.temper).toBe(15);
+  });
+
+  it('ADR-0013 守卫：数值未迁移（mood null）→ feedback/boost 均 409 且不 spawn', async () => {
+    await seedPet({ sub: 'alice', tenantId: 'alice' });
+    const db = await getDb(dataDir);
+    await db.update(pets).set({ mood: null, temper: null }).where(eq(pets.tenantId, 'alice')).run();
+
+    const reqF = await authed('http://x/api/feedback', {
+      method: 'POST',
+      body: JSON.stringify({ type: 'like', messageId: 'om-1' }),
+    });
+    expect((await app.request(reqF)).status).toBe(409);
+    const reqB = await authed('http://x/api/boost', {
+      method: 'POST',
+      body: JSON.stringify({ topic: 'AI' }),
+    });
+    expect((await app.request(reqB)).status).toBe(409);
+    expect(fake.calls).toHaveLength(0);
   });
 
   it('未领养宠物：409', async () => {
@@ -284,6 +342,8 @@ describe('feedback 口头禅归因写回（#114 切片 5）', () => {
       lastBoostAt: null,
       boredom: 30,
       energy: 80,
+      mood: 'curious',
+      temper: 20,
       catchphrases: stored,
       createdAt: Date.now(),
       updatedAt: Date.now(),

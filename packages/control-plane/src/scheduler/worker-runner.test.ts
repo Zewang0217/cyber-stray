@@ -55,6 +55,13 @@ describe('worker runner', () => {
     pushWindowEnd: null,
   };
 
+  /** ADR-0013：数值注入（调度器必传） */
+  const PET_STATS = { energy: 80, boredom: 70, mood: 'curious' as const, temper: 20 };
+
+  function makeJob() {
+    return { tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB, personality: 'curious' as const, petStats: PET_STATS };
+  }
+
   function makeRunner(spawnFn: SpawnLike) {
     return createWorkerRunner({
       dataDir,
@@ -65,7 +72,7 @@ describe('worker runner', () => {
 
   it('拉起 CLI：args 含 --tenant/--data-dir，退出码透传', async () => {
     const runner = makeRunner(fakeSpawn(0));
-    const result = await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB, personality: 'curious' });
+    const result = await runner(makeJob());
     expect(result).toEqual({ ok: true, exitCode: 0 });
 
     const last = spawned.at(-1);
@@ -76,11 +83,34 @@ describe('worker runner', () => {
     // #90：性格透传 worker CLI
     expect(last?.args).toContain('--personality');
     expect(last?.args).toContain('curious');
+    // ADR-0013：数值注入透传 worker CLI（JSON）
+    expect(last?.args).toContain('--pet-state');
+    expect(last?.args).toContain(JSON.stringify(PET_STATS));
+  });
+
+  it('ADR-0013 写回：stdout 末行 JSON 的 result.stats 解析进结果', async () => {
+    const stats = { energy: 55, boredom: 45 };
+    const runner = makeRunner(
+      async () => ({
+        exitCode: 0,
+        stdout: `${JSON.stringify({ ok: true, tenantId: 't1', result: { steps: 12, stats } })}\n`,
+      }),
+    );
+    const result = await runner(makeJob());
+    expect(result.ok).toBe(true);
+    expect(result.stats).toEqual(stats);
+  });
+
+  it('exit 0 但 stdout 无 stats：stats 为 undefined（落库方显式告警）', async () => {
+    const runner = makeRunner(async () => ({ exitCode: 0, stdout: 'not-json\n' }));
+    const result = await runner(makeJob());
+    expect(result.ok).toBe(true);
+    expect(result.stats).toBeUndefined();
   });
 
   it('非零退出码 → ok:false', async () => {
     const runner = makeRunner(fakeSpawn(1));
-    const result = await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB, personality: 'curious' });
+    const result = await runner(makeJob());
     expect(result).toEqual({ ok: false, exitCode: 1 });
   });
 
@@ -103,7 +133,7 @@ describe('worker runner', () => {
       },
     );
 
-    const result = await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB, personality: 'curious' });
+    const result = await runner(makeJob());
     expect(result.ok).toBe(true);
     expect(secretsPath).not.toBe('');
     expect(existsSync(secretsPath)).toBe(false); // 跑完即删
@@ -111,7 +141,7 @@ describe('worker runner', () => {
 
   it('无租户 secrets：不传 --secrets-file（回退平台 env key）', async () => {
     const runner = makeRunner(fakeSpawn(0));
-    await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB, personality: 'curious' });
+    await runner(makeJob());
     const last = spawned.at(-1);
     expect(last?.args).not.toContain('--secrets-file');
   });
@@ -123,7 +153,7 @@ describe('worker runner', () => {
     const runner = makeRunner(async () => {
       throw new Error('spawn ENOENT');
     });
-    const result = await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB, personality: 'curious' });
+    const result = await runner(makeJob());
     expect(result.ok).toBe(false);
 
     // 临时文件无泄漏：dataDir 与系统 tmp 下本 runner 写的 secrets 都应被清理
@@ -137,12 +167,12 @@ describe('worker runner', () => {
     const runner = makeRunner(
       vi.fn(async () => ({ exitCode: 0 })),
     );
-    expect((await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB, personality: 'curious' })).ok).toBe(true);
+    expect((await runner(makeJob())).ok).toBe(true);
   });
 
   it('#122 日志落盘：spawn 收到按租户+日期命名的 logFile', async () => {
     const runner = makeRunner(fakeSpawn(0));
-    await runner({ tenantId: 't1', petId: 'p1', dataDir, plan: PLAN_JOB, personality: 'curious' });
+    await runner(makeJob());
     const logFile = spawned.at(-1)?.opts?.logFile;
     expect(logFile).toContain(join(dataDir, 'logs', 'workers'));
     expect(logFile).toMatch(/worker-t1-\d{4}-\d{2}-\d{2}\.log$/);

@@ -17,7 +17,7 @@ import { join } from 'path';
 import { and, eq } from 'drizzle-orm';
 import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
-import { userTenants } from '../db/schema.js';
+import { pets, userTenants } from '../db/schema.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
 import { tenantDataDir } from '../tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
@@ -67,7 +67,17 @@ export function createDataRoutes({ config }: DataDeps): Hono {
       return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
     }
     try {
-      const state = JSON.parse(await readFile(join(scoped.dir, 'state.json'), 'utf-8'));
+      const state = JSON.parse(await readFile(join(scoped.dir, 'state.json'), 'utf-8')) as Record<string, unknown>;
+      // ADR-0013 读边界合成：数值取 pets 表（唯一真相源），叙事字段留 agent 文件。
+      // mood/temper 未迁移（null）时保持文件值——迁移窗口期的展示妥协，见 #216 验收。
+      const db = await getDb(config.dataDir);
+      const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
+      if (pet && pet.mood !== null && pet.temper !== null) {
+        state.energy = pet.energy;
+        state.boredom = pet.boredom;
+        state.mood = pet.mood;
+        state.temper = pet.temper;
+      }
       return c.json({ success: true, data: state });
     } catch (error) {
       if (isEnoent(error)) {

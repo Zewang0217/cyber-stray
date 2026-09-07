@@ -23,6 +23,7 @@ import type { ControlDb } from '../db/client.js';
 import { getDb } from '../db/client.js';
 import { pets, tenants, userTenants } from '../db/schema.js';
 import type { Catchphrase } from '@cyber-stray/shared';
+import type { PetMood } from '@cyber-stray/shared/pet-stats';
 import { appendCatchphraseHistory } from '../catchphrase-history.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { tenantDataDir } from '../tenant.js';
@@ -128,6 +129,34 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
     }
   }
 
+  /**
+   * ADR-0013 注入：feedback worker 的心情增量按库中当前值计算——mood/temper
+   * 未迁移（null）时显式 409，先跑 migrate:pet-stats，绝不静默跳过
+   */
+  function petStatsArgs(pet: { mood: PetMood | null; temper: number | null }): string[] | null {
+    if (pet.mood === null || pet.temper === null) return null;
+    return ['--pet-state', JSON.stringify({ mood: pet.mood, temper: pet.temper })];
+  }
+
+  /** ADR-0013 写回：worker 的 statsUpdated（mood/temper 增量）落 pets；失败仅记日志（反馈本体已成功） */
+  async function applyStatsWriteBack(
+    tenantId: string,
+    workerResult: { statsUpdated?: { mood?: PetMood; temper: number } | null } | undefined,
+  ): Promise<void> {
+    const stats = workerResult?.statsUpdated;
+    if (!stats) return;
+    try {
+      const db = await getDb(config.dataDir);
+      await db
+        .update(pets)
+        .set({ ...(stats.mood ? { mood: stats.mood } : {}), temper: stats.temper, updatedAt: Date.now() })
+        .where(eq(pets.tenantId, tenantId))
+        .run();
+    } catch (error) {
+      console.error(`[feedback] 心情写回失败（${tenantId}）：`, error);
+    }
+  }
+
   /** POST /api/feedback — 点赞/踩（不受限） */
   app.post('/feedback', async (c) => {
     const scoped = await scopedTenantId(c.req.raw, config);
@@ -153,6 +182,10 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
       return c.json(jsonError('尚未领养宠物'), 409);
     }
 
+    const statsArgs = petStatsArgs(pet);
+    if (!statsArgs) {
+      return c.json(jsonError('宠物数值未迁移，先执行 migrate:pet-stats'), 409);
+    }
     const worker = await runFeedbackWorker(scoped.tenantId, [
       '--action',
       'feedback',
@@ -162,6 +195,7 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
       messageId,
       '--user-id',
       scoped.tenantId,
+      ...statsArgs,
       // #114：宠物当前口头禅集合——归因权重要落在真实集合上
       //（不传则 worker 回退性格默认组，归因落空）
       ...(pet.catchphrases ? ['--catchphrases', pet.catchphrases] : []),
@@ -169,6 +203,7 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
     if (worker.error) {
       return c.json(jsonError(worker.error), 502);
     }
+    await applyStatsWriteBack(scoped.tenantId, worker.data as { statsUpdated?: { mood?: PetMood; temper: number } | null } | undefined);
 
     // #114 口头禅归因写回：worker 结果带出调整后集合 → pets.catchphrases
     // （DB 唯一写者是 CP）+ 演化历史；失败仅记日志（反馈本体已成功）
@@ -260,6 +295,10 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
       return c.json(jsonError(`当前套餐每 ${claim.days} 天可顶一次话题`), 429);
     }
 
+    const statsArgs = petStatsArgs(pet);
+    if (!statsArgs) {
+      return c.json(jsonError('宠物数值未迁移，先执行 migrate:pet-stats'), 409);
+    }
     const worker = await runFeedbackWorker(scoped.tenantId, [
       '--action',
       'boost',
@@ -267,11 +306,13 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
       topic.trim(),
       '--user-id',
       scoped.tenantId,
+      ...statsArgs,
     ]);
     if (worker.error) {
       await rollbackBoostQuota(db, scoped.tenantId, pet.lastBoostAt);
       return c.json(jsonError(worker.error), 502);
     }
+    await applyStatsWriteBack(scoped.tenantId, worker.data as { statsUpdated?: { mood?: PetMood; temper: number } | null } | undefined);
 
     return c.json({ success: true, data: worker.data ?? {} });
   });
