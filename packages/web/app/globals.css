@@ -486,6 +486,7 @@ html[data-theme="night"] .pet-player {
   --neon: #ff004d;
   --paper: #f8f5f5;
   --ink: #212529;
+  --ink-soft: #4A4238; /* 纸面正文淡墨（#236 评审 M3：升格 token，禁内联 hex） */
   --panel: #2c3136;
   --cat-body: #e8a15d;
   --cat-stripe: #b4693b;
@@ -663,5 +664,73 @@ body.sb-hidden * {
   .sb-mailman {
     animation: none;
     opacity: 0;
+  }
+}
+
+/* ── #208 街角可交互装饰 ─────────────────────────────────────────────── */
+/* 霓虹招牌：静态 opacity 双态（hover/focus 亮），零动画（motion.md §5 招牌允许闪
+   但并发预算留给既有动效） */
+.neon-sign {
+  opacity: 0.45;
+}
+.neon-sign:hover {
+  opacity: 1;
+}
+/* 水沟盖蒸汽：一次性事件动效（3 粒像素汽上浮消散）；reduced-motion 停帧 */
+.sb-steam {
+  display: flex;
+  gap: 3px;
+}
+.sb-steam b {
+  width: 3px;
+  height: 3px;
+  background: var(--paper);
+  opacity: 0;
+  animation: sb-steam-rise 0.9s steps(3) forwards;
+}
+.sb-steam b:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.sb-steam b:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes sb-steam-rise {
+  from {
+    opacity: 0.9;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sb-steam b {
+    animation: none;
+    opacity: 0;
+  }
+}
+/* 路人 NPC：横穿街面的平移循环（transform 线性；motion.md §5 允许路人循环）。
+   105vw 保证任何容器宽都完整穿场；overflow-hidden 由舞台裁切 */
+.sb-passerby {
+  left: 0;
+  /* 基态在屏外：fill 前不站桩；reduced-motion 下动画瞬结也不冻在屏内 */
+  transform: translateX(-40px);
+  animation: sb-passerby-walk linear infinite;
+}
+.sb-passerby[data-flip="true"] {
+  bottom: 28px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sb-passerby {
+    visibility: hidden;
+  }
+}
+@keyframes sb-passerby-walk {
+  from {
+    transform: translateX(-40px);
+  }
+  to {
+    transform: translateX(105vw);
   }
 }

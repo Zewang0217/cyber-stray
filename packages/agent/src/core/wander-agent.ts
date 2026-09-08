@@ -28,6 +28,8 @@ import type { WanderEvent } from './events.js';
 import { wanderLoop } from './wander-loop.js';
 import { computeStrategy } from './strategy.js';
 import { pickFocusTopics } from './personality.js';
+import { getPersonality } from '@cyber-stray/shared';
+import { isPlausibleTopic } from '../memory/topic-validator.js';
 import type { WanderLoopConfig } from './wander-loop.js';
 import { HookChain } from '../hooks/chain.js';
 import type { HookContext } from '../hooks/types.js';
@@ -37,6 +39,7 @@ import {
   buildBrowserPromptSection,
 } from '../tools/browser/lifecycle.js';
 import type { AgentState, AgentConfig, WanderResult, WanderStep, WanderStrategy } from '../types.js';
+import type { WanderStatsReport } from '@cyber-stray/shared/pet-stats';
 
 const logger = consola.withTag('wander-agent');
 
@@ -171,10 +174,10 @@ export class WanderAgent {
       return result;
     }
 
-    // 9. 后处理
-    await this.postWander(state, result, toolCtx);
+    // 9. 后处理（数值按实际步数算好随结果回报，由 CP 落库——ADR-0013 写回）
+    const stats = await this.postWander(state, result, toolCtx);
 
-    return result;
+    return { ...result, stats };
   }
 
   // ─── Private ───
@@ -222,8 +225,16 @@ export class WanderAgent {
     return this._provider;
   }
 
-  /** 后处理：记记忆、写历史、更新状态 */
-  private async postWander(state: AgentState, result: WanderResult, ctx: ToolContext): Promise<void> {
+  /**
+   * 后处理：记记忆、写历史、更新叙事状态、算数值回报。
+   * 数值不再写 state.json（ADR-0013：真相源归 CP pets 表，worker 无库可写）——
+   * 按注入值 − 实际步数消耗算出结束值，随 WanderResult.stats 交 CP 采信落库。
+   */
+  private async postWander(
+    state: AgentState,
+    result: WanderResult,
+    ctx: ToolContext,
+  ): Promise<WanderStatsReport> {
     // 汇总统计日志
     logger.info(`[${ctx.traceId}] 游荡后处理`, {
       searchCount: ctx.searchQueries.length,
@@ -252,14 +263,12 @@ export class WanderAgent {
       (err: unknown) => logger.warn('写入游荡历史日志失败', { error: err }),
     );
 
-    // 更新状态
+    // 更新叙事状态（数值字段退役——真相源在 CP pets 表）
     await updateState({
       lastWander: new Date().toISOString(),
       totalWanders: state.totalWanders + 1,
       totalSteps: state.totalSteps + result.steps,
       totalPushes: state.totalPushes + ctx.spokeTimes,
-      boredom: Math.max(0, state.boredom - result.steps * this.agentConfig.boredomReductionPerStep),
-      energy: Math.max(0, state.energy - result.steps * this.agentConfig.energyCostPerStep),
       recentTopics: this.extractRecentTopics(ctx.wanderHistory, state.recentTopics),
       consecutiveFailures: result.endReason === 'error' ? state.consecutiveFailures + 1 : 0,
     });
@@ -267,11 +276,36 @@ export class WanderAgent {
     // 兴趣回灌：本次游荡学到的话题 → 图谱强化/新增，persist 触发兴趣快照
     // （S13 evolution 数据源；失败不阻断游荡结果）
     await this.reinforceInterestGraph(this.extractRecentTopics(ctx.wanderHistory, []));
+
+    return this.computeStatsReport(state, result.steps);
+  }
+
+  /**
+   * 结束数值回报（ADR-0013 写回）：游荡消耗保性格差异——原 CP 估算的
+   * playful 耗能更多/慵懒更省语义，基准从常量改为真实步数，系数沿用
+   * shared 注册表（存量行为不回退）。纯函数可直测。
+   */
+  private computeStatsReport(state: AgentState, steps: number): WanderStatsReport {
+    const wanderRates = getPersonality(this.agentConfig.personality).wander;
+    return {
+      energy: Math.max(
+        0,
+        Math.round(state.energy - steps * this.agentConfig.energyCostPerStep * wanderRates.energyCost),
+      ),
+      boredom: Math.max(
+        0,
+        Math.round(state.boredom - steps * this.agentConfig.boredomReductionPerStep * wanderRates.boredomRelief),
+      ),
+    };
   }
 
   /** 兴趣回灌：已存在节点强化，新话题加入图谱（来源 reflection） */
   private async reinforceInterestGraph(topics: string[]): Promise<void> {
-    if (topics.length === 0) return;
+    // 收集面含 URL/长 query（访问过的页面地址等）——准入校验在 addInterest 会逐条
+    // warn，先在此过滤掉非话题形态，免每游荡必刷噪音（#176 守卫仍在咽喉兜底）
+    const plausible = topics.filter((t) => isPlausibleTopic(t));
+    if (plausible.length === 0) return;
+    topics = plausible;
     try {
       const graph = getInterestGraph();
       await graph.load();

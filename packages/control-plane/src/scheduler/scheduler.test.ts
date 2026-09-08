@@ -44,8 +44,13 @@ describe('调度器', () => {
     await getOrCreateTenant(dataDir, 't2');
     db = await getDb(dataDir);
     bus = createEventBus();
+    // ADR-0013：worker 成功 = 带数值回报（CP 采信落库）
     runner = vi.fn(
-      async (_job: WorkerJob): Promise<WorkerResult> => ({ ok: true, exitCode: 0 }),
+      async (_job: WorkerJob): Promise<WorkerResult> => ({
+        ok: true,
+        exitCode: 0,
+        stats: { energy: 40, boredom: 20 },
+      }),
     );
     diaryRunner = vi.fn(
       async (_job: DiaryJob): Promise<DiaryWorkerResult> => ({ ok: true, exitCode: 0 }),
@@ -87,7 +92,17 @@ describe('调度器', () => {
   async function addPet(id: string, tenantId: string, extra?: Partial<typeof pets.$inferInsert>) {
     await db
       .insert(pets)
-      .values({ id, tenantId, name: id, lastRunAt: 0, boredom: 60, energy: 60, ...extra })
+      .values({
+        id,
+        tenantId,
+        name: id,
+        lastRunAt: 0,
+        boredom: 60,
+        energy: 60,
+        mood: 'curious',
+        temper: 20,
+        ...extra,
+      })
       .run();
   }
 
@@ -112,13 +127,15 @@ describe('调度器', () => {
         tenantId: 't1',
         petId: 'p1',
         dataDir: join(dataDir, 'tenants', 't1'), // 租户目录，非控制面根
+        // ADR-0013 注入：前推 10 分钟 → 70/70，心情脾气取库值
+        petStats: { energy: 70, boredom: 70, mood: 'curious', temper: 20 },
       }),
     );
 
     const pet = await getPet('p1');
     expect(pet?.lastRunAt).toBe(clock.now);
-    expect(pet?.boredom).toBe(60 + 10 - 50); // 前推 10 分钟 → 70，游荡 -50
-    expect(pet?.energy).toBe(60 + 10 - 30); // 70 - 30
+    expect(pet?.boredom).toBe(20); // 采信 worker 回报
+    expect(pet?.energy).toBe(40);
 
     // 事件发布到租户通道
     const events: string[] = [];
@@ -133,6 +150,22 @@ describe('调度器', () => {
     await addPet('p1', 't1', { lastRunAt: clock.now, boredom: 10, energy: 60 });
     await tick();
     expect(runner).not.toHaveBeenCalled();
+  });
+
+  it('ADR-0013 守卫：数值未迁移（mood null）不拉起，绝不回退陈旧副本', async () => {
+    await addPet('p1', 't1', { mood: null, temper: null });
+    await tick();
+    expect(runner).not.toHaveBeenCalled();
+  });
+
+  it('ADR-0013：exit 0 无回报 → 只推 lastRunAt 基线，数值不落库', async () => {
+    await addPet('p1', 't1');
+    runner.mockResolvedValueOnce({ ok: true, exitCode: 0 });
+    await tick();
+    const pet = await getPet('p1');
+    expect(pet?.lastRunAt).toBe(clock.now);
+    expect(pet?.boredom).toBe(60);
+    expect(pet?.energy).toBe(60);
   });
 
   it('paused 跳过', async () => {
@@ -199,14 +232,14 @@ describe('调度器', () => {
     expect(failures).toHaveLength(1);
 
     const pet = await getPet('p1');
-    // 冷却：cooldownUntil 已设 + 状态自洽（前推值扣游荡量 + 基线重置）
-    // 此时 clock = 首发 10min + 退避 1min = 11min 前推
+    // 冷却：cooldownUntil 已设 + lastRunAt 基线重置；数值不动（worker 未回报，
+    // 伪造"消耗了就绪"即 #213 式失真——ADR-0013 采信回报）
     expect(pet?.cooldownUntil).toBe(clock.now + 60_000); // failAt + retryBackoffMs
     expect(pet?.lastRunAt).toBe(clock.now);
-    expect(pet?.boredom).toBe(60 + 11 - 50); // 前推 11 分钟 → 71，扣 50
-    expect(pet?.energy).toBe(60 + 11 - 30); // 71 - 30
+    expect(pet?.boredom).toBe(60); // 未写回
+    expect(pet?.energy).toBe(60); // 未写回
 
-    await tick(60_000); // 冷却恰好到期：无聊 21+1 仍不足 → 不拉
+    await tick(60_000); // 冷却恰好到期：库存无聊 60+1=61 < 70 → 不拉
     expect(runner).toHaveBeenCalledTimes(2);
   });
 
@@ -259,26 +292,37 @@ describe('调度器', () => {
       expect(runner).toHaveBeenCalledWith(expect.objectContaining({ petId: 'curious-pet' }));
     });
 
-    it('runner 收到 personality，游荡写回按性格效果（活泼耗能更多）', async () => {
+    it('runner 收到 personality；注入值按性格速率前推，写回采信回报', async () => {
       await addPet('p1', 't1', { personality: 'playful' });
       await tick();
 
       expect(runner).toHaveBeenCalledWith(
         expect.objectContaining({ petId: 'p1', personality: 'playful' }),
       );
+      // 前推（playful 倍率 1.25/0.9）：60+10×1.25=72.5，60+10×0.9=69 → 注入值
+      expect(runner).toHaveBeenCalledWith(
+        expect.objectContaining({
+          petStats: expect.objectContaining({ energy: 69, boredom: 72.5 }),
+        }),
+      );
       const pet = await getPet('p1');
-      // 前推：60+10×1.25=72.5，60+10×0.9=69；写回扣活泼效果（relief 55 / cost 35）
-      expect(pet?.boredom).toBe(Math.round(72.5 - 55));
-      expect(pet?.energy).toBe(Math.round(69 - 35));
+      // 写回 = 回报原样（不再按性格常量估算）
+      expect(pet?.boredom).toBe(20);
+      expect(pet?.energy).toBe(40);
     });
 
-    it('存量宠物默认好奇 → 写回与改动前一致（relief 50 / cost 30）', async () => {
+    it('存量宠物默认好奇 → 注入库值心情/脾气，写回采信回报', async () => {
       await addPet('p1', 't1'); // 不传 personality：DB 默认 curious
       await tick();
       const pet = await getPet('p1');
       expect(pet?.personality).toBe('curious');
-      expect(pet?.boredom).toBe(60 + 10 - 50);
-      expect(pet?.energy).toBe(60 + 10 - 30);
+      expect(runner).toHaveBeenCalledWith(
+        expect.objectContaining({
+          petStats: { energy: 70, boredom: 70, mood: 'curious', temper: 20 },
+        }),
+      );
+      expect(pet?.boredom).toBe(20);
+      expect(pet?.energy).toBe(40);
     });
   });
 

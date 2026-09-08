@@ -78,6 +78,9 @@ export class HookChain {
           try {
             const result = await hook.beforeToolCall(hookCtx, name, params);
             if (result.action === 'deny') {
+              // #174：deny 必须落日志——worker 路径无 onEvent 订阅者，
+              // 不写 warn 则「为什么没读网页/没推送」只能靠源码反推
+              logger.warn(`Hook deny: ${name}`, { hook: hook.name, reason: result.reason });
               hookCtx.emit({
                 type: 'tool_call_end',
                 tool: name,

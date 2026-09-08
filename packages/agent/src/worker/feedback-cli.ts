@@ -21,6 +21,7 @@ import { readdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import { loadConfig, setTenantContext } from '../config.js';
 import { parseCatchphraseList, type Catchphrase } from '@cyber-stray/shared';
+import { parseFeedbackPetState, type FeedbackPetState } from '@cyber-stray/shared/pet-stats';
 import { processFeedback, boostTopic } from '../memory/feedback-pipeline.js';
 import type { FeedbackProcessResult } from '../memory/feedback-pipeline.js';
 
@@ -39,6 +40,8 @@ export interface FeedbackWorkerOptions {
   /** 宠物当前口头禅集合 JSON（#114：控制面从 pets 行注入——归因权重要落在
    * 真实集合上,不传则 loadConfig 回退性格默认组） */
   catchphrases?: Catchphrase[];
+  /** 宠物心情/脾气注入（ADR-0013：控制面从 pets 行带出；增量据此计算交 CP 写回） */
+  petStats?: FeedbackPetState;
 }
 
 /**
@@ -129,6 +132,7 @@ export async function runFeedbackWorker(options: FeedbackWorkerOptions): Promise
       return await processFeedback(options.type, options.messageId, options.userId, {
         topics,
         catchphrases: matchedPhrases,
+        petStats: options.petStats,
       });
     } finally {
       setTenantContext(null);
@@ -141,7 +145,7 @@ export async function runFeedbackWorker(options: FeedbackWorkerOptions): Promise
   }
   setTenantContext({ tenantId: 'feedback-worker', dataDir, config: loadConfig(dataDir) });
   try {
-    return await boostTopic(options.topic, options.userId);
+    return await boostTopic(options.topic, options.userId, { petStats: options.petStats });
   } finally {
     setTenantContext(null);
   }
@@ -186,6 +190,16 @@ async function main(): Promise<void> {
     catchphrases = parsed;
   }
 
+  // ADR-0013 注入：心情增量按注入值计算。CP 是本 CLI 的唯一调用方且恒注入
+  //（路由 409 守卫保证）——缺参即版本错位，显式 exit 2 而非静默跳过心情更新
+  //（评审 A-m2：与 wander 通道缺参 exit 2 同严格度）
+  const petStateRaw = parseArg('pet-state');
+  const petStats = petStateRaw !== undefined ? parseFeedbackPetState(safeJsonParse(petStateRaw)) : undefined;
+  if (petStateRaw === undefined || petStats === null) {
+    console.error(JSON.stringify({ ok: false, error: '--pet-state 缺失或形状非法（须为 {mood,temper} JSON）' }));
+    process.exit(2);
+  }
+
   const result = await runFeedbackWorker({
     dataDir,
     action,
@@ -194,6 +208,7 @@ async function main(): Promise<void> {
     topic: parseArg('topic'),
     userId: parseArg('user-id'),
     catchphrases,
+    petStats,
   });
   // S9 review 修复：配额语义以兴趣强化为准——pipeline 未来若回归吞错，
   // 这里兜底：boost 未强化 / feedback 未记录 = 核心承诺未兑现，exit 1
@@ -208,6 +223,15 @@ async function main(): Promise<void> {
   }
   console.log(JSON.stringify({ ok: true, result }));
   process.exit(0);
+}
+
+/** JSON.parse 失败返回 null（交给统一判非法，不在此抛） */
+function safeJsonParse(raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
 }
 
 // 直接执行（非被 import）时跑 main

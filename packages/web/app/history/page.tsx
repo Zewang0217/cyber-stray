@@ -9,24 +9,28 @@ import { useHistory } from "@/hooks/useHistory";
 import { usePets } from "@/hooks/usePets";
 import { useTenantEvents } from "@/hooks/useTenantEvents";
 import { MailCard } from "@/components/strayboy/MailCard";
+import { PostcardDetail } from "@/components/strayboy/PostcardDetail";
 import { DAY_MS, getSeenTimestamp, markAllSeen } from "@/lib/strayboy/mail";
 import type { PushContent } from "@/lib/types";
 
 
-/** 演示夹具（?demo=1）：无会话时的墙上视觉验收数据。 */
+/** 演示夹具（?demo=1）：无会话时的墙上视觉验收数据。
+ * 时间戳固化自固定基准（#210：模块级 Date.now() 跨分钟边界渲染出不同
+ * 日期签 → hydration 告警）；NEW! 未读推导在 demo 下恒视为未读，不受影响。 */
+const DEMO_EPOCH = new Date("2026-09-01T10:00:00+08:00").getTime();
 const DEMO_CARDS: PushContent[] = [
   {
-    message: "帖子全文……", timestamp: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+    message: "帖子全文……", timestamp: new Date(DEMO_EPOCH - 2 * 3_600_000).toISOString(),
     title: "科学实锤：猫能听懂自己的名字", summary: "新研究覆盖 78 只猫。听懂率 94%，回应率 11%——这不是 bug，是性格。",
     messageId: "demo-1", matchedTopics: ["猫行为学"], pushed: true,
   },
   {
-    message: "教程全文……", timestamp: new Date(Date.now() - 26 * 3_600_000).toISOString(),
+    message: "教程全文……", timestamp: new Date(DEMO_EPOCH - 26 * 3_600_000).toISOString(),
     title: "有猫在深夜偷偷运行了一台复古掌机", summary: "一篇被转疯的教程：如何用现代零件复活一台 STRAY-BOY。",
     messageId: "demo-2", matchedTopics: ["复古掌机"], pushed: true,
   },
   {
-    message: "评测全文……", timestamp: new Date(Date.now() - 2 * DAY_MS).toISOString(),
+    message: "评测全文……", timestamp: new Date(DEMO_EPOCH - 2 * DAY_MS).toISOString(),
     title: "2026 像素画工具横评", summary: "从 Aseprite 到浏览器像素编辑器，九款工具的取舍。",
     messageId: "demo-3", pushed: true,
   },
@@ -45,6 +49,8 @@ function WallInner() {
   const adoptedAt = pets[0]?.createdAt ?? 0;
 
   const [animateParent] = useAutoAnimate();
+  // #205：详情模态（墙上卡片只显标题，点开读全文）
+  const [detail, setDetail] = useState<PushContent | null>(null);
   // demo 未读推导隔离：夹具恒视为未读（NEW! 验收项不读真实 localStorage）
   const [seenMs, setSeenMs] = useState<number>(() => getSeenTimestamp());
   const seen = demo ? 0 : seenMs;
@@ -100,7 +106,7 @@ function WallInner() {
           取件失败：{history.error}（可能未登录或网络中断）
         </div>
       )}
-      <div className="grid gap-5 sm:grid-cols-2" ref={animateParent}>
+      <div className="grid gap-5 sm:grid-cols-2 lg:block lg:columns-3 lg:gap-5" ref={animateParent}>
         {items.map((card) => (
           <MailCard
             key={`${card.timestamp}|${card.message}`}
@@ -110,9 +116,20 @@ function WallInner() {
             onFeedback={onFeedback}
             onPin={onPin}
             pending={feedback.pending || demo}
+            onOpen={setDetail}
           />
         ))}
       </div>
+      {detail && (
+        <PostcardDetail
+          card={detail}
+          adoptedAt={adoptedAt}
+          onFeedback={onFeedback}
+          onPin={onPin}
+          pending={feedback.pending || demo}
+          onClose={() => setDetail(null)}
+        />
+      )}
       {!demo && history.hasMore && (
         <div className="mt-4 text-center">
           <button

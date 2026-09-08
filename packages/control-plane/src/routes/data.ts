@@ -17,7 +17,7 @@ import { join } from 'path';
 import { and, eq } from 'drizzle-orm';
 import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
-import { userTenants } from '../db/schema.js';
+import { pets, userTenants } from '../db/schema.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
 import { tenantDataDir } from '../tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
@@ -55,6 +55,32 @@ function isEnoent(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === 'ENOENT';
 }
 
+/**
+ * 注入游荡历史（#204）：state.json 从无 wanderHistory 字段（AgentState 不含），
+ * 真实记录在 agent 的 wander-history.json（尾部最新）——读边界注入最近 20 条，
+ * 前端不再恒空态。ENOENT = 合法空态（租户未游荡）；损坏/形状非法显式抛
+ * （消息带文件名，防外层日志归因误导）。
+ */
+async function withWanderHistory(dir: string, state: Record<string, unknown>): Promise<void> {
+  let raw: string;
+  try {
+    raw = await readFile(join(dir, 'wander-history.json'), 'utf-8');
+  } catch (error) {
+    if (isEnoent(error)) return;
+    throw error;
+  }
+  let history: unknown;
+  try {
+    history = JSON.parse(raw);
+  } catch {
+    throw new Error('wander-history.json 不是合法 JSON');
+  }
+  if (!Array.isArray(history)) {
+    throw new Error('wander-history.json 形状非法（须为数组）');
+  }
+  state.wanderHistory = history.slice(-20);
+}
+
 const jsonError = (message: string) => ({ success: false, error: message });
 
 export function createDataRoutes({ config }: DataDeps): Hono {
@@ -67,15 +93,26 @@ export function createDataRoutes({ config }: DataDeps): Hono {
       return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
     }
     try {
-      const state = JSON.parse(await readFile(join(scoped.dir, 'state.json'), 'utf-8'));
+      const state = JSON.parse(await readFile(join(scoped.dir, 'state.json'), 'utf-8')) as Record<string, unknown>;
+      // ADR-0013 读边界合成：数值取 pets 表（唯一真相源），叙事字段留 agent 文件。
+      // mood/temper 未迁移（null）时保持文件值——迁移窗口期的展示妥协，见 #216 验收。
+      const db = await getDb(config.dataDir);
+      const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
+      if (pet && pet.mood !== null && pet.temper !== null) {
+        state.energy = pet.energy;
+        state.boredom = pet.boredom;
+        state.mood = pet.mood;
+        state.temper = pet.temper;
+      }
+      await withWanderHistory(scoped.dir, state);
       return c.json({ success: true, data: state });
     } catch (error) {
       if (isEnoent(error)) {
         // 租户尚未跑过游荡（无 state.json）→ 空态
         return c.json({ success: true, data: null });
       }
-      // 文件损坏/不可读：显式报错（不吞成空态掩盖损坏）
-      console.error('[data] state.json 读取失败：', error);
+      // 文件损坏/不可读：显式报错（不吞成空态掩盖损坏）；具体文件看 error 消息
+      console.error('[data] /api/state 读取失败：', error);
       return c.json(jsonError('状态数据损坏或不可读'), 500);
     }
   });

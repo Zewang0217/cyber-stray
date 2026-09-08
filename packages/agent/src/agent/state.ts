@@ -152,69 +152,20 @@ export async function heartbeat(
 }
 
 /**
- * 根据用户反馈更新心情（无 topic 参数）
+ * 按反馈信号计算心情/脾气增量（纯函数）。
  *
- * 用于飞书卡片按钮反馈回调
+ * ADR-0013：数值真相源归 CP pets 表——调用方（feedback-pipeline）把注入的
+ * 当前值传进来，算出的增量随结果交 CP 写回；本模块不再读/写数值。
+ * 阈值判断用更新前的脾气（与历史语义一致）。
  */
-export async function updateMoodByFeedback(
-  type: 'like' | 'dislike'
-): Promise<void> {
-  const state = await loadState();
-
-  const updates: Partial<AgentState> = {};
-
-  if (type === 'like') {
-    updates.temper = Math.max(0, state.temper - 5);
-
-    // 连续点赞可能改善心情
-    if (state.temper < 30) {
-      updates.mood = 'excited';
-    }
-  } else {
-    updates.temper = Math.min(100, state.temper + 8);
-
-    // 被踩太多可能变 grumpy
-    if (state.temper > 70) {
-      updates.mood = 'grumpy';
-    }
-  }
-
-  if (Object.keys(updates).length > 0) {
-    await updateState(updates);
-  }
-}
-
-/**
- * 记录用户反馈
- */
-export async function recordFeedback(
+export function computeMoodUpdatesByFeedback(
   type: 'like' | 'dislike',
-  topic: string
-): Promise<AgentState> {
-  const state = await loadState();
-  
-  const updates: Partial<AgentState> = {};
-  
+  current: { mood: Mood; temper: number },
+): { mood?: Mood; temper: number } {
   if (type === 'like') {
-    updates.userLikes = [...state.userLikes, topic].slice(-20);
-    updates.temper = Math.max(0, state.temper - 10);
-    
-    // 连续点赞可能改善心情
-    if (state.temper < 30) {
-      updates.mood = 'excited';
-    }
-  } else {
-    updates.userDislikes = [...state.userDislikes, topic].slice(-20);
-    updates.temper = Math.min(100, state.temper + 15);
-    
-    // 被踩太多可能变 emo
-    if (state.temper > 70) {
-      updates.mood = 'grumpy';
-    }
-    if (state.temper > 90) {
-      updates.mood = 'emo';
-    }
+    const temper = Math.max(0, current.temper - 5);
+    return current.temper < 30 ? { temper, mood: 'excited' } : { temper };
   }
-  
-  return updateState(updates);
+  const temper = Math.min(100, current.temper + 8);
+  return current.temper > 70 ? { temper, mood: 'grumpy' } : { temper };
 }

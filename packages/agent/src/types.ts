@@ -3,13 +3,14 @@
  */
 
 import type { Catchphrase, PersonalityId } from '@cyber-stray/shared';
+import type { PetMood, WanderStatsReport } from '@cyber-stray/shared/pet-stats';
 
 // ============================================
 // 状态相关
 // ============================================
 
-/** Agent 心情类型 */
-export type Mood = 'curious' | 'grumpy' | 'playful' | 'lazy' | 'excited' | 'emo';
+/** Agent 心情类型（ADR-0013：枚举真相源在 @cyber-stray/shared/pet-stats） */
+export type Mood = PetMood;
 
 /** Agent 状态 */
 export interface AgentState {
@@ -59,7 +60,9 @@ export interface WanderResult {
   durationMs: number;     // 游荡时长（毫秒）
   spokeTimes: number;     // 调用 speak 的次数
   visitedUrls: string[];  // 访问过的 URL
-  endReason: 'rest' | 'max_steps' | 'low_energy' | 'early_stop' | 'error';
+  endReason: 'rest' | 'max_steps' | 'early_stop' | 'error';
+  /** 游荡结束数值（ADR-0013 写回：worker 按实际步数算好交 CP 落库；error 路径无） */
+  stats?: WanderStatsReport;
 }
 
 /** 游荡策略（由兴趣图谱 + 状态生成，注入 prompt） */
@@ -162,7 +165,6 @@ export interface AgentConfig {
 
   // 阈值
   boredomThreshold: number;      // 触发游荡的无聊值阈值
-  energyThreshold: number;       // 能量过低阈值
   energyRecoveringThreshold: number;  // 精力恢复阈值，低于此值时暂停无聊值增长
 
   // 消耗参数

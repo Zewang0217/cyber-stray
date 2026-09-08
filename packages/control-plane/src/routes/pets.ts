@@ -242,6 +242,10 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       // 就拉起首轮游荡（首推内容仍过 PushGate，门控理由随推送展示）
       boredom: 75,
       energy: 80,
+      // ADR-0013 数值归库：初始心情/脾气与 agent createDefaultState 对齐，
+      // 调度注入从此恒有值（null 只存在于待迁移的存量行）
+      mood: 'curious',
+      temper: 20,
       pushWindowStart: null,
       pushWindowEnd: null,
       sleepStart: null,

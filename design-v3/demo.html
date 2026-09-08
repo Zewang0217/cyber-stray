@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STRAY-BOY · 像素街区 — Cyber Stray UI 尝试 #2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=DotGothic16&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sky:#1A1C2C; --bld-far:#29366F; --bld-near:#3B5DC9; --window:#F7D51D;
+    --street:#333C57; --curb:#566C86; --star:#F4F4F4;
+    --ok:#92CC41; --bad:#E76E55; --act:#209CEE; --hi:#F7D51D; --neon:#FF004D;
+    --paper:#F8F5F5; --ink:#212529; --panel:#2C3136; --panel-2:#212529;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; border-radius:0 !important; }
+  body { background:var(--panel); color:var(--star);
+    font-family:"Noto Sans SC",sans-serif; font-size:14.5px; line-height:1.65;
+    padding:20px clamp(12px,3vw,40px) 120px; max-width:1060px; margin:0 auto; min-height:100vh; }
+  .ps2 { font-family:"Press Start 2P","DotGothic16","Noto Sans SC",monospace; }
+  .dot { font-family:"DotGothic16","Noto Sans SC",sans-serif; }
+  .vt { font-family:"VT323",monospace; font-size:18px; }
+
+  /* ── 掌机顶栏 ────────────────────────────── */
+  .devicebar { display:flex; align-items:center; gap:14px; background:var(--panel-2);
+    border:3px solid #000; box-shadow:inset -3px -3px 0 rgba(0,0,0,.4), 5px 5px 0 #000;
+    padding:12px 16px; flex-wrap:wrap; }
+  .devicebar .brand { color:var(--star); font-size:13px; letter-spacing:.06em; }
+  .devicebar .led { width:10px; height:10px; background:var(--ok); box-shadow:2px 2px 0 #000; animation:blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity:.25; } }
+  .devicebar .info { font-family:"VT323",monospace; font-size:17px; color:var(--curb); letter-spacing:.08em; }
+  .devicebar .theme { margin-left:auto; font-family:"DotGothic16","Noto Sans SC",sans-serif; font-size:12px; color:var(--curb); border:2px solid var(--curb); padding:3px 8px; }
+
+  /* ── 布局 ───────────────────────────────── */
+  .layout { display:grid; grid-template-columns: 460px 1fr; gap:22px; margin-top:22px; align-items:start; }
+  .layout > main { min-width:0; }
+  @media (max-width:940px){ .layout { grid-template-columns:1fr; } }
+
+  /* ── 街区舞台 ────────────────────────────── */
+  .screen { position:relative; height:300px; background:var(--sky); overflow:hidden;
+    border:4px solid #000; box-shadow:inset -4px -4px 0 rgba(0,0,0,.4), 6px 6px 0 #000; }
+  .stage-name { position:absolute; top:10px; left:10px; z-index:5; background:var(--paper); color:var(--ink);
+    border:3px solid var(--ink); box-shadow:3px 3px 0 #000; padding:5px 10px;
+    font-family:"DotGothic16","Noto Sans SC",sans-serif; font-size:12px; }
+  .stars i { position:absolute; width:3px; height:3px; background:var(--star); }
+  .moon { position:absolute; top:22px; right:36px; width:26px; height:26px; background:var(--star);
+    box-shadow:-6px 6px 0 0 var(--sky) inset; }
+  .bld { position:absolute; bottom:44px; }
+  .bld .win { position:absolute; width:7px; height:9px; background:var(--window); }
+  .bld .win.off { background:#141626; }
+  .bld-far-1 { left:4%;  width:120px; height:150px; background:var(--bld-far); }
+  .bld-far-2 { left:36%; width:90px;  height:110px; background:var(--bld-far); }
+  .bld-near-1{ right:6%; width:150px; height:190px; background:var(--bld-near); }
+  .neon { position:absolute; top:26px; right:8%; z-index:4; background:#000; padding:8px 10px;
+    border:3px solid var(--neon); box-shadow:4px 4px 0 rgba(0,0,0,.55);
+    font-family:"Press Start 2P",monospace; font-size:9px; color:var(--neon); line-height:1.8; text-align:center;
+    animation:neonblink 1.1s steps(1) infinite; }
+  @keyframes neonblink { 0%,80% { opacity:1; } 80.1% { opacity:.45; } 92% { opacity:.85; } }
+  .street { position:absolute; left:0; right:0; bottom:0; height:44px; background:var(--street); border-top:3px solid var(--curb); }
+  .street::after { content:""; position:absolute; left:0; right:0; top:16px; height:3px;
+    background:repeating-linear-gradient(90deg, var(--curb) 0 18px, transparent 18px 36px); opacity:.5; }
+  .lamp { position:absolute; bottom:44px; left:22%; width:6px; height:74px; background:var(--curb); z-index:3; }
+  .lamp::before { content:""; position:absolute; top:-12px; left:-9px; width:24px; height:12px; background:var(--hi); box-shadow:2px 2px 0 #000; }
+
+  /* 猫（JS 生成 box-shadow 像素画）*/
+  .cat { position:absolute; bottom:44px; left:12%; width:100px; height:90px; z-index:4;
+    cursor:pointer; transition:transform 1.4s linear; }
+  .cat.out { transform:translateX(430px); }
+  @media (max-width:940px){ .cat.out { transform:translateX(320px); } }
+  .cat .px, .cat .tail, .cat .eye { position:absolute; width:5px; height:5px; }
+  .cat.idle { animation:bob 0.8s steps(2) infinite; }
+  @keyframes bob { 50% { transform:translateY(-4px); } }
+  .cat.pat { animation:patjump .4s steps(2) 1; }
+  @keyframes patjump { 50% { transform:translateY(-16px); } }
+  .cat .tail { animation:tailflick .8s steps(1) infinite; }
+  @keyframes tailflick { 50% { transform:translate(0,-10px); } }
+  .cat .eye.off { visibility:hidden; }
+  .psprite { image-rendering:pixelated; }
+  .ph { position:absolute; width:10px; height:10px; z-index:6; animation:heartfly .5s steps(3) forwards; }
+  @keyframes heartfly { to { transform:translateY(-46px); opacity:0; } }
+
+  /* ── HUD ────────────────────────────────── */
+  .hud { margin-top:18px; background:var(--panel-2); border:3px solid #000; box-shadow:inset -3px -3px 0 rgba(0,0,0,.4), 5px 5px 0 #000; padding:14px 16px; }
+  .hud .row1 { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .hud .lv { font-size:11px; color:var(--hi); }
+  .hud .petname { font-size:11px; color:var(--star); }
+  .hud .btns { margin-left:auto; display:flex; gap:10px; }
+  .pbtn { font-family:"DotGothic16","Noto Sans SC",sans-serif; font-size:12px; cursor:pointer;
+    border:3px solid #000; padding:9px 14px; color:#fff;
+    box-shadow:inset -3px -3px 0 rgba(0,0,0,.35), 4px 4px 0 #000; }
+  .pbtn:active { transform:translate(3px,3px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.35); }
+  .pbtn.blue { background:var(--act); } .pbtn.green { background:var(--ok); color:var(--ink); }
+  .pbtn:disabled { opacity:.45; cursor:default; }
+  .meters { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:14px; }
+  .meter .lbl { display:flex; justify-content:space-between; font-family:"DotGothic16","Noto Sans SC",sans-serif; font-size:12px; color:var(--star); margin-bottom:6px; }
+  .meter .lbl i { font-style:normal; opacity:.75; }
+  .segs { display:flex; gap:2px; }
+  .segs b { flex:1; height:12px; border:2px solid #000; background:#141626; }
+  .segs b.f1 { background:var(--bad); } .segs b.f2 { background:var(--curb); } .segs b.f3 { background:var(--ok); }
+
+  /* ── 对话框 ──────────────────────────────── */
+  .dlg { position:relative; margin-top:18px; background:var(--paper); color:var(--ink); border:4px solid #000; box-shadow:6px 6px 0 #000; padding:16px 18px 12px; min-height:74px; }
+  .dlg::after { content:""; position:absolute; top:-22px; left:44px; border:10px solid transparent; border-bottom:13px solid #000; }
+  .dlg .who { display:inline-block; background:var(--hi); color:var(--ink); border:2px solid var(--ink); padding:2px 8px;
+    font-family:"DotGothic16","Noto Sans SC",sans-serif; font-size:11px; margin-bottom:8px; }
+  .dlg .txt { font-family:"DotGothic16","Noto Sans SC",sans-serif; font-size:15px; line-height:1.7; min-height:44px; }
+  .dlg .more { position:absolute; right:12px; bottom:8px; color:var(--ink); font-family:"Press Start 2P",monospace; font-size:9px; animation:blink 1s steps(1) infinite; }
+
+  /* ── 日志 ────────────────────────────────── */
+  .mainhead { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+  .mainhead h2 { font-size:11px; color:var(--star); }
+  .mainhead .rule { flex:1; height:3px; background:var(--curb); opacity:.4; }
+  .log { background:var(--panel-2); border:3px solid #000; box-shadow:inset -3px -3px 0 rgba(0,0,0,.4), 5px 5px 0 #000;
+    padding:12px 14px; height:118px; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end; gap:2px; }
+  .log p { font-family:"VT323",monospace; font-size:17px; color:var(--star); letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .log p b { color:var(--ok); font-weight:400; }
+  .log p .cur { color:var(--ok); animation:blink 1s steps(1) infinite; }
+
+  /* ── 明信片 ──────────────────────────────── */
+  .mailhead { display:flex; align-items:center; gap:12px; margin:24px 0 16px; }
+  .mailhead h2 { font-size:11px; color:var(--star); }
+  .mailhead .rule { flex:1; height:3px; background:var(--curb); opacity:.4; }
+  .mailhead .mono { font-family:"VT323",monospace; font-size:16px; color:var(--curb); }
+  .mails { display:flex; flex-direction:column; gap:20px; }
+  .mail { position:relative; display:grid; grid-template-columns:64px 1fr; }
+  .mail time { font-family:"VT323",monospace; font-size:15px; color:var(--curb); text-align:center; line-height:1.35;
+    border-left:2px solid var(--curb); padding-left:10px; height:min-content; padding-top:6px; opacity:.85; }
+  .card { position:relative; background:var(--paper); color:var(--ink); border:4px solid #000; box-shadow:inset -4px -4px 0 rgba(0,0,0,.15), 6px 6px 0 #000; padding:16px 18px 12px; min-width:0; }
+  .stamp { position:absolute; top:10px; right:12px; width:34px; height:40px; background:var(--act); border:3px solid var(--ink); box-shadow:3px 3px 0 rgba(0,0,0,.25);
+    display:grid; place-items:center; font-family:"Press Start 2P",monospace; font-size:11px; color:#fff; }
+  .stamp.s2 { background:var(--bad); } .stamp.s3 { background:var(--ok); color:var(--ink); }
+  .mail.new .card { animation:mailin .2s steps(2) 1; }
+  @keyframes mailin { from { transform:translateY(-18px); } }
+  .newbadge { position:absolute; top:-9px; left:56px; background:var(--hi); color:var(--ink); border:3px solid var(--ink);
+    font-family:"Press Start 2P",monospace; font-size:9px; padding:4px 7px; animation:blink 1s steps(1) infinite; z-index:2; }
+  .mail h3 { font-family:"DotGothic16","Noto Sans SC",sans-serif; font-size:15.5px; line-height:1.6; margin-bottom:6px; padding-right:52px; }
+  .mail p { font-size:13.5px; color:#4A4238; line-height:1.65; }
+  .mail .meta { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  .tag { font-family:"VT323",monospace; font-size:13px; letter-spacing:.06em; border:2px solid var(--ink); padding:1px 7px; background:var(--paper); }
+  .pin { background:var(--hi); }
+  .macts { margin-left:auto; display:flex; gap:8px; }
+  .macts button { font-family:"DotGothic16","Noto Sans SC",sans-serif; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:6px;
+    background:var(--paper); color:var(--ink); border:3px solid #000; padding:5px 9px;
+    box-shadow:inset -3px -3px 0 rgba(0,0,0,.2), 3px 3px 0 #000; }
+  .macts button:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.2); }
+  .macts button.f1 { background:var(--ok); } .macts button.f2 { background:var(--bad); color:#fff; }
+  .macts svg { width:12px; height:12px; image-rendering:pixelated; }
+
+  /* ── toast（游戏对话框式）─────────────────── */
+  .toast { position:fixed; top:18px; right:18px; z-index:50; max-width:290px; display:none;
+    background:var(--paper); color:var(--ink); border:4px solid #000; box-shadow:inset -4px -4px 0 rgba(0,0,0,.15), 6px 6px 0 #000; padding:14px 16px 10px; }
+  .toast.show { display:block; }
+  .toast b { font-family:"DotGothic16","Noto Sans SC",sans-serif; font-size:14px; display:block; margin-bottom:3px; }
+  .toast p { font-size:12.5px; color:#4A4238; }
+
+  /* ── 菜单条 ──────────────────────────────── */
+  .tabbar { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); display:flex; gap:4px; z-index:40;
+    background:var(--panel-2); border:3px solid #000; box-shadow:inset -3px -3px 0 rgba(0,0,0,.4), 5px 5px 0 #000; padding:6px; }
+  .tabbar a { font-family:"DotGothic16","Noto Sans SC",sans-serif; font-size:13px; color:var(--curb); text-decoration:none;
+    padding:11px 18px; white-space:nowrap; }
+  .tabbar a.on { background:var(--act); color:#fff; box-shadow:inset -3px -3px 0 rgba(0,0,0,.35); }
+  .tabbar a:not(.on):hover { color:var(--star); }
+
+  footer { margin-top:56px; border-top:2px solid var(--curb); padding-top:14px; display:flex; gap:14px; flex-wrap:wrap; align-items:center;
+    font-family:"VT323",monospace; font-size:15px; color:var(--curb); letter-spacing:.06em; }
+  footer i { width:12px; height:12px; display:inline-block; border:2px solid #000; vertical-align:-1px; margin-right:5px; }
+</style>
+</head>
+<body>
+
+<header class="devicebar">
+  <span class="led"></span>
+  <span class="brand ps2">STRAY-BOY</span>
+  <span class="info">DAY 12 · 22:41 · 深夜霓虹</span>
+  <span class="theme">主题：深夜霓虹 ▾</span>
+</header>
+
+<div class="layout">
+  <aside>
+    <section class="screen" id="screen">
+      <span class="stage-name">年糕 的街区</span>
+      <div class="stars" id="stars"></div>
+      <span class="moon"></span>
+      <div class="bld bld-far-1" id="bf1"></div>
+      <div class="bld bld-far-2" id="bf2"></div>
+      <div class="neon">CYBER<br>STRAY</div>
+      <div class="bld bld-near-1" id="bn1"></div>
+      <span class="lamp"></span>
+      <div class="street"></div>
+      <div class="cat idle" id="cat" title="拍拍它"></div>
+    </section>
+
+    <section class="hud">
+      <div class="row1">
+        <span class="lv ps2">LV.7</span>
+        <span class="petname dot">年糕 · 游荡者</span>
+        <span class="btns">
+          <button class="pbtn green" id="patBtn">拍拍它</button>
+          <button class="pbtn blue" id="roamBtn">让它去溜达</button>
+        </span>
+      </div>
+      <div class="meters">
+        <div class="meter"><span class="lbl"><span>饥饿</span><i>饱</i></span><div class="segs" id="m1"><b class="f1"></b><b class="f1"></b><b class="f1"></b><b class="f1"></b><b class="f1"></b><b class="f1"></b><b class="f1"></b><b></b><b></b><b></b></div></div>
+        <div class="meter"><span class="lbl"><span>无聊</span><i>想出门</i></span><div class="segs" id="m2"><b class="f2"></b><b class="f2"></b><b class="f2"></b><b class="f2"></b><b class="f2"></b><b class="f2"></b><b class="f2"></b><b></b><b></b><b></b></div></div>
+        <div class="meter"><span class="lbl"><span>心情</span><i>得劲</i></span><div class="segs" id="m3"><b class="f3"></b><b class="f3"></b><b class="f3"></b><b class="f3"></b><b class="f3"></b><b class="f3"></b><b class="f3"></b><b class="f3"></b><b></b><b></b></div></div>
+      </div>
+    </section>
+
+    <section class="dlg">
+      <span class="who dot">&lt;年糕&gt;</span>
+      <p class="txt" id="dlgTxt">刚从三个站点溜达回来。墙上那张新明信片，先看再看我这身毛。</p>
+      <span class="more">▼</span>
+    </section>
+  </aside>
+
+  <main>
+    <div class="mainhead"><h2 class="ps2">LOG</h2><span class="rule"></span></div>
+    <div class="log" id="log">
+      <p>[22:38] 无聊72 → 出门 → TAVILY 独立游戏新闻 → <b>抓到3条</b> → 进食</p>
+      <p>[22:31] 进食完成 · 心情+2 · 脱口秀语气已装备</p>
+      <p>[22:17] 兴趣「像素游戏」关注度 ↑ · 进化自「游戏」</p>
+      <p>[21:52] 甩掉一条旧闻（重复率0.88）<span class="cur">■</span></p>
+    </div>
+
+    <div class="mailhead"><h2 class="ps2">MAIL</h2><span class="rule"></span><span class="mono">2 NEW</span></div>
+    <div class="mails" id="mails">
+      <article class="mail new" id="mailNew">
+        <span class="newbadge">NEW!</span>
+        <time>DAY 12<br>22:38</time>
+        <div class="card">
+          <span class="stamp s3">NYA</span>
+          <h3>独立游戏《星露谷物语》开发商宣布新作</h3>
+          <p>ConcernedApe 一个人又憋了四年，首发支持创意工坊。你的兴趣「像素游戏」关注度因此 +8，已记进图鉴。</p>
+          <div class="meta">
+            <span class="tag">DDG</span><span class="tag">游戏</span>
+            <span class="macts">
+              <button data-fb="up"><svg viewBox="0 0 7 7" shape-rendering="crispEdges"><path fill="currentColor" d="M0 3h1v4H0zM1 2h1v5H1zM2 1h2v6H2zM4 0h1v2H4zM5 2h2v3H5zM5 5h1v2H5z"/></svg>5</button>
+              <button data-fb="down"><svg viewBox="0 0 7 7" shape-rendering="crispEdges" style="transform:rotate(180deg)"><path fill="currentColor" d="M0 3h1v4H0zM1 2h1v5H1zM2 1h2v6H2zM4 0h1v2H4zM5 2h2v3H5zM5 5h1v2H5z"/></svg></button>
+            </span>
+          </div>
+        </div>
+      </article>
+
+      <article class="mail">
+        <time>DAY 12<br>20:07</time>
+        <div class="card">
+          <span class="stamp">★</span>
+          <h3>科学实锤：猫能听懂自己的名字，只是假装听不见</h3>
+          <p>新研究覆盖 78 只猫。听懂率 94%，回应率 11%——这不是 bug，是性格。已用「海盗腔」播报过一轮。</p>
+          <div class="meta">
+            <span class="tag">TAVILY</span><span class="tag">科学</span>
+            <span class="macts">
+              <button data-fb="up" class="f1"><svg viewBox="0 0 7 7" shape-rendering="crispEdges"><path fill="currentColor" d="M0 3h1v4H0zM1 2h1v5H1zM2 1h2v6H2zM4 0h1v2H4zM5 2h2v3H5zM5 5h1v2H5z"/></svg>12</button>
+              <button data-fb="down"><svg viewBox="0 0 7 7" shape-rendering="crispEdges" style="transform:rotate(180deg)"><path fill="currentColor" d="M0 3h1v4H0zM1 2h1v5H1zM2 1h2v6H2zM4 0h1v2H4zM5 2h2v3H5zM5 5h1v2H5z"/></svg></button>
+            </span>
+          </div>
+        </div>
+      </article>
+
+      <article class="mail">
+        <time>DAY 11<br>23:15</time>
+        <div class="card" style="opacity:.78">
+          <span class="stamp s2">♥</span>
+          <h3>1996 年的戴尔官网被扒出来了</h3>
+          <p>黑色边框、彩色丝带卡、手剪 GIF 小贴纸。互联网的青铜时代，多少有点亲切是吧。</p>
+          <div class="meta">
+            <span class="tag">TAVILY</span><span class="tag">怀旧</span>
+            <span class="macts"><button data-fb="up"><svg viewBox="0 0 7 7" shape-rendering="crispEdges"><path fill="currentColor" d="M0 3h1v4H0zM1 2h1v5H1zM2 1h2v6H2zM4 0h1v2H4zM5 2h2v3H5zM5 5h1v2H5z"/></svg>2</button></span>
+          </div>
+        </div>
+      </article>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"><b id="toastT"></b><p id="toastB"></p></div>
+
+<nav class="tabbar">
+  <a href="#" class="on">街角</a><a href="#">墙上</a><a href="#">图鉴</a><a href="#">设置</a>
+</nav>
+
+<footer>
+  <span><i style="background:#1A1C2C"></i>SKY #1A1C2C</span>
+  <span><i style="background:#F8F5F5"></i>PAPER #F8F5F5</span>
+  <span><i style="background:#209CEE"></i>ACT #209CEE</span>
+  <span><i style="background:#F7D51D"></i>HI #F7D51D</span>
+  <span><i style="background:#FF004D"></i>NEON ×1</span>
+  <span style="margin-left:auto">RADIUS 0 · 实色偏移阴影 · STEPS ONLY · 14色宇宙</span>
+</footer>
+
+<script>
+  // ── 固定种子伪随机（截图稳定 + 城市每次一致）──
+  let seed = 42;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+  // ── 星星 ──
+  const stars = document.getElementById('stars');
+  for (let i = 0; i < 34; i++) {
+    const s = document.createElement('i');
+    s.style.left = (rnd() * 96) + '%'; s.style.top = (rnd() * 55) + '%';
+    s.style.opacity = (0.4 + rnd() * 0.6).toFixed(2);
+    stars.appendChild(s);
+  }
+  // ── 楼与窗 ──
+  function build(id, cols, rows) {
+    const el = document.getElementById(id);
+    for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) {
+      const w = document.createElement('span');
+      w.className = 'win' + (rnd() < 0.62 ? '' : ' off');
+      w.style.left = (8 + c * ((el.clientWidth - 16) / cols)) + 'px';
+      w.style.top = (10 + r * 22) + 'px';
+      el.appendChild(w);
+    }
+  }
+  window.addEventListener('load', () => { build('bf1',4,6); build('bf2',3,4); build('bn1',5,7); });
+
+  // ── 猫：字符地图 → box-shadow 像素画（5px 网格）──
+  // B=白身 P=粉(耳内/鼻) E=眼(单独层可眨) Y=项圈
+  const BODY = [
+    '..B.......B..',
+    '..BPB...BPB..',
+    '.BBBBBBBBBBB.',
+    '.BBBBBBBBBBB.',
+    '.BBBBBBBBBBB.',
+    '.BBBBBBBBBBB.',
+    '.BBBBBBBBBBB.',
+    '.YYYYYYYYYYY.',
+    '.BBBBBBBBBBB.',
+    '.BBBBBBBBBBB.',
+    '..BBBBBBBBB..',
+    '..BBBBBBBBB..',
+  ];
+  const TAIL_A = ['.........B..','........BB..','........B...'];
+  const TAIL_B = ['..........B.','.........BB.','........B...'];
+  function shadow(map, color, px) {
+    const out = [];
+    map.forEach((row, r) => { [...row].forEach((ch, c) => { if (ch !== '.') out.push(`${(c*px)}px ${(r*px)}px 0 0 ${color}`); }); });
+    return out.join(',');
+  }
+  const cat = document.getElementById('cat');
+  cat.innerHTML =
+    `<div class="px" style="left:0;top:0; box-shadow:${shadow(BODY,'var(--star)',5)}"></div>` +
+    `<div class="tail" style="left:65px; top:35px; box-shadow:${shadow(TAIL_B,'var(--star)',5)}"></div>` +
+    `<div class="px" style="left:0;top:5px; box-shadow:${shadow(['..P.......P..'],'var(--bad)',5)}"></div>` +
+    `<div class="px" style="left:0;top:20px; box-shadow:${shadow(['......P......'],'var(--bad)',5)}"></div>` +
+    `<div class="eye" style="left:15px; top:15px; background:var(--ink); width:8px; height:9px;"></div>` +
+    `<div class="eye" style="left:47px; top:15px; background:var(--ink); width:8px; height:9px;"></div>`;
+
+  // ── 眨眼 ──
+  setInterval(() => {
+    cat.querySelectorAll('.eye').forEach(e => e.classList.add('off'));
+    setTimeout(() => cat.querySelectorAll('.eye').forEach(e => e.classList.remove('off')), 160);
+  }, 3200);
+
+  // ── 对话框逐字打印 ──
+  const dlgTxt = document.getElementById('dlgTxt');
+  let typeTimer;
+  function say(t) {
+    clearInterval(typeTimer); dlgTxt.textContent = ''; let i = 0;
+    typeTimer = setInterval(() => { dlgTxt.textContent = t.slice(0, ++i); if (i >= t.length) clearInterval(typeTimer); }, 33);
+  }
+
+  // ── 心情条 ──
+  const moodState = { m1:7, m2:7, m3:8 };
+  function render(id) {
+    const cls = id === 'm1' ? 'f1' : id === 'm2' ? 'f2' : 'f3';
+    [...document.querySelectorAll(`#${id} b`)].forEach((s, i) => s.className = i < moodState[id] ? cls : '');
+  }
+  function bump(id, d) { moodState[id] = Math.max(0, Math.min(10, moodState[id] + d)); render(id); }
+  render('m1'); render('m2'); render('m3');
+
+  // ── toast ──
+  const toast = document.getElementById('toast');
+  let tt;
+  function toastMsg(t, b) {
+    document.getElementById('toastT').textContent = t;
+    document.getElementById('toastB').textContent = b;
+    toast.classList.add('show'); clearTimeout(tt);
+    tt = setTimeout(() => toast.classList.remove('show'), 3200);
+  }
+
+  // ── 拍拍 ──
+  const lines = {
+    pat: ['呼噜呼噜……手劲不错，准许再拍两下。', '别拍了别拍了，毛要起静电了。', '心情 +1。这手感，值一条明信片。'],
+    roam: '出去转转，无聊值高得爪痒。有货直接钉墙上！',
+    back: '回来了！爪子跑酸了，货已寄出，墙上查收。'
+  };
+  let mood = 8, li = -1;
+  function hearts() {
+    for (let i = 0; i < 3; i++) {
+      const h = document.createElement('div');
+      h.className = 'ph';
+      h.style.left = (30 + Math.random() * 40) + '%'; h.style.top = (20 + Math.random() * 25) + '%';
+      h.style.background = ['var(--bad)','var(--hi)','var(--ok)'][i % 3];
+      h.style.boxShadow = '2px 2px 0 #000';
+      h.style.animationDelay = (i * 0.06) + 's';
+      cat.appendChild(h); setTimeout(() => h.remove(), 600);
+    }
+  }
+  function pat() {
+    if (cat.classList.contains('out')) { toastMsg('年糕不在家', '它正溜达呢，回来再拍。'); return; }
+    cat.classList.remove('pat'); void cat.offsetWidth; cat.classList.add('pat');
+    hearts();
+    mood = Math.min(10, mood + 1); bump('m3', 1);
+    li = (li + 1) % lines.pat.length; say(lines.pat[li]);
+  }
+  document.getElementById('patBtn').addEventListener('click', pat);
+  cat.addEventListener('click', pat);
+
+  // ── 溜达编排：猫出门 → 日志 → 明信片寄回 → 回家 ──
+  const log = document.getElementById('log');
+  function logLine(html) {
+    const p = document.createElement('p');
+    p.innerHTML = html + '<span class="cur">■</span>';
+    log.appendChild(p);
+    while (log.children.length > 4) log.firstChild.remove();
+  }
+  const roamBtn = document.getElementById('roamBtn');
+  roamBtn.addEventListener('click', () => {
+    if (roamBtn.disabled) return;
+    roamBtn.disabled = true; roamBtn.textContent = '溜达中…';
+    cat.classList.remove('idle', 'pat'); cat.classList.add('out');
+    say(lines.roam);
+    setTimeout(() => logLine('[22:44] 出门 → DDG 「像素 独立游戏」 → <b>抓到2条</b>'), 1500);
+    setTimeout(() => logLine('[22:45] 嗅到新鲜货 · 重复率 0.12 · 寄明信片'), 2600);
+    setTimeout(() => {
+      // 新明信片寄到墙上
+      const wall = document.getElementById('mails');
+      const div = document.createElement('article');
+      div.className = 'mail new';
+      div.innerHTML = `<span class="newbadge">NEW!</span><time>DAY 12<br>22:45</time>
+        <div class="card"><span class="stamp s2">★</span>
+          <h3>有猫在深夜偷偷运行了一台复古掌机，还写了一篇教程</h3>
+          <p>文内有完整的 Aseprite 像素管线。你的兴趣「独立开发」关注度 +5。这货手速可以。</p>
+          <div class="meta"><span class="tag">TAVILY</span><span class="tag">独立开发</span>
+            <span class="macts"><button data-fb="up"><svg viewBox="0 0 7 7" shape-rendering="crispEdges"><path fill="currentColor" d="M0 3h1v4H0zM1 2h1v5H1zM2 1h2v6H2zM4 0h1v2H4zM5 2h2v3H5zM5 5h1v2H5z"/></svg>1</button></span></div></div>`;
+      wall.prepend(div); bindFB(div);
+      document.querySelector('.mailhead .mono').textContent = '3 NEW';
+      bump('m2', -3);
+    }, 3400);
+    setTimeout(() => { cat.classList.remove('out'); }, 5200);
+    setTimeout(() => { cat.classList.add('idle'); say(lines.back); }, 6700);
+    setTimeout(() => { roamBtn.disabled = false; roamBtn.textContent = '让它去溜达'; }, 6900);
+  });
+
+  // ── 反馈按钮 ──
+  function bindFB(scope) {
+    (scope || document).querySelectorAll('[data-fb]').forEach(btn => {
+      if (btn._bound) return; btn._bound = true;
+      btn.addEventListener('click', () => {
+        btn.classList.add(btn.dataset.fb === 'up' ? 'f1' : 'f2');
+        toastMsg('年糕记下了', btn.dataset.fb === 'up' ? '这类货以后多寄几张。' : '懂了，这路货以后绕着走。');
+      });
+    });
+  }
+  bindFB();
+  const pinBtn = document.createElement('button');
+  pinBtn.textContent = '置顶话题';
+  pinBtn.addEventListener('click', () => {
+    const card = document.querySelector('#mailNew .card');
+    if (card.querySelector('.pin')) return;
+    const s = document.createElement('span'); s.className = 'tag pin'; s.textContent = '已置顶';
+    card.querySelector('.meta').insertBefore(s, card.querySelector('.macts'));
+    toastMsg('已置顶', '「游戏」进了顶话题。');
+  });
+  document.querySelector('#mailNew .macts').appendChild(pinBtn);
+
+  // ── 开机问候 ──
+  setTimeout(() => toastMsg('STRAY-BOY 已开机', '年糕值夜班中。试试「拍拍它」和「让它去溜达」。'), 1200);
+</script>
+</body>
+</html>

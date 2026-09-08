@@ -35,11 +35,12 @@ export function TimeMachine({
       <p className="text-[13px] leading-[1.7] text-[var(--curb)]">
         像素墨条时间轴：每格 = 一次兴趣快照。读取存档 LOAD 会把兴趣图谱回滚到那一刻。
       </p>
-      {/* 像素墨条时间轴：一格一快照，最新在最右 */}
+      {/* 像素墨条时间轴：一格一快照，最新在最右。key 用 hash+序号复合：
+          同日多快照的 hash 可能碰撞（实测 e7270f3c 重复），单 hash 作 key 会炸渲染 */}
       <div aria-hidden className="flex h-4 items-end gap-[3px] border-2 border-black bg-[var(--panel)] p-1">
         {snapshots.map((s, i) => (
           <b
-            key={s.hash}
+            key={`${s.hash}-${i}`}
             title={`#${i + 1} 熵 ${s.entropy.toFixed(2)}`}
             className="flex-1 bg-[var(--hi)]"
             style={{ height: `${30 + ((i * 37) % 70)}%` }}
@@ -47,8 +48,8 @@ export function TimeMachine({
         ))}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        {snapshots.map((s) => (
-          <div key={s.hash} className="relative border-2 border-[var(--ink)] bg-[var(--paper)] p-3 pt-5 shadow-[4px_4px_0_#000] -rotate-1">
+        {snapshots.map((s, i) => (
+          <div key={`${s.hash}-${i}`} className="relative border-2 border-[var(--ink)] bg-[var(--paper)] p-3 pt-5 shadow-[4px_4px_0_#000] -rotate-1">
             {/* 纸面图钉 */}
             <span aria-hidden className="absolute left-1/2 top-1 h-2 w-2 -translate-x-1/2 bg-[var(--bad)]" />
             <div className="flex items-baseline justify-between">

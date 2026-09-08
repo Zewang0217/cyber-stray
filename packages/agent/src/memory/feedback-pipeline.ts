@@ -18,7 +18,8 @@ import { recordFeedback } from './feedback-store.js';
 import { updateUserProfileBatch, type ProfileUpdateEntry } from './user-profile.js';
 import { getInterestGraph } from './interest-graph.js';
 import { regenerateProfileSummary } from './profile-summary.js';
-import { updateMoodByFeedback } from '../agent/state.js';
+import { computeMoodUpdatesByFeedback } from '../agent/state.js';
+import type { Mood } from '../types.js';
 import {
   CATCHPHRASE_WEIGHT_FLOOR,
   getPersonality,
@@ -75,6 +76,8 @@ export interface FeedbackProcessResult {
   profileUpdated: boolean;
   /** 兴趣是否已强化 */
   interestReinforced: boolean;
+  /** 心情/脾气增量（ADR-0013：CP 采信写回 pets；调用方未注入数值时为 null） */
+  statsUpdated: { mood?: Mood; temper: number } | null;
 }
 
 /** 口头禅权重归因增量（± 同兴趣图谱 LIKE/DISLIKE 增量） */
@@ -240,6 +243,7 @@ function emptyResult(partial: Partial<FeedbackProcessResult> = {}): FeedbackProc
     catchphrasesUpdated: null,
     profileUpdated: false,
     interestReinforced: false,
+    statsUpdated: null,
     ...partial,
   };
 }
@@ -257,7 +261,12 @@ export async function processFeedback(
   type: 'like' | 'dislike',
   messageId?: string,
   userId?: string,
-  opts: { topics?: string[]; catchphrases?: string[] } = {},
+  opts: {
+    topics?: string[];
+    catchphrases?: string[];
+    /** 宠物数值注入（ADR-0013：CP 从 pets 带出；未注入则跳过心情更新——单机 WS 路径无 CP） */
+    petStats?: { mood: Mood; temper: number };
+  } = {},
 ): Promise<FeedbackProcessResult> {
   const result = emptyResult();
 
@@ -280,11 +289,11 @@ export async function processFeedback(
     }
   }
 
-  // Step 4: 更新 Agent 心情
-  try {
-    await updateMoodByFeedback(type);
-  } catch (error) {
-    logger.error('更新心情失败', { error });
+  // Step 4: 心情/脾气增量（纯计算，不落 state.json——CP 写回 pets）
+  if (opts.petStats) {
+    result.statsUpdated = computeMoodUpdatesByFeedback(type, opts.petStats);
+  } else {
+    logger.warn('未注入宠物数值，跳过心情更新（ADR-0013：mood 真相源在 CP）');
   }
 
   logger.info('反馈管道处理完成', {
@@ -310,6 +319,7 @@ export async function processFeedback(
 export async function boostTopic(
   topic: string,
   userId?: string,
+  opts: { petStats?: { mood: Mood; temper: number } } = {},
 ): Promise<FeedbackProcessResult> {
   const result = emptyResult({
     topicsMatched: true,
@@ -353,11 +363,11 @@ export async function boostTopic(
     throw error;
   }
 
-  // Step 4: 心情（按 like 语义）
-  try {
-    await updateMoodByFeedback('like');
-  } catch (error) {
-    logger.error('顶话题更新心情失败', { error });
+  // Step 4: 心情/脾气增量（按 like 语义；纯计算，CP 写回 pets）
+  if (opts.petStats) {
+    result.statsUpdated = computeMoodUpdatesByFeedback('like', opts.petStats);
+  } else {
+    logger.warn('未注入宠物数值，跳过心情更新（ADR-0013：mood 真相源在 CP）');
   }
 
   logger.info('顶话题处理完成', { topic, reinforced: result.interestReinforced });
