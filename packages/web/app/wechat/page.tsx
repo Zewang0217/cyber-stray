@@ -36,7 +36,7 @@ function WechatInner() {
           <div className="border-4 border-[var(--ink)] bg-[var(--paper)] p-6 shadow-[6px_6px_0_#000]">
             <p className="font-ps2p mb-3 text-xs text-[var(--ok)]">PAIRED · 配对成功</p>
             <h2 className="mb-3 text-[16px] text-[var(--ink)]">它住进你的微信了！</h2>
-            <p className="font-noto mb-4 text-[13.5px] leading-[1.75] text-[#4A4238]">
+            <p className="font-noto mb-4 text-[13.5px] leading-[1.75] text-[var(--ink-soft)]">
               {result.created
                 ? `已为你创建赛博宠物「${result.petName}」（免费档起步）。`
                 : `已重新激活「${result.petName}」。`}
@@ -71,7 +71,7 @@ function WechatInner() {
             <h2 className="mb-4 text-[16px] text-[var(--ink)]">
               {phase === "scaned" ? "已扫码，请在手机上确认" : "用微信扫一扫"}
             </h2>
-            <p className="font-noto mb-4 text-[13px] leading-[1.75] text-[#4A4238]">
+            <p className="font-noto mb-4 text-[13px] leading-[1.75] text-[var(--ink-soft)]">
               {phase === "scaned" ? "手机微信上确认后，配对即刻完成。" : "扫码后自动建租户并领养一只宠物（免费档），无需注册。"}
             </p>
             {qrcodeImgUrl ? (
@@ -100,12 +100,12 @@ function WechatInner() {
             <h2 className="mb-3 text-[16px] text-[var(--ink)]">
               {rebind ? "重新激活微信通道" : "把宠物接进微信"}
             </h2>
-            <p className="font-noto mb-5 text-[13.5px] leading-[1.75] text-[#4A4238]">
+            <p className="font-noto mb-5 text-[13.5px] leading-[1.75] text-[var(--ink-soft)]">
               {rebind
                 ? "微信通道已过期。重新扫码后，发条消息即可再次激活。"
                 : "扫码即用：绑定后它会出现在你的微信聊天框，可以随时聊天，也能收到它探索世界的新发现。"}
             </p>
-            <div className="mb-6 space-y-1.5 text-[13px] leading-[1.7] text-[#4A4238]">
+            <div className="mb-6 space-y-1.5 text-[13px] leading-[1.7] text-[var(--ink-soft)]">
               <p>1. 点击下方按钮生成二维码</p>
               <p>2. 用微信「扫一扫」扫描</p>
               <p>3. 在手机上确认配对</p>

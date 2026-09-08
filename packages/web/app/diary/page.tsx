@@ -79,7 +79,7 @@ function DiaryInner() {
               <button type="button" className="w-full text-left" onClick={() => setOpenEntry(e)}>
                 <span className="font-vt323 text-[20px] text-[var(--curb)]">{e.date}</span>
                 <h2 className="text-[15px] font-medium text-[var(--ink)]">{e.title}</h2>
-                <p className="font-noto mt-1 line-clamp-2 text-[13.5px] leading-[1.7] text-[#4A4238]">
+                <p className="font-noto mt-1 line-clamp-2 text-[13.5px] leading-[1.7] text-[var(--ink-soft)]">
                   {e.excerpt ?? e.content}
                 </p>
               </button>

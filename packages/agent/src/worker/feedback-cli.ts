@@ -190,15 +190,15 @@ async function main(): Promise<void> {
     catchphrases = parsed;
   }
 
-  // ADR-0013 注入：心情增量按注入值计算；缺失/形状非法显式 exit 2（禁兜底）
+  // ADR-0013 注入：心情增量按注入值计算。CP 是本 CLI 的唯一调用方且恒注入
+  //（路由 409 守卫保证）——缺参即版本错位，显式 exit 2 而非静默跳过心情更新
+  //（评审 A-m2：与 wander 通道缺参 exit 2 同严格度）
   const petStateRaw = parseArg('pet-state');
-  const petStatsParsed =
-    petStateRaw !== undefined ? parseFeedbackPetState(safeJsonParse(petStateRaw)) : undefined;
-  if (petStateRaw !== undefined && petStatsParsed === null) {
-    console.error(JSON.stringify({ ok: false, error: '--pet-state 形状非法（须为 {mood,temper} JSON）' }));
+  const petStats = petStateRaw !== undefined ? parseFeedbackPetState(safeJsonParse(petStateRaw)) : undefined;
+  if (petStateRaw === undefined || petStats === null) {
+    console.error(JSON.stringify({ ok: false, error: '--pet-state 缺失或形状非法（须为 {mood,temper} JSON）' }));
     process.exit(2);
   }
-  const petStats = petStatsParsed ?? undefined;
 
   const result = await runFeedbackWorker({
     dataDir,
@@ -225,7 +225,7 @@ async function main(): Promise<void> {
   process.exit(0);
 }
 
-/** JSON.parse 失败返回 null（交给 parsePetStats 统一判非法，不在此抛） */
+/** JSON.parse 失败返回 null（交给统一判非法，不在此抛） */
 function safeJsonParse(raw: string): unknown {
   try {
     return JSON.parse(raw) as unknown;

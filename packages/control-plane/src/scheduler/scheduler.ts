@@ -11,7 +11,8 @@
  *   挂死可重认领（worker_timeout 事件）。gen 令牌保证 TTL 重认领后，旧任务的
  *   finally 不误删新任务条目、旧任务不写回过期状态
  * - 失败重试：退避后下一 tick 重拉；maxRetries 超限放弃 → **DB 冷却**
- *   （cooldown_until + 同步落真实 boredom/energy，重启安全、状态不伪造）
+ *   （cooldown_until + lastRunAt 基线归位；数值不动——worker 未回报，
+ *   伪造"消耗了就绪"即是失真，ADR-0013）
  * - 游荡数据由 worker 的 state.json 维护（租户目录），失败不丢
  *
  * 进程边界（单实例控制面）：
@@ -474,9 +475,7 @@ export class Scheduler {
     now: () => number,
   ): Promise<void> {
     const endAt = now();
-    if (!stats) {
-      console.error(`[scheduler] worker exit 0 但无数值回报（${tenantId}/${petId}），本轮数值不落库`);
-    }
+    // stats 缺失的显式告警在 worker-runner 解析层已打（含租户/宠物 id），此处不重复
     const dbh = await this.deps.db();
     await dbh
       .update(pets)
@@ -484,8 +483,9 @@ export class Scheduler {
         lastRunAt: endAt,
         ...(stats
           ? {
-              boredom: Math.max(0, Math.round(stats.boredom)),
-              energy: Math.max(0, Math.round(stats.energy)),
+              // 双向夹取 0-100：跨进程回报按不可信输入设防（评审 m2）
+              boredom: Math.min(100, Math.max(0, Math.round(stats.boredom))),
+              energy: Math.min(100, Math.max(0, Math.round(stats.energy))),
             }
           : {}),
       })

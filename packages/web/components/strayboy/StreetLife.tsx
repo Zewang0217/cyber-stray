@@ -83,7 +83,7 @@ export function CafeFront() {
   );
 }
 
-/** 动物邻居：远处楼顶剪影猫——12s 翻转显隐（约 24s 周期出镜一次），纯静态无动画 */
+/** 动物邻居：远处楼顶剪影猫——12s 翻转显隐（约 24s 周期），纯静态无动画 */
 export function NeighborCat() {
   const [visible, setVisible] = useState(false);
   useEffect(() => {

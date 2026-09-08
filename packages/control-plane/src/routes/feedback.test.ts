@@ -195,6 +195,9 @@ describe('feedback 路由（点赞/踩 + 顶话题）', () => {
     });
     expect((await app.request(reqB)).status).toBe(409);
     expect(fake.calls).toHaveLength(0);
+    // 评审 B-M2：409 不得烧配额（free 30 天一次，白烧即锁一个月）
+    const petAfter = await db.select().from(pets).where(eq(pets.tenantId, 'alice')).get();
+    expect(petAfter?.lastBoostAt).toBeNull();
   });
 
   it('未领养宠物：409', async () => {

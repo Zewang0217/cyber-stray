@@ -87,6 +87,7 @@ export function PixelStage({ children, onStreet, demo, daytime = false, onPasser
     <div
       className="relative h-[300px] overflow-hidden border-2 border-black"
       style={{ backgroundColor: daytime ? "#5C94FC" : "var(--sky)" }}
+      suppressHydrationWarning
     >
       {/* 星/月仅夜间（宪法 §7 白天：星月隐藏） */}
       {!daytime && STARS.map((star, i) => (

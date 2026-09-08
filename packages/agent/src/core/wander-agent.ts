@@ -29,6 +29,7 @@ import { wanderLoop } from './wander-loop.js';
 import { computeStrategy } from './strategy.js';
 import { pickFocusTopics } from './personality.js';
 import { getPersonality } from '@cyber-stray/shared';
+import { isPlausibleTopic } from '../memory/topic-validator.js';
 import type { WanderLoopConfig } from './wander-loop.js';
 import { HookChain } from '../hooks/chain.js';
 import type { HookContext } from '../hooks/types.js';
@@ -276,24 +277,35 @@ export class WanderAgent {
     // （S13 evolution 数据源；失败不阻断游荡结果）
     await this.reinforceInterestGraph(this.extractRecentTopics(ctx.wanderHistory, []));
 
-    // 游荡消耗保性格差异（原 CP 估算的 playful 耗能更多/慵懒更省语义，
-    // 基准从常量改为真实步数——性格系数沿用 shared 注册表，存量行为不回退）
+    return this.computeStatsReport(state, result.steps);
+  }
+
+  /**
+   * 结束数值回报（ADR-0013 写回）：游荡消耗保性格差异——原 CP 估算的
+   * playful 耗能更多/慵懒更省语义，基准从常量改为真实步数，系数沿用
+   * shared 注册表（存量行为不回退）。纯函数可直测。
+   */
+  private computeStatsReport(state: AgentState, steps: number): WanderStatsReport {
     const wanderRates = getPersonality(this.agentConfig.personality).wander;
     return {
       energy: Math.max(
         0,
-        Math.round(state.energy - result.steps * this.agentConfig.energyCostPerStep * wanderRates.energyCost),
+        Math.round(state.energy - steps * this.agentConfig.energyCostPerStep * wanderRates.energyCost),
       ),
       boredom: Math.max(
         0,
-        Math.round(state.boredom - result.steps * this.agentConfig.boredomReductionPerStep * wanderRates.boredomRelief),
+        Math.round(state.boredom - steps * this.agentConfig.boredomReductionPerStep * wanderRates.boredomRelief),
       ),
     };
   }
 
   /** 兴趣回灌：已存在节点强化，新话题加入图谱（来源 reflection） */
   private async reinforceInterestGraph(topics: string[]): Promise<void> {
-    if (topics.length === 0) return;
+    // 收集面含 URL/长 query（访问过的页面地址等）——准入校验在 addInterest 会逐条
+    // warn，先在此过滤掉非话题形态，免每游荡必刷噪音（#176 守卫仍在咽喉兜底）
+    const plausible = topics.filter((t) => isPlausibleTopic(t));
+    if (plausible.length === 0) return;
+    topics = plausible;
     try {
       const graph = getInterestGraph();
       await graph.load();

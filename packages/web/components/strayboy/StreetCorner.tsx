@@ -116,6 +116,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
   const [coat, setCoat] = useState<"orange" | "black" | "calico">("orange");
   const [attract, setAttract] = useState(false);
   const [mailman, setMailman] = useState(false);
+  const patGrumpyTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [neonTopic, setNeonTopic] = useState<string | null>(null);
   const lastActivityRef = useRef(0);
   const prevLevel = useRef<number | null>(null);
@@ -271,7 +272,9 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
     if (reaction === "grumpy") {
       setGrumpyOn(true);
       reset();
-      setTimeout(() => setGrumpyOn(false), GRUMPY_MS);
+      // ref 化：快速连拍不叠多个定时器（先到的提前掐掉后一次的 30s 臭脸，评审 C-minor4）
+      clearTimeout(patGrumpyTimer.current);
+      patGrumpyTimer.current = setTimeout(() => setGrumpyOn(false), GRUMPY_MS);
       return;
     }
     setOverrideAnim(reaction);

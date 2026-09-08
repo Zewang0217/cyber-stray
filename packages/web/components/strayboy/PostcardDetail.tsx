@@ -58,7 +58,7 @@ export function PostcardDetail({
         </span>
         <h2 className="sb mb-3 pl-5 pr-10 text-[16px] leading-[1.6] text-[var(--ink)]">{card.title}</h2>
         {/* 完整正文（Noto 长文；墙上卡片不再露摘要，这里读全量） */}
-        <p className="font-noto mb-4 whitespace-pre-wrap pl-5 text-[14px] leading-[1.8] text-[#4A4238]">
+        <p className="font-noto mb-4 whitespace-pre-wrap pl-5 text-[14px] leading-[1.8] text-[var(--ink-soft)]">
           {card.message}
         </p>
         <div className="flex items-center gap-2 pl-5">

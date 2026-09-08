@@ -156,7 +156,7 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
       const db = await getDb(config.dataDir);
       await db
         .update(pets)
-        .set({ ...(stats.mood ? { mood: stats.mood } : {}), temper: stats.temper, updatedAt: Date.now() })
+        .set({ ...(stats.mood ? { mood: stats.mood } : {}), temper: Math.round(stats.temper), updatedAt: Date.now() })
         .where(eq(pets.tenantId, tenantId))
         .run();
     } catch (error) {
@@ -295,16 +295,18 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
     const tenant = await db.select().from(tenants).where(eq(tenants.id, scoped.tenantId)).get();
     const plan = tenant?.plan ?? 'free';
 
+    // 准入守卫先于额度占位：409 不烧配额（评审 B-M2——free 30 天一次，
+    // 一次 409 即锁一个月）
+    const statsArgs = petStatsArgs(pet);
+    if (!statsArgs) {
+      return c.json(jsonError('宠物数值未迁移，先执行 migrate:pet-stats'), 409);
+    }
+
     // 节流：原子占位（check-then-write 横跨 spawn 会开并发窗口，双击可绕过
     // 额度）；worker 失败回滚额度（S9 review 修复：exitCode 决定回滚）
     const claim = await claimBoostQuota(db, scoped.tenantId, plan, Date.now());
     if (!claim.claimed) {
       return c.json(jsonError(`当前套餐每 ${claim.days} 天可顶一次话题`), 429);
-    }
-
-    const statsArgs = petStatsArgs(pet);
-    if (!statsArgs) {
-      return c.json(jsonError('宠物数值未迁移，先执行 migrate:pet-stats'), 409);
     }
     const worker = await runFeedbackWorker(scoped.tenantId, [
       '--action',

@@ -28,13 +28,14 @@ export function isPetMood(value: unknown): value is PetMood {
  * 调用方必须显式失败（CLI exit 2 / 拒绝落库），禁静默兜底——
  * 数值是假的比失败更危险（#173/#213 的教训）。
  */
+const inRange = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100;
+
 export function parsePetStats(raw: unknown): PetStats | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
   if (
-    typeof r.energy !== 'number' || !Number.isFinite(r.energy) ||
-    typeof r.boredom !== 'number' || !Number.isFinite(r.boredom) ||
-    typeof r.temper !== 'number' || !Number.isFinite(r.temper) ||
+    !inRange(r.energy) || !inRange(r.boredom) || !inRange(r.temper) ||
     !isPetMood(r.mood)
   ) {
     return null;
@@ -62,7 +63,6 @@ export interface FeedbackPetState {
 export function parseFeedbackPetState(raw: unknown): FeedbackPetState | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
-  if (!isPetMood(r.mood)) return null;
-  if (typeof r.temper !== 'number' || !Number.isFinite(r.temper)) return null;
+  if (!isPetMood(r.mood) || !inRange(r.temper)) return null;
   return { mood: r.mood, temper: r.temper };
 }

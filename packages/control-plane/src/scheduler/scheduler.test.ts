@@ -239,7 +239,7 @@ describe('调度器', () => {
     expect(pet?.boredom).toBe(60); // 未写回
     expect(pet?.energy).toBe(60); // 未写回
 
-    await tick(60_000); // 冷却恰好到期：无聊 21+1 仍不足 → 不拉
+    await tick(60_000); // 冷却恰好到期：库存无聊 60+1=61 < 70 → 不拉
     expect(runner).toHaveBeenCalledTimes(2);
   });
 

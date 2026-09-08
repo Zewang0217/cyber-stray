@@ -105,8 +105,9 @@ export type SpawnLike = (
   opts: { timeoutMs: number; logFile?: string },
 ) => Promise<{ exitCode: number; stdout?: string }>;
 
-/** stderr 累积上限（64 KiB——防长命控制面无界增长，只留排障尾巴） */
-const STDERR_CAP_BYTES = 64 * 1024;
+/** stdout/stderr 尾巴累积上限（64 KiB——防长命控制面无界增长；stdout 尾巴
+ * 还承载末行 stats 写回，stderr 留排障尾巴） */
+const TAIL_CAP_BYTES = 64 * 1024;
 
 const realSpawn: SpawnLike = (cmd, args, { timeoutMs, logFile }) => {
   const { promise, resolve, reject } = Promise.withResolvers<{ exitCode: number; stdout: string }>();
@@ -129,7 +130,7 @@ const realSpawn: SpawnLike = (cmd, args, { timeoutMs, logFile }) => {
   child.stderr?.on('data', (chunk: Buffer) => {
     if (logFile) appendWorkerLog(logFile, stderrDecoder.write(chunk));
     stderrBytes += chunk.length;
-    if (stderrBytes <= STDERR_CAP_BYTES) stderr.push(chunk.toString('utf8'));
+    if (stderrBytes <= TAIL_CAP_BYTES) stderr.push(chunk.toString('utf8'));
   });
   const timer = setTimeout(() => {
     child.kill('SIGKILL');
@@ -138,7 +139,9 @@ const realSpawn: SpawnLike = (cmd, args, { timeoutMs, logFile }) => {
     clearTimeout(timer);
     reject(error);
   });
-  child.on('exit', (code) => {
+  // 结算挂 close 而非 exit：exit 可在 stdio flush 完成前触发，而写回契约的
+  // result.stats 恰是退出前的最后一行——挂 exit 会间歇性丢末行（评审 B-M1）
+  child.on('close', (code) => {
     clearTimeout(timer);
     if (code !== 0 && stderr.length > 0) {
       console.error(`[worker-runner] stderr: ${stderr.join('').slice(0, 2000)}`);
@@ -158,7 +161,7 @@ export interface StdoutTail {
 export function appendStdoutTail(
   buf: StdoutTail,
   text: string,
-  cap = STDERR_CAP_BYTES,
+  cap = TAIL_CAP_BYTES,
 ): void {
   buf.chunks.push(text);
   buf.bytes += Buffer.byteLength(text);

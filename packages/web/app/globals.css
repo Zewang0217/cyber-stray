@@ -486,6 +486,7 @@ html[data-theme="night"] .pet-player {
   --neon: #ff004d;
   --paper: #f8f5f5;
   --ink: #212529;
+  --ink-soft: #4A4238; /* 纸面正文淡墨（#236 评审 M3：升格 token，禁内联 hex） */
   --panel: #2c3136;
   --cat-body: #e8a15d;
   --cat-stripe: #b4693b;
@@ -674,7 +675,6 @@ body.sb-hidden * {
 }
 .neon-sign:hover {
   opacity: 1;
-  text-shadow: 0 0 6px var(--neon);
 }
 /* 水沟盖蒸汽：一次性事件动效（3 粒像素汽上浮消散）；reduced-motion 停帧 */
 .sb-steam {
