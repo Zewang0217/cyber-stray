@@ -91,6 +91,12 @@ async function main(): Promise<void> {
   }
 
   const result = await runOneWander({ tenantId, dataDir, secrets, planArgs, personality, catchphrases, petStats });
+  // LLM 全重试失败（endReason=error）= 游荡没兑现承诺 → exit 1 让 CP 走重试/冷却。
+  // 旧版恒 exit 0：估算写回时代这被掩盖，写回采信回报后不再容许（对齐 feedback-cli 语义）
+  if (result.endReason === "error") {
+    console.error(JSON.stringify({ ok: false, tenantId, error: "wander error: LLM 全部重试失败", result }));
+    process.exit(1);
+  }
   console.log(JSON.stringify({ ok: true, tenantId, result }));
   process.exit(0);
 }
