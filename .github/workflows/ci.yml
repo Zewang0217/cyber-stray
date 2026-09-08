@@ -8,7 +8,7 @@ on:
   push:
     branches: [develop]
   pull_request:
-    branches: [develop]
+    branches: [develop, main] # main：hotfix PR 也过质量门（#238 教训——否则必过检查永不启动）
 
 jobs:
   verify:
