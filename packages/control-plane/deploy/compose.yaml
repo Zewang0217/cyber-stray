@@ -10,6 +10,8 @@
 # 回滚：把占位改成旧 sha（如 ${IMAGE_TAG:-abc123…}）合并到 main 重发，流水线
 # 检测到非占位 tag 时跳过镜像构建、只拉取部署（见 container-update.sh）。
 #
+# 镜像源（#236 发布事故 2026-09-08）：ghcr.1ms.run 代理连续三部署 EOF/TLS 超时，
+# 改直连 ghcr.io；若日后直连不稳可换回代理前缀。
 # 数据布局（单根 /opt/cyber-stray）：控制面 data/、casdoor/{conf,casdoor.db}；
 # backup.sh / restore.sh 同根备份。
 #
@@ -20,7 +22,7 @@ name: cyber-stray
 
 services:
   control-plane:
-    image: ghcr.1ms.run/zewang0217/cyber-stray-app:${IMAGE_TAG:-sha}
+    image: ghcr.io/zewang0217/cyber-stray-app:${IMAGE_TAG:-sha}
     container_name: cyber-stray-control-plane
     restart: always
     # 优雅停机预算（CP_SHUTDOWN_BUDGET_MS 默认 90s）+ 余量：在飞游荡收口再退出
@@ -43,7 +45,7 @@ services:
       start_period: 20s
 
   web:
-    image: ghcr.1ms.run/zewang0217/cyber-stray-web:${IMAGE_TAG:-sha}
+    image: ghcr.io/zewang0217/cyber-stray-web:${IMAGE_TAG:-sha}
     container_name: cyber-stray-web
     restart: always
     depends_on:
