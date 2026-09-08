@@ -25,6 +25,7 @@ import {
   InterestNodeSchema,
   type InterestNode,
 } from '../memory/interest-graph.js';
+import { isPlausibleTopic } from '../memory/topic-validator.js';
 import { createDefaultCuriosityData } from '../memory/curiosity-interests.js';
 import { atomicWriteJson } from '../utils/atomic-json.js';
 
@@ -97,6 +98,12 @@ function parseLegacyNodes(raw: unknown): { nodes: InterestNode[]; invalid: unkno
   for (const item of rawNodes) {
     const parsed = InterestNodeSchema.safeParse(item);
     if (parsed.success) {
+      // #176 准入：URL/搜索 query 形态不得经迁移重新入图（隔离到 invalid，
+      // 随迁移报告留档；存量污染由 clean-interest-graph 兜底）
+      if (!isPlausibleTopic(parsed.data.id)) {
+        invalid.push(item);
+        continue;
+      }
       nodes.push(parsed.data);
     } else {
       invalid.push(item);
@@ -355,4 +362,4 @@ export async function migrateUserProfile(dataDir: string): Promise<MigrationRepo
   });
 
   return report;
-}
+}

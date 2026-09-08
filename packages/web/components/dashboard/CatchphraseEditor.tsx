@@ -8,11 +8,11 @@ import {
   type Catchphrase,
 } from "@cyber-stray/shared";
 import type { Pet } from "@/hooks/usePets";
-import { Button } from "@/components/ui/Button";
 
 
 /**
- * 口头禅编辑卡片（#114 切片 6）：展示当前集合，可改文本/权重/增删，
+ * 口头禅编辑卡片（#114 切片 6；#206 对齐 STRAY-BOY 皮肤 = 设置页 panel 语法：
+ * curb 描边 panel 底 + sky 输入 + 方角像素按钮）。展示当前集合，可改文本/权重/增删，
  * 至少 1 条。保存走 PUT /api/pets/catchphrases，回显由 usePets 刷新承担。
  */
 export function CatchphraseEditor({
@@ -73,11 +73,9 @@ export function CatchphraseEditor({
   };
 
   return (
-    <div className="p-6 paper-card rounded-sm">
-      <h2 className="font-heading text-heading font-semibold text-text mb-1">
-        口头禅
-      </h2>
-      <p className="text-small text-subtext mb-4">
+    <section className="mb-4 border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
+      <h3 className="mb-1 text-[14px] text-[var(--paper)]">口头禅</h3>
+      <p className="mb-2 text-[12px] leading-[1.6] text-[var(--curb)]">
         {pet.name} 说话的招牌。主人点赞会说得更勤，踩会慢慢改口——权重就是它的说话倾向。
       </p>
       <div className="space-y-2 mb-4">
@@ -88,8 +86,8 @@ export function CatchphraseEditor({
               maxLength={CATCHPHRASE_TEXT_MAX}
               onChange={(e) => update(i, { text: e.target.value })}
               placeholder="口头禅文本"
-              className="flex-1 px-3 py-2 rounded-sm bg-[var(--c-paper)] border border-[var(--c-engraving-fine)]
-                text-text placeholder:text-subtext focus:outline-none focus:border-[var(--c-amber)] text-small"
+              className="flex-1 border-2 border-[var(--curb)] bg-[var(--sky)] px-2 py-1 text-[13px]
+                text-[var(--paper)] placeholder:text-[var(--curb)] focus:outline-none focus:border-[var(--ok)]"
             />
             <input
               type="number"
@@ -98,15 +96,15 @@ export function CatchphraseEditor({
               step={0.1}
               value={c.weight}
               onChange={(e) => update(i, { weight: Number(e.target.value) })}
-              className="w-20 px-3 py-2 rounded-sm bg-[var(--c-paper)] border border-[var(--c-engraving-fine)]
-                text-text focus:outline-none focus:border-[var(--c-amber)] text-small font-mono"
+              className="w-20 border-2 border-[var(--curb)] bg-[var(--sky)] px-2 py-1 text-[13px]
+                text-[var(--paper)] focus:outline-none focus:border-[var(--ok)] font-mono"
             />
             <button
               type="button"
               onClick={() => remove(i)}
               disabled={draft.length <= 1}
-              className="px-3 py-2 rounded-sm text-small text-subtext border border-[var(--c-engraving-fine)]
-                hover:text-danger hover:border-danger transition-colors disabled:opacity-30"
+              className="border-2 border-[var(--curb)] bg-[var(--panel)] px-2 py-1 text-[13px] text-[var(--paper)]
+                disabled:opacity-30"
               aria-label={`删除第 ${i + 1} 条`}
             >
               删
@@ -115,18 +113,24 @@ export function CatchphraseEditor({
         ))}
       </div>
       <div className="flex items-center gap-3">
-        <Button
-          variant="secondary"
+        <button
+          type="button"
           onClick={add}
           disabled={draft.length >= CATCHPHRASE_LIST_MAX}
+          className="border-2 border-[var(--curb)] bg-[var(--panel)] px-3 py-1 text-[13px] text-[var(--paper)] disabled:opacity-30"
         >
           加一条（{draft.length}/{CATCHPHRASE_LIST_MAX}）
-        </Button>
-        <Button onClick={() => void save()} disabled={!dirty || saving}>
+        </button>
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={!dirty || saving}
+          className="border-2 border-[var(--ok)] bg-[var(--panel)] px-3 py-1 text-[13px] text-[var(--ok)] disabled:opacity-30"
+        >
           {saving ? "保存中…" : saved ? "已保存" : "保存"}
-        </Button>
-        {err ? <span className="text-small text-danger">{err}</span> : null}
+        </button>
+        {err ? <span className="text-[13px] text-[var(--bad)]">{err}</span> : null}
       </div>
-    </div>
+    </section>
   );
 }

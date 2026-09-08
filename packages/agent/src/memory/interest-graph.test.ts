@@ -311,9 +311,13 @@ describe('InterestGraph', () => {
     graph.addInterest('科技', 0.3, 'default');
     await graph.persist();
 
-    // 模拟一次游荡学到的话题：AI 已知（强化）、两个新话题（加入）
-    const wanderTopics = ['AI', 'arstechnica.com', '量子芯片 最新进展'];
+    // 模拟一次游荡学到的话题：AI 已知（强化）、两个新话题（加入）。
+    // #176：URL/query 形态在 addInterest 就被拒——旧版此测试用域名当夹具，
+    // 恰是生产图谱被污染的根因实证
+    const wanderTopics = ['AI', '量子芯片', '复古掌机'];
     const graph2 = new InterestGraph('data/interests.json');
+    expect(graph2.addInterest('arstechnica.com', 0.3, 'reflection')).toBe(false);
+    expect(graph2.addInterest('OpenAI Jalapeño chip 自研芯片 细节 架构', 0.3, 'reflection')).toBe(false);
     await graph2.load();
     for (const id of wanderTopics) {
       if (graph2.getNode(id)) {
@@ -329,8 +333,10 @@ describe('InterestGraph', () => {
     await reloaded.load();
     expect(reloaded.getNode('AI')!.weight).toBeCloseTo(0.52, 5);
     expect(reloaded.getNode('AI')!.reinforceCount).toBe(1);
-    expect(reloaded.getNode('arstechnica.com')!.source).toBe('reflection');
-    expect(reloaded.getNode('量子芯片 最新进展')!.source).toBe('reflection');
+    // #176：URL/query 被准入拒绝，入图的是干净新话题
+    expect(reloaded.getNode('arstechnica.com')).toBeUndefined();
+    expect(reloaded.getNode('量子芯片')!.source).toBe('reflection');
+    expect(reloaded.getNode('复古掌机')!.source).toBe('reflection');
 
     // 快照追加：persist 必须写出 interest-history.jsonl（evolution 页数据源）
     const historyContent = await readFile('data/interest-history.jsonl', 'utf-8');
@@ -345,7 +351,7 @@ describe('InterestGraph', () => {
     };
     expect(snapshot.timestamp).toBeTruthy();
     expect(snapshot.hash).toMatch(/^[0-9a-f]{8,16}$/);
-    expect(snapshot.nodes).toHaveLength(4);
+    expect(snapshot.nodes).toHaveLength(4); // AI/科技 + 量子芯片/复古掌机（污染件被拒）
     expect(snapshot.nodes.find((n) => n.id === 'AI')!.weight).toBeCloseTo(0.52, 5);
   });
 

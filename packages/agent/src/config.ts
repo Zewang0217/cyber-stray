@@ -91,7 +91,6 @@ type BehaviorConfig = Pick<
   | 'boredomGrowthRate'
   | 'energyRecoveryRate'
   | 'boredomThreshold'
-  | 'energyThreshold'
   | 'energyRecoveringThreshold'
   | 'energyCostPerStep'
   | 'boredomReductionPerStep'
@@ -124,7 +123,6 @@ const defaultBehavior: BehaviorConfig = {
   boredomGrowthRate: 5,
   energyRecoveryRate: 2,
   boredomThreshold: 50,
-  energyThreshold: 20,
   energyRecoveringThreshold: 30,
   energyCostPerStep: 2,
   boredomReductionPerStep: 2,

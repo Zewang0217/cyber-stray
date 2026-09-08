@@ -33,11 +33,10 @@ import {
   propagate,
   isReady,
   resolveRates,
-  resolveWanderEffects,
   type PropagationRates,
   type PropagatedState,
-  type WanderEffects,
 } from './propagate.js';
+import type { PetStats, WanderStatsReport } from '@cyber-stray/shared/pet-stats';
 import type { PersonalityId } from '@cyber-stray/shared';
 import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
 import { isSleeping } from './sleep.js';
@@ -77,12 +76,16 @@ export interface WorkerJob {
   personality: PersonalityId;
   /** 口头禅（#114：当前有效集合 → worker CLI --catchphrases；undefined = agent 侧性格默认组） */
   catchphrases?: string;
+  /** 宠物数值注入（ADR-0013：前推值 + 库中心情/脾气；worker CLI --pet-state） */
+  petStats: PetStats;
 }
 
-/** runner 结果：ok = 游荡完成（exit 0） */
+/** runner 结果：ok = 游荡完成（exit 0）；stats = worker 回报的新数值（ADR-0013 写回） */
 export interface WorkerResult {
   ok: boolean;
   exitCode: number;
+  /** 解析自 worker stdout 末行 JSON；exit 0 但缺失 = 版本错位/输出损坏，落库方须显式告警 */
+  stats?: WanderStatsReport;
 }
 
 /** worker 执行器（生产实现见 worker-runner.ts；测试注入 fake） */
@@ -141,6 +144,8 @@ export class Scheduler {
   private readonly wasSleeping = new Map<string, boolean>();
   /** #96 表情包：日记写完是否触发生成（缺省 true） */
   private readonly memeEnabled: boolean;
+  /** ADR-0013：数值未迁移已告警过的宠物（进程内去抖） */
+  private readonly unmigratedWarned = new Set<string>();
   private timer?: ReturnType<typeof setInterval>;
 
   constructor(private readonly deps: SchedulerDeps) {
@@ -222,6 +227,18 @@ export class Scheduler {
       if (this.running.size >= config.maxConcurrent) break; // 并发上限
 
       // #90 性格：按宠物性格解析速率（好奇=基准，存量行为不变）
+      // ADR-0013：注入需要 mood/temper（migrate:pet-stats 回填前为 null）——
+      // 显式跳过，绝不回退 state.json 陈旧副本；每宠物只告警一次（防分钟级刷屏）
+      if (pet.mood === null || pet.temper === null) {
+        if (!this.unmigratedWarned.has(pet.id)) {
+          this.unmigratedWarned.add(pet.id);
+          console.error(
+            `[scheduler] ${pet.tenantId}/${pet.id} 数值未迁移（mood/temper 为 null），先执行 pnpm --filter @cyber-stray/control-plane migrate:pet-stats`,
+          );
+        }
+        continue;
+      }
+
       const state = propagate(pet, nowMs, resolveRates(pet.personality, config.rates));
       if (!isReady(state)) continue;
 
@@ -233,7 +250,8 @@ export class Scheduler {
       });
       this.launch(
         { ...pet, plan: planByTenant.get(pet.tenantId) ?? 'free' },
-        state,
+        // 守卫已保证 mood/temper 非空：注入值 = 前推瞬时值 + 库中心情/脾气
+        { energy: state.energy, boredom: state.boredom, mood: pet.mood, temper: pet.temper },
         dataDir,
         bus,
         runner,
@@ -379,7 +397,7 @@ export class Scheduler {
    */
   private launch(
     pet: { id: string; tenantId: string; plan: string; pushWindowStart: number | null; pushWindowEnd: number | null; personality: PersonalityId; catchphrases?: string | null },
-    state: PropagatedState,
+    stats: PetStats,
     dataRoot: string,
     bus: EventBus,
     runner: WorkerRunner,
@@ -391,8 +409,6 @@ export class Scheduler {
     const startedAt = now();
     const gen = ++this.genCounter;
     this.running.set(petId, { startedAt, gen });
-    // #90：游荡效果按性格解析一次（写回/冷却共用同一组系数，落库一致）
-    const effects = resolveWanderEffects(pet.personality);
     /** 我是否仍是该宠物当前在飞任务的持有者 */
     const isOwner = () => this.running.get(petId)?.gen === gen;
 
@@ -411,15 +427,17 @@ export class Scheduler {
           plan: this.planArgsFor(pet),
           personality: pet.personality,
           catchphrases: pet.catchphrases ?? undefined,
+          // ADR-0013 注入：前推瞬时值 + 库中心情/脾气
+          petStats: stats,
         });
         if (!result.ok) {
           throw new Error(`worker 退出码 ${result.exitCode}`);
         }
         if (!isOwner()) return; // 已被 TTL 重认领：过期结果不写回
-        await this.handleSuccess(petId, tenantId, state, effects, bus, now);
+        await this.handleSuccess(petId, tenantId, result.stats, bus, now);
       } catch (error) {
         if (!isOwner()) return; // 已被 TTL 重认领：旧失败不干预新任务
-        await this.handleFailure(petId, tenantId, state, effects, bus, now, config, error);
+        await this.handleFailure(petId, tenantId, bus, now, config, error);
       } finally {
         // 只删自己持有的条目（TTL 重认领后条目属于新任务）
         if (isOwner()) this.running.delete(petId);
@@ -443,23 +461,33 @@ export class Scheduler {
     };
   }
 
-  /** 成功：写回 SQLite（前推值扣游荡消耗）+ 清理租约 + 事件 */
+  /**
+   * 成功：采信 worker 回报写回数值（ADR-0013）+ 清理租约 + 事件。
+   * 回报缺失（exit 0 但 stdout 无 stats）：只推 lastRunAt 基线并显式告警——
+   * 叙事成果已发生不回滚，数值保持前推视图，边界取舍在 #221 fog 票承接。
+   */
   private async handleSuccess(
     petId: string,
     tenantId: string,
-    state: PropagatedState,
-    effects: WanderEffects,
+    stats: WanderStatsReport | undefined,
     bus: EventBus,
     now: () => number,
   ): Promise<void> {
     const endAt = now();
+    if (!stats) {
+      console.error(`[scheduler] worker exit 0 但无数值回报（${tenantId}/${petId}），本轮数值不落库`);
+    }
     const dbh = await this.deps.db();
     await dbh
       .update(pets)
       .set({
         lastRunAt: endAt,
-        boredom: Math.max(0, Math.round(state.boredom - effects.boredomRelief)),
-        energy: Math.max(0, Math.round(state.energy - effects.energyCost)),
+        ...(stats
+          ? {
+              boredom: Math.max(0, Math.round(stats.boredom)),
+              energy: Math.max(0, Math.round(stats.energy)),
+            }
+          : {}),
       })
       .where(eq(pets.id, petId))
       .run();
@@ -472,12 +500,11 @@ export class Scheduler {
     });
   }
 
-  /** 失败：lease 重试；超限放弃 + DB 冷却（重启安全） */
+  /** 失败：lease 重试；超限放弃 + DB 冷却（重启安全）。无数值写回——
+   * worker 未回报（ADR-0013 采信回报；冷却语义见下） */
   private async handleFailure(
     petId: string,
     tenantId: string,
-    state: PropagatedState,
-    effects: WanderEffects,
     bus: EventBus,
     now: () => number,
     config: SchedulerConfig,
@@ -501,15 +528,13 @@ export class Scheduler {
       return;
     }
     this.leases.delete(petId);
-    // DB 冷却：重置前推基线（lastRunAt）+ 落"消耗了就绪"的自洽状态
-    // （与成功路径同构），三者一致，冷却后从低无聊重新攒
+    // DB 冷却：重置前推基线（lastRunAt=now，已耗的就绪度随基线归位）+
+    // 冷却窗口；数值不动（worker 未回报，伪造"消耗了就绪"即是 #213 式失真）
     const dbh = await this.deps.db();
     await dbh
       .update(pets)
       .set({
         lastRunAt: failAt,
-        boredom: Math.max(0, Math.round(state.boredom - effects.boredomRelief)),
-        energy: Math.max(0, Math.round(state.energy - effects.energyCost)),
         cooldownUntil: failAt + config.retryBackoffMs,
       })
       .where(eq(pets.id, petId))

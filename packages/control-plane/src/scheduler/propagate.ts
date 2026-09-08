@@ -3,7 +3,8 @@
  *
  * 纯函数：编排状态 time-propagable——不常驻进程，读宠物行 + 当前时刻即可
  * 推出此刻的无聊/精力（无聊随时间上升，精力随时间恢复），夹取 0-100。
- * 前推值是瞬时视图；SQLite 只在游荡写回时落盘（避免每 tick 写库）。
+ * 前推值是瞬时视图，亦是 worker 注入值（ADR-0013）；落盘只发生在游荡
+ * 结束按 worker 回报写回（避免每 tick 写库）。
  */
 
 export const MINUTE_MS = 60_000;
@@ -43,10 +44,6 @@ export const DEFAULT_RATES: PropagationRates = {
 export const READY_BOREDOM = 70;
 export const READY_ENERGY = 40;
 
-/** 一轮游荡的效果：解无聊 -50、耗精力 -30 */
-export const WANDER_BOREDOM_RELIEF = 50;
-export const WANDER_ENERGY_COST = 30;
-
 /** 按性格解析前推速率（纯函数；好奇=基准 1.0 → 等于 DEFAULT_RATES，存量行为不回退） */
 export function resolveRates(
   personality: PersonalityId,
@@ -56,20 +53,6 @@ export function resolveRates(
   return {
     boredomPerMinute: base.boredomPerMinute * p.rates.boredomPerMinute,
     energyPerMinute: base.energyPerMinute * p.rates.energyPerMinute,
-  };
-}
-
-/** 游荡效果（性格系数 × 基准常量，取整保持整数落库） */
-export interface WanderEffects {
-  boredomRelief: number;
-  energyCost: number;
-}
-
-export function resolveWanderEffects(personality: PersonalityId): WanderEffects {
-  const p = getPersonality(personality);
-  return {
-    boredomRelief: Math.round(WANDER_BOREDOM_RELIEF * p.wander.boredomRelief),
-    energyCost: Math.round(WANDER_ENERGY_COST * p.wander.energyCost),
   };
 }
 

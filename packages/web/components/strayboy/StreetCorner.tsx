@@ -15,6 +15,7 @@ import { HudBar } from "@/components/strayboy/HudBar";
 import { HeartBurst } from "@/components/strayboy/HeartBurst";
 import { LogDrawer } from "@/components/strayboy/LogDrawer";
 import { AttrCard } from "@/components/strayboy/AttrCard";
+import { PASSERBY_LINES } from "@/components/strayboy/StreetLife";
 import { PixelStage } from "@/components/strayboy/PixelStage";
 import { PetSprite } from "@/components/strayboy/PetSprite";
 import { WanderLog } from "@/components/strayboy/WanderLog";
@@ -245,6 +246,14 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
     prevLevel.current = view.level;
   }, [view.level]);
 
+  // 路人偶遇台词（#212）：稳定引用——内联箭头会让 PixelStage 的 45s interval
+  // 每次渲染被 clear+重建，台词永不触发（评审 HIGH-1）。不回写 lastActivityRef：
+  // 它是「用户输入」语义，环境事件刷新会杀掉待机小剧场与 attract mode（评审 MEDIUM-3）
+  const onPasserbyGreet = useCallback((): void => {
+    const line = PASSERBY_LINES[Math.floor(Math.random() * PASSERBY_LINES.length)];
+    setDialog(line);
+  }, []);
+
   const pat = useCallback((): void => {
     lastActivityRef.current = Date.now();
     setAttract(false);
@@ -270,18 +279,61 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
   }, [view.sleeping, onPat, reset]);
 
   const onStreet = !view.away && !view.sleeping;
+
+  // #218 失败态 = 瞬时覆盖：连续失败 ≥3 触发一段 grumpy（数值态 bored 才是常态，
+  // 二者分离——失败过几天不等于从此臭脸）
+  const failures = state?.consecutiveFailures ?? 0;
+  useEffect(() => {
+    if (failures < 3) return;
+    setGrumpyOn(true);
+    const id = setTimeout(() => setGrumpyOn(false), GRUMPY_MS);
+    // 复位放 cleanup 而非 <3 分支：回落（游荡成功清零）时 cleanup 清定时器并复位，
+    // 滞留路径封死（评审 HIGH-1）；failures 从未 ≥3 则 cleanup 不注册，
+    // 不压制 #190 时间机器记仇的 grumpy（复审 MEDIUM-1）
+    return () => {
+      clearTimeout(id);
+      setGrumpyOn(false);
+    };
+  }, [failures]);
+
   const theaterAnim = theater && onStreet ? theater.anim : null;
   const anim = grumpyOn && onStreet
     ? "grumpy"
     : overrideAnim && onStreet ? overrideAnim
     : theaterAnim ?? view.anim;
 
+  // #218 随机 joy 闪烁：低频（约 2 分钟一次四成概率）、仅合成后站街 idle——
+  // 打盹/无聊 grumpy 不被 joy 打断（评审 MEDIUM-1）；updater 内不带副作用（LOW-1）。
+  // anim 变化即重挂 interval（覆盖期间不计时，回 idle 重新低频起算）
+  useEffect(() => {
+    if (anim !== "idle") return;
+    const id = setInterval(() => {
+      if (Math.random() < 0.4) {
+        setOverrideAnim("joy");
+        setTimeout(() => setOverrideAnim(null), PAT_ANIM_MS);
+      }
+    }, 120_000);
+    return () => clearInterval(id);
+  }, [anim]);
+
   return (
-    <div className="sb mx-auto flex max-w-3xl flex-col gap-3 p-3">
-      <PixelStage onStreet={!view.away} demo={demo} daytime={!view.sleeping}>
+    <div className="sb mx-auto flex max-w-3xl flex-col gap-3 p-3 lg:grid lg:max-w-5xl lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+      <div className="lg:col-start-1 lg:row-start-1">
+      <PixelStage
+        onStreet={!view.away}
+        demo={demo}
+        daytime={!view.sleeping}
+        onPasserbyGreet={onPasserbyGreet}
+      >
         {!view.away && (
-          <button type="button" aria-label={`拍拍${pet.name}`} className="cursor-pointer" onClick={pat}>
-            <PetSprite contract={contract} anim={anim} scale={3} hungry={view.hungry && view.anim === "idle"} coat={coat} />
+          <button type="button" aria-label={`拍拍${pet.name}`} className="relative cursor-pointer" onClick={pat}>
+            <PetSprite contract={contract} anim={anim} scale={3} hungry={view.hungry && (anim === "idle" || view.napping)} coat={coat} />
+            {/* 打盹角标（#218）：非睡眠期的精力低打盹，复用 sleep 帧 + zZ 与 #91 睡眠期区分 */}
+            {view.napping && anim === "sleep" && (
+              <span aria-hidden className="sb-blink absolute -top-2 right-0 font-vt323 text-[13px] leading-none text-[var(--curb)]">
+                zZ
+              </span>
+            )}
           </button>
         )}
         {hearts > 0 && <HeartBurst key={hearts} />}
@@ -291,6 +343,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
           </span>
         )}
       </PixelStage>
+      </div>
       {/* 霓虹换牌（delight B13）：图鉴 No.1 更替时短暂换文案 */}
       {neonTopic && (
         <p aria-hidden className="font-ps2p absolute right-6 top-6 z-[6] text-[10px] text-[var(--neon)] sb-blink">
@@ -305,7 +358,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
         </div>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between lg:col-start-1 lg:row-start-2">
         <button
           type="button"
           onClick={() => setAttrCardOpen(true)}
@@ -327,16 +380,27 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
         </span>
       </div>
 
-      {/* HUD 三墨条（spec Decision 6：饥饿↔精力反向 / 无聊 / 心情↔脾气反向）；心情高分=好，低值才告警 */}
-      <div className="flex flex-col gap-1.5 border-2 border-black bg-[var(--panel)] p-3 shadow-[4px_4px_0_#000]">
-        <HudBar label="饥饿" value={view.bars.hunger} warnAt={80} />
+      {/* HUD 三墨条 + 心情标签（ADR-0013 §4 / #217：后端原始值零换算，精力高=好；
+          心情 = 枚举原文非分数；state 缺失显未知态不伪装健康。lg 桌面入右列） */}
+      <div className="flex flex-col gap-1.5 border-2 border-black bg-[var(--panel)] p-3 shadow-[4px_4px_0_#000] lg:col-start-2 lg:row-start-1">
+        <HudBar label="精力" value={view.bars.energy} warnBelow={20} />
         <HudBar label="无聊" value={view.bars.boredom} warnAt={80} />
-        <HudBar label="心情" value={view.bars.mood} warnBelow={20} />
+        <HudBar label="脾气" value={view.bars.temper} warnAt={80} />
+        <div className="flex items-center gap-2">
+          <span className="w-10 shrink-0 text-[12px] text-[var(--paper)]">心情</span>
+          <span className="border-2 border-[var(--curb)] bg-[var(--sky)] px-2 py-0.5 font-vt323 text-[14px] uppercase text-[var(--paper)]">
+            {view.mood ?? "--"}
+          </span>
+        </div>
       </div>
 
-      <DialogBox name={pet.name} text={dialog} />
+      <div className="lg:col-start-2 lg:row-start-2">
+        <DialogBox name={pet.name} text={dialog} />
+      </div>
 
-      <WanderLog history={state?.wanderHistory ?? []} />
+      <div className="lg:col-span-2 lg:col-start-1 lg:row-start-3">
+        <WanderLog history={state?.wanderHistory ?? []} />
+      </div>
 
       {SHOW_WANDER_BUTTON && (
         <button type="button" className="sb-shadow border-2 border-black bg-[var(--act)] px-3 py-2 text-[13px] text-[var(--sky)]">

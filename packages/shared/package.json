@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/personality.ts",
     "./pet": "./src/pet.ts",
+    "./pet-stats": "./src/pet-stats.ts",
     "./diary": "./src/diary.ts"
   },
   "scripts": {

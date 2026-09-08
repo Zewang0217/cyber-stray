@@ -28,9 +28,9 @@ function Stamp({ kind }: { kind: string }) {
 }
 
 /**
- * 明信片（DESIGN.md §6 / components.md）：paper 底 4px 墨描边 + 实色落影、
- * 右上像素邮票、左上 mono 竖排日期签、未读 NEW! 黄徽章 steps 闪烁、
- * 标题像素短串 + 摘要 Noto Sans SC、👍/👎 + 顶话题。
+ * 明信片（DESIGN.md §6 / components.md §MailCard #205 修订）：paper 底 4px 墨描边 +
+ * 实色落影、右上像素邮票、左上 mono 竖排日期签、未读 NEW! 黄徽章 steps 闪烁、
+ * 卡片只显像素标题（点开 = PostcardDetail 读全文）、👍/👎 + 顶话题。
  */
 export function MailCard({
   card,
@@ -39,6 +39,7 @@ export function MailCard({
   onFeedback,
   onPin,
   pending,
+  onOpen,
 }: {
   card: PushContent;
   adoptedAt: number;
@@ -46,6 +47,8 @@ export function MailCard({
   onFeedback: (type: "like" | "dislike", card: PushContent) => void;
   onPin: (card: PushContent) => void;
   pending: boolean;
+  /** #205：墙上卡片只显标题，点卡片进详情读全文 */
+  onOpen: (card: PushContent) => void;
 }) {
   const { day, hhmm } = stampLabel(card.timestamp, adoptedAt);
   const unread = isUnread(card.timestamp, seenMs);
@@ -54,7 +57,7 @@ export function MailCard({
   const pinTopic = card.matchedTopics?.[0];
 
   return (
-    <article className="relative border-4 border-[var(--ink)] bg-[var(--paper)] p-4 pt-6 shadow-[6px_6px_0_#000]">
+    <article className="relative border-4 border-[var(--ink)] bg-[var(--paper)] p-4 pt-6 shadow-[6px_6px_0_#000] lg:mb-5 lg:break-inside-avoid">
       {/* 左上 mono 竖排日期签 */}
       <span
         aria-hidden
@@ -73,8 +76,16 @@ export function MailCard({
           NEW!
         </span>
       )}
-      <h3 className="sb mb-1.5 pl-5 pr-10 text-[15px] leading-[1.5] text-[var(--ink)]">{title}</h3>
-      <p className="font-noto mb-3 pl-5 text-[13.5px] leading-[1.65] text-[#4A4238]">{card.summary}</p>
+      {/* #205：卡片只显标题（摘要/正文进详情）；标题本身是打开详情的按钮 */}
+      <h3 className="mb-1.5 pl-5 pr-10">
+        <button
+          type="button"
+          onClick={() => onOpen(card)}
+          className="sb text-left text-[15px] leading-[1.5] text-[var(--ink)] underline decoration-dotted decoration-[var(--curb)] underline-offset-4"
+        >
+          {title}
+        </button>
+      </h3>
       <div className="flex items-center gap-2 pl-5">
         <button
           type="button"

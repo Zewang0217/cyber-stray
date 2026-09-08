@@ -13,9 +13,6 @@ import {
   MINUTE_MS,
   DEFAULT_RATES,
   resolveRates,
-  resolveWanderEffects,
-  WANDER_BOREDOM_RELIEF,
-  WANDER_ENERGY_COST,
   type PropagationRates,
 } from './propagate.js';
 
@@ -108,18 +105,4 @@ describe('性格参数派生（#90）', () => {
     expect(() => resolveRates('grumpy')).toThrow(/grumpy/);
   });
 
-  it('好奇游荡效果 = 基准常量（存量写回不回退）', () => {
-    expect(resolveWanderEffects('curious')).toEqual({
-      boredomRelief: WANDER_BOREDOM_RELIEF,
-      energyCost: WANDER_ENERGY_COST,
-    });
-  });
-
-  it('活泼游荡耗能更高（×1.15 → 35）；慵懒更省（×0.8 → 24）', () => {
-    const playful = resolveWanderEffects('playful');
-    const lazy = resolveWanderEffects('lazy');
-    expect(playful.energyCost).toBe(Math.round(WANDER_ENERGY_COST * 1.15));
-    expect(lazy.energyCost).toBe(Math.round(WANDER_ENERGY_COST * 0.8));
-    expect(playful.energyCost).toBeGreaterThan(lazy.energyCost);
-  });
 });

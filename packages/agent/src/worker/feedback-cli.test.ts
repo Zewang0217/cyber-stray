@@ -56,6 +56,31 @@ describe('feedback-cli（S9 REST 反馈 worker 入口）', () => {
   });
 
   describe('runFeedbackWorker：like/dislike/boost 分发', () => {
+    it('ADR-0013 注入：petStats.mood/temper → statsUpdated 增量随结果回报（P0-1 回归）', async () => {
+      const result = await runFeedbackWorker({
+        dataDir,
+        action: 'feedback',
+        type: 'like',
+        messageId: 'om-none',
+        // CP 实际注入形状：只有 mood/temper 两字段（评审 P0-1 抓的全量校验误杀）
+        petStats: { mood: 'grumpy', temper: 50 },
+      });
+      expect(result.recorded).toBe(true);
+      // like：temper 50-5=45；45 ≥ 30 不触发 excited
+      expect(result.statsUpdated).toEqual({ temper: 45 });
+    });
+
+    it('ADR-0013：未注入 petStats → statsUpdated 为 null（不读 state.json 数值）', async () => {
+      const result = await runFeedbackWorker({
+        dataDir,
+        action: 'feedback',
+        type: 'like',
+        messageId: 'om-none',
+      });
+      expect(result.recorded).toBe(true);
+      expect(result.statsUpdated).toBeNull();
+    });
+
     it('like：历史归因 → 兴趣强化 → feedback.json 记录', async () => {
       await mkdir(join(dataDir, 'memory'), { recursive: true });
       const graph = getInterestGraph();

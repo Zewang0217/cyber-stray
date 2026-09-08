@@ -2,7 +2,7 @@
  * worker CLI — 外部进程入口（调度器拉起：`tsx src/worker/cli.ts`）
  *
  * 用法：
- *   tsx src/worker/cli.ts --tenant <id> --data-dir <dir> [--secrets-file <path>]
+ *   tsx src/worker/cli.ts --tenant <id> --data-dir <dir> --pet-state <JSON> [--secrets-file <path>]
  *
  * 退出码：0 = 游荡完成；1 = 游荡失败；2 = 参数错误。
  * 输出：stdout 一行 JSON（{ ok, tenantId, result }）；失败时 stderr 一行 JSON。
@@ -16,6 +16,7 @@ import { readFileSync } from 'fs';
 import { initLogger } from '../logger.js';
 import { runOneWander } from './run-one-wander.js';
 import { isPersonalityId, parseCatchphraseList, type Catchphrase, type PersonalityId } from '@cyber-stray/shared';
+import { parsePetStats, type PetStats } from '@cyber-stray/shared/pet-stats';
 import type { AgentSecrets, PlanExecutionArgs } from '../types.js';
 
 function parseArg(name: string): string | undefined {
@@ -32,7 +33,17 @@ async function main(): Promise<void> {
 
   if (!tenantId || !dataDir) {
     console.error(
-      '用法: tsx src/worker/cli.ts --tenant <id> --data-dir <dir> [--secrets-file <path>] [--personality <id>]',
+      '用法: tsx src/worker/cli.ts --tenant <id> --data-dir <dir> --pet-state <JSON> [--secrets-file <path>] [--personality <id>]',
+    );
+    process.exit(2);
+  }
+
+  // ADR-0013 注入：宠物数值真相源在 CP pets 表，调度器必传——缺参/形状非法
+  // 显式失败（exit 2），绝不回退 state.json 陈旧副本（#173/#213 的根因）
+  const petStats = parsePetStateArg(parseArg('pet-state'));
+  if (petStats === null) {
+    console.error(
+      JSON.stringify({ ok: false, tenantId, error: '--pet-state 缺失或形状非法（须为 {energy,boredom,mood,temper} JSON）' }),
     );
     process.exit(2);
   }
@@ -79,15 +90,43 @@ async function main(): Promise<void> {
     catchphrases = parsed;
   }
 
-  const result = await runOneWander({ tenantId, dataDir, secrets, planArgs, personality, catchphrases });
+  const result = await runOneWander({ tenantId, dataDir, secrets, planArgs, personality, catchphrases, petStats });
+  // LLM 全重试失败（endReason=error）= 游荡没兑现承诺 → exit 1 让 CP 走重试/冷却。
+  // 旧版恒 exit 0：估算写回时代这被掩盖，写回采信回报后不再容许（对齐 feedback-cli 语义）
+  if (result.endReason === "error") {
+    console.error(JSON.stringify({ ok: false, tenantId, error: "wander error: LLM 全部重试失败", result }));
+    process.exit(1);
+  }
   console.log(JSON.stringify({ ok: true, tenantId, result }));
   process.exit(0);
 }
 
-main().catch((error: unknown) => {
-  const tenantId = parseArg('tenant');
-  console.error(
-    JSON.stringify({ ok: false, tenantId, error: error instanceof Error ? error.message : String(error) }),
-  );
-  process.exit(1);
-});
+/** JSON.parse 失败返回 null（交给统一判非法，不在此抛） */
+function safeJsonParse(raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 解析 --pet-state 注入参数；缺失/形状非法返回 null（导出以覆盖 CLI 边界
+ * 测试——评审 P0-1 教训：跨进程字符串边界是类型系统盲区，必须直测）。
+ */
+export function parsePetStateArg(raw: string | undefined): PetStats | null {
+  if (raw === undefined) return null;
+  return parsePetStats(safeJsonParse(raw));
+}
+
+// 直接执行（非被 import）时跑 main（同 feedback-cli 守卫模式；guard 使
+// parsePetStateArg 可被测试导入）
+if (process.argv[1]?.endsWith('worker/cli.ts')) {
+  main().catch((error: unknown) => {
+    const tenantId = parseArg('tenant');
+    console.error(
+      JSON.stringify({ ok: false, tenantId, error: error instanceof Error ? error.message : String(error) }),
+    );
+    process.exit(1);
+  });
+}
