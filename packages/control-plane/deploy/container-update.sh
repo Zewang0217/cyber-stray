@@ -73,7 +73,7 @@ echo "    全部健康：控制面 healthz / web / Casdoor OIDC ✓"
 
 echo "==> [4/4] 镜像清理（仅本项目镜像；保留在用 tag）"
 docker image prune -f >/dev/null 2>&1 || true
-for repo in ghcr.1ms.run/zewang0217/cyber-stray-app ghcr.1ms.run/zewang0217/cyber-stray-web; do
+for repo in ghcr.io/zewang0217/cyber-stray-app ghcr.io/zewang0217/cyber-stray-web ghcr.1ms.run/zewang0217/cyber-stray-app ghcr.1ms.run/zewang0217/cyber-stray-web; do
   docker images "$repo" --format '{{.Repository}}:{{.Tag}}' \
     | grep -v ":$TAG$" \
     | xargs -r -n1 docker rmi -f >/dev/null 2>&1 || true
