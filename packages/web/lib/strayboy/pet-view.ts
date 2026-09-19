@@ -13,6 +13,8 @@ export interface PetRecord {
   sleepEnd: number | null;
   personality?: string;
   catchphrases?: Array<{ text: string }>;
+  /** #265 每日 LLM 预算耗尽停派（CP pets GET 下发；SSE 转变沿由街角本地合并） */
+  budgetPaused?: boolean;
 }
 
 /** 精力低于该值 → 饿演出（眼睛叠加 + 告警墨条色）；演出层保留，HUD 文案不再出现「饥饿」。 */
@@ -53,7 +55,9 @@ export function deriveStreetView(
   const energy = state?.energy ?? null;
   const boredom = state?.boredom ?? null;
   const temper = state?.temper ?? null;
-  const sleeping = isSleeping(now.getHours(), pet.sleepStart, pet.sleepEnd);
+  // #265：预算耗尽 = 租户侧「宠物在睡觉」，共用睡眠演出（夜幕 + sleep 帧 +
+  // 拍睡台词），不造第二种睡觉视觉；作息睡眠（#91）同样源于「这轮不出门」
+  const sleeping = isSleeping(now.getHours(), pet.sleepStart, pet.sleepEnd) || pet.budgetPaused === true;
   // state 缺失 = 未知，不触发饿演出（拿 null 冒充健康/饥饿都是编造）
   const hungry = energy !== null && energy < HUNGRY_ENERGY_THRESHOLD;
   // #218 数值常态演出：优先级 游荡 > 睡眠 > 打盹 > 无聊 grumpy > idle；

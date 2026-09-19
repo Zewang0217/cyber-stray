@@ -148,6 +148,8 @@ export class WanderAgent {
       temperature: this.agentConfig.wanderTemperature,
       llmModel: this.agentConfig.llmModel,
       generateTextMaxRetries: this.agentConfig.generateTextMaxRetries ?? 1,
+      // #265：CP 下发的整轮预算（workerTimeout − 余量）；未注入 = 单用户模式不设限
+      llmTimeoutMs: this.agentConfig.plan?.llmTimeoutMs,
     };
 
     const result = await wanderLoop({

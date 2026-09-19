@@ -11,7 +11,7 @@
  */
 
 import { Hono } from 'hono';
-import { readFile, readdir } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { eq } from 'drizzle-orm';
 import type { ControlPlaneConfig } from '../config.js';
@@ -22,12 +22,19 @@ import { PLAN_VALUES, type PlanValue } from '../plan/limits.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
 import { costOf, type UsageRow } from '../pricing.js';
+import { localDateKey, readTenantUsage } from '../usage.js';
 import { getModelConfig, setModelConfig, refreshModelConfig, MODEL_CANDIDATES, validateModelId, type ModelConfig } from '../app-config.js';
 
 export interface AdminDeps {
   config: Pick<
     ControlPlaneConfig,
-    'dataDir' | 'sessionSecret' | 'adminSubs' | 'arkImageModel' | 'visionModel'
+    | 'dataDir'
+    | 'sessionSecret'
+    | 'adminSubs'
+    | 'arkImageModel'
+    | 'visionModel'
+    | 'llmBudgetEnabled'
+    | 'llmBudgetYuan'
   >;
 }
 
@@ -67,57 +74,7 @@ async function readTenantStats(dataDir: string, tenantId: string): Promise<{
   }
 }
 
-/** usage 文件名日期（usage-YYYY-MM-DD.jsonl → 'YYYY-MM-DD'）；非法名 = null */
-function usageFileDate(file: string): string | null {
-  const m = /^usage-(\d{4}-\d{2}-\d{2})\.jsonl$/.exec(file);
-  return m ? m[1]! : null;
-}
-
-/** 读租户 usage 行（时间范围 [from, to] 日期字符串；缺省全部；行内 timestamp 再筛） */
-async function readTenantUsage(
-  dataDir: string,
-  tenantId: string,
-  from?: string,
-  to?: string,
-): Promise<UsageRow[]> {
-  const dir = join(tenantDataDir(dataDir, tenantId), 'usage');
-  let files: string[];
-  try {
-    files = await readdir(dir);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; // 租户未产生用量 = 合法空态
-    throw error;
-  }
-  const rows: UsageRow[] = [];
-  for (const file of files) {
-    const date = usageFileDate(file);
-    if (!date) continue;
-    if (from && date < from) continue;
-    if (to && date > to) continue;
-    let content: string;
-    try {
-      content = await readFile(join(dir, file), 'utf-8');
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue; // 并发轮转可能消失
-      throw error;
-    }
-    for (const line of content.split('\n')) {
-      if (!line.trim()) continue;
-      let row: UsageRow;
-      try {
-        row = JSON.parse(line) as UsageRow;
-      } catch {
-        continue; // 半行写入（崩溃残留）跳过，不拖垮聚合
-      }
-      if (!row.timestamp || typeof row.kind !== 'string') continue;
-      const day = row.timestamp.slice(0, 10);
-      if (from && day < from) continue;
-      if (to && day > to) continue;
-      rows.push(row);
-    }
-  }
-  return rows;
-}
+/** usage 文件名日期与行读取已下沉 usage.ts（预算闸与聚合共用一份实现） */
 
 /** 租户级用量聚合（单租户；无数据 = 0，不报错） */
 function aggregateTenantUsage(rows: UsageRow[]): {
@@ -303,6 +260,7 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
    *
    * 响应：summary（总费用/token/张数）+ perTenant（每租户聚合）+ recent（最近 50 条明细）。
    * 费用按内置默认单价表折算（pricing.ts）；未知模型 0（不瞎估）。
+   * #265：perTenant 附今日 LLM 水位（llmCostToday + llmBudgetYuan；null = 未启用/不限）。
    */
   app.get('/usage', async (c) => {
     const auth = await adminSession(c.req.raw, config);
@@ -316,16 +274,27 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
       return c.json(jsonError('from/to 须为 YYYY-MM-DD'), 400);
     }
 
+    const today = localDateKey();
+    const budgetYuanFor = (plan: string): number | null => {
+      if (!config.llmBudgetEnabled) return null;
+      const yuan = config.llmBudgetYuan[plan as keyof typeof config.llmBudgetYuan] ?? 0;
+      return yuan > 0 ? yuan : null; // 0 = 该套餐不限
+    };
+
     const db = await getDb(config.dataDir);
     const tenantRows = await db.select().from(tenants).all();
     const perTenant = await Promise.all(
       tenantRows.map(async (t) => {
         const rows = await readTenantUsage(config.dataDir, t.id, from, to);
         const agg = aggregateTenantUsage(rows);
+        const todayRows = await readTenantUsage(config.dataDir, t.id, today, today);
+        const llmCostToday = todayRows.reduce((s, row) => (row.kind === 'llm' ? s + costOf(row) : s), 0);
         return {
           tenantId: t.id,
           tenantName: t.name,
           plan: t.plan,
+          llmCostToday,
+          llmBudgetYuan: budgetYuanFor(t.plan),
           ...agg,
         };
       }),

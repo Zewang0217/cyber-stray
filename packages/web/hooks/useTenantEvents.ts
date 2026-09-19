@@ -11,20 +11,26 @@ export interface TenantEvent {
     | "worker_retry"
     | "worker_failed"
     | "worker_timeout"
-    | "diary_generated";
+    | "diary_generated"
+    | "budget_exhausted"
+    | "budget_resumed"
+    | "budget_check_failed";
   tenantId: string;
   petId: string;
   at: number;
   detail?: string;
 }
 
-/** worker 生命周期事件 = 一轮游荡可能改了 state/interests/推送历史 */
+/** worker 生命周期事件 = 一轮游荡可能改了 state/interests/推送历史。
+ * #265 预算事件一并刷新：budgetPaused 的真相源是 CP pets GET（SSE 只给转变沿） */
 const REFRESH_EVENT_TYPES = new Set<TenantEvent["type"]>([
   "worker_succeeded",
   "worker_failed",
   "worker_timeout",
   "worker_retry",
   "diary_generated",
+  "budget_exhausted",
+  "budget_resumed",
 ]);
 
 interface UseTenantEventsReturn {
