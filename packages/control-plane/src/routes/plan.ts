@@ -5,8 +5,9 @@
  * 推送时间窗、BYOK 自带 DeepSeek key（S4 加密存储，worker-runner 注入
  * deepseek_api_key → AgentSecrets.deepseekApiKey，agent 侧 BYOK 挡 env 回退）。
  *
- * 计费（Stripe）后续接入后由 billing 表落账；当前切换无支付校验（自托管
- * 早期形态，计费落地时在此收口）。
+ * 套餐变更 admin-only（RBAC 复用 admin 路由判定，#264——自助切换是白嫖
+ * 平台配额的口子）；BYOK 绑 key 对所有套餐开放（自带 key 降平台成本），
+ * 绑 key 不变更套餐。计费（Stripe）后续接入后在支付链路收口。
  *
  * 租户只由 session claim 决定（x-tenant-* header 一律忽略）。
  */
@@ -19,9 +20,10 @@ import { pets, tenants, userTenants } from '../db/schema.js';
 import { planLimits, PLAN_VALUES, type PlanValue } from '../plan/limits.js';
 import { openTenantSecrets, TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
+import { adminSession } from './admin.js';
 
 export interface PlanDeps {
-  config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
+  config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret' | 'adminSubs'>;
 }
 
 /** BYOK DeepSeek key 的 S4 存储名（worker-runner SECRET_FIELD_BY_NAME 同名约定） */
@@ -88,11 +90,16 @@ export function createPlanRoutes({ config }: PlanDeps): Hono {
     });
   });
 
-  /** PUT /api/plan — 切换套餐 */
+  /** PUT /api/plan — 切换套餐（admin-only，#264） */
   app.put('/', async (c) => {
     const scoped = await scopedTenantId(c.req.raw, config);
     if ('error' in scoped) {
       return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
+    }
+
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) {
+      return c.json(jsonError(auth.error === 401 ? '未登录' : '仅管理员可变更套餐'), auth.error);
     }
 
     let body: { plan?: unknown };
@@ -177,7 +184,7 @@ export function createPlanRoutes({ config }: PlanDeps): Hono {
     return c.json({ success: true, data: { cleared: true } });
   });
 
-  /** PUT /api/plan/byok-key — BYOK 自带 DeepSeek key（S4 加密存储） */
+  /** PUT /api/plan/byok-key — BYOK 自带 DeepSeek key 对所有套餐开放 */
   app.put('/byok-key', async (c) => {
     const scoped = await scopedTenantId(c.req.raw, config);
     if ('error' in scoped) {
@@ -197,10 +204,6 @@ export function createPlanRoutes({ config }: PlanDeps): Hono {
     const db = await getDb(config.dataDir);
     const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
     if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
-    const tenant = await db.select().from(tenants).where(eq(tenants.id, scoped.tenantId)).get();
-    if ((tenant?.plan ?? 'free') !== 'byok') {
-      return c.json(jsonError('BYOK key 仅 byok 套餐可配置'), 403);
-    }
 
     const store = await openTenantSecrets(config.dataDir, scoped.tenantId);
     await store.set(BYOK_KEY_SECRET, body.apiKey.trim());

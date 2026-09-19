@@ -34,9 +34,9 @@ export interface AdminDeps {
 const jsonError = (message: string) => ({ success: false, error: message });
 
 /** 管理员判定：session 有效且 sub ∈ admins 表 ∪ env 白名单 */
-async function adminSession(
+export async function adminSession(
   req: Request,
-  config: AdminDeps['config'],
+  config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret' | 'adminSubs'>,
 ): Promise<{ sub: string } | { error: 401 | 403 }> {
   const session = await resolveTenantFromRequest(req, config.sessionSecret);
   if (!session) return { error: 401 };
