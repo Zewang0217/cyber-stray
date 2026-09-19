@@ -21,7 +21,7 @@ export interface GracefulShutdownDeps {
   drain: () => Promise<void>;
   /** 预算耗尽/未收口时强制终止在飞 worker（stopAllWorkers + stopAllDiaryWorkers） */
   forceKill: () => void;
-  /** 收口后卸除推送分发与轮询（push gateway / wechat gateway detach） */
+  /** 收口后卸除推送分发（push gateway detach） */
   detach: () => void;
   /** 进程退出（生产 process.exit；测试注入） */
   exit: (code: number) => void;

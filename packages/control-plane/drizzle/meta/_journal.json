@@ -113,6 +113,13 @@
       "when": 1788798214790,
       "tag": "0015_pet_mood_temper",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1789823075767,
+      "tag": "0016_drop_wechat_bindings",
+      "breakpoints": true
     }
   ]
 }

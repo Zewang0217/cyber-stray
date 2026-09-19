@@ -242,7 +242,7 @@ graph TB
     subgraph Actions["🔧 行动模块"]
         SEARCH[🔍 信息搜索<br/>多源聚合]
         READ[📖 内容解析<br/>提炼精华]
-        PUSH[📨 智能推送<br/>飞书/微信]
+        PUSH[📨 智能推送<br/>飞书/系统推送]
         REST[😴 自主休息<br/>能量管理]
     end
 
@@ -461,8 +461,8 @@ layout: section
 <div v-click="+1" class="group">
   <div class="p-6 rounded-2xl bg-gradient-to-br from-amber-900/30 to-orange-900/30 border border-amber-700/50 h-full transition-all duration-300 group-hover:border-amber-500">
     <div class="text-4xl mb-4">📡</div>
-    <h3 class="text-lg font-bold text-amber-400 mb-2">四通道触达</h3>
-    <p class="text-sm text-slate-400">飞书 · Telegram · PWA 仪表盘 · 微信（iLink）——主人在哪，宠物就在哪</p>
+    <h3 class="text-lg font-bold text-amber-400 mb-2">三通道触达</h3>
+    <p class="text-sm text-slate-400">飞书 · Telegram · PWA 仪表盘——主人在哪，宠物就在哪</p>
   </div>
 </div>
 
