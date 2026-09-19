@@ -10,7 +10,7 @@ import { getOrCreateTenant } from '../tenant.js';
 import { signSession, SESSION_COOKIE } from '../session.js';
 import { loadMasterKey } from '../secrets/master-key.js';
 import { openTenantSecrets } from '../secrets/tenant-secrets.js';
-import { pets, tenants } from '../db/schema.js';
+import { pets, tenants, userTenants } from '../db/schema.js';
 import { createPlanRoutes } from './plan.js';
 
 const SECRET = 'x'.repeat(40);
@@ -28,7 +28,7 @@ describe('plan 路由（S11 套餐管理）', () => {
     writeFileSync(join(dataDir, 'master.key'), 'ab'.repeat(32), { mode: 0o600 });
     await loadMasterKey(dataDir);
     app = new Hono();
-    const config = { dataDir, sessionSecret: SECRET } as Parameters<
+    const config = { dataDir, sessionSecret: SECRET, adminSubs: ['alice'] } as Parameters<
       typeof createPlanRoutes
     >[0]['config'];
     app.route('/api/plan', createPlanRoutes({ config }));
@@ -88,7 +88,7 @@ describe('plan 路由（S11 套餐管理）', () => {
     expect(noPet.status).toBe(409);
   });
 
-  it('PUT /api/plan：切 free→pro 落库；未知 plan → 400', async () => {
+  it('PUT /api/plan：admin 切 free→pro 落库；未知 plan → 400', async () => {
     await seedPet('alice');
 
     const res = await app.request(
@@ -128,6 +128,26 @@ describe('plan 路由（S11 套餐管理）', () => {
     expect(tenant?.plan).toBe('free');
     expect(pet?.pushWindowStart).toBeNull();
     expect(pet?.pushWindowEnd).toBeNull();
+  });
+
+  it('PUT /api/plan：非 admin 成员 → 403 且套餐不变（#264 收口）', async () => {
+    await seedPet('alice');
+    const db = await getDb(dataDir);
+    await db.insert(userTenants).values({ userId: 'mallory', tenantId: 'alice' }).run();
+
+    const res = await app.request(
+      await authed(
+        'http://x/api/plan',
+        { method: 'PUT', body: JSON.stringify({ plan: 'pro' }) },
+        { sub: 'mallory', tenantId: 'alice' },
+      ),
+    );
+    expect(res.status).toBe(403);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toBe('仅管理员可变更套餐');
+
+    const tenant = await db.select().from(tenants).where(eq(tenants.id, 'alice')).get();
+    expect(tenant?.plan).toBe('free');
   });
 
   it('PUT /api/plan/push-window：pro 设窗口（跨午夜合法）；free → 403；非法小时 → 400', async () => {
@@ -192,10 +212,8 @@ describe('plan 路由（S11 套餐管理）', () => {
     expect(pet?.pushWindowEnd).toBeNull();
   });
 
-  it('PUT /api/plan/byok-key：存 S4 加密 deepseek_api_key；非 byok 套餐 → 403', async () => {
+  it('PUT /api/plan/byok-key：存 S4 加密 deepseek_api_key；free 套餐也可绑/解绑（#264）', async () => {
     await seedPet('alice');
-    const db = await getDb(dataDir);
-    await db.update(tenants).set({ plan: 'byok' }).where(eq(tenants.id, 'alice')).run();
 
     const res = await app.request(
       await authed('http://x/api/plan/byok-key', {
@@ -209,15 +227,10 @@ describe('plan 路由（S11 套餐管理）', () => {
     const store = await openTenantSecrets(dataDir, 'alice');
     expect(await store.get('deepseek_api_key')).toBe('sk-byok-test-123');
 
-    // 非 byok 套餐拒绝
-    await db.update(tenants).set({ plan: 'free' }).where(eq(tenants.id, 'alice')).run();
-    const denied = await app.request(
-      await authed('http://x/api/plan/byok-key', {
-        method: 'PUT',
-        body: JSON.stringify({ apiKey: 'sk-x' }),
-      }),
-    );
-    expect(denied.status).toBe(403);
+    // 解绑（free 同样可用）
+    const unbind = await app.request(await authed('http://x/api/plan/byok-key', { method: 'DELETE' }));
+    expect(unbind.status).toBe(200);
+    expect((await store.list()).includes('deepseek_api_key')).toBe(false);
   });
 
   it('GET byok 状态：有 key 报 bound，不回显内容', async () => {
