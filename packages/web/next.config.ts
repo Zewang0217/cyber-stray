@@ -102,11 +102,6 @@ const nextConfig: NextConfig = {
         destination: `${controlPlaneOrigin}/api/dream/:path*`,
       },
       {
-        // #97：微信通道（扫码即用公开绑定页 + 登录态状态查询）
-        source: "/api/wechat/:path*",
-        destination: `${controlPlaneOrigin}/api/wechat/:path*`,
-      },
-      {
         // #94：宠物 IP 定制（spec 提交/概念图/确认/素材，Pro/BYOK 专属）
         source: "/api/petgen/:path*",
         destination: `${controlPlaneOrigin}/api/petgen/:path*`,

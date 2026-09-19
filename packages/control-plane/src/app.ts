@@ -27,23 +27,19 @@ import { createEvolutionRoutes } from './routes/evolution.js';
 import { createFootprintRoutes } from './routes/footprint.js';
 import { createDiaryRoutes } from './routes/diary.js';
 import { createDreamRoutes } from './routes/dream.js';
-import { createWechatRoutes } from './routes/wechat.js';
 import { createPetGenRoutes } from './routes/petgen.js';
 import { createMemeRoutes } from './routes/meme.js';
 import { createPetAssetRoutes } from './routes/pet-assets.js';
 import { resolveTenantFromRequest } from './request-tenant.js';
 import { logger } from './logger.js';
-import type { BindingService } from './ilink/binding-service.js';
 export interface AppDeps {
   config: ControlPlaneConfig;
   oidc: OidcProvider;
   /** 事件总线（与调度器共享；SSE 路由消费调度器发布的事件） */
   bus: EventBus;
-  /** 微信绑定状态机（#97；index.ts 构造注入） */
-  wechatBindings?: BindingService;
 }
 
-export function createApp({ config, oidc, bus, wechatBindings }: AppDeps): Hono {
+export function createApp({ config, oidc, bus }: AppDeps): Hono {
   const app = new Hono();
 
   // 请求计时起点（#116 review P1）：在入口中间件记录，onError 读回真实耗时
@@ -116,11 +112,6 @@ export function createApp({ config, oidc, bus, wechatBindings }: AppDeps): Hono 
 
   // #93：梦境（与日记同刻预生成；列表/单篇，租户隔离）
   app.route('/api/dream', createDreamRoutes({ config }));
-
-  // #97：微信通道（扫码即用绑定 + 状态；未挂载 bindings 时跳过——单测 app 组装可省略）
-  if (wechatBindings) {
-    app.route('/api/wechat', createWechatRoutes({ config, bindings: wechatBindings }));
-  }
 
   // #94：宠物 IP 自定义生成（Pro/BYOK 专属；任务状态机在 petgen/processor.ts）
   app.route('/api/petgen', createPetGenRoutes({ config }));

@@ -1,6 +1,6 @@
 /**
  * worker 短命进程 secrets 注入（从 worker-runner 抽出，供多种 worker 复用：
- * 游荡 worker-runner + 微信回复 wechat-reply）。
+ * 游荡 worker-runner）。
  *
  * S4 store 解密 → 临时 JSON（0600，跑完即删）→ `--secrets-file` 注入；
  * 密钥只在磁盘上以密文（dek.enc/DB）和这段临时明文文件存在，进程退出即清。
