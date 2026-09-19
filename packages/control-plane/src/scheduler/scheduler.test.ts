@@ -291,7 +291,7 @@ describe('调度器', () => {
     await addPet('p1', 't1');
     await tick();
     const plan = runner.mock.calls[0]?.[0].plan;
-    expect(plan.llmTimeoutMs).toBe(10 * MINUTE_MS - 30_000);
+    expect(plan?.llmTimeoutMs).toBe(10 * MINUTE_MS - 30_000);
   });
 
   it('崩溃重试：失败→退避后下一 tick 重拉→成功写回', async () => {
