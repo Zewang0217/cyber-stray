@@ -34,6 +34,14 @@ async function fetchCandidates(body: {
 
 const PERSONALITIES = listPersonalities();
 
+/** 领养仪式的推送授权钩子（#275 决议 #270-2；缺省 = 不请求，demo/测试用） */
+export interface RitualPushHooks {
+  /** 确认按钮手势时机调用：仅请求权限，不订阅 */
+  requestPermission: () => Promise<boolean>;
+  /** 领养成功且已授权后调用：注册 SW + 订阅登记 */
+  enable: () => Promise<void>;
+}
+
 /**
  * 领养开机仪式（#170：全屏开机画面，PetIntro 并入终点）：
  * ▶ NEW GAME → 起名（LLM 3 候选 + 换一批×3 + 可手输）→ 性格 4 卡 → 口头禅 → 兴趣贴纸
@@ -45,6 +53,7 @@ export function AdoptionRitual({
   adopting,
   adoptError,
   onAdopted,
+  push,
 }: {
   contract: SpriteContract;
   adopt: (input: {
@@ -56,6 +65,8 @@ export function AdoptionRitual({
   adopting: boolean;
   adoptError: string | null;
   onAdopted: () => void;
+  /** 通知权限授权进仪式（#275）；拒绝可补开、不阻塞领养 */
+  push?: RitualPushHooks;
 }) {
   const [step, setStep] = useState<"title" | "name" | "personality" | "catchphrase" | "interests" | "entered">("title");
   const [name, setName] = useState("");
@@ -105,6 +116,9 @@ export function AdoptionRitual({
   };
 
   const confirmAdopt = async (): Promise<void> => {
+    // #275 决议 #270-2：权限请求在确认点击的手势时机发出（此刻弹窗最新鲜），
+    // 与领养请求并行；无论授权与否领养都不被阻塞，拒绝走首页横幅补开
+    const permissionPromise = push ? push.requestPermission() : Promise.resolve(false);
     const result = await adopt({
       name,
       personality: personality ?? undefined,
@@ -112,6 +126,11 @@ export function AdoptionRitual({
       interests: interests.length > 0 ? interests : undefined,
     });
     if (!result) return; // adopt 失败由 hook error 态显式呈现
+    void permissionPromise
+      .then((granted) => {
+        if (granted) return push?.enable();
+      })
+      .catch(() => {}); // 授权/订阅失败不破坏仪式；横幅兜底补开
     confetti({
       particleCount: 80,
       shapes: ["square"],

@@ -213,6 +213,17 @@ async function formatBudgetSection(): Promise<string> {
   ].join('\n');
 }
 
+/** 首推模式段（#275：CP 按 lastRunAt == null 判定，经 plan-args 注入） */
+function formatFirstPushSection(): string {
+  if (getConfig().plan?.firstPush !== true) return '';
+  return [
+    '',
+    '**首推任务（领养后的第一次游荡）：**',
+    '主人刚领养了你，还没收到过你的任何一张明信片——这次游荡必须至少产出一条真正值得分享的 speak。',
+    '分享什么仍由你判断：挑一条你自己也觉得「配得上第一张明信片」的内容，不要空手而归，也不要拿一句敷衍的"喵"交差。',
+  ].join('\n');
+}
+
 /** 最近推送上下文段（L2 语义去重的依据） */
 function formatRecentSpeaksSection(recent: RecentSpeak[]): string {
   if (recent.length === 0) {
@@ -351,7 +362,7 @@ ${curiosity}
 在内心独白中自由表达，不需要专门更新。
 
 **推送预算：**
-${budget}
+${budget}${formatFirstPushSection()}
 
 **你最近已推送的内容（同主题换来源也不要再推）：**
 ${formatRecentSpeaksSection(recentSpeaks)}

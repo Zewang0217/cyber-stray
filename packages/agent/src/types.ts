@@ -150,6 +150,11 @@ export interface PlanExecutionArgs {
    * 不设限（单用户模式——超时护栏只承诺多租户调度路径）。
    */
   llmTimeoutMs?: number;
+  /**
+   * 首推模式（#275：CP 按 lastRunAt == null 判定的第一次游荡）。prompt 注入
+   * 「必须产出首推」上下文——不豁免质量自判断与护栏，只把“可沉默”偏置成“必产出”。
+   */
+  firstPush?: boolean;
 }
 
 /** 阶梯恢复配置 */

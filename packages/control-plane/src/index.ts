@@ -77,6 +77,7 @@ const scheduler = new Scheduler({
       enabled: config.llmBudgetEnabled,
       yuanPerPlan: config.llmBudgetYuan,
     },
+    alertWebhookUrl: config.opsAlertWebhookUrl,
   },
   memeEnabled: config.memeEnabled,
 });

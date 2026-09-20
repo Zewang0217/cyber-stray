@@ -26,7 +26,9 @@ export interface TenantEvent {
     /** #265 预算闸：恢复派发（次日归零 / admin 调高阈值后重启），转变沿发一次 */
     | 'budget_resumed'
     /** #265 预算闸：当日用量读取失败，fail-closed 停派（去重后发；detail = 错误信息） */
-    | 'budget_check_failed';
+    | 'budget_check_failed'
+    /** #275 首推保证：领养超 24h 且首推仍未送达任何设备（每宠进程内去重；detail = 说明） */
+    | 'first_push_overdue';
   tenantId: string;
   petId: string;
   /** 事件时刻（unix ms） */
