@@ -108,11 +108,35 @@ jobs:
             packages/control-plane/deploy/container-update.sh \
             packages/control-plane/deploy/backup.sh \
             packages/control-plane/deploy/restore.sh \
+            packages/control-plane/deploy/cyber-stray-backup.service \
+            packages/control-plane/deploy/cyber-stray-backup.timer \
+            packages/control-plane/deploy/backup-timer-install.sh \
             "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/"
           # 兜底：脚本可执行位（git 在 Windows 侧记录 644 时 scp 后不可执行）
           ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
             "${PROD_USER}@${PROD_HOST}" \
-            "chmod +x /opt/cyber-stray/deploy/container-update.sh /opt/cyber-stray/deploy/backup.sh /opt/cyber-stray/deploy/restore.sh"
+            "chmod +x /opt/cyber-stray/deploy/container-update.sh /opt/cyber-stray/deploy/backup.sh /opt/cyber-stray/deploy/restore.sh /opt/cyber-stray/deploy/backup-timer-install.sh"
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+
+      - name: Install the backup timer (#268, idempotent)
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$PROD_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$PROD_SSH_PORT" "$PROD_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # 幂等安装 systemd timer（每日 03:00 备份）。需要 sudoers 放行：
+          #   <user> ALL=(root) NOPASSWD: /opt/cyber-stray/deploy/backup-timer-install.sh
+          # 未放行时不炸发布——显式提示人工执行一次（README「备份定时」节）
+          ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
+            "${PROD_USER}@${PROD_HOST}" \
+            "sudo -n /opt/cyber-stray/deploy/backup-timer-install.sh \
+              || echo '⚠ 备份定时器安装未授权（sudoers 未放行 backup-timer-install.sh）——按 README「备份定时」节人工执行一次'"
         env:
           PROD_HOST: ${{ secrets.PROD_HOST }}
           PROD_USER: ${{ secrets.PROD_USER }}

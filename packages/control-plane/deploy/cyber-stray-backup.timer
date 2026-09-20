@@ -1,0 +1,10 @@
+[Unit]
+Description=cyber-stray daily backup at 03:00 (#268)
+
+[Timer]
+# 每日 03:00；Persistent 补跑错过的窗口（机器 03:00 关机/重启后开机即补）
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
