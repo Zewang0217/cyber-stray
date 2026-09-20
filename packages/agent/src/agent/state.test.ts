@@ -132,10 +132,20 @@ describe('agent/state', () => {
 
     for (let round = 0; round < 6; round++) {
       await rm(markerPath, { force: true });
+      // detached：tsx 是包装器，真实写入循环在它的 node 子进程里——
+      // 必须 kill 整个进程组，否则 SIGKILL 只杀壳、写入循环变孤儿无限写盘
       const child = spawn(tsx, [fixture], {
         env: { ...process.env },
+        detached: true,
         stdio: ['ignore', 'ignore', 'pipe'],
       });
+      const killTree = (): void => {
+        try {
+          if (child.pid) process.kill(-child.pid, 'SIGKILL');
+        } catch {
+          // 进程组已退出：忽略
+        }
+      };
       let stderr = '';
       child.stderr?.on('data', (chunk: Buffer) => {
         stderr += String(chunk);
@@ -143,15 +153,19 @@ describe('agent/state', () => {
 
       // 等 marker（首次 save 成功）再杀——保证每轮确实杀在写入活动中
       const deadline = Date.now() + 30_000;
-      while (!existsSync(markerPath)) {
-        if (Date.now() > deadline) {
-          child.kill('SIGKILL');
-          throw new Error(`第 ${round} 轮子进程 30s 未产生首次写入：${stderr.slice(-500)}`);
+      try {
+        while (!existsSync(markerPath)) {
+          if (Date.now() > deadline) {
+            killTree();
+            throw new Error(`第 ${round} 轮子进程 30s 未产生首次写入：${stderr.slice(-500)}`);
+          }
+          await new Promise((resolve) => setTimeout(resolve, 5));
         }
-        await new Promise((resolve) => setTimeout(resolve, 5));
+        killTree();
+        await new Promise<void>((resolve) => child.once('exit', () => resolve()));
+      } finally {
+        killTree(); // 任何路径退出都补一刀进程组，杜绝孤儿
       }
-      child.kill('SIGKILL');
-      await new Promise<void>((resolve) => child.once('exit', () => resolve()));
 
       // 关键断言：任意时刻被杀，目标文件都是完整 JSON
       const raw = await readFile(statePath, 'utf-8');
