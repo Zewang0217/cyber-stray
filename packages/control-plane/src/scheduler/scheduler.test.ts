@@ -15,12 +15,13 @@ import { join } from 'path';
 import { eq } from 'drizzle-orm';
 import { getDb, _resetDb, type ControlDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { pets, tenants } from '../db/schema.js';
-import { getOrCreateTenant } from '../tenant.js';
+import { pushSubscriptions, pets, tenants } from '../db/schema.js';
+import { getOrCreateTenant, tenantDataDir } from '../tenant.js';
 import { createEventBus, type EventBus } from '../events/bus.js';
 import {
   Scheduler,
   MINUTE_MS,
+  FIRST_PUSH_RETRY_BACKOFF_MS,
   type WorkerJob,
   type WorkerResult,
   type WorkerRunner,
@@ -72,6 +73,7 @@ describe('调度器', () => {
     retryBackoffMs?: number;
     workerTimeoutMs?: number;
     llmBudget?: LlmBudgetConfig;
+    alertWebhookUrl?: string;
   }) {
     return new Scheduler({
       db: () => getDb(dataDir),
@@ -87,11 +89,14 @@ describe('调度器', () => {
         workerTimeoutMs: overrides?.workerTimeoutMs ?? 10 * MINUTE_MS,
         rates: { boredomPerMinute: 1, energyPerMinute: 1 },
         llmBudget: overrides?.llmBudget ?? { enabled: false, yuanPerPlan: { free: 0.5, pro: 2, byok: 2 } },
+        alertWebhookUrl: overrides?.alertWebhookUrl ?? '',
       },
     });
   }
 
-  /** 插入宠物：lastRunAt=0 → 距 clock.now 足够久 → 前推后必就绪 */
+  /** 插入宠物：lastRunAt=0 → 距 clock.now 足够久 → 前推后必就绪；
+   *  createdAt = 25h 前 → 非首推期（存量用例的公共前提；测试时钟只有分钟级，
+   *  0 会被当成「刚领养」落进首推期） */
   async function addPet(id: string, tenantId: string, extra?: Partial<typeof pets.$inferInsert>) {
     await db
       .insert(pets)
@@ -100,6 +105,7 @@ describe('调度器', () => {
         tenantId,
         name: id,
         lastRunAt: 0,
+        createdAt: clock.now - 25 * 60 * MINUTE_MS,
         boredom: 60,
         energy: 60,
         mood: 'curious',
@@ -342,8 +348,165 @@ describe('调度器', () => {
     expect(runner).toHaveBeenCalledTimes(2);
   });
 
-  it('挂死 runner：超过 TTL 视为死亡，可重新认领', async () => {
-    sched = makeScheduler({ workerTimeoutMs: 5 * MINUTE_MS });
+  // ─── #275 首推保证 ───
+
+  /** 首推期宠物：createdAt = 10 分钟前（前推即就绪），lastRunAt=null（首次游荡） */
+  async function addFirstPushPet(id: string, tenantId: string): Promise<void> {
+    await addPet(id, tenantId, {
+      lastRunAt: null,
+      createdAt: clock.now - 10 * MINUTE_MS,
+    });
+  }
+
+  it('#275 首推期失败：5min 短退避重试，不写 DB 冷却', async () => {
+    await addFirstPushPet('p1', 't1');
+    runner.mockResolvedValueOnce({ ok: false, exitCode: 1 }).mockResolvedValue({
+      ok: true,
+      exitCode: 0,
+      stats: { energy: 40, boredom: 20 },
+    });
+
+    const retries: string[] = [];
+    bus.subscribe('t1', (e) => {
+      if (e.type === 'worker_retry') retries.push(e.type);
+    });
+
+    await tick(); // 第一次失败：首推期短退避（5min），非常规 1min
+    expect(runner).toHaveBeenCalledOnce();
+    expect(retries).toHaveLength(1);
+    let pet = await getPet('p1');
+    expect(pet?.cooldownUntil).toBeNull(); // 不进冷却
+
+    await tick(60_000); // 常规退避（1min）已过，但首推短退避未到：不重试
+    expect(runner).toHaveBeenCalledOnce();
+
+    await tick(4 * MINUTE_MS); // 距失败恰 5min：短退避到期，重试成功
+    expect(runner).toHaveBeenCalledTimes(2);
+    pet = await getPet('p1');
+    expect(pet?.lastRunAt).toBe(clock.now);
+  });
+
+  it('#275 首推期连败 ×3 后回 DB 冷却（持续失败必须有界）', async () => {
+    await addFirstPushPet('p1', 't1');
+    runner.mockResolvedValue({ ok: false, exitCode: 1 });
+
+    const failures: string[] = [];
+    bus.subscribe('t1', (e) => {
+      if (e.type === 'worker_failed') failures.push(e.type);
+    });
+
+    await tick(); // 败1 → 退避5min
+    await tick(FIRST_PUSH_RETRY_BACKOFF_MS); // 败2
+    await tick(FIRST_PUSH_RETRY_BACKOFF_MS); // 败3
+    expect(failures).toHaveLength(0); // 还在短退避重试预算内
+    await tick(FIRST_PUSH_RETRY_BACKOFF_MS); // 败4：×3 用尽 → 冷却
+    expect(failures).toHaveLength(1);
+
+    const pet = await getPet('p1');
+    expect(pet?.cooldownUntil).toBe(clock.now + FIRST_PUSH_RETRY_BACKOFF_MS);
+    expect(pet?.lastRunAt).toBe(clock.now);
+  });
+
+  it('#275 首推模式注入：lastRunAt=null 派发带 firstPush，跑过一轮即消失', async () => {
+    await addFirstPushPet('p1', 't1');
+    await addPet('p2', 't2'); // 存量宠物（lastRunAt=0）：非首推
+    await tick();
+    const jobs = runner.mock.calls.map((c) => c[0] as WorkerJob);
+    const byPet = new Map(jobs.map((j) => [j.petId, j.plan.firstPush]));
+    expect(byPet.get('p1')).toBe(true);
+    expect(byPet.get('p2')).toBe(false);
+
+    // p1 跑完写回 lastRunAt → 首推模式消失；无聊值从 20 攒回阈值需 50min
+    await tick(50 * MINUTE_MS);
+    const jobs2 = runner.mock.calls.map((c) => c[0] as WorkerJob);
+    const p1Jobs = jobs2.filter((j) => j.petId === 'p1');
+    expect(p1Jobs.length).toBeGreaterThan(1);
+    expect(p1Jobs[p1Jobs.length - 1]?.plan.firstPush).toBe(false);
+  });
+
+  it('#275 领养超 24h 且内容未送达任何设备：发 first_push_overdue + webhook，去重', async () => {
+    const fetchSpy = vi.fn(async (_url: string | URL, _init?: RequestInit) => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      sched = makeScheduler({ alertWebhookUrl: 'https://hooks.example/xxx' });
+      // 存量宠物：领养于 25h 前，早已跑过（lastRunAt=0）
+      await addPet('p1', 't1', { createdAt: clock.now - 25 * 60 * MINUTE_MS });
+      const now = clock.now;
+      await db.insert(pushSubscriptions).values({
+        id: 'sub1',
+        tenantId: 't1',
+        endpoint: 'https://push.example/ep1',
+        p256dh: 'k',
+        auth: 'a',
+        lastNotifiedAt: now - 3 * 60 * MINUTE_MS, // 只通知到 3h 前
+      }).run();
+      // 2h 前有一条可通知内容：比所有设备的已通知位都新 → 未送达
+      const historyDir = join(tenantDataDir(dataDir, 't1'), 'history');
+      mkdirSync(historyDir, { recursive: true });
+      writeFileSync(
+        join(historyDir, 'speaks-2026-01-01.jsonl'),
+        `${JSON.stringify({ timestamp: new Date(now - 2 * 60 * MINUTE_MS).toISOString(), gated: false })}\n`,
+      );
+
+      const alerts: string[] = [];
+      bus.subscribe('t1', (e) => {
+        if (e.type === 'first_push_overdue') alerts.push(e.detail ?? '');
+      });
+
+      await tick();
+      expect(alerts).toHaveLength(1);
+      expect(fetchSpy).toHaveBeenCalledOnce();
+      expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://hooks.example/xxx');
+
+      await tick(60_000); // 进程内去重：不重发
+      expect(alerts).toHaveLength(1);
+      expect(fetchSpy).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('#275 已送达 / 无订阅 / 无 webhook 配置：不发告警', async () => {
+    const fetchSpy = vi.fn(async (_url: string | URL, _init?: RequestInit) => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      // 已送达：内容时间戳 ≤ 已通知位
+      await addPet('p1', 't1', { createdAt: clock.now - 25 * 60 * MINUTE_MS });
+      const now = clock.now;
+      await db.insert(pushSubscriptions).values({
+        id: 'sub1',
+        tenantId: 't1',
+        endpoint: 'https://push.example/ep1',
+        p256dh: 'k',
+        auth: 'a',
+        lastNotifiedAt: now - 60 * MINUTE_MS,
+      }).run();
+      const historyDir = join(tenantDataDir(dataDir, 't1'), 'history');
+      mkdirSync(historyDir, { recursive: true });
+      writeFileSync(
+        join(historyDir, 'speaks-2026-01-01.jsonl'),
+        `${JSON.stringify({ timestamp: new Date(now - 2 * 60 * MINUTE_MS).toISOString(), gated: false })}\n`,
+      );
+
+      const alerts: string[] = [];
+      bus.subscribe('t1', (e) => {
+        if (e.type === 'first_push_overdue') alerts.push(e.type);
+      });
+
+      await tick();
+      expect(alerts).toHaveLength(0);
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // 无订阅：不判定不告警（横幅路径负责），下一 tick 仍会复查
+      await db.delete(pushSubscriptions).run();
+      await tick(60_000);
+      expect(alerts).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('挂死 runner：超过 TTL 视为死亡，可重新认领', async () => {    sched = makeScheduler({ workerTimeoutMs: 5 * MINUTE_MS });
     await addPet('p1', 't1');
     const hung = new Promise<{ ok: boolean; exitCode: number }>(() => {}); // 永不落定
     runner.mockImplementationOnce(() => hung).mockResolvedValueOnce({ ok: true, exitCode: 0 });

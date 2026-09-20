@@ -20,6 +20,8 @@ import { PixelStage } from "@/components/strayboy/PixelStage";
 import { PetSprite } from "@/components/strayboy/PetSprite";
 import { WanderLog } from "@/components/strayboy/WanderLog";
 import { AdoptionRitual } from "@/components/strayboy/AdoptionRitual";
+import { PushNudgeBanner } from "@/components/strayboy/PushNudgeBanner";
+import { useWebPush, type PushState } from "@/hooks/useWebPush";
 import { DEMO_PET, DEMO_STATE, demoEventStream } from "@/lib/strayboy/demo";
 import type { AgentState } from "@/lib/types";
 import type { PetRecord } from "@/lib/strayboy/pet-view";
@@ -48,7 +50,13 @@ export function StreetCorner({ contract, demo = false }: { contract: SpriteContr
   const live = useTenantEvents({ enabled: !demo });
   const liveState = useAgentState({ refreshSignal: live.refreshSignal, realtimeConnected: live.connected, enabled: !demo });
   const livePets = usePets({ enabled: !demo });
+  // #275：通知授权进领养仪式 + 拒绝后首页横幅补开（demo 不挂 push）
+  const webPush = useWebPush();
   const [adoptedGate, setAdoptedGate] = useState(false);
+  const ritualPush = useMemo(
+    () => (demo ? undefined : { requestPermission: webPush.requestPermission, enable: webPush.enable }),
+    [demo, webPush.requestPermission, webPush.enable],
+  );
 
   if (demo) {
     return (
@@ -77,6 +85,7 @@ export function StreetCorner({ contract, demo = false }: { contract: SpriteContr
         adopting={livePets.adopting}
         adoptError={livePets.error}
         onAdopted={() => setAdoptedGate(false)}
+        push={ritualPush}
       />
     );
   }
@@ -88,6 +97,7 @@ export function StreetCorner({ contract, demo = false }: { contract: SpriteContr
       state={demo ? DEMO_STATE : liveState.state}
       connected={demo || live.connected}
       lastEvent={demo ? null : live.lastEvent}
+      pushNudge={demo ? undefined : { state: webPush.state, error: webPush.error, onEnable: () => void webPush.enable() }}
     />
   );
 }
@@ -100,10 +110,12 @@ interface MainProps {
   state: AgentState | null;
   connected: boolean;
   lastEvent: ReturnType<typeof useTenantEvents>["lastEvent"];
+  /** #275 通知补开横幅（undefined = 不显示，demo 用） */
+  pushNudge?: { state: PushState; error: string | null; onEnable: () => void };
 }
 
 /** 街角主交互体：hooks 全部在此层早于任何 return（规则内），门控已在外层完成。 */
-function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: MainProps) {
+function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pushNudge }: MainProps) {
   const [wandering, setWandering] = useState(false);
   // #265 预算耗尽停派：初始种子 = CP pets GET（SSE 不重放），转变沿 = SSE；
   // CP 真相源回写（刷新/重拉后对齐），展示与作息睡眠共用（deriveStreetView）
@@ -333,8 +345,17 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
     return () => clearInterval(id);
   }, [anim]);
 
+  // #275 通知补开横幅：拒绝路径的常驻提醒，置顶于街机之外（不打乱 grid 布局）
+  const banner = pushNudge ? (
+    <div className="sb mx-auto max-w-3xl px-3 pt-3">
+      <PushNudgeBanner {...pushNudge} />
+    </div>
+  ) : null;
+
   return (
-    <div className="sb mx-auto flex max-w-3xl flex-col gap-3 p-3 lg:grid lg:max-w-5xl lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+    <>
+      {banner}
+      <div className="sb mx-auto flex max-w-3xl flex-col gap-3 p-3 lg:grid lg:max-w-5xl lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
       <div className="lg:col-start-1 lg:row-start-1">
       <PixelStage
         onStreet={!view.away}
@@ -429,6 +450,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
       {attrCardOpen && (
         <AttrCard pet={pet} state={state} level={view.level} onClose={() => setAttrCardOpen(false)} />
       )}
-    </div>
+      </div>
+    </>
   );
 }

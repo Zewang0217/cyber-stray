@@ -224,3 +224,63 @@ describe('buildReactSystemPrompt 推送判断四段（#152 门控 P3）', () => 
     expect(prompt).toContain('科技（中');
   });
 });
+
+describe('buildReactSystemPrompt 首推模式（#275）', () => {
+  let cleanup: () => void;
+
+  beforeEach(() => {
+    ({ cleanup } = useTempDataDir());
+    _resetInterestGraphCache();
+  });
+
+  afterEach(() => {
+    cleanup();
+    _resetInterestGraphCache();
+  });
+
+  /** 带指定 plan 执行参数的租户上下文（模拟 CP 派发注入） */
+  async function withTenant(
+    planArgs: Record<string, unknown>,
+    fn: () => Promise<void>,
+  ): Promise<void> {
+    const { loadConfig, setTenantContext } = await import('../config.js');
+    const cfg = loadConfig(
+      undefined,
+      undefined,
+      planArgs as unknown as Parameters<typeof loadConfig>[2],
+    );
+    setTenantContext({ tenantId: 't-first-push', dataDir: process.env.DATA_DIR!, config: cfg });
+    try {
+      await fn();
+    } finally {
+      setTenantContext(null);
+    }
+  }
+
+  test('plan.firstPush=true：注入首推任务段（要求产出、不豁免自判断）', async () => {
+    await withTenant(
+      { plan: 'free', pushesPerDay: 5, pushWindowStart: null, pushWindowEnd: null, firstPush: true },
+      async () => {
+        const profile = await loadUserProfile();
+        const prompt = await buildReactSystemPrompt(makeState(), profile);
+        expect(prompt).toContain('**首推任务（领养后的第一次游荡）：**');
+        expect(prompt).toContain('必须至少产出一条真正值得分享的 speak');
+        // 不豁免自判断：分享什么仍归 LLM 判断
+        expect(prompt).toContain('分享什么仍由你判断');
+        // 常规门控上下文照常在位
+        expect(prompt).toContain('**分享准则（speak 由你判断，可保持沉默）：**');
+      },
+    );
+  });
+
+  test('无 firstPush 标记：不注入首推段（存量行为不回退）', async () => {
+    await withTenant(
+      { plan: 'free', pushesPerDay: 5, pushWindowStart: null, pushWindowEnd: null },
+      async () => {
+        const profile = await loadUserProfile();
+        const prompt = await buildReactSystemPrompt(makeState(), profile);
+        expect(prompt).not.toContain('首推任务');
+      },
+    );
+  });
+});

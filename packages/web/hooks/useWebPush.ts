@@ -12,7 +12,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return output;
 }
 
-type PushState = "unsupported" | "denied" | "off" | "subscribing" | "on" | "error";
+export type PushState = "unsupported" | "denied" | "off" | "subscribing" | "on" | "error";
 
 interface UseWebPushReturn {
   state: PushState;
@@ -21,6 +21,11 @@ interface UseWebPushReturn {
   enable: () => Promise<void>;
   /** 退订（DELETE /api/push/subscribe + 浏览器侧取消） */
   disable: () => Promise<void>;
+  /**
+   * 仅请求通知权限，不做订阅（#275：领养确认的手势时机用——点击瞬间权限弹窗
+   * 最新鲜；租户建立后再 enable() 补订阅，届时已授权则不再弹窗）。
+   */
+  requestPermission: () => Promise<boolean>;
 }
 
 /**
@@ -126,5 +131,10 @@ export function useWebPush(): UseWebPushReturn {
     }
   }, []);
 
-  return { state, error, enable, disable };
+  const requestPermission = useCallback(async (): Promise<boolean> => {
+    if (typeof window === "undefined" || !("Notification" in window)) return false;
+    return (await Notification.requestPermission()) === "granted";
+  }, []);
+
+  return { state, error, enable, disable, requestPermission };
 }

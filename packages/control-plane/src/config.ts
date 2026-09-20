@@ -56,6 +56,12 @@ export interface ControlPlaneConfig {
   llmBudgetEnabled: boolean;
   /** 每租户每日 LLM 预算（¥/天，按套餐；#265；0 = 该套餐不限） */
   llmBudgetYuan: { free: number; pro: number; byok: number };
+  /**
+   * 运维告警 webhook（#275 首推 24h 未送达等；env CP_OPS_ALERT_WEBHOOK_URL）。
+   * 格式与 #267 告警票对齐（飞书 bot：POST {msg_type:"text"}）；空 = 未配置，
+   * 只发租户事件不外呼——正式告警通道由 #267 落地后统一。
+   */
+  opsAlertWebhookUrl: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneConfig {
@@ -127,5 +133,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
       pro: llmBudgetProYuan,
       byok: llmBudgetByokYuan,
     },
+    opsAlertWebhookUrl: env.CP_OPS_ALERT_WEBHOOK_URL ?? '',
   };
 }

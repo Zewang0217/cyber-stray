@@ -19,6 +19,7 @@ import { pushSubscriptions, vapidKeys, userTenants } from '../db/schema.js';
 import { TENANT_ID_RE, encryptWith, decryptWith } from '../secrets/tenant-secrets.js';
 import { loadMasterKey } from '../secrets/master-key.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
+import { latestNotifiableSpeak } from '../push/push-gateway.js';
 
 export interface PushDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
@@ -234,6 +235,38 @@ export function createPushRoutes({ config }: PushDeps): Hono {
       return c.json(jsonError('订阅不存在'), 404);
     }
     return c.json({ success: true, data: { deleted: true } });
+  });
+
+  /**
+   * GET /api/push/status — 首推送达标记（#275；租户空态文案数据源）。
+   * pendingDelivery：有订阅、存在可通知内容、且比所有设备的已通知位都新
+   * （谁都没收到过）——web 据此展示「第一张明信片在路上」一类文案。
+   */
+  app.get('/status', async (c) => {
+    const scoped = await scopedTenantId(c.req.raw, config);
+    if ('error' in scoped) {
+      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
+    }
+
+    const db = await getDb(config.dataDir);
+    const subs = await db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.tenantId, scoped.tenantId))
+      .all();
+    if (subs.length === 0) {
+      return c.json({ success: true, data: { subscribed: false, pendingDelivery: false, latestNotifiableAt: null } });
+    }
+
+    const notifiedCeiling = Math.max(...subs.map((s) => s.lastNotifiedAt ?? 0));
+    const latest = await latestNotifiableSpeak(config.dataDir, scoped.tenantId);
+    const latestAt = latest ? String(latest.timestamp) : null;
+    const contentAt = latestAt ? new Date(latestAt).getTime() : NaN;
+    const pendingDelivery = !Number.isNaN(contentAt) && contentAt > notifiedCeiling;
+    return c.json({
+      success: true,
+      data: { subscribed: true, pendingDelivery, latestNotifiableAt: latestAt },
+    });
   });
 
   return app;
