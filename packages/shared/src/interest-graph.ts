@@ -40,3 +40,22 @@ export interface InterestGraphData {
   lastUpdated: string;
   nodes: InterestNode[];
 }
+
+/**
+ * Shannon 熵（比特）：权重分布的均匀度。单一真相源——agent（坍缩检测，
+ * 传时间衰减后的有效权重）与 control-plane（展示，传存储原始权重）共用
+ * 同一公式，任何一侧不得复制。
+ *
+ * 空集或总权重为 0 → 0。
+ */
+export function shannonEntropy(weights: number[]): number {
+  const positive = weights.filter((w) => w > 0);
+  const total = positive.reduce((sum, w) => sum + w, 0);
+  if (total === 0) return 0;
+  let entropy = 0;
+  for (const w of positive) {
+    const p = w / total;
+    if (p > 0) entropy -= p * Math.log2(p);
+  }
+  return entropy;
+}
