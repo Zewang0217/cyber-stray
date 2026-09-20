@@ -116,6 +116,11 @@ jobs:
           ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
             "${PROD_USER}@${PROD_HOST}" \
             "chmod +x /opt/cyber-stray/deploy/container-update.sh /opt/cyber-stray/deploy/backup.sh /opt/cyber-stray/deploy/restore.sh /opt/cyber-stray/deploy/backup-timer-install.sh"
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
 
       - name: Install the backup timer (#268, idempotent)
         run: |
@@ -132,11 +137,6 @@ jobs:
             "${PROD_USER}@${PROD_HOST}" \
             "sudo -n /opt/cyber-stray/deploy/backup-timer-install.sh \
               || echo '⚠ 备份定时器安装未授权（sudoers 未放行 backup-timer-install.sh）——按 README「备份定时」节人工执行一次'"
-        env:
-          PROD_HOST: ${{ secrets.PROD_HOST }}
-          PROD_USER: ${{ secrets.PROD_USER }}
-          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
-          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
         env:
           PROD_HOST: ${{ secrets.PROD_HOST }}
           PROD_USER: ${{ secrets.PROD_USER }}
