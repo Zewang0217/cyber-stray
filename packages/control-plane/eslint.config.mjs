@@ -14,14 +14,19 @@ export default tseslint.config(
     ignores: ["node_modules/", "coverage/"],
   },
   {
-    // 分层棘轮门禁（#280 R1 / #284 R2 / #286 R3）：接口层不做 I/O——已分层
-    // 文件逐一圈禁，其余 route 文件在后续 R 票分层后逐个加入，全部干净后
-    // 扩成 src/routes/**。
+    // 分层棘轮门禁（#280 R1 / #284 R2 / #286 R3 / #288 R4a）：接口层不做
+    // I/O——已分层文件逐一圈禁，全部干净后扩成 src/routes/**。
     files: [
       "src/routes/feedback.ts",
       "src/routes/pets.ts",
       "src/routes/data.ts",
       "src/routes/admin.ts",
+      "src/routes/footprint.ts",
+      "src/routes/diary.ts",
+      "src/routes/events.ts",
+      "src/routes/channels.ts",
+      "src/routes/pet-assets.ts",
+      "src/routes/auth.ts",
     ],
     rules: {
       "no-restricted-imports": [

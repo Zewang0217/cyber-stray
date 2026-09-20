@@ -12,10 +12,14 @@ import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
 import * as petsRepo from '../infra/pets-repo.js';
 import {
+  readDiaryEntry,
+  readDiaryList,
   readInterestHistorySnapshots,
   readPushHistoryItems,
   readTenantInterestGraph,
   readTenantStateSnapshot,
+  readWanderFootprint,
+  type DiaryEntry,
 } from '../infra/tenant-data-reader.js';
 
 export interface DataServiceDeps {
@@ -29,6 +33,8 @@ export interface HistoryPage {
   page: Array<Record<string, unknown>>;
   pagination: { total: number; offset: number; limit: number; hasMore: boolean };
 }
+
+export type { DiaryEntry };
 
 export function createDataService({ config }: DataServiceDeps) {
   /** Agent 当前状态：数值取 pets 表（唯一真相源），叙事字段留 agent 文件；
@@ -119,7 +125,62 @@ export function createDataService({ config }: DataServiceDeps) {
     };
   }
 
-  return { getState, getInterests, getInterestsHistory, getHistory };
+  /** 游荡足迹（全部步骤，时间正序——时间线消费方免排序） */
+  async function getFootprint(tenantId: string): Promise<DataOutcome<unknown>> {
+    let steps: unknown[];
+    try {
+      steps = await readWanderFootprint(config.dataDir, tenantId);
+    } catch (error) {
+      // 读边界已记日志并带文案抛出（损坏/形状非法）
+      return {
+        ok: false,
+        status: 500,
+        error: error instanceof Error ? error.message : '足迹数据损坏或不可读',
+      };
+    }
+    const sorted = [...steps].sort((a, b) => {
+      const ta = new Date(String((a as { timestamp?: unknown }).timestamp)).getTime();
+      const tb = new Date(String((b as { timestamp?: unknown }).timestamp)).getTime();
+      return (Number.isNaN(ta) ? 0 : ta) - (Number.isNaN(tb) ? 0 : tb);
+    });
+    return { ok: true, data: sorted };
+  }
+
+  /** 日记列表（时间倒序，含标题/摘录） */
+  async function getDiaryList(tenantId: string): Promise<DataOutcome<DiaryEntry[]>> {
+    try {
+      return { ok: true, data: await readDiaryList(config.dataDir, tenantId) };
+    } catch (error) {
+      return {
+        ok: false,
+        status: 500,
+        error: error instanceof Error ? error.message : '日记数据损坏或不可读',
+      };
+    }
+  }
+
+  /** 单篇日记；该日期没有 → found: false（路由层映射 404） */
+  async function getDiaryEntry(
+    tenantId: string,
+    date: string,
+  ): Promise<
+    | { ok: true; data: DiaryEntry | null; found: boolean }
+    | { ok: false; status: 500; error: string }
+  > {
+    let entry: DiaryEntry | null;
+    try {
+      entry = await readDiaryEntry(config.dataDir, tenantId, date);
+    } catch (error) {
+      return {
+        ok: false,
+        status: 500,
+        error: error instanceof Error ? error.message : '日记数据损坏或不可读',
+      };
+    }
+    return { ok: true, data: entry, found: entry !== null };
+  }
+
+  return { getState, getInterests, getInterestsHistory, getHistory, getFootprint, getDiaryList, getDiaryEntry };
 }
 
 export type DataService = ReturnType<typeof createDataService>;

@@ -151,3 +151,117 @@ export async function readTenantWanderStats(
     throw error;
   }
 }
+
+/** 游荡足迹（wander-history.json 全部步骤）；缺失 → []；损坏/形状非法显式抛 */
+export async function readWanderFootprint(dataDir: string, tenantId: string): Promise<unknown[]> {
+  let content: string;
+  try {
+    content = await readFile(join(tenantDataDir(dataDir, tenantId), 'wander-history.json'), 'utf-8');
+  } catch (error) {
+    if (isEnoent(error)) return [];
+    throw error;
+  }
+  let steps: unknown;
+  try {
+    steps = JSON.parse(content);
+  } catch (error) {
+    console.error('[footprint] wander-history.json 损坏：', error);
+    throw new Error('足迹数据损坏或不可读');
+  }
+  if (!Array.isArray(steps)) {
+    throw new Error('足迹数据格式非法（须为数组）');
+  }
+  return steps;
+}
+
+export interface DiaryEntry {
+  date: string;
+  title: string;
+  content: string;
+  excerpt?: string;
+}
+
+/** 解析日记标题：取首个 `# ` 一级标题；缺省回退 '日记' */
+function parseDiaryTitle(content: string): string {
+  const match = content.match(/^#\s+(.+)$/m);
+  const title = match?.[1]?.trim();
+  return title && title.length > 0 ? title : '日记';
+}
+
+/** 摘录：去掉 markdown 装饰后的前 120 字 */
+function diaryExcerpt(content: string, maxChars = 120): string {
+  const plain = content
+    .replace(/^#+\s+/gm, '')
+    .replace(/[*_`>]|\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return plain.length > maxChars ? `${plain.slice(0, maxChars)}…` : plain;
+}
+
+/** 日记日期合法性（YYYY-MM-DD，防路径穿越） */
+const DIARY_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** 日记列表（时间倒序，含标题/摘录）；目录缺失 → []；单篇读失败显式抛 */
+export async function readDiaryList(dataDir: string, tenantId: string): Promise<DiaryEntry[]> {
+  const diaryDir = join(tenantDataDir(dataDir, tenantId), 'diary');
+  let files: string[];
+  try {
+    files = (await readdir(diaryDir)).filter((f) => f.endsWith('.md'));
+  } catch (error) {
+    if (isEnoent(error)) return [];
+    throw error;
+  }
+
+  const entries: DiaryEntry[] = [];
+  for (const file of files) {
+    const date = file.slice(0, -3); // 去 .md 后缀
+    if (!DIARY_DATE_RE.test(date)) continue; // 非日期命名的 md 不当作日记
+    try {
+      const content = await readFile(join(diaryDir, file), 'utf-8');
+      entries.push({
+        date,
+        title: parseDiaryTitle(content),
+        content,
+        excerpt: diaryExcerpt(content),
+      });
+    } catch (error) {
+      console.error(`[diary] 读取 ${file} 失败：`, error);
+      throw new Error('日记数据损坏或不可读');
+    }
+  }
+  entries.sort((a, b) => (a.date < b.date ? 1 : -1)); // 时间倒序
+  return entries;
+}
+
+/** 单篇日记；缺失 → null（该日期没有日记） */
+export async function readDiaryEntry(
+  dataDir: string,
+  tenantId: string,
+  date: string,
+): Promise<DiaryEntry | null> {
+  let content: string;
+  try {
+    content = await readFile(join(tenantDataDir(dataDir, tenantId), 'diary', `${date}.md`), 'utf-8');
+  } catch (error) {
+    if (isEnoent(error)) return null;
+    throw error;
+  }
+  return { date, title: parseDiaryTitle(content), content };
+}
+
+/**
+ * 租户素材文件字节（pet-assets 目录）；缺失 → null。调用方负责文件名白名单
+ * 与路径归一化校验（接口层安全检查）。
+ */
+export async function readTenantAsset(
+  dataDir: string,
+  tenantId: string,
+  relativePath: string,
+): Promise<Buffer | null> {
+  try {
+    return await readFile(join(tenantDataDir(dataDir, tenantId), 'pet-assets', relativePath));
+  } catch (error) {
+    if (isEnoent(error)) return null;
+    throw error;
+  }
+}
