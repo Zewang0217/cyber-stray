@@ -9,11 +9,8 @@
 import { readFile, readdir } from 'fs/promises';
 import { join } from 'path';
 import { parseHistoryJsonl } from '../domain/history-view.js';
+import { isEnoent } from './enoent.js';
 import { tenantDataDir } from '../tenant.js';
-
-function isEnoent(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException).code === 'ENOENT';
-}
 
 /**
  * state.json 合成游荡历史（读边界）：state.json 本无 wanderHistory 字段，
@@ -181,15 +178,15 @@ export interface DiaryEntry {
   excerpt?: string;
 }
 
-/** 解析日记标题：取首个 `# ` 一级标题；缺省回退 '日记' */
-function parseDiaryTitle(content: string): string {
+/** 解析 markdown 首个 `# ` 一级标题；缺省回退 fallback（日记='日记'，梦境='梦境'） */
+function parseMarkdownTitle(content: string, fallback: string): string {
   const match = content.match(/^#\s+(.+)$/m);
   const title = match?.[1]?.trim();
-  return title && title.length > 0 ? title : '日记';
+  return title && title.length > 0 ? title : fallback;
 }
 
 /** 摘录：去掉 markdown 装饰后的前 120 字 */
-function diaryExcerpt(content: string, maxChars = 120): string {
+function markdownExcerpt(content: string, maxChars = 120): string {
   const plain = content
     .replace(/^#+\s+/gm, '')
     .replace(/[*_`>]|\[([^\]]*)\]\([^)]*\)/g, '$1')
@@ -220,9 +217,9 @@ export async function readDiaryList(dataDir: string, tenantId: string): Promise<
       const content = await readFile(join(diaryDir, file), 'utf-8');
       entries.push({
         date,
-        title: parseDiaryTitle(content),
+        title: parseMarkdownTitle(content, '日记'),
         content,
-        excerpt: diaryExcerpt(content),
+        excerpt: markdownExcerpt(content),
       });
     } catch (error) {
       console.error(`[diary] 读取 ${file} 失败：`, error);
@@ -246,7 +243,75 @@ export async function readDiaryEntry(
     if (isEnoent(error)) return null;
     throw error;
   }
-  return { date, title: parseDiaryTitle(content), content };
+  return { date, title: parseMarkdownTitle(content, '日记'), content };
+}
+
+/** 梦境列表（diary/dreams/，与日记同契约：时间倒序含标题/摘录）；缺失 → [] */
+export async function readDreamList(dataDir: string, tenantId: string): Promise<DiaryEntry[]> {
+  const dreamsDir = join(tenantDataDir(dataDir, tenantId), 'diary', 'dreams');
+  let files: string[];
+  try {
+    files = (await readdir(dreamsDir)).filter((f) => f.endsWith('.md'));
+  } catch (error) {
+    if (isEnoent(error)) return [];
+    throw error;
+  }
+
+  const entries: DiaryEntry[] = [];
+  for (const file of files) {
+    const date = file.slice(0, -3); // 去 .md 后缀
+    if (!DIARY_DATE_RE.test(date)) continue; // 非日期命名的 md 不当作梦境
+    try {
+      const content = await readFile(join(dreamsDir, file), 'utf-8');
+      entries.push({
+        date,
+        title: parseMarkdownTitle(content, '梦境'),
+        content,
+        excerpt: markdownExcerpt(content),
+      });
+    } catch (error) {
+      console.error(`[dream] 读取 ${file} 失败：`, error);
+      throw new Error('梦境数据损坏或不可读');
+    }
+  }
+  entries.sort((a, b) => (a.date < b.date ? 1 : -1)); // 时间倒序
+  return entries;
+}
+
+/** 单篇梦境；缺失 → null */
+export async function readDreamEntry(
+  dataDir: string,
+  tenantId: string,
+  date: string,
+): Promise<DiaryEntry | null> {
+  let content: string;
+  try {
+    content = await readFile(
+      join(tenantDataDir(dataDir, tenantId), 'diary', 'dreams', `${date}.md`),
+      'utf-8',
+    );
+  } catch (error) {
+    if (isEnoent(error)) return null;
+    throw error;
+  }
+  return { date, title: parseMarkdownTitle(content, '梦境'), content };
+}
+
+/**
+ * 读租户目录下相对路径文件的字节（概念图等）；路径由调用方保证来自
+ * 可信数据（如 DB 中的 conceptPath），缺失 → null。
+ */
+export async function readTenantFile(
+  dataDir: string,
+  tenantId: string,
+  relativePath: string,
+): Promise<Buffer | null> {
+  try {
+    return await readFile(join(tenantDataDir(dataDir, tenantId), relativePath));
+  } catch (error) {
+    if (isEnoent(error)) return null;
+    throw error;
+  }
 }
 
 /**
@@ -258,10 +323,5 @@ export async function readTenantAsset(
   tenantId: string,
   relativePath: string,
 ): Promise<Buffer | null> {
-  try {
-    return await readFile(join(tenantDataDir(dataDir, tenantId), 'pet-assets', relativePath));
-  } catch (error) {
-    if (isEnoent(error)) return null;
-    throw error;
-  }
+  return readTenantFile(dataDir, tenantId, join('pet-assets', relativePath));
 }

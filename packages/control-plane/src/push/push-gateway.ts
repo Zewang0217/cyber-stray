@@ -19,7 +19,7 @@ import webpush from 'web-push';
 import { getDb, type ControlDb } from '../db/client.js';
 import { pets, pushSubscriptions, type PushSubscription } from '../db/schema.js';
 import { tenantDataDir } from '../tenant.js';
-import { getVapidKeys } from '../routes/push.js';
+import { getVapidKeys } from '../infra/push-repo.js';
 import type { EventBus, TenantEvent, TenantEventHandler } from '../events/bus.js';
 
 /** 注入式发送（测试 fake）；真实实现用 web-push。keys 由调用方逐设备传入 */

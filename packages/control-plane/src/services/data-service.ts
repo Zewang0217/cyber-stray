@@ -14,6 +14,8 @@ import * as petsRepo from '../infra/pets-repo.js';
 import {
   readDiaryEntry,
   readDiaryList,
+  readDreamEntry,
+  readDreamList,
   readInterestHistorySnapshots,
   readPushHistoryItems,
   readTenantInterestGraph,
@@ -180,7 +182,51 @@ export function createDataService({ config }: DataServiceDeps) {
     return { ok: true, data: entry, found: entry !== null };
   }
 
-  return { getState, getInterests, getInterestsHistory, getHistory, getFootprint, getDiaryList, getDiaryEntry };
+  /** 梦境列表（diary/dreams/，与日记同契约：时间倒序含标题/摘录） */
+  async function getDreamList(tenantId: string): Promise<DataOutcome<DiaryEntry[]>> {
+    try {
+      return { ok: true, data: await readDreamList(config.dataDir, tenantId) };
+    } catch (error) {
+      return {
+        ok: false,
+        status: 500,
+        error: error instanceof Error ? error.message : '梦境数据损坏或不可读',
+      };
+    }
+  }
+
+  /** 单篇梦境；该日期没有 → found: false（路由层映射 404） */
+  async function getDreamEntry(
+    tenantId: string,
+    date: string,
+  ): Promise<
+    | { ok: true; data: DiaryEntry | null; found: boolean }
+    | { ok: false; status: 500; error: string }
+  > {
+    let entry: DiaryEntry | null;
+    try {
+      entry = await readDreamEntry(config.dataDir, tenantId, date);
+    } catch (error) {
+      return {
+        ok: false,
+        status: 500,
+        error: error instanceof Error ? error.message : '梦境数据损坏或不可读',
+      };
+    }
+    return { ok: true, data: entry, found: entry !== null };
+  }
+
+  return {
+    getState,
+    getInterests,
+    getInterestsHistory,
+    getHistory,
+    getFootprint,
+    getDiaryList,
+    getDiaryEntry,
+    getDreamList,
+    getDreamEntry,
+  };
 }
 
 export type DataService = ReturnType<typeof createDataService>;

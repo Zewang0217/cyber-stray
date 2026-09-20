@@ -14,20 +14,12 @@ export default tseslint.config(
     ignores: ["node_modules/", "coverage/"],
   },
   {
-    // 分层棘轮门禁（#280 R1 / #284 R2 / #286 R3 / #288 R4a）：接口层不做
-    // I/O——已分层文件逐一圈禁，全部干净后扩成 src/routes/**。
-    files: [
-      "src/routes/feedback.ts",
-      "src/routes/pets.ts",
-      "src/routes/data.ts",
-      "src/routes/admin.ts",
-      "src/routes/footprint.ts",
-      "src/routes/diary.ts",
-      "src/routes/events.ts",
-      "src/routes/channels.ts",
-      "src/routes/pet-assets.ts",
-      "src/routes/auth.ts",
-    ],
+    // 分层棘轮门禁（#280/#284/#286/#288/#290 重构轨收官）：接口层不做 I/O。
+    // R1-R4 逐文件圈禁已全部完成，规则翻成整个 routes 目录——
+    // 此后任何 route 直接 import db / fs / child_process 或用 fetch 一律红。
+    // 测试文件排除（fixture 播种合法使用 db，测试不是接口层代码）。
+    files: ["src/routes/**"],
+    ignores: ["**/*.test.ts"],
     rules: {
       "no-restricted-imports": [
         "error",

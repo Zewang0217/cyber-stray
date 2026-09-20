@@ -139,3 +139,26 @@ export async function updatePetStatus(
 ): Promise<void> {
   await db.update(pets).set({ status }).where(eq(pets.tenantId, tenantId)).run();
 }
+
+/** 设置自定义推送时间窗（本地小时；Pro/BYOK 权益，判定在应用层） */
+export async function updatePushWindow(
+  db: ControlDb,
+  tenantId: string,
+  startHour: number,
+  endHour: number,
+): Promise<void> {
+  await db
+    .update(pets)
+    .set({ pushWindowStart: startHour, pushWindowEnd: endHour })
+    .where(eq(pets.tenantId, tenantId))
+    .run();
+}
+
+/** 清除推送窗（回全天） */
+export async function clearPushWindow(db: ControlDb, tenantId: string): Promise<void> {
+  await db
+    .update(pets)
+    .set({ pushWindowStart: null, pushWindowEnd: null })
+    .where(eq(pets.tenantId, tenantId))
+    .run();
+}

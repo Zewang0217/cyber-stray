@@ -16,19 +16,26 @@
 
 | 票 | 范围 | 状态 |
 |---|---|---|
-| #280 / PR #283（R1） | 分层骨架 + lint 棘轮门禁 + feedback.ts 迁入（330→102 行） | PR 待合并（base=rebuild-dev） |
-| #284 / PR #285（R2） | pets.ts 迁入（512→314 行）+ 兴趣图谱契约下沉 shared（跨包镜像清零） | PR stacked 于 #283 |
-| R3（未立票） | data.ts + admin.ts 迁入；Shannon 熵公式下沉 shared（第 2 处跨包镜像：data.ts 与 agent getEntropy 靠注释同步） | 待开始 |
-| R4（未立票） | 其余 12 个 route 分层 + `requireTenant` 中间件收敛 13 处 `scopedTenantId` 复制；门禁扩成 `src/routes/**` | 待 R3 |
+| #280 / PR #283（R1） | 分层骨架 + lint 棘轮门禁 + feedback.ts 迁入（330→102 行） | ✅ 已合入 rebuild-dev（待验收） |
+| #284 / PR #285（R2） | pets.ts 迁入（512→310 行）+ 兴趣图谱契约下沉 shared（跨包镜像清零） | ✅ 已合入 rebuild-dev（待验收） |
+| #286 / PR #287（R3） | data.ts（327→101）+ admin.ts（380→216）迁入 + Shannon 熵下沉 shared（跨包公式镜像清零） | ✅ 已合入 rebuild-dev（待验收） |
+| #288 / PR #289（R4a） | requireTenant 中间件 + footprint/diary/events/channels/pet-assets 迁入（auth 核实免迁移） | ✅ 已合入 rebuild-dev（待验收） |
+| #290（R4b，本 PR） | petgen/push/plan/evolution/meme/dream 迁入 + **门禁全目录化（收官）** | 实施中 |
 | 后续（未立票） | agent 侧 `speak.ts`：先 characterization test 再拆 PushGate / ChannelSender；web `StreetCorner` 抽 `useStreetPerformance`（配合测试票 #260/#261）；config.ts 全局租户上下文只加 lint 约束、待 core 有测试缝再动结构 | 排队 |
+
+**收官状态（R4b）**：`routes/` 16 个文件全部只剩鉴权 + 校验 + HTTP 映射；
+`requireTenant` 收敛了各 route 复制的租户校验（pet-assets 因 404 语义特例保留自定义、
+evolution 沿用历史弱校验——是否收紧待持机人裁决）；eslint 门禁翻成整个
+`src/routes/**`（测试文件豁免）——接口层直接 import db/fs/child_process 或使用
+fetch 从此机械性红。重构批次数次验收后整批 PR 回 develop。
 
 ## 机械门禁（棘轮，只收紧不放松）
 
-`packages/control-plane/eslint.config.mjs`：已分层 route 文件逐一圈禁
-`no-restricted-imports`（`**/db/**`、`node:fs`、`node:child_process`）+ `no-restricted-globals`（`fetch`）。
+`packages/control-plane/eslint.config.mjs`：`src/routes/**` 全目录圈禁
+`no-restricted-imports`（`**/db/**`、`node:fs`、`node:child_process`）+ `no-restricted-globals`（`fetch`）；
+测试文件豁免（fixture 播种合法使用 db）。
 
-- 当前圈禁：`routes/feedback.ts`（R1）、`routes/pets.ts`（R2）。
-- 后续每票把各自 route 文件加入圈禁；全部干净后规则翻成整个 `src/routes/**`。
+- R1-R4 已逐文件圈禁并全部干净，规则已翻成整个 routes 目录（测试豁免）——只收紧不放松。
 - 验收 grep 统一用 `from ['\"][^']*/db/`（要求 `/db/` 带斜杠——不带会误中 "fee**db**ack"）。
 
 ## 每票的硬约定
