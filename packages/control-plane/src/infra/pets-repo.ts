@@ -1,24 +1,28 @@
 /**
- * feedback 相关的 pets/tenants 表访问（基础设施层）
+ * pets 表访问（基础设施层）
  *
- * 只做存储读写，不做业务判定——守卫在 domain/，编排在 services/。
- * drizzle 调用收敛于此，`db.update` 不得出现在路由与应用层。
+ * pets 表全部 drizzle 调用收敛于此（含 feedback 用例的心情/口头禅/额度读写），
+ * `db.update` 不得出现在路由与应用层。只做存储，业务判定在 domain/ 与 services/。
  */
 
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
 import type { Catchphrase } from '@cyber-stray/shared';
+import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
 import type { PetMood } from '@cyber-stray/shared/pet-stats';
 import type { ControlDb } from '../db/client.js';
-import { pets, tenants } from '../db/schema.js';
+import { pets, type NewPet } from '../db/schema.js';
 
 export async function findPetByTenant(db: ControlDb, tenantId: string) {
   return db.select().from(pets).where(eq(pets.tenantId, tenantId)).get();
 }
 
-/** 套餐存在账号层（tenants.plan）；无行返回 null，回退策略由调用方决定 */
-export async function findTenantPlan(db: ControlDb, tenantId: string): Promise<string | null> {
-  const row = await db.select().from(tenants).where(eq(tenants.id, tenantId)).get();
-  return row?.plan ?? null;
+export async function findPetsByTenant(db: ControlDb, tenantId: string) {
+  return db.select().from(pets).where(eq(pets.tenantId, tenantId)).all();
+}
+
+/** 领养落库：tenant 唯一索引 + onConflictDoNothing（并发双 adopt 只赢一个） */
+export async function insertPetAdopting(db: ControlDb, pet: NewPet) {
+  return db.insert(pets).values(pet).onConflictDoNothing({ target: pets.tenantId }).run();
 }
 
 /** worker statsUpdated 落 pets（调用方已过 domain 守卫；mood 缺省 = 不更新心情） */
@@ -82,4 +86,42 @@ export async function rollbackBoostQuota(
   priorValue: number | null,
 ): Promise<void> {
   await db.update(pets).set({ lastBoostAt: priorValue }).where(eq(pets.tenantId, tenantId)).run();
+}
+
+export async function updateSleepSchedule(
+  db: ControlDb,
+  tenantId: string,
+  startHour: number,
+  endHour: number,
+): Promise<void> {
+  await db
+    .update(pets)
+    .set({ sleepStart: startHour, sleepEnd: endHour })
+    .where(eq(pets.tenantId, tenantId))
+    .run();
+}
+
+/** 清除作息（回永不睡眠，与既有行为一致） */
+export async function clearSleepSchedule(db: ControlDb, tenantId: string): Promise<void> {
+  await db
+    .update(pets)
+    .set({ sleepStart: null, sleepEnd: null })
+    .where(eq(pets.tenantId, tenantId))
+    .run();
+}
+
+export async function updateDiaryStyle(
+  db: ControlDb,
+  tenantId: string,
+  diaryStyle: DiaryStyleChoice,
+): Promise<void> {
+  await db.update(pets).set({ diaryStyle }).where(eq(pets.tenantId, tenantId)).run();
+}
+
+export async function updateDiaryPush(
+  db: ControlDb,
+  tenantId: string,
+  diaryPushEnabled: boolean,
+): Promise<void> {
+  await db.update(pets).set({ diaryPushEnabled }).where(eq(pets.tenantId, tenantId)).run();
 }
