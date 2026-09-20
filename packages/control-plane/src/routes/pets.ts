@@ -22,7 +22,7 @@ import { join } from 'path';
 import { and, eq } from 'drizzle-orm';
 import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
-import { pets, userTenants, type NewPet } from '../db/schema.js';
+import { pets, tenants, userTenants, type NewPet } from '../db/schema.js';
 import { tenantDataDir } from '../tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
@@ -38,9 +38,17 @@ import {
 import { openTenantSecrets } from '../secrets/tenant-secrets.js';
 import { appendCatchphraseHistory } from '../catchphrase-history.js';
 import { generateCandidates } from '../adoption/candidates.js';
+import { planBudgetYuan, todayLlmCostYuan } from '../scheduler/budget.js';
+import { localDateKey } from '../usage.js';
 
 export interface PetsDeps {
-  config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
+  config: Pick<
+    ControlPlaneConfig,
+    | 'dataDir'
+    | 'sessionSecret'
+    | 'llmBudgetEnabled'
+    | 'llmBudgetYuan'
+  >;
 }
 
 /** 默认初始兴趣（与 agent InterestGraph defaultSeeds 一致，可改防后悔） */
@@ -198,7 +206,20 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       ...pet,
       catchphrases: parseStoredCatchphrases(stored, pet.personality),
     }));
-    return c.json({ success: true, data });
+    // #265：租户侧「宠物在睡觉」的初始态（SSE 不重放，刷新后靠这里）；
+    // 与调度闸同一判定（budget.ts 单一实现）。读失败 = 显式 500，不静默当没超。
+    const tenantRow = await db.select().from(tenants).where(eq(tenants.id, scoped.tenantId)).get();
+    const budgetLimit = planBudgetYuan(
+      { enabled: config.llmBudgetEnabled, yuanPerPlan: config.llmBudgetYuan },
+      tenantRow?.plan ?? 'free',
+    );
+    const budgetPaused =
+      budgetLimit !== null &&
+      (await todayLlmCostYuan(config.dataDir, scoped.tenantId, localDateKey())) >= budgetLimit;
+    return c.json({
+      success: true,
+      data: data.map((pet) => ({ ...pet, budgetPaused })),
+    });
   });
 
   /** POST /api/pets/adopt — 领养：建宠物行 + 兴趣种子 */

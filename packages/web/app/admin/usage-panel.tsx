@@ -108,6 +108,7 @@ export default function UsagePanel(): React.ReactElement {
               <th className="py-2 pr-3">生图</th>
               <th className="py-2 pr-3">质检</th>
               <th className="py-2 pr-3">费用</th>
+              <th className="py-2 pr-3">今日预算（#265）</th>
               <th className="py-2">最近活跃</th>
             </tr>
           </thead>
@@ -123,6 +124,11 @@ export default function UsagePanel(): React.ReactElement {
                 <td className="py-3 pr-3">{t.imageCount}</td>
                 <td className="py-3 pr-3">{t.visionCount}</td>
                 <td className="py-3 pr-3 font-medium">¥{t.cost.toFixed(2)}</td>
+                <td className={`py-3 pr-3 font-mono ${t.llmBudgetYuan !== null && t.llmCostToday >= t.llmBudgetYuan ? "text-[var(--bad)] font-semibold" : "text-subtext"}`}>
+                  {t.llmBudgetYuan === null
+                    ? `¥${t.llmCostToday.toFixed(2)} / 不限`
+                    : `¥${t.llmCostToday.toFixed(2)} / ¥${t.llmBudgetYuan.toFixed(2)}`}
+                </td>
                 <td className="py-3 text-subtext text-xs">
                   {t.lastActive ? new Date(t.lastActive).toLocaleString("zh-CN") : "—"}
                 </td>
@@ -130,7 +136,7 @@ export default function UsagePanel(): React.ReactElement {
             ))}
             {(data?.perTenant ?? []).length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-6 text-center text-subtext">
+                <td colSpan={8} className="py-6 text-center text-subtext">
                   暂无用量数据
                 </td>
               </tr>

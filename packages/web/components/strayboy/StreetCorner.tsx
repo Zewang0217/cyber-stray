@@ -95,6 +95,7 @@ export function StreetCorner({ contract, demo = false }: { contract: SpriteContr
 interface MainProps {
   contract: SpriteContract;
   demo: boolean;
+  /** PetRecord（Pet 为其超集）：budgetPaused 走可选字段（#265），demo 夹具不感知 */
   pet: PetRecord;
   state: AgentState | null;
   connected: boolean;
@@ -104,6 +105,12 @@ interface MainProps {
 /** 街角主交互体：hooks 全部在此层早于任何 return（规则内），门控已在外层完成。 */
 function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: MainProps) {
   const [wandering, setWandering] = useState(false);
+  // #265 预算耗尽停派：初始种子 = CP pets GET（SSE 不重放），转变沿 = SSE；
+  // CP 真相源回写（刷新/重拉后对齐），展示与作息睡眠共用（deriveStreetView）
+  const [budgetPaused, setBudgetPaused] = useState(pet.budgetPaused ?? false);
+  useEffect(() => {
+    setBudgetPaused(pet.budgetPaused ?? false);
+  }, [pet.budgetPaused]);
   const [dialog, setDialog] = useState("本猫出门找货，你看家。");
   const [hearts, setHearts] = useState(0);
   const [grumpyOn, setGrumpyOn] = useState(false);
@@ -166,6 +173,13 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
     } else if (lastEvent.type === "worker_failed" || lastEvent.type === "worker_timeout") {
       setWandering(false);
       setDialog("……今天城里风大，改天再来。");
+    } else if (lastEvent.type === "budget_exhausted") {
+      // #265 预算耗尽：租户侧语义「宠物在睡觉」（演出走 deriveStreetView 的睡眠帧）
+      setBudgetPaused(true);
+      setDialog("今天逛得够多了，先睡一觉，明天见。");
+    } else if (lastEvent.type === "budget_resumed") {
+      setBudgetPaused(false);
+      setDialog("睡饱了，出门找新鲜货！");
     }
   }, [lastEvent]);
 
@@ -227,8 +241,8 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent }: 
   }, []);
 
   const view = useMemo(
-    () => deriveStreetView(state, pet, now, wandering),
-    [state, pet, now, wandering],
+    () => deriveStreetView(state, { ...pet, budgetPaused }, now, wandering),
+    [state, pet, now, wandering, budgetPaused],
   );
 
   // LV 升级（delight A8）：名牌闪 + 对话框

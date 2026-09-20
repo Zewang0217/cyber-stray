@@ -43,8 +43,17 @@ import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
 import { isSleeping } from './sleep.js';
 import { DIARY_FALLBACK_HOUR, shouldGenerateDiary } from './diary-schedule.js';
 import type { DiaryRunner } from './diary-runner.js';
+import { planBudgetYuan, todayLlmCostYuan, type LlmBudgetConfig } from './budget.js';
+import { localDateKey } from '../usage.js';
 
 export { MINUTE_MS } from './propagate.js';
+
+/**
+ * LLM 整轮超时安全余量（#265）：workerTimeoutMs 扣除后经 --plan-args 下发，
+ * agent 侧超时先于 CP SIGKILL 触发，worker 得以优雅退出（exit 1 走重试/冷却、
+ * stderr 留排障尾巴），而非被 SIGKILL 硬杀丢 stats 写回。
+ */
+const LLM_TIMEOUT_MARGIN_MS = 30_000;
 
 /** 本地日期字符串（YYYY-MM-DD；日记文件名与按天去重基准） */
 function todayFor(nowMs: number): string {
@@ -63,6 +72,12 @@ export interface PlanJobArgs {
   /** 推送时间窗（本地小时；null = 全天） */
   pushWindowStart: number | null;
   pushWindowEnd: number | null;
+  /**
+   * 单轮游荡整体预算 ms（#265：workerTimeoutMs − 安全余量，经 --plan-args 下发；
+   * agent 侧 wander-loop 据此设 abortSignal，超时优雅退出而非被 CP SIGKILL 硬杀）。
+   * undefined = 不设限（单用户模式 / CP 超时小于余量时的边界）。
+   */
+  llmTimeoutMs?: number;
 }
 
 /** 一次游荡任务（runner 入参） */
@@ -104,6 +119,8 @@ export interface SchedulerConfig {
   workerTimeoutMs: number;
   /** 前推速率基准（DEFAULT_RATES；性格倍率乘在此基准上） */
   rates: PropagationRates;
+  /** 每租户每日 LLM 预算闸（#265；enabled=false 或套餐 0 = 不限） */
+  llmBudget: LlmBudgetConfig;
 }
 
 export interface SchedulerDeps {
@@ -147,6 +164,10 @@ export class Scheduler {
   private readonly memeEnabled: boolean;
   /** ADR-0013：数值未迁移已告警过的宠物（进程内去抖） */
   private readonly unmigratedWarned = new Set<string>();
+  /** #265 预算闸：预算耗尽停派中的宠物（转变沿发 exhausted/resumed 事件） */
+  private readonly budgetPaused = new Set<string>();
+  /** #265 预算闸：判定失败已告警过的宠物（判定恢复即清；防分钟级刷屏） */
+  private readonly budgetCheckFailed = new Set<string>();
   private timer?: ReturnType<typeof setInterval>;
 
   constructor(private readonly deps: SchedulerDeps) {
@@ -243,6 +264,11 @@ export class Scheduler {
       const state = propagate(pet, nowMs, resolveRates(pet.personality, config.rates));
       if (!isReady(state)) continue;
 
+      // #265 预算闸：闸在就绪后、pet_ready 前——超预算的宠物对租户是「在睡觉」，
+      // 不该广播 ready。fail-closed：判定失败也拦（查不清就不烧钱）。
+      const plan = planByTenant.get(pet.tenantId) ?? 'free';
+      if (!(await this.budgetAllows(pet.id, pet.tenantId, plan, nowMs))) continue;
+
       bus.publish(pet.tenantId, {
         type: 'pet_ready',
         tenantId: pet.tenantId,
@@ -250,7 +276,7 @@ export class Scheduler {
         at: nowMs,
       });
       this.launch(
-        { ...pet, plan: planByTenant.get(pet.tenantId) ?? 'free' },
+        { ...pet, plan },
         // 守卫已保证 mood/temper 非空：注入值 = 前推瞬时值 + 库中心情/脾气
         { energy: state.energy, boredom: state.boredom, mood: pet.mood, temper: pet.temper },
         dataDir,
@@ -448,6 +474,56 @@ export class Scheduler {
     void task.finally(() => this.inFlight.delete(task));
   }
 
+  /**
+   * 预算闸（#265）：true = 可派发。三态收口于此，tick 主循环只看布尔：
+   * - 超限：拦 + 转变沿发 budget_exhausted（detail = ¥水位/¥上限）
+   * - 判定失败（读当日 usage 出错）：fail-closed 拦 + 去重告警 budget_check_failed
+   *   ——「查不清」绝不按「没花钱」放行（禁兜底红线），但只停本租户不停全厂
+   * - 恢复（次日归零 / admin 调高阈值重启）：转变沿发 budget_resumed
+   */
+  private async budgetAllows(
+    petId: string,
+    tenantId: string,
+    plan: string,
+    nowMs: number,
+  ): Promise<boolean> {
+    const { dataDir, bus } = this.deps;
+    const limit = planBudgetYuan(this.deps.config.llmBudget, plan);
+    if (limit === null) return true; // 未启用/该套餐不限：无闸可谈
+
+    let cost: number;
+    try {
+      cost = await todayLlmCostYuan(dataDir, tenantId, localDateKey(new Date(nowMs)));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[scheduler] ${tenantId}/${petId} 预算判定失败，停派（fail-closed）：`, detail);
+      if (!this.budgetCheckFailed.has(petId)) {
+        this.budgetCheckFailed.add(petId);
+        bus.publish(tenantId, { type: 'budget_check_failed', tenantId, petId, at: nowMs, detail });
+      }
+      return false;
+    }
+    this.budgetCheckFailed.delete(petId); // 判定恢复：去重集清掉，下次失败再告警
+
+    if (cost >= limit) {
+      if (!this.budgetPaused.has(petId)) {
+        this.budgetPaused.add(petId);
+        bus.publish(tenantId, {
+          type: 'budget_exhausted',
+          tenantId,
+          petId,
+          at: nowMs,
+          detail: `¥${cost.toFixed(2)}/¥${limit.toFixed(2)}`,
+        });
+      }
+      return false;
+    }
+    if (this.budgetPaused.delete(petId)) {
+      bus.publish(tenantId, { type: 'budget_resumed', tenantId, petId, at: nowMs });
+    }
+    return true;
+  }
+
   /** 套餐执行参数（S11：scheduler 是策略点，runner 机械透传） */
   private planArgsFor(pet: {
     plan: string;
@@ -459,6 +535,12 @@ export class Scheduler {
       pushesPerDay: planLimits(pet.plan).pushesPerDay,
       pushWindowStart: pet.pushWindowStart,
       pushWindowEnd: pet.pushWindowEnd,
+      // #265：整轮 LLM 预算 = CP 挂死判定扣余量；余量给优雅退出（错误回报 +
+      // stderr 尾巴）。扣完 ≤0 说明 CP 超时本身比余量还短，下发无意义，不设限
+      llmTimeoutMs:
+        this.deps.config.workerTimeoutMs > LLM_TIMEOUT_MARGIN_MS
+          ? this.deps.config.workerTimeoutMs - LLM_TIMEOUT_MARGIN_MS
+          : undefined,
     };
   }
 

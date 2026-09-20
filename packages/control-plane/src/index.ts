@@ -73,6 +73,10 @@ const scheduler = new Scheduler({
     retryBackoffMs: config.workerRetryBackoffMs,
     workerTimeoutMs: config.workerTimeoutMs,
     rates: DEFAULT_RATES,
+    llmBudget: {
+      enabled: config.llmBudgetEnabled,
+      yuanPerPlan: config.llmBudgetYuan,
+    },
   },
   memeEnabled: config.memeEnabled,
 });

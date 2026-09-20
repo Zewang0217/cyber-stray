@@ -9,13 +9,13 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { eq } from 'drizzle-orm';
 import { getDb, _resetDb, type ControlDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { pets } from '../db/schema.js';
+import { pets, tenants } from '../db/schema.js';
 import { getOrCreateTenant } from '../tenant.js';
 import { createEventBus, type EventBus } from '../events/bus.js';
 import {
@@ -26,6 +26,7 @@ import {
   type WorkerRunner,
 } from './scheduler.js';
 import type { DiaryJob, DiaryWorkerResult, DiaryRunner } from './diary-runner.js';
+import type { LlmBudgetConfig } from './budget.js';
 
 describe('调度器', () => {
   let dataDir: string;
@@ -70,6 +71,7 @@ describe('调度器', () => {
     maxRetries?: number;
     retryBackoffMs?: number;
     workerTimeoutMs?: number;
+    llmBudget?: LlmBudgetConfig;
   }) {
     return new Scheduler({
       db: () => getDb(dataDir),
@@ -84,6 +86,7 @@ describe('调度器', () => {
         retryBackoffMs: overrides?.retryBackoffMs ?? 60_000,
         workerTimeoutMs: overrides?.workerTimeoutMs ?? 10 * MINUTE_MS,
         rates: { boredomPerMinute: 1, energyPerMinute: 1 },
+        llmBudget: overrides?.llmBudget ?? { enabled: false, yuanPerPlan: { free: 0.5, pro: 2, byok: 2 } },
       },
     });
   }
@@ -193,6 +196,102 @@ describe('调度器', () => {
 
     release();
     await sched.drain();
+  });
+
+  // ── #265 每租户每日 LLM 预算闸 ──────────────────────────────────
+
+  /** 写一条当日 LLM 用量（deepseek-chat 输入 ¥2/M）；inputTokens=1M ≈ ¥2 */
+  function writeLlmUsage(tenantId: string, dateKey: string, inputTokens: number): void {
+    const usageDir = join(dataDir, 'tenants', tenantId, 'usage');
+    mkdirSync(usageDir, { recursive: true });
+    writeFileSync(
+      join(usageDir, `usage-${dateKey}.jsonl`),
+      JSON.stringify({
+        timestamp: `${dateKey}T08:00:00.000Z`,
+        tenantId,
+        kind: 'llm',
+        model: 'deepseek-chat',
+        inputTokens,
+        outputTokens: 0,
+      }) + '\n',
+      'utf-8',
+    );
+  }
+
+  /** 当前时钟的本地日期键（与闸的取日一致） */
+  function clockDateKey(): string {
+    const d = new Date(clock.now);
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${m}-${day}`;
+  }
+
+  it('预算闸：超限租户停派发 + budget_exhausted 转变沿只发一次', async () => {
+    writeLlmUsage('t1', clockDateKey(), 2_000_000); // ¥4 ≥ ¥2（pro 默认上限）
+    await db.update(tenants).set({ plan: 'pro' }).where(eq(tenants.id, 't1')).run();
+    const events: string[] = [];
+    bus.subscribe('t1', (e) => events.push(e.type));
+    sched = makeScheduler({ llmBudget: { enabled: true, yuanPerPlan: { free: 0.5, pro: 2, byok: 2 } } });
+
+    await addPet('p1', 't1');
+    await tick();
+    expect(runner).not.toHaveBeenCalled(); // 超限：不派发
+    expect(events).toEqual(['budget_exhausted']);
+
+    await tick(MINUTE_MS); // 下一 tick 仍超限：不重复发事件
+    expect(runner).not.toHaveBeenCalled();
+    expect(events).toEqual(['budget_exhausted']);
+  });
+
+  it('预算闸：未超限正常派发；当日累计超限停派；次日归零自动恢复', async () => {
+    writeLlmUsage('t1', clockDateKey(), 100_000); // ¥0.2 < ¥0.5（free 上限）
+    const events: string[] = [];
+    bus.subscribe('t1', (e) => events.push(e.type));
+    sched = makeScheduler({ llmBudget: { enabled: true, yuanPerPlan: { free: 0.5, pro: 2, byok: 2 } } });
+
+    await addPet('p1', 't1');
+    await tick();
+    expect(runner).toHaveBeenCalledOnce(); // 未超限：正常派发
+    expect(events.filter((e) => e.startsWith('budget'))).toEqual([]);
+
+    // 当日累计超限（同一日期键文件追加）→ 就绪后停派 + 转变沿（p1 前推 60min 复就绪）
+    writeLlmUsage('t1', clockDateKey(), 2_000_000);
+    await tick(60 * MINUTE_MS);
+    expect(runner).toHaveBeenCalledOnce();
+    expect(events.filter((e) => e.startsWith('budget'))).toEqual(['budget_exhausted']);
+
+    // 跨午夜（推进到本地次日）：日期键文件归零 → 恢复派发 + resumed 沿
+    const now = new Date(clock.now);
+    const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    await tick(nextMidnight.getTime() - clock.now + MINUTE_MS);
+    expect(runner).toHaveBeenCalledTimes(2);
+    expect(events.filter((e) => e.startsWith('budget'))).toEqual(['budget_exhausted', 'budget_resumed']);
+  });
+
+  it('预算闸：判定失败 fail-closed（停派 + budget_check_failed 去重），不影响他租户', async () => {
+    // usage 路径被同名文件占用 → readdir ENOTDIR（非 ENOENT）→ 判定抛错
+    mkdirSync(join(dataDir, 'tenants', 't1'), { recursive: true });
+    writeFileSync(join(dataDir, 'tenants', 't1', 'usage'), 'not a dir', 'utf-8');
+    const events: string[] = [];
+    bus.subscribe('t1', (e) => events.push(e.type));
+    sched = makeScheduler({ llmBudget: { enabled: true, yuanPerPlan: { free: 0.5, pro: 2, byok: 2 } } });
+
+    await addPet('p1', 't1');
+    await addPet('p2', 't2');
+    await tick();
+    expect(runner).toHaveBeenCalledTimes(1); // t2 不受牵连
+    expect(runner.mock.calls[0]?.[0].tenantId).toBe('t2');
+    expect(events).toEqual(['budget_check_failed']); // 去重：一次
+
+    await tick(MINUTE_MS);
+    expect(events).toEqual(['budget_check_failed']); // 仍不刷屏
+  });
+
+  it('LLM 整轮超时下发：--plan-args 携带 workerTimeoutMs − 余量', async () => {
+    await addPet('p1', 't1');
+    await tick();
+    const plan = runner.mock.calls[0]?.[0].plan;
+    expect(plan?.llmTimeoutMs).toBe(10 * MINUTE_MS - 30_000);
   });
 
   it('崩溃重试：失败→退避后下一 tick 重拉→成功写回', async () => {
