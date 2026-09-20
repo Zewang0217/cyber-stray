@@ -1,29 +1,25 @@
 /**
- * admin 路由 — /api/admin*（S13/S14 运营管理面板）
+ * admin 路由 — /api/admin*（接口层）
  *
- * 管理员判定（RBAC，S14）：session.sub ∈ admins 表 ∪ CP_ADMIN_SUBS env 白名单。
- * 身份在 Casdoor（谁可登录），权限在控制面（能做什么）——admin 是"看全部
- * 租户数据"的资源权限，放 Casdoor 会与身份耦合，故在控制面 DB 管理。
+ * 管理员判定（RBAC）：session.sub ∈ admins 表 ∪ CP_ADMIN_SUBS env 白名单。
+ * 身份在 Casdoor（谁可登录），权限在控制面（能做什么）——admin 是「看全部
+ * 租户数据」的资源权限，放 Casdoor 会与身份耦合，故在控制面 DB 管理；
  * env 白名单作 bootstrap（首启引导），入表后可移除。
  *
- * 用户级管理（S14）：套餐在账号层（tenants.plan，非 pets.plan）；
- * GET /api/admin/users 列出全部用户（含无宠物），PUT plan 改账号套餐。
+ * 用户级管理：套餐在账号层（tenants.plan，非 pets.plan）；GET /users 列出
+ * 全部用户（含无宠物），PUT plan 改账号套餐。用例编排在
+ * services/admin-service，admins 表在 infra/admin-repo；本文件只做鉴权、
+ * 参数校验与 HTTP 映射。
  */
 
 import { Hono } from 'hono';
-import { readFile } from 'fs/promises';
-import { join } from 'path';
-import { eq } from 'drizzle-orm';
 import type { ControlPlaneConfig } from '../config.js';
-import { getDb } from '../db/client.js';
-import { admins, pets, tenants } from '../db/schema.js';
-import { tenantDataDir } from '../tenant.js';
+import { validateModelId } from '../app-config.js';
+import { findAdminBySub } from '../infra/admin-repo.js';
 import { PLAN_VALUES, type PlanValue } from '../plan/limits.js';
-import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
-import { costOf, type UsageRow } from '../pricing.js';
-import { localDateKey, readTenantUsage } from '../usage.js';
-import { getModelConfig, setModelConfig, refreshModelConfig, MODEL_CANDIDATES, validateModelId, type ModelConfig } from '../app-config.js';
+import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
+import { createAdminService } from '../services/admin-service.js';
 
 export interface AdminDeps {
   config: Pick<
@@ -48,62 +44,13 @@ export async function adminSession(
   const session = await resolveTenantFromRequest(req, config.sessionSecret);
   if (!session) return { error: 401 };
   if (config.adminSubs.includes(session.sub)) return { sub: session.sub };
-  const db = await getDb(config.dataDir);
-  const row = await db.select().from(admins).where(eq(admins.sub, session.sub)).get();
+  const row = await findAdminBySub(config.dataDir, session.sub);
   if (!row) return { error: 403 };
   return { sub: session.sub };
 }
 
-/** 读租户 state.json 的游荡/推送统计（缺失 = 0；损坏 = 显式抛，不吞） */
-async function readTenantStats(dataDir: string, tenantId: string): Promise<{
-  totalWanders: number;
-  totalPushes: number;
-}> {
-  try {
-    const content = await readFile(join(tenantDataDir(dataDir, tenantId), 'state.json'), 'utf-8');
-    const parsed = JSON.parse(content) as { totalWanders?: unknown; totalPushes?: unknown };
-    return {
-      totalWanders: typeof parsed.totalWanders === 'number' ? parsed.totalWanders : 0,
-      totalPushes: typeof parsed.totalPushes === 'number' ? parsed.totalPushes : 0,
-    };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return { totalWanders: 0, totalPushes: 0 };
-    }
-    throw error;
-  }
-}
-
-/** usage 文件名日期与行读取已下沉 usage.ts（预算闸与聚合共用一份实现） */
-
-/** 租户级用量聚合（单租户；无数据 = 0，不报错） */
-function aggregateTenantUsage(rows: UsageRow[]): {
-  llmTokens: number;
-  imageCount: number;
-  visionCount: number;
-  cost: number;
-  lastActive: string | null;
-} {
-  let llmTokens = 0;
-  let imageCount = 0;
-  let visionCount = 0;
-  let cost = 0;
-  let lastActive: string | null = null;
-  for (const row of rows) {
-    if (row.kind === 'llm') {
-      llmTokens += (row.inputTokens ?? 0) + (row.outputTokens ?? 0);
-    } else if (row.kind === 'image') {
-      imageCount += row.images ?? 1;
-    } else if (row.kind === 'vision_qc') {
-      visionCount += row.images ?? 1;
-    }
-    cost += costOf(row);
-    if (!lastActive || row.timestamp > lastActive) lastActive = row.timestamp;
-  }
-  return { llmTokens, imageCount, visionCount, cost, lastActive };
-}
-
 export function createAdminRoutes({ config }: AdminDeps): Hono {
+  const service = createAdminService({ config });
   const app = new Hono();
 
   /** GET /api/admin/users — 全部用户（tenants 主表，含无宠物）+ 宠物摘要 + 统计 */
@@ -112,31 +59,7 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
     if ('error' in auth) {
       return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
     }
-
-    const db = await getDb(config.dataDir);
-    const tenantRows = await db.select().from(tenants).all();
-    const petRows = await db.select().from(pets).all();
-    const rows = await Promise.all(
-      tenantRows.map(async (t) => {
-        const pet = petRows.find((p) => p.tenantId === t.id) ?? null;
-        const stats = pet ? await readTenantStats(config.dataDir, t.id) : { totalWanders: 0, totalPushes: 0 };
-        return {
-          tenantId: t.id,
-          tenantName: t.name,
-          plan: t.plan,
-          createdAt: t.createdAt,
-          petId: pet?.id ?? null,
-          petName: pet?.name ?? null,
-          petStatus: pet?.status ?? null,
-          petBoredom: pet?.boredom ?? null,
-          petEnergy: pet?.energy ?? null,
-          petLastRunAt: pet?.lastRunAt ?? null,
-          totalWanders: stats.totalWanders,
-          totalPushes: stats.totalPushes,
-        };
-      }),
-    );
-    return c.json({ success: true, data: rows });
+    return c.json({ success: true, data: await service.listUsers() });
   });
 
   /** PUT /api/admin/users/:tenantId/plan — 改用户套餐（账号层） */
@@ -158,12 +81,10 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
       return c.json(jsonError(`plan 须为 ${PLAN_VALUES.join('|')}`), 400);
     }
 
-    const db = await getDb(config.dataDir);
-    const tenant = await db.select().from(tenants).where(eq(tenants.id, tenantId)).get();
-    if (!tenant) return c.json(jsonError('用户不存在'), 404);
-
-    await db.update(tenants).set({ plan: body.plan as PlanValue }).where(eq(tenants.id, tenantId)).run();
-    return c.json({ success: true, data: { tenantId, plan: body.plan } });
+    const outcome = await service.updatePlan(tenantId, body.plan as PlanValue);
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
   });
 
   /** PUT /api/admin/users/:tenantId/pet-status — 暂停/恢复宠物（停用可关自进化） */
@@ -185,12 +106,10 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
       return c.json(jsonError('status 须为 active|paused'), 400);
     }
 
-    const db = await getDb(config.dataDir);
-    const pet = await db.select().from(pets).where(eq(pets.tenantId, tenantId)).get();
-    if (!pet) return c.json(jsonError('该用户无宠物'), 404);
-
-    await db.update(pets).set({ status: body.status }).where(eq(pets.tenantId, tenantId)).run();
-    return c.json({ success: true, data: { tenantId, status: body.status } });
+    const outcome = await service.setPetStatus(tenantId, body.status);
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
   });
 
   /** GET /api/admin/admins — 管理员列表（env bootstrap + admins 表） */
@@ -199,14 +118,7 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
     if ('error' in auth) {
       return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
     }
-    const db = await getDb(config.dataDir);
-    const rows = await db.select().from(admins).all();
-    const list = rows.map((r) => ({ sub: r.sub, grantedBy: r.grantedBy, createdAt: r.createdAt }));
-    // env bootstrap 的管理员也展示（来源标注 env）
-    for (const sub of config.adminSubs) {
-      if (!list.some((a) => a.sub === sub)) list.push({ sub, grantedBy: 'env', createdAt: 0 });
-    }
-    return c.json({ success: true, data: list });
+    return c.json({ success: true, data: await service.listAdmins() });
   });
 
   /** POST /api/admin/admins — 授予管理员（管理员可授权他人） */
@@ -224,13 +136,7 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
     if (typeof body.sub !== 'string' || !TENANT_ID_RE.test(body.sub)) {
       return c.json(jsonError('sub 必填且为合法标识'), 400);
     }
-    const db = await getDb(config.dataDir);
-    await db
-      .insert(admins)
-      .values({ sub: body.sub, grantedBy: auth.sub })
-      .onConflictDoNothing({ target: admins.sub })
-      .run();
-    return c.json({ success: true, data: { sub: body.sub, grantedBy: auth.sub } });
+    return c.json({ success: true, data: await service.grantAdmin(body.sub, auth.sub) });
   });
 
   /** DELETE /api/admin/admins/:sub — 撤销管理员（禁自撤 + 保留至少一名） */
@@ -241,26 +147,19 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
     }
     const sub = c.req.param('sub');
     if (!TENANT_ID_RE.test(sub)) return c.json(jsonError('非法 sub'), 400);
-    if (sub === auth.sub) {
-      return c.json(jsonError('不能撤销自己（会锁死管理面）'), 400);
-    }
-    const db = await getDb(config.dataDir);
-    // 末位管理员保护：若本次撤销后表内为空且 env 白名单为空 → 拒绝（管理面不可锁死）
-    const remaining = await db.select().from(admins).all();
-    const isLast = remaining.length <= 1;
-    if (isLast && config.adminSubs.length === 0) {
-      return c.json(jsonError('至少保留一名管理员'), 400);
-    }
-    const removed = await db.delete(admins).where(eq(admins.sub, sub)).run();
-    return c.json({ success: true, data: { removed: removed.rowsAffected > 0 } });
+
+    const outcome = await service.revokeAdmin(sub, auth.sub);
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
   });
 
   /**
-   * GET /api/admin/usage?from=YYYY-MM-DD&to=YYYY-MM-DD — 用量成本可视化（ADR-0007）
+   * GET /api/admin/usage?from=YYYY-MM-DD&to=YYYY-MM-DD — 用量成本可视化
    *
-   * 响应：summary（总费用/token/张数）+ perTenant（每租户聚合）+ recent（最近 50 条明细）。
-   * 费用按内置默认单价表折算（pricing.ts）；未知模型 0（不瞎估）。
-   * #265：perTenant 附今日 LLM 水位（llmCostToday + llmBudgetYuan；null = 未启用/不限）。
+   * 响应：summary（总费用/token/张数）+ perTenant（每租户聚合，附今日 LLM
+   * 水位：llmCostToday + llmBudgetYuan，null = 未启用/不限）+ recent（最近
+   * 50 条明细）。费用按内置默认单价表折算，未知模型 0（不瞎估）。
    */
   app.get('/usage', async (c) => {
     const auth = await adminSession(c.req.raw, config);
@@ -273,77 +172,19 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
     if ((from && !dateRe.test(from)) || (to && !dateRe.test(to))) {
       return c.json(jsonError('from/to 须为 YYYY-MM-DD'), 400);
     }
-
-    const today = localDateKey();
-    const budgetYuanFor = (plan: string): number | null => {
-      if (!config.llmBudgetEnabled) return null;
-      const yuan = config.llmBudgetYuan[plan as keyof typeof config.llmBudgetYuan] ?? 0;
-      return yuan > 0 ? yuan : null; // 0 = 该套餐不限
-    };
-
-    const db = await getDb(config.dataDir);
-    const tenantRows = await db.select().from(tenants).all();
-    const perTenant = await Promise.all(
-      tenantRows.map(async (t) => {
-        const rows = await readTenantUsage(config.dataDir, t.id, from, to);
-        const agg = aggregateTenantUsage(rows);
-        const todayRows = await readTenantUsage(config.dataDir, t.id, today, today);
-        const llmCostToday = todayRows.reduce((s, row) => (row.kind === 'llm' ? s + costOf(row) : s), 0);
-        return {
-          tenantId: t.id,
-          tenantName: t.name,
-          plan: t.plan,
-          llmCostToday,
-          llmBudgetYuan: budgetYuanFor(t.plan),
-          ...agg,
-        };
-      }),
-    );
-
-    const allRows = (await Promise.all(
-      tenantRows.map((t) => readTenantUsage(config.dataDir, t.id, from, to)),
-    )).flat();
-    const summary = {
-      totalCost: perTenant.reduce((s, p) => s + p.cost, 0),
-      totalLlmTokens: perTenant.reduce((s, p) => s + p.llmTokens, 0),
-      totalImages: perTenant.reduce((s, p) => s + p.imageCount, 0),
-      totalVisionQc: perTenant.reduce((s, p) => s + p.visionCount, 0),
-    };
-    const recent = allRows
-      .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))
-      .slice(0, 50)
-      .map((row) => ({ ...row, cost: costOf(row) }));
-
-    return c.json({ success: true, data: { summary, perTenant, recent } });
+    return c.json({ success: true, data: await service.usageReport(from, to) });
   });
 
-  /**
-   * GET /api/admin/config — 全局模型配置（#131）：当前生效值 + 候选下拉。
-   * 未 refresh（单测场景）回退 env 默认。
-   */
+  /** GET /api/admin/config — 全局模型配置：当前生效值 + 候选下拉 */
   app.get('/config', async (c) => {
     const auth = await adminSession(c.req.raw, config);
     if ('error' in auth) {
       return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
     }
-    const cfg = getModelConfig({
-      imageModel: config.arkImageModel,
-      visionModel: config.visionModel,
-    });
-    return c.json({
-      success: true,
-      data: {
-        imageModel: cfg.imageModel,
-        visionModel: cfg.visionModel,
-        candidates: MODEL_CANDIDATES,
-      },
-    });
+    return c.json({ success: true, data: service.getModelSettings() });
   });
 
-  /**
-   * PUT /api/admin/config — 更新全局模型（#131）：写 DB + 刷缓存，下次生图生效。
-   * body: { imageModel?, visionModel? }（缺省字段保持不变）。
-   */
+  /** PUT /api/admin/config — 更新全局模型（缺省字段保持不变），下次生图生效 */
   app.put('/config', async (c) => {
     const auth = await adminSession(c.req.raw, config);
     if ('error' in auth) {
@@ -364,16 +205,11 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
       if (err) return c.json(jsonError(`visionModel: ${err}`), 400);
     }
 
-    const current = getModelConfig({
-      imageModel: config.arkImageModel,
-      visionModel: config.visionModel,
+    const saved = await service.updateModelSettings({
+      imageModel: typeof body.imageModel === 'string' ? body.imageModel : undefined,
+      visionModel: typeof body.visionModel === 'string' ? body.visionModel : undefined,
     });
-    const next: ModelConfig = {
-      imageModel: typeof body.imageModel === 'string' ? body.imageModel : current.imageModel,
-      visionModel: typeof body.visionModel === 'string' ? body.visionModel : current.visionModel,
-    };
-    const saved = await setModelConfig(config.dataDir, next);
-    return c.json({ success: true, data: { imageModel: saved.imageModel, visionModel: saved.visionModel } });
+    return c.json({ success: true, data: saved });
   });
 
   return app;
