@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { DEFAULT_PERSONALITY, getPersonality, isPersonalityId, type Catchphrase, type PersonalityId } from '@cyber-stray/shared';
+import { DEFAULT_INTEREST_SEEDS } from '@cyber-stray/shared/interest-graph';
 import { INTEREST_DECAY_LAMBDA } from './memory/interest-constants.js';
 import type { AgentConfig, AgentSecrets, EnergyRecoveryTier, PlanExecutionArgs } from './types.js';
 
@@ -154,7 +155,7 @@ const defaultBehavior: BehaviorConfig = {
     minInterestCount: 3,
     maxInterestCount: 20,
     noveltyBudget: 0.15,
-    defaultSeeds: ['科技', 'AI', '互联网'],
+    defaultSeeds: [...DEFAULT_INTEREST_SEEDS],
     minWeight: 0.05,
   },
   pushGate: {
