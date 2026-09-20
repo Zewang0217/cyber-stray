@@ -11,9 +11,8 @@
  */
 
 import { createDeepSeek, type DeepSeekProvider } from '@ai-sdk/deepseek';
-import { readFile, writeFile, rename, mkdir } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import { dirname } from 'path';
 import { consola } from '../logger.js';
 import { config, getDataPath } from '../config.js';
 import { updateState } from '../agent/state.js';
@@ -34,10 +33,8 @@ import type { WanderLoopConfig } from './wander-loop.js';
 import { HookChain } from '../hooks/chain.js';
 import type { HookContext } from '../hooks/types.js';
 import { getInterestGraph } from '../memory/interest-graph.js';
-import {
-  getBrowserContext,
-  buildBrowserPromptSection,
-} from '../tools/browser/lifecycle.js';
+import { getBrowserContext, buildBrowserPromptSection } from '../tools/browser/lifecycle.js';
+import { atomicWriteJson } from '../utils/atomic-json.js';
 import type { AgentState, AgentConfig, WanderResult, WanderStep, WanderStrategy } from '../types.js';
 import type { WanderStatsReport } from '@cyber-stray/shared/pet-stats';
 
@@ -341,7 +338,7 @@ export class WanderAgent {
     return [...topics].slice(-10);
   }
 
-  /** 将本次游荡步骤追加到游荡历史日志文件 */
+  /** 将本次游荡步骤追加到游荡历史日志文件（原子写，日记 worker 并发读不看到截断） */
   private async appendWanderHistory(steps: WanderStep[]): Promise<void> {
     const fullPath = getDataPath(WANDER_HISTORY_FILE);
     let history: WanderStep[] = [];
@@ -353,9 +350,6 @@ export class WanderAgent {
     if (history.length > MAX_WANDER_HISTORY_ENTRIES) {
       history = history.slice(-MAX_WANDER_HISTORY_ENTRIES);
     }
-    const tmp = `${fullPath}.tmp`;
-    await mkdir(dirname(fullPath), { recursive: true });
-    await writeFile(tmp, JSON.stringify(history, null, 2), 'utf-8');
-    await rename(tmp, fullPath);
+    await atomicWriteJson(fullPath, history);
   }
 }
