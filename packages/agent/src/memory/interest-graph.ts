@@ -5,8 +5,8 @@
  * 持久化到 `data/user-profile/user-interests.json`（JSON sidecar，同 `.index.json` 模式；
  * v2 层级结构：一级节点 = 领养种子/旧扁平节点原样兼容，二三级 = 分类管线产出）。
  *
- * Phase 2 只建骨架：source 预留 'reflection'/'feedback'，但只产生 'default'。
- * 反思写入(REF)和反馈加权(USR)由下游 Phase 3/4 接入。
+ * source 预留 'reflection'/'feedback'，当前只产生 'default'；反思写入与
+ * 反馈加权由下游模块接入。
  *
  * 核心约束：
  * - 原子写 + 并发安全：唯一 tmp 名 + persist 串行
@@ -23,11 +23,19 @@ import { atomicWriteJson } from '../utils/atomic-json.js';
 import { isPlausibleTopic } from './topic-validator.js';
 import { INTEREST_DECAY_LAMBDA } from './interest-constants.js';
 import { recordInterestSnapshot } from './interest-history.js';
+import {
+  DEFAULT_INTEREST_SEEDS,
+  INTEREST_GRAPH_VERSION,
+  INTEREST_SEED_WEIGHT,
+  type InterestGraphData,
+  type InterestNode,
+  type InterestSource,
+} from '@cyber-stray/shared/interest-graph';
 
 const logger = consola.withTag('InterestGraph');
 
-// schema 漂移守卫
-const GRAPH_VERSION = 2 as const;
+// schema 漂移守卫：版本号来自 shared 单一真相源
+const GRAPH_VERSION = INTEREST_GRAPH_VERSION;
 /** 用户兴趣图谱文件路径（相对数据根；migration/CLI 复用，防路径漂移） */
 export const USER_INTERESTS_FILE = 'user-profile/user-interests.json';
 
@@ -53,9 +61,9 @@ export const InterestNodeSchema = z.object({
   parent: z.string().optional(),
   /** v2：节点在 taxonomy 中的路径（一级节点 = id 自身；叶子 = `天文/黑洞`） */
   path: z.string().optional(),
-  /** v2：正向示例内容（like/boost 信号消解后的原文，S2 归因/展引用） */
+  /** v2：正向示例内容（like/boost 信号消解后的原文，反馈归因与展示引用用） */
   exemplars: z.array(z.string()).optional(),
-  /** v2：负向示例内容（dislike 信号消解的原文；只落叶子，不碰父级——S2 语义） */
+  /** v2：负向示例内容（dislike 信号消解的原文；只落叶子，不碰父级） */
   negativeExemplars: z.array(z.string()).optional(),
 });
 
@@ -65,31 +73,14 @@ export const InterestGraphDataSchema = z.object({
   nodes: z.array(InterestNodeSchema),
 });
 
-// Types
+// 类型与形状的单一真相源在 @cyber-stray/shared/interest-graph（CP 领养种子同源），
+// 此处 zod schema 只承担运行时校验
+export type { InterestGraphData, InterestNode, InterestSource } from '@cyber-stray/shared/interest-graph';
 
-export type InterestSource = 'default' | 'reflection' | 'feedback' | 'migration';
-
-export interface InterestNode {
-  id: string;
-  weight: number;
-  source: InterestSource;
-  createdAt: string;
-  lastReinforced: string;
-  reinforceCount: number;
-  /** v2：父节点 id（叶子路径的父级）；根节点（一级）缺省 */
-  parent?: string;
-  /** v2：taxonomy 路径；一级节点 = id 自身 */
-  path?: string;
-  /** v2：正向示例内容 */
-  exemplars?: string[];
-  /** v2：负向示例内容（dislike 消解后） */
-  negativeExemplars?: string[];
-}
-
-/** 反馈信号类型（S2 #151 多信号权重） */
+/** 反馈信号类型（多信号权重） */
 export type InterestSignalType = 'like' | 'boost' | 'dislike';
 
-/** 信号强度幅值（S2 #151）：like 1.0 / boost 2.0 / dislike 1.5——dislike 的负号在 applySignal 应用时取，本表只存幅值 */
+/** 信号强度幅值：like 1.0 / boost 2.0 / dislike 1.5——dislike 的负号在 applySignal 应用时取，本表只存幅值 */
 export const SIGNAL_STRENGTH: Record<InterestSignalType, number> = {
   like: 1.0,
   boost: 2.0,
@@ -98,12 +89,6 @@ export const SIGNAL_STRENGTH: Record<InterestSignalType, number> = {
 
 /** 信号阻尼系数分母系数（阻尼 = 1/(1+0.2×n)，n=该节点累计信号数，边际递减） */
 export const SIGNAL_DAMPING_FACTOR = 0.2;
-
-export interface InterestGraphData {
-  version: 2;
-  lastUpdated: string;
-  nodes: InterestNode[];
-}
 
 /** 兴趣图谱配置（来自 agent-config.json） */
 export interface InterestGraphConfig {
@@ -122,7 +107,7 @@ export const DEFAULT_INTEREST_CONFIG: InterestGraphConfig = {
   minInterestCount: 3,
   maxInterestCount: 20,
   noveltyBudget: 0.15,
-  defaultSeeds: ['科技', 'AI', '互联网'],
+  defaultSeeds: [...DEFAULT_INTEREST_SEEDS],
   minWeight: 0.05,
 };
 
@@ -605,7 +590,7 @@ export class InterestGraph {
     }
 
     const now = new Date().toISOString();
-    const seedWeight = 0.5; // 默认种子初始权重
+    const seedWeight = INTEREST_SEED_WEIGHT; // 默认种子初始权重（shared 单一真相源）
 
     for (const seed of this.config.defaultSeeds) {
       this.data.nodes.push({

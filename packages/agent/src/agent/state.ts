@@ -4,6 +4,7 @@ import type { AgentState, Mood } from '../types';
 import { getDataPath } from '../config';
 import { consola } from '../logger';
 import { getInterestGraph } from '../memory/interest-graph.js';
+import { DEFAULT_INTEREST_SEEDS } from '@cyber-stray/shared/interest-graph';
 import { atomicWriteJson } from '../utils/atomic-json.js';
 
 /**
@@ -28,7 +29,7 @@ function createDefaultState(): AgentState {
 
     // Agent 个性化（ReAct 架构）
     // 注意：agentInterests 由 InterestGraph 驱动，此处为兼容保留
-    agentInterests: ['科技', 'AI', '互联网'],
+    agentInterests: [...DEFAULT_INTEREST_SEEDS],
 
     // 统计
     totalWanders: 0,

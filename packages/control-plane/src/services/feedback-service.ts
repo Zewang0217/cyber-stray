@@ -18,7 +18,8 @@ import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
 import { isWellFormedStatsUpdate, type StatsUpdate } from '../domain/pet-stats-guard.js';
 import { realSpawn, runFeedbackCli, type CliSpawn } from '../infra/agent-cli-client.js';
-import * as repo from '../infra/feedback-repo.js';
+import * as petsRepo from '../infra/pets-repo.js';
+import { findTenantPlan } from '../infra/tenant-access.js';
 import { planLimits } from '../plan/limits.js';
 import { tenantDataDir } from '../tenant.js';
 
@@ -63,7 +64,7 @@ export function createFeedbackService({ config, spawnFn = realSpawn }: FeedbackS
     }
     try {
       const db = await getDb(config.dataDir);
-      await repo.updatePetStats(db, tenantId, stats);
+      await petsRepo.updatePetStats(db, tenantId, stats);
     } catch (error) {
       console.error(`[feedback] 心情写回失败（${tenantId}）：`, error);
     }
@@ -78,7 +79,7 @@ export function createFeedbackService({ config, spawnFn = realSpawn }: FeedbackS
     try {
       const updated = workerResult.catchphrasesUpdated;
       const db = await getDb(config.dataDir);
-      await repo.updateCatchphrases(db, tenantId, updated);
+      await petsRepo.updateCatchphrases(db, tenantId, updated);
       await appendCatchphraseHistory(
         tenantDataDir(config.dataDir, tenantId),
         'feedback',
@@ -95,7 +96,7 @@ export function createFeedbackService({ config, spawnFn = realSpawn }: FeedbackS
     input: { type: 'like' | 'dislike'; messageId: string },
   ): Promise<FeedbackOutcome> {
     const db = await getDb(config.dataDir);
-    const pet = await repo.findPetByTenant(db, tenantId);
+    const pet = await petsRepo.findPetByTenant(db, tenantId);
     if (!pet) return { ok: false, status: 409, error: '尚未领养宠物' };
 
     const statsArgs = petStatsArgs(pet);
@@ -133,17 +134,17 @@ export function createFeedbackService({ config, spawnFn = realSpawn }: FeedbackS
   /** 顶话题：显式「我要更多」高价值信号，按 plan 节流（策略源 plan/limits.ts） */
   async function boostTopic(tenantId: string, topic: string): Promise<FeedbackOutcome> {
     const db = await getDb(config.dataDir);
-    const pet = await repo.findPetByTenant(db, tenantId);
+    const pet = await petsRepo.findPetByTenant(db, tenantId);
     if (!pet) return { ok: false, status: 409, error: '尚未领养宠物' };
 
-    const plan = (await repo.findTenantPlan(db, tenantId)) ?? 'free';
+    const plan = (await findTenantPlan(config.dataDir, tenantId)) ?? 'free';
     const statsArgs = petStatsArgs(pet);
     if (!statsArgs) {
       return { ok: false, status: 409, error: '宠物数值未迁移，先执行 migrate:pet-stats' };
     }
 
     const intervalMs = planLimits(plan).boostIntervalMs;
-    const claimed = await repo.claimBoostQuota(db, tenantId, intervalMs, Date.now());
+    const claimed = await petsRepo.claimBoostQuota(db, tenantId, intervalMs, Date.now());
     if (!claimed) {
       return {
         ok: false,
@@ -159,7 +160,7 @@ export function createFeedbackService({ config, spawnFn = realSpawn }: FeedbackS
       ['--action', 'boost', '--topic', topic, '--user-id', tenantId, ...statsArgs],
     );
     if (worker.error) {
-      await repo.rollbackBoostQuota(db, tenantId, pet.lastBoostAt);
+      await petsRepo.rollbackBoostQuota(db, tenantId, pet.lastBoostAt);
       return { ok: false, status: 502, error: worker.error };
     }
 
