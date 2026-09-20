@@ -20,6 +20,11 @@ export async function findPetsByTenant(db: ControlDb, tenantId: string) {
   return db.select().from(pets).where(eq(pets.tenantId, tenantId)).all();
 }
 
+/** 全部宠物行（管理面用；量级 = 租户数，无需分页） */
+export async function listAllPets(db: ControlDb) {
+  return db.select().from(pets).all();
+}
+
 /** 领养落库：tenant 唯一索引 + onConflictDoNothing（并发双 adopt 只赢一个） */
 export async function insertPetAdopting(db: ControlDb, pet: NewPet) {
   return db.insert(pets).values(pet).onConflictDoNothing({ target: pets.tenantId }).run();
@@ -124,4 +129,13 @@ export async function updateDiaryPush(
   diaryPushEnabled: boolean,
 ): Promise<void> {
   await db.update(pets).set({ diaryPushEnabled }).where(eq(pets.tenantId, tenantId)).run();
+}
+
+/** 暂停/恢复宠物（停用 = 关自进化） */
+export async function updatePetStatus(
+  db: ControlDb,
+  tenantId: string,
+  status: 'active' | 'paused',
+): Promise<void> {
+  await db.update(pets).set({ status }).where(eq(pets.tenantId, tenantId)).run();
 }

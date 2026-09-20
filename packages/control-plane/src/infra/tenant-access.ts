@@ -7,6 +7,7 @@
  */
 
 import { and, eq } from 'drizzle-orm';
+import type { PlanValue } from '../plan/limits.js';
 import { getDb } from '../db/client.js';
 import { tenants, userTenants } from '../db/schema.js';
 
@@ -27,4 +28,20 @@ export async function findTenantPlan(dataDir: string, tenantId: string): Promise
   const db = await getDb(dataDir);
   const row = await db.select().from(tenants).where(eq(tenants.id, tenantId)).get();
   return row?.plan ?? null;
+}
+
+/** 全部租户（tenants 主表，含无宠物用户） */
+export async function listTenants(dataDir: string) {
+  const db = await getDb(dataDir);
+  return db.select().from(tenants).all();
+}
+
+export async function findTenantById(dataDir: string, tenantId: string) {
+  const db = await getDb(dataDir);
+  return db.select().from(tenants).where(eq(tenants.id, tenantId)).get();
+}
+
+export async function updateTenantPlan(dataDir: string, tenantId: string, plan: PlanValue) {
+  const db = await getDb(dataDir);
+  await db.update(tenants).set({ plan }).where(eq(tenants.id, tenantId)).run();
 }

@@ -27,6 +27,7 @@ import {
   DEFAULT_INTEREST_SEEDS,
   INTEREST_GRAPH_VERSION,
   INTEREST_SEED_WEIGHT,
+  shannonEntropy,
   type InterestGraphData,
   type InterestNode,
   type InterestSource,
@@ -279,26 +280,13 @@ export class InterestGraph {
     return this.data.nodes.find((n) => n.id === id);
   }
 
-  /** 计算兴趣图谱的 Shannon 熵（用于坍缩检测） */
+  /** 计算兴趣图谱的 Shannon 熵（用于坍缩检测）；公式单一真相源在 shared（传衰减后有效权重） */
   getEntropy(): number {
     const now = Date.now();
     const weights = this.data.nodes
       .map((n) => this.computeEffectiveWeight(n, now))
       .filter((w) => w > 0);
-
-    if (weights.length === 0) return 0;
-
-    const total = weights.reduce((sum, w) => sum + w, 0);
-    if (total === 0) return 0;
-
-    let entropy = 0;
-    for (const w of weights) {
-      const p = w / total;
-      if (p > 0) {
-        entropy -= p * Math.log2(p);
-      }
-    }
-    return entropy;
+    return shannonEntropy(weights);
   }
 
   /** 获取节点数量 */
