@@ -26,7 +26,8 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ["node:fs", "node:fs/*", "node:child_process"],
+              // 裸名（无 node: 前缀）与带前缀都圈——评审发现裸 `import 'fs'` 可绕过
+              group: ["node:fs", "node:fs/*", "fs", "fs/*", "node:child_process", "child_process"],
               message: "接口层禁直接文件/子进程 I/O——收进 src/infra/。",
             },
             {
