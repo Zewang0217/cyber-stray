@@ -23,7 +23,11 @@ function bigState(round: number) {
 async function main(): Promise<void> {
   const marker = join(getDataPath('.'), 'state-kill-marker');
   let round = 0;
+  // 自毁保险丝：即使父进程的 SIGKILL 落在 tsx 壳上、node 实体变孤儿，
+  // 也会在 60s 后自行退出，不会成为无限写盘的失控进程
+  const deadline = Date.now() + 60_000;
   for (;;) {
+    if (Date.now() > deadline) process.exit(0);
     await saveState(bigState(round));
     round += 1;
     await writeFile(marker, String(round), 'utf-8');
