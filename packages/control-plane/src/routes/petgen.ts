@@ -93,6 +93,11 @@ export function createPetGenRoutes({ config }: PetGenDeps): Hono<TenantEnv> {
 
   /** POST /api/petgen/tasks — 提交 spec（Pro/BYOK 专属 + 配额拦截） */
   app.post('/tasks', async (c) => {
+    // 套餐闸先于请求体校验（旧实现顺序）：免费用户 403，不泄露参数校验细节
+    const planGate = await service.ensureProPlan(c.get('tenantId'));
+    if (planGate) {
+      return c.json(jsonError(planGate.error), planGate.status);
+    }
     let body: unknown;
     try {
       body = await c.req.json();

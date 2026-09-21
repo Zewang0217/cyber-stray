@@ -59,6 +59,15 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     return plan === 'pro' || plan === 'byok';
   }
 
+  /** 套餐闸前置校验（保持旧实现顺序：plan 403 先于请求体 400，免费用户不泄露参数校验细节）；null = 通过 */
+  async function ensureProPlan(tenantId: string): Promise<{ ok: false; status: 403; error: string } | null> {
+    const db = await getDb(config.dataDir);
+    if (!(await planAllowed(db, tenantId))) {
+      return { ok: false, status: 403, error: '宠物 IP 定制是 Pro/BYOK 专属功能' };
+    }
+    return null;
+  }
+
   /** 提交 spec（Pro/BYOK 专属 + 配额拦截；失败任务不占配额——只统计 done） */
   async function submitTask(
     tenantId: string,
@@ -199,6 +208,7 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
 
   return {
     submitTask,
+    ensureProPlan,
     listTasks,
     getTask,
     confirmTask,
