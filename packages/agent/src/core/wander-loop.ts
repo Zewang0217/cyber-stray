@@ -28,6 +28,12 @@ export interface WanderLoopConfig {
   temperature: number;
   llmModel: string;
   generateTextMaxRetries: number;
+  /**
+   * 单轮整体预算 ms（#265：CP 下发 workerTimeout − 余量；含重试共用一个
+   * 截止时间，超时经 abortSignal 优雅退出走错误路径，而非被 CP SIGKILL
+   * 硬杀丢 stats 写回）。undefined = 不设限（单用户模式保持现状）。
+   */
+  llmTimeoutMs?: number;
 }
 
 /** wanderLoop 输入 */
@@ -68,11 +74,28 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
     maxSteps: config.maxSteps,
   });
 
-  // D-10：generateText 整体失败重试
+  // D-10：generateText 整体失败重试；#265：重试共用一个截止时间（abortSignal
+  // 按「剩余预算」掐，绝不超 CP SIGKILL——硬杀会丢末行 stats 写回）
   const maxRetries = config.generateTextMaxRetries;
+  const deadlineMs = config.llmTimeoutMs !== undefined ? Date.now() + config.llmTimeoutMs : null;
+
+  const failResult = (): WanderResult => ({
+    steps: 0,
+    durationMs: Date.now() - startTime,
+    spokeTimes: 0,
+    visitedUrls: [],
+    endReason: 'error',
+  });
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const attemptStart = Date.now();
+    const remainingMs = deadlineMs === null ? null : deadlineMs - attemptStart;
+    if (remainingMs !== null && remainingMs <= 0) {
+      logger.error(`[${traceId}] LLM 整轮预算耗尽（${config.llmTimeoutMs}ms，重试截断）`);
+      emit({ type: 'error', phase: 'llm_call', error: `llm timeout after ${config.llmTimeoutMs}ms`, recoverable: false });
+      emit({ type: 'wander_end', result: failResult() });
+      return failResult();
+    }
     try {
       const result = await generateText({
         model,
@@ -81,6 +104,7 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
         prompt: sanitizeForLLM(userPrompt),
         stopWhen: [hasToolCall('rest'), stepCountIs(config.maxSteps)],
         tools,
+        ...(remainingMs !== null ? { abortSignal: AbortSignal.timeout(remainingMs) } : {}),
         onStepFinish({ stepNumber, usage, toolCalls }) {
           try {
             recordStep({
@@ -123,13 +147,7 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
       logger.error(`[${traceId}] LLM 调用异常 (attempt ${attempt + 1}/${maxRetries + 1})`, { error });
       if (attempt === maxRetries) {
         emit({ type: 'error', phase: 'llm_call', error: String(error), recoverable: false });
-        const errorResult: WanderResult = {
-          steps: 0,
-          durationMs: Date.now() - startTime,
-          spokeTimes: 0,
-          visitedUrls: [],
-          endReason: 'error',
-        };
+        const errorResult = failResult();
         emit({ type: 'wander_end', result: errorResult });
         return errorResult;
       }

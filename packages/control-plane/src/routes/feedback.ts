@@ -1,74 +1,31 @@
 /**
- * feedback 路由 — /api/feedback + /api/boost（S9，#76）
+ * feedback 路由 — /api/feedback + /api/boost（接口层）
  *
  * 点赞/踩（不受限，低价值高频信号）+ 顶话题（按 plan 节流）。
- * 反馈目标 = 该租户宠物（租户只由 session claim 决定，x-tenant-* 忽略）。
+ * 本文件只做鉴权、参数校验与 HTTP 映射：
+ * 用例编排在 services/feedback-service，子进程协议与存储在 infra/，
+ * 纯规则在 domain/。反馈处理不需要 secrets/LLM。
  *
- * 处理方式：spawn agent feedback-cli 短命进程（与 worker-runner 同模式），
- * 复用 agent 反馈管道（feedback.json + 用户画像 + 兴趣图谱 + 心情）——
- * 控制面不复制图谱逻辑。反馈处理不需要 secrets/LLM。
- *
- * 节流（顶话题，显式"我要更多"高价值信号）：
- * - free：30 天 1 次；pro/byok：1 天 1 次（S11 计费接入后按 plan 字段生效）
- * - 拒绝时 429，不 spawn worker
+ * 顶话题节流：free 30 天 1 次；pro/byok 1 天 1 次（策略源 plan/limits.ts）；
+ * 拒绝时 429，不 spawn worker。反馈目标 = 该租户宠物（租户只由 session
+ * claim 决定，x-tenant-* 忽略）。
  */
 
 import { Hono } from 'hono';
-import { spawn } from 'child_process';
-import { fileURLToPath } from 'url';
-import { and, eq, isNull, lt, or } from 'drizzle-orm';
-import { planLimits } from '../plan/limits.js';
 import type { ControlPlaneConfig } from '../config.js';
-import type { ControlDb } from '../db/client.js';
-import { getDb } from '../db/client.js';
-import { pets, tenants, userTenants } from '../db/schema.js';
-import type { Catchphrase } from '@cyber-stray/shared';
-import { isPetMood, type PetMood } from '@cyber-stray/shared/pet-stats';
-import { appendCatchphraseHistory } from '../catchphrase-history.js';
+import type { CliSpawn } from '../infra/agent-cli-client.js';
+import { findUserTenantRelation } from '../infra/tenant-access.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
-import { tenantDataDir } from '../tenant.js';
+import { createFeedbackService } from '../services/feedback-service.js';
 import { resolveTenantFromRequest } from '../request-tenant.js';
-
-/** agent feedback CLI 绝对路径（仓库内锚定，与 worker-runner 的 AGENT_CLI 同模式） */
-const FEEDBACK_CLI = fileURLToPath(
-  new URL('../../../agent/src/worker/feedback-cli.ts', import.meta.url),
-);
-
-// 顶话题节流间隔：统一策略源（S11 plan/limits.ts）
 
 /** topic 最大长度（字符） */
 const TOPIC_MAX_CHARS = 50;
 
-/** 注入式 spawn（测试用 fake）；捕获 stdout（feedback-cli 输出一行 JSON 结果） */
-export type FeedbackSpawn = (
-  cmd: string,
-  args: string[],
-) => Promise<{ exitCode: number; stdout: string }>;
-
-const realSpawn: FeedbackSpawn = (cmd, args) => {
-  const { promise, resolve, reject } = Promise.withResolvers<{
-    exitCode: number;
-    stdout: string;
-  }>();
-  const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-  const out: string[] = [];
-  child.stdout?.on('data', (chunk: Buffer) => out.push(chunk.toString('utf8')));
-  const timer = setTimeout(() => child.kill('SIGKILL'), 30_000);
-  child.on('error', (error) => {
-    clearTimeout(timer);
-    reject(error);
-  });
-  child.on('exit', (code) => {
-    clearTimeout(timer);
-    resolve({ exitCode: code ?? -1, stdout: out.join('') });
-  });
-  return promise;
-};
-
 export interface FeedbackDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
   /** 注入式 spawn（测试）；缺省真实 spawn */
-  spawnFn?: FeedbackSpawn;
+  spawnFn?: CliSpawn;
 }
 
 const jsonError = (message: string) => ({ success: false, error: message });
@@ -81,88 +38,16 @@ async function scopedTenantId(
   const session = await resolveTenantFromRequest(req, config.sessionSecret);
   if (!session) return { error: 401 };
 
-  const db = await getDb(config.dataDir);
-  const relation = await db
-    .select()
-    .from(userTenants)
-    .where(
-      and(eq(userTenants.userId, session.sub), eq(userTenants.tenantId, session.tenantId)),
-    )
-    .get();
+  const relation = await findUserTenantRelation(config.dataDir, session.sub, session.tenantId);
   if (!relation) return { error: 403 };
   if (!TENANT_ID_RE.test(session.tenantId)) return { error: 403 };
 
   return { tenantId: session.tenantId };
 }
 
-export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDeps): Hono {
+export function createFeedbackRoutes({ config, spawnFn }: FeedbackDeps): Hono {
+  const service = createFeedbackService({ config, spawnFn });
   const app = new Hono();
-  const command = process.env.CP_WORKER_CMD ?? 'bun';
-
-  /** spawn feedback-cli 并透传其 stdout 结果（一行 JSON） */
-  async function runFeedbackWorker(
-    tenantId: string,
-    args: string[],
-  ): Promise<{ data?: unknown; error?: string }> {
-    const dataDir = tenantDataDir(config.dataDir, tenantId);
-    try {
-      const { exitCode, stdout } = await spawnFn(command, [
-        FEEDBACK_CLI,
-        '--data-dir',
-        dataDir,
-        ...args,
-      ]);
-      if (exitCode !== 0) {
-        console.error(`[feedback] worker 退出码 ${exitCode}（${tenantId}）`);
-        return { error: '反馈处理失败' };
-      }
-      const parsed = JSON.parse(stdout.trim().split('\n').pop() ?? '') as {
-        ok: boolean;
-        result?: unknown;
-        error?: string;
-      };
-      if (!parsed.ok) return { error: parsed.error ?? '反馈处理失败' };
-      return { data: parsed.result };
-    } catch (error) {
-      console.error(`[feedback] 拉起失败（${tenantId}）：`, error);
-      return { error: '反馈处理失败' };
-    }
-  }
-
-  /**
-   * ADR-0013 注入：feedback worker 的心情增量按库中当前值计算——mood/temper
-   * 未迁移（null）时显式 409，先跑 migrate:pet-stats，绝不静默跳过
-   */
-  function petStatsArgs(pet: { mood: PetMood | null; temper: number | null }): string[] | null {
-    if (pet.mood === null || pet.temper === null) return null;
-    return ['--pet-state', JSON.stringify({ mood: pet.mood, temper: pet.temper })];
-  }
-
-  /** ADR-0013 写回：worker 的 statsUpdated（mood/temper 增量）落 pets；失败仅记日志（反馈本体已成功）。
-   * 跨进程回报先校验再落库（mood 合法枚举、temper 0-100），非法显式告警不写 */
-  async function applyStatsWriteBack(
-    tenantId: string,
-    workerResult: { statsUpdated?: { mood?: PetMood; temper: number } | null } | undefined,
-  ): Promise<void> {
-    const stats = workerResult?.statsUpdated;
-    if (!stats) return;
-    if ((stats.mood !== undefined && !isPetMood(stats.mood)) ||
-        typeof stats.temper !== 'number' || !Number.isFinite(stats.temper) ||
-        stats.temper < 0 || stats.temper > 100) {
-      console.error(`[feedback] statsUpdated 形状非法，拒绝落库（${tenantId}）：`, JSON.stringify(stats));
-      return;
-    }
-    try {
-      const db = await getDb(config.dataDir);
-      await db
-        .update(pets)
-        .set({ ...(stats.mood ? { mood: stats.mood } : {}), temper: Math.round(stats.temper), updatedAt: Date.now() })
-        .where(eq(pets.tenantId, tenantId))
-        .run();
-    } catch (error) {
-      console.error(`[feedback] 心情写回失败（${tenantId}）：`, error);
-    }
-  }
 
   /** POST /api/feedback — 点赞/踩（不受限） */
   app.post('/feedback', async (c) => {
@@ -183,90 +68,11 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
       return c.json(jsonError('type 须为 like|dislike 且 messageId 必填'), 400);
     }
 
-    const db = await getDb(config.dataDir);
-    const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
-    if (!pet) {
-      return c.json(jsonError('尚未领养宠物'), 409);
-    }
-
-    const statsArgs = petStatsArgs(pet);
-    if (!statsArgs) {
-      return c.json(jsonError('宠物数值未迁移，先执行 migrate:pet-stats'), 409);
-    }
-    const worker = await runFeedbackWorker(scoped.tenantId, [
-      '--action',
-      'feedback',
-      '--type',
-      type,
-      '--message-id',
-      messageId,
-      '--user-id',
-      scoped.tenantId,
-      ...statsArgs,
-      // #114：宠物当前口头禅集合——归因权重要落在真实集合上
-      //（不传则 worker 回退性格默认组，归因落空）
-      ...(pet.catchphrases ? ['--catchphrases', pet.catchphrases] : []),
-    ]);
-    if (worker.error) {
-      return c.json(jsonError(worker.error), 502);
-    }
-    await applyStatsWriteBack(scoped.tenantId, worker.data as { statsUpdated?: { mood?: PetMood; temper: number } | null } | undefined);
-
-    // #114 口头禅归因写回：worker 结果带出调整后集合 → pets.catchphrases
-    // （DB 唯一写者是 CP）+ 演化历史；失败仅记日志（反馈本体已成功）
-    const workerResult = worker.data as
-      | { catchphrasesUpdated?: Catchphrase[] | null }
-      | undefined;
-    if (workerResult?.catchphrasesUpdated) {
-      try {
-        const updated = workerResult.catchphrasesUpdated;
-        await db
-          .update(pets)
-          .set({ catchphrases: JSON.stringify(updated), updatedAt: Date.now() })
-          .where(eq(pets.tenantId, scoped.tenantId))
-          .run();
-        await appendCatchphraseHistory(
-          tenantDataDir(config.dataDir, scoped.tenantId),
-          'feedback',
-          updated,
-        );
-      } catch (error) {
-        console.error(`[feedback] 口头禅写回失败（${scoped.tenantId}）：`, error);
-      }
-    }
-    return c.json({ success: true, data: worker.data ?? {} });
+    const outcome = await service.submitFeedback(scoped.tenantId, { type, messageId });
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
   });
-
-  /** 节流原子占位：间隔内已占 → { claimed:false, days }；成功 → { claimed:true } */
-  async function claimBoostQuota(
-    db: ControlDb,
-    tenantId: string,
-    plan: string,
-    now: number,
-  ): Promise<{ claimed: boolean; days: number }> {
-    const interval = planLimits(plan).boostIntervalMs;
-    const cutoff = now - interval;
-    const claimed = await db
-      .update(pets)
-      .set({ lastBoostAt: now })
-      .where(
-        and(
-          eq(pets.tenantId, tenantId),
-          or(isNull(pets.lastBoostAt), lt(pets.lastBoostAt, cutoff)),
-        ),
-      )
-      .run();
-    return { claimed: claimed.rowsAffected > 0, days: Math.ceil(interval / (24 * 60 * 60 * 1000)) };
-  }
-
-  /** 回滚占位（worker 失败不消耗额度） */
-  async function rollbackBoostQuota(
-    db: ControlDb,
-    tenantId: string,
-    priorValue: number | null,
-  ): Promise<void> {
-    await db.update(pets).set({ lastBoostAt: priorValue }).where(eq(pets.tenantId, tenantId)).run();
-  }
 
   /** POST /api/boost — 顶话题（按 plan 节流） */
   app.post('/boost', async (c) => {
@@ -286,44 +92,10 @@ export function createFeedbackRoutes({ config, spawnFn = realSpawn }: FeedbackDe
       return c.json(jsonError(`topic 必填且不超过 ${TOPIC_MAX_CHARS} 字`), 400);
     }
 
-    const db = await getDb(config.dataDir);
-    const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
-    if (!pet) {
-      return c.json(jsonError('尚未领养宠物'), 409);
-    }
-    // S14：套餐在账号层（tenants.plan）
-    const tenant = await db.select().from(tenants).where(eq(tenants.id, scoped.tenantId)).get();
-    const plan = tenant?.plan ?? 'free';
-
-    // 准入守卫先于额度占位：409 不烧配额（评审 B-M2——free 30 天一次，
-    // 一次 409 即锁一个月）
-    const statsArgs = petStatsArgs(pet);
-    if (!statsArgs) {
-      return c.json(jsonError('宠物数值未迁移，先执行 migrate:pet-stats'), 409);
-    }
-
-    // 节流：原子占位（check-then-write 横跨 spawn 会开并发窗口，双击可绕过
-    // 额度）；worker 失败回滚额度（S9 review 修复：exitCode 决定回滚）
-    const claim = await claimBoostQuota(db, scoped.tenantId, plan, Date.now());
-    if (!claim.claimed) {
-      return c.json(jsonError(`当前套餐每 ${claim.days} 天可顶一次话题`), 429);
-    }
-    const worker = await runFeedbackWorker(scoped.tenantId, [
-      '--action',
-      'boost',
-      '--topic',
-      topic.trim(),
-      '--user-id',
-      scoped.tenantId,
-      ...statsArgs,
-    ]);
-    if (worker.error) {
-      await rollbackBoostQuota(db, scoped.tenantId, pet.lastBoostAt);
-      return c.json(jsonError(worker.error), 502);
-    }
-    await applyStatsWriteBack(scoped.tenantId, worker.data as { statsUpdated?: { mood?: PetMood; temper: number } | null } | undefined);
-
-    return c.json({ success: true, data: worker.data ?? {} });
+    const outcome = await service.boostTopic(scoped.tenantId, topic.trim());
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
   });
 
   return app;

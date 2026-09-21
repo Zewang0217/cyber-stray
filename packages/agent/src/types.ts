@@ -144,6 +144,17 @@ export interface PlanExecutionArgs {
   /** 推送时间窗（本地小时 0-23；null = 全天可推） */
   pushWindowStart: number | null;
   pushWindowEnd: number | null;
+  /**
+   * 单轮游荡整体预算 ms（#265：CP 下发 workerTimeout − 余量；含重试在内，
+   * 超时优雅退出走错误路径，而非被 CP SIGKILL 硬杀丢写回）。undefined =
+   * 不设限（单用户模式——超时护栏只承诺多租户调度路径）。
+   */
+  llmTimeoutMs?: number;
+  /**
+   * 首推模式（#275：CP 按 lastRunAt == null 判定的第一次游荡）。prompt 注入
+   * 「必须产出首推」上下文——不豁免质量自判断与护栏，只把“可沉默”偏置成“必产出”。
+   */
+  firstPush?: boolean;
 }
 
 /** 阶梯恢复配置 */

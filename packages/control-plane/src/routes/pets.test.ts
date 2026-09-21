@@ -20,10 +20,11 @@ import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { pets, tenants } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { getOrCreateTenant } from '../tenant.js';
+import { getOrCreateTenant, tenantDataDir } from '../tenant.js';
 import { signSession, SESSION_COOKIE } from '../session.js';
 import { getPersonality } from '@cyber-stray/shared';
 import { createPetsRoutes } from './pets.js';
+import { localDateKey } from '../usage.js';
 
 const SECRET = 'x'.repeat(40);
 
@@ -38,7 +39,12 @@ describe('pets 路由（领养）', () => {
     await getOrCreateTenant(dataDir, 'alice');
     await getOrCreateTenant(dataDir, 'bob');
     app = new Hono();
-    const config = { dataDir, sessionSecret: SECRET } as Parameters<
+    const config = {
+      dataDir,
+      sessionSecret: SECRET,
+      llmBudgetEnabled: true,
+      llmBudgetYuan: { free: 0.5, pro: 2, byok: 2 },
+    } as Parameters<
       typeof createPetsRoutes
     >[0]['config'];
     app.route('/api', createPetsRoutes({ config }));
@@ -115,6 +121,43 @@ describe('pets 路由（领养）', () => {
     expect(listBody.data).toHaveLength(1);
     const db = await getDb(dataDir);
     expect((await db.select().from(pets).all()).length).toBe(1);
+  });
+
+  it('#265 预算耗尽：GET /api/pets 携带 budgetPaused（租户侧「睡觉」初始种子）', async () => {
+    // alice 领养后当日 LLM 用量超 free 上限（¥0.5；1M input tokens = ¥2）
+    await app.request(
+      await authed('http://x/api/pets/adopt', {
+        method: 'POST',
+        body: JSON.stringify({ name: '小溜' }),
+      }),
+    );
+    const usageDir = join(tenantDataDir(dataDir, 'alice'), 'usage');
+    mkdirSync(usageDir, { recursive: true });
+    const today = localDateKey();
+    writeFileSync(
+      join(usageDir, `usage-${today}.jsonl`),
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        tenantId: 'alice',
+        kind: 'llm',
+        model: 'deepseek-chat',
+        inputTokens: 1_000_000,
+        outputTokens: 0,
+      }) + '\n',
+      'utf-8',
+    );
+
+    const res = await app.request(await authed('http://x/api/pets'));
+    const body = (await res.json()) as { data: Array<{ budgetPaused: boolean }> };
+    expect(body.data[0]?.budgetPaused).toBe(true);
+
+    // bob 无用量：同请求形状，budgetPaused = false（预算未超≠省略字段）
+    const bobRes = await app.request(
+      await authed('http://x/api/pets', {}, { sub: 'bob', tenantId: 'bob' }),
+    );
+    expect(bobRes.status).toBe(200);
+    const bobBody = (await bobRes.json()) as { data: Array<unknown> };
+    expect(bobBody.data).toEqual([]); // bob 未领养，字段随行下发故无从断言——空态即未暂停
   });
 
   it('adopt 传 personality=lazy：落库并返回；非法值 400', async () => {
@@ -444,7 +487,12 @@ describe('adopt 口头禅（#114 切片 2）', () => {
     await runMigrations(dataDir);
     await getOrCreateTenant(dataDir, 'alice');
     app = new Hono();
-    const config = { dataDir, sessionSecret: SECRET } as Parameters<
+    const config = {
+      dataDir,
+      sessionSecret: SECRET,
+      llmBudgetEnabled: true,
+      llmBudgetYuan: { free: 0.5, pro: 2, byok: 2 },
+    } as Parameters<
       typeof createPetsRoutes
     >[0]['config'];
     app.route('/api', createPetsRoutes({ config }));

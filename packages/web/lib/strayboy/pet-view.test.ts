@@ -71,4 +71,20 @@ describe("deriveStreetView", () => {
     expect(v.anim).toBe("sleep");
     expect(v.away).toBe(false);
   });
+
+  it("#265 预算耗尽 → 共用睡眠演出（白天也夜幕 + sleep 帧）；无预算字段行为不变", () => {
+    const paused = { ...PET, budgetPaused: true };
+    const v = deriveStreetView(state({}), paused, new Date(), false);
+    expect(v.sleeping).toBe(true);
+    expect(v.anim).toBe("sleep");
+    expect(v.napping).toBe(false); // 预算睡不是打盹：无精力前提
+    // 打盹联动被预算睡覆盖（sleeping 优先）
+    const napping = deriveStreetView(state({ energy: 10 }), paused, new Date(), false);
+    expect(napping.napping).toBe(false);
+    expect(napping.anim).toBe("sleep");
+    // 未暂停（undefined = 旧数据/无预算）→ 行为不变
+    const awake = deriveStreetView(state({ energy: 80 }), PET, new Date(), false);
+    expect(awake.sleeping).toBe(false);
+    expect(awake.anim).toBe("idle");
+  });
 });

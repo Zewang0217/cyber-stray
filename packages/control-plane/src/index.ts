@@ -18,10 +18,6 @@ import {
   sweepStaleSecretFiles,
 } from './scheduler/worker-runner.js';
 import { createDiaryRunner, stopAllDiaryWorkers } from './scheduler/diary-runner.js';
-import { IlinkClient } from './ilink/client.js';
-import { BindingService } from './ilink/binding-service.js';
-import { WechatPoller } from './ilink/poller.js';
-import { createWechatPushGateway } from './ilink/wechat-gateway.js';
 import { PetGenProcessor } from './petgen/processor.js';
 import { createImageGenerator } from './petgen/ark.js';
 import { createVisionQc } from './petgen/vision.js';
@@ -55,27 +51,7 @@ await sweepStaleSecretFiles();
 // S5/S8：事件总线（调度器发布，SSE 路由消费——同一实例）
 const bus = createEventBus();
 
-// #97：微信通道（每租户 iLink bot——扫码即用 + 双向互动 + 受限推送）。
-// 构造注入同一 client 工厂；真实端点联调前按"部署后验证项"核对协议字段。
-const makeIlinkClient = (baseUrl: string, botToken?: string) =>
-  new IlinkClient({ baseUrl, ...(botToken ? { botToken } : {}) });
-const wechatBindings = new BindingService({
-  dataDir: config.dataDir,
-  client: makeIlinkClient,
-});
-const wechatPoller = new WechatPoller({
-  dataDir: config.dataDir,
-  clientFactory: makeIlinkClient,
-});
-// 微信轮询独立于调度器开关：扫描 tick 复用调度间隔（关调度时给 30s 兜底）
-wechatPoller.start(config.schedulerIntervalMs > 0 ? config.schedulerIntervalMs : 30_000);
-const detachWechatGateway = createWechatPushGateway({
-  dataDir: config.dataDir,
-  bus,
-  clientFactory: makeIlinkClient,
-}).attach();
-
-const app = createApp({ config, oidc: createCasdoorOidc(config), bus, wechatBindings });
+const app = createApp({ config, oidc: createCasdoorOidc(config), bus });
 
 // S5：调度器（嵌入控制面进程；无常驻宠物进程，就绪才拉起短命 worker）
 const scheduler = new Scheduler({
@@ -97,6 +73,11 @@ const scheduler = new Scheduler({
     retryBackoffMs: config.workerRetryBackoffMs,
     workerTimeoutMs: config.workerTimeoutMs,
     rates: DEFAULT_RATES,
+    llmBudget: {
+      enabled: config.llmBudgetEnabled,
+      yuanPerPlan: config.llmBudgetYuan,
+    },
+    alertWebhookUrl: config.opsAlertWebhookUrl,
   },
   memeEnabled: config.memeEnabled,
 });
@@ -147,7 +128,6 @@ const shutdown = () => {
     stopDispatch: () => {
       scheduler.stop();
       petGenProcessor.stop();
-      wechatPoller.stop();
     },
     drain: () => scheduler.drain(),
     forceKill: () => {
@@ -156,7 +136,6 @@ const shutdown = () => {
     },
     detach: () => {
       detachPushGateway();
-      detachWechatGateway();
     },
     exit: (code) => process.exit(code),
     budgetMs: config.shutdownBudgetMs,
@@ -167,8 +146,7 @@ process.on('SIGINT', shutdown);
 
 console.log(
   `[control-plane] listening on :${config.port} (dataDir=${config.dataDir}, ` +
-    `scheduler=${config.schedulerIntervalMs > 0 ? `${config.schedulerIntervalMs}ms ×${config.schedulerMaxConcurrent}` : 'off'}, ` +
-    `wechat-poller=armed)`,
+    `scheduler=${config.schedulerIntervalMs > 0 ? `${config.schedulerIntervalMs}ms ×${config.schedulerMaxConcurrent}` : 'off'})`,
 );
 
 export default {

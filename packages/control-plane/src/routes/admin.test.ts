@@ -175,6 +175,8 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
       dataDir, sessionSecret: SECRET, adminSubs: [],
       arkImageModel: 'default-img',
       visionModel: 'default-vl',
+      llmBudgetEnabled: true,
+      llmBudgetYuan: { free: 0.5, pro: 2, byok: 2 },
     } as Parameters<typeof createAdminRoutes>[0]['config'];
     const app2 = new Hono();
     app2.route('/api/admin', createAdminRoutes({ config: emptyEnvConfig }));
@@ -240,6 +242,11 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     const b = perTenant.find((p) => p.tenantId === 'tenant-b');
     expect(b?.llmTokens).toBe(0);
     expect(b?.cost).toBe(0);
+
+    // #265 水位：主 fixture 未启用预算 → 上限 null；明细行是 2026-08-25 的历史
+    // 数据、今日文件读不到当日行 → 今日 LLM 成本 0
+    expect(a?.llmBudgetYuan).toBeNull();
+    expect(a?.llmCostToday).toBe(0);
 
     // 明细降序 + 含 cost
     expect(recent).toHaveLength(3);

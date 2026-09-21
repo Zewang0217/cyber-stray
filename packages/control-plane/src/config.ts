@@ -52,6 +52,16 @@ export interface ControlPlaneConfig {
   memeEnabled: boolean;
   /** 优雅停机收口预算 ms（#138：60–90s；compose stop_grace_period 需覆盖） */
   shutdownBudgetMs: number;
+  /** 每租户每日 LLM 预算闸总开关（#265；env CP_LLM_BUDGET_ENABLED，缺省 true） */
+  llmBudgetEnabled: boolean;
+  /** 每租户每日 LLM 预算（¥/天，按套餐；#265；0 = 该套餐不限） */
+  llmBudgetYuan: { free: number; pro: number; byok: number };
+  /**
+   * 运维告警 webhook（#275 首推 24h 未送达等；env CP_OPS_ALERT_WEBHOOK_URL）。
+   * 格式与 #267 告警票对齐（飞书 bot：POST {msg_type:"text"}）；空 = 未配置，
+   * 只发租户事件不外呼——正式告警通道由 #267 落地后统一。
+   */
+  opsAlertWebhookUrl: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneConfig {
@@ -60,6 +70,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     throw new Error('缺少环境变量 CP_SESSION_SECRET（≥32 字节）');
   }
 
+  // #265 预算默认值起步（free 等值 ¥0.5、pro/byok ¥2），内测看真实用量调
+  const llmBudgetFreeYuan = Number(env.CP_LLM_BUDGET_FREE_YUAN ?? 0.5);
+  const llmBudgetProYuan = Number(env.CP_LLM_BUDGET_PRO_YUAN ?? 2);
+  const llmBudgetByokYuan = Number(env.CP_LLM_BUDGET_BYOK_YUAN ?? 2);
   const numeric: Array<[keyof ControlPlaneConfig, number]> = [
     ['schedulerIntervalMs', Number(env.CP_SCHEDULER_INTERVAL_MS ?? 60_000)],
     ['schedulerMaxConcurrent', Number(env.CP_SCHEDULER_MAX_CONCURRENT ?? 4)],
@@ -71,6 +85,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     ['shutdownBudgetMs', Number(env.CP_SHUTDOWN_BUDGET_MS ?? 90_000)],
   ];
   for (const [field, value] of numeric) {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`环境变量解析失败：${field} = ${value}（须为非负数字）`);
+    }
+  }
+  for (const [field, value] of [
+    ['llmBudgetFreeYuan', llmBudgetFreeYuan],
+    ['llmBudgetProYuan', llmBudgetProYuan],
+    ['llmBudgetByokYuan', llmBudgetByokYuan],
+  ] as const) {
     if (!Number.isFinite(value) || value < 0) {
       throw new Error(`环境变量解析失败：${field} = ${value}（须为非负数字）`);
     }
@@ -104,5 +127,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     petGenIntervalMs: Number(env.CP_PETGEN_INTERVAL_MS ?? 5_000),
     shutdownBudgetMs: Number(env.CP_SHUTDOWN_BUDGET_MS ?? 90_000),
     memeEnabled: env.CP_MEME_ENABLED !== 'false',
+    llmBudgetEnabled: env.CP_LLM_BUDGET_ENABLED !== 'false',
+    llmBudgetYuan: {
+      free: llmBudgetFreeYuan,
+      pro: llmBudgetProYuan,
+      byok: llmBudgetByokYuan,
+    },
+    opsAlertWebhookUrl: env.CP_OPS_ALERT_WEBHOOK_URL ?? '',
   };
 }

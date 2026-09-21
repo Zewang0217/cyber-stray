@@ -1,31 +1,24 @@
 /**
- * plan 路由 — /api/plan*（S11，#78）
+ * plan 路由 — /api/plan*（接口层）
  *
- * 套餐门控的用户面：查套餐/限额、切换套餐（free/pro/byok）、Pro 自定义
- * 推送时间窗、BYOK 自带 DeepSeek key（S4 加密存储，worker-runner 注入
- * deepseek_api_key → AgentSecrets.deepseekApiKey，agent 侧 BYOK 挡 env 回退）。
+ * 套餐门控的用户面：查套餐/限额、切换套餐（admin-only——自助切换是白嫖
+ * 平台配额的口子，RBAC 复用 adminSession）、Pro 自定义推送时间窗、BYOK
+ * 自带 DeepSeek key（信封加密，对所有套餐开放，绑 key 不变更套餐）。
  *
- * 计费（Stripe）后续接入后由 billing 表落账；当前切换无支付校验（自托管
- * 早期形态，计费落地时在此收口）。
- *
- * 租户只由 session claim 决定（x-tenant-* header 一律忽略）。
+ * 租户隔离走 requireTenant 中间件；用例在 services/plan-service；
+ * 计费（Stripe）后续接入后在支付链路收口。
  */
 
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
+import { PLAN_VALUES, type PlanValue } from '../plan/limits.js';
 import type { ControlPlaneConfig } from '../config.js';
-import { getDb } from '../db/client.js';
-import { pets, tenants, userTenants } from '../db/schema.js';
-import { planLimits, PLAN_VALUES, type PlanValue } from '../plan/limits.js';
-import { openTenantSecrets, TENANT_ID_RE } from '../secrets/tenant-secrets.js';
-import { resolveTenantFromRequest } from '../request-tenant.js';
+import { adminSession } from './admin.js';
+import { requireTenant, type TenantEnv } from '../middleware/require-tenant.js';
+import { createPlanService } from '../services/plan-service.js';
 
 export interface PlanDeps {
-  config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
+  config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret' | 'adminSubs'>;
 }
-
-/** BYOK DeepSeek key 的 S4 存储名（worker-runner SECRET_FIELD_BY_NAME 同名约定） */
-export const BYOK_KEY_SECRET = 'deepseek_api_key';
 
 const jsonError = (message: string) => ({ success: false, error: message });
 
@@ -34,65 +27,26 @@ function validHour(v: unknown): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 23;
 }
 
-/** 鉴权 + 租户校验：401 / 403 / { tenantId }（与 pets.ts 同规矩） */
-async function scopedTenantId(
-  req: Request,
-  config: PlanDeps['config'],
-): Promise<{ tenantId: string } | { error: 401 | 403 }> {
-  const session = await resolveTenantFromRequest(req, config.sessionSecret);
-  if (!session) return { error: 401 };
-  const db = await getDb(config.dataDir);
-  const relation = await db
-    .select()
-    .from(userTenants)
-    .where(
-      and(eq(userTenants.userId, session.sub), eq(userTenants.tenantId, session.tenantId)),
-    )
-    .get();
-  if (!relation) return { error: 403 };
-  if (!TENANT_ID_RE.test(session.tenantId)) return { error: 403 };
+export function createPlanRoutes({ config }: PlanDeps): Hono<TenantEnv> {
+  const service = createPlanService({ config });
+  const app = new Hono<TenantEnv>();
 
-  return { tenantId: session.tenantId };
-}
-
-export function createPlanRoutes({ config }: PlanDeps): Hono {
-  const app = new Hono();
+  app.use('*', requireTenant(config));
 
   /** GET /api/plan — 套餐 + 限额 + 窗口 + BYOK 状态（不回显 key） */
   app.get('/', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
-
-    const db = await getDb(config.dataDir);
-    const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
-    if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
-    // S14：套餐在账号层（tenants.plan）
-    const tenant = await db.select().from(tenants).where(eq(tenants.id, scoped.tenantId)).get();
-    const plan = tenant?.plan ?? 'free';
-
-    const store = await openTenantSecrets(config.dataDir, scoped.tenantId);
-    const names = await store.list();
-    return c.json({
-      success: true,
-      data: {
-        plan,
-        limits: planLimits(plan),
-        pushWindow:
-          pet.pushWindowStart !== null && pet.pushWindowEnd !== null
-            ? { startHour: pet.pushWindowStart, endHour: pet.pushWindowEnd }
-            : null,
-        byok: { keyBound: names.includes(BYOK_KEY_SECRET) },
-      },
-    });
+    const outcome = await service.getPlan(c.get('tenantId'));
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
   });
 
-  /** PUT /api/plan — 切换套餐 */
+  /** PUT /api/plan — 切换套餐（admin-only；租户隔离仍先校验） */
   app.put('/', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
+    const scoped = c.get('tenantId');
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) {
+      return c.json(jsonError(auth.error === 401 ? '未登录' : '仅管理员可变更套餐'), auth.error);
     }
 
     let body: { plan?: unknown };
@@ -106,30 +60,14 @@ export function createPlanRoutes({ config }: PlanDeps): Hono {
       return c.json(jsonError(`plan 须为 ${PLAN_VALUES.join('|')}`), 400);
     }
 
-    const db = await getDb(config.dataDir);
-    const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
-    if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
-
-    // 降级清窗口（自定义推送时间是 Pro 权益；BYOK 同 Pro 保留）
-    const keepWindow = nextPlan !== 'free';
-    await db.update(tenants).set({ plan: nextPlan as PlanValue }).where(eq(tenants.id, scoped.tenantId)).run();
-    if (!keepWindow) {
-      await db
-        .update(pets)
-        .set({ pushWindowStart: null, pushWindowEnd: null })
-        .where(eq(pets.tenantId, scoped.tenantId))
-        .run();
-    }
-    return c.json({ success: true, data: { plan: nextPlan } });
+    const outcome = await service.changePlan(scoped, nextPlan as PlanValue);
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
   });
 
   /** PUT /api/plan/push-window — Pro/BYOK 自定义推送时间窗（本地小时） */
   app.put('/push-window', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
-
     let body: { startHour?: unknown; endHour?: unknown };
     try {
       body = (await c.req.json()) as { startHour?: unknown; endHour?: unknown };
@@ -143,47 +81,22 @@ export function createPlanRoutes({ config }: PlanDeps): Hono {
       return c.json(jsonError('startHour 不能等于 endHour（空窗口）'), 400);
     }
 
-    const db = await getDb(config.dataDir);
-    const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
-    if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
-    const tenant = await db.select().from(tenants).where(eq(tenants.id, scoped.tenantId)).get();
-    if ((tenant?.plan ?? 'free') === 'free') {
-      return c.json(jsonError('自定义推送时间是 Pro 权益'), 403);
-    }
-
-    await db
-      .update(pets)
-      .set({ pushWindowStart: body.startHour, pushWindowEnd: body.endHour })
-      .where(eq(pets.tenantId, scoped.tenantId))
-      .run();
-    return c.json({ success: true, data: { startHour: body.startHour, endHour: body.endHour } });
+    const outcome = await service.setPushWindow(c.get('tenantId'), body.startHour, body.endHour);
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
   });
 
   /** DELETE /api/plan/push-window — 清窗口（回全天） */
   app.delete('/push-window', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
-    const db = await getDb(config.dataDir);
-    const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
-    if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
-
-    await db
-      .update(pets)
-      .set({ pushWindowStart: null, pushWindowEnd: null })
-      .where(eq(pets.tenantId, scoped.tenantId))
-      .run();
-    return c.json({ success: true, data: { cleared: true } });
+    const outcome = await service.clearPushWindow(c.get('tenantId'));
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
   });
 
-  /** PUT /api/plan/byok-key — BYOK 自带 DeepSeek key（S4 加密存储） */
+  /** PUT /api/plan/byok-key — BYOK 自带 DeepSeek key 对所有套餐开放 */
   app.put('/byok-key', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
-
     let body: { apiKey?: unknown };
     try {
       body = (await c.req.json()) as { apiKey?: unknown };
@@ -194,28 +107,15 @@ export function createPlanRoutes({ config }: PlanDeps): Hono {
       return c.json(jsonError('apiKey 必填'), 400);
     }
 
-    const db = await getDb(config.dataDir);
-    const pet = await db.select().from(pets).where(eq(pets.tenantId, scoped.tenantId)).get();
-    if (!pet) return c.json(jsonError('尚未领养宠物'), 409);
-    const tenant = await db.select().from(tenants).where(eq(tenants.id, scoped.tenantId)).get();
-    if ((tenant?.plan ?? 'free') !== 'byok') {
-      return c.json(jsonError('BYOK key 仅 byok 套餐可配置'), 403);
-    }
-
-    const store = await openTenantSecrets(config.dataDir, scoped.tenantId);
-    await store.set(BYOK_KEY_SECRET, body.apiKey.trim());
-    return c.json({ success: true, data: { bound: true } });
+    const outcome = await service.bindByokKey(c.get('tenantId'), body.apiKey.trim());
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
   });
 
   /** DELETE /api/plan/byok-key — 移除 key */
   app.delete('/byok-key', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
-    const store = await openTenantSecrets(config.dataDir, scoped.tenantId);
-    const removed = await store.delete(BYOK_KEY_SECRET);
-    return c.json({ success: true, data: { removed } });
+    return c.json({ success: true, data: await service.unbindByokKey(c.get('tenantId')) });
   });
 
   return app;

@@ -1,119 +1,23 @@
 /**
- * push 路由 — /api/push/*（S10，#77）
+ * push 路由 — /api/push/*（接口层）
  *
- * Web Push 订阅管理：
- * - GET  /api/push/vapid-key   公开：浏览器订阅前需要应用服务器公钥
- * - POST /api/push/subscribe   登录：登记/刷新订阅（endpoint 幂等，
- *                              换租户重新订阅即转移归属——设备跟人走）
- * - DELETE /api/push/subscribe 登录：按 endpoint 退订（只能删本租户的）
+ * Web Push 订阅管理：vapid-key 公开拉取；subscribe（endpoint 幂等，换租户
+ * 重新订阅即转移归属——设备跟人走）；退订（限本租户）；首推送达状态。
  *
- * 租户只由 session claim 决定（x-tenant-* header 一律忽略）。
+ * 租户隔离走 requireTenant 中间件（x-tenant-* 一律忽略）；订阅存储与
+ * VAPID 密钥在 infra/push-repo，用例在 services/push-service。
  */
 
 import { Hono } from 'hono';
-import { and, eq, sql } from 'drizzle-orm';
-import webpush from 'web-push';
 import type { ControlPlaneConfig } from '../config.js';
-import { getDb } from '../db/client.js';
-import { pushSubscriptions, vapidKeys, userTenants } from '../db/schema.js';
-import { TENANT_ID_RE, encryptWith, decryptWith } from '../secrets/tenant-secrets.js';
-import { loadMasterKey } from '../secrets/master-key.js';
-import { resolveTenantFromRequest } from '../request-tenant.js';
+import { requireTenant, type TenantEnv } from '../middleware/require-tenant.js';
+import { createPushService } from '../services/push-service.js';
 
 export interface PushDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
 }
 
 const jsonError = (message: string) => ({ success: false, error: message });
-
-/** VAPID 单例行 id（首用时生成整对，跨重启稳定） */
-const VAPID_ROW_ID = 1;
-
-/** VAPID privateKey 信封加密前缀（S4 master.key AES-256-GCM；AAD 防跨用途复用） */
-const VAPID_ENC_PREFIX = 'enc:v1:';
-const VAPID_AAD = Buffer.from('vapid:private-key');
-
-/**
- * 取（或生成）VAPID 密钥对。
- * env 显式提供时优先（运维可预生成/轮换）；否则首用时生成、privateKey 经
- * master.key 信封加密存 DB（S10 review 硬违规修复：无明文 secrets 落盘）。
- * 旧明文行首次读取自动迁移为加密存储。
- */
-export async function getVapidKeys(
-  dataDir: string,
-): Promise<{ publicKey: string; privateKey: string }> {
-  const db = await getDb(dataDir);
-
-  const envPub = process.env.CP_VAPID_PUBLIC_KEY;
-  const envPriv = process.env.CP_VAPID_PRIVATE_KEY;
-  if (envPub && envPriv) {
-    return { publicKey: envPub, privateKey: envPriv };
-  }
-
-  const existing = await db.select().from(vapidKeys).where(eq(vapidKeys.id, VAPID_ROW_ID)).get();
-  if (existing) {
-    const stored = existing.privateKey;
-    if (stored.startsWith(VAPID_ENC_PREFIX)) {
-      const mk = await loadMasterKey(dataDir);
-      return {
-        publicKey: existing.publicKey,
-        privateKey: decryptWith(mk, stored.slice(VAPID_ENC_PREFIX.length), VAPID_AAD),
-      };
-    }
-    // 旧明文行（S10 前）：迁移为加密存储，读取不暴露明文路径
-    const mk = await loadMasterKey(dataDir);
-    const packed = VAPID_ENC_PREFIX + encryptWith(mk, stored, VAPID_AAD);
-    await db
-      .update(vapidKeys)
-      .set({ privateKey: packed })
-      .where(eq(vapidKeys.id, VAPID_ROW_ID))
-      .run();
-    return { publicKey: existing.publicKey, privateKey: stored };
-  }
-
-  const generated = webpush.generateVAPIDKeys();
-  const mk = await loadMasterKey(dataDir);
-  await db
-    .insert(vapidKeys)
-    .values({
-      id: VAPID_ROW_ID,
-      publicKey: generated.publicKey,
-      privateKey: VAPID_ENC_PREFIX + encryptWith(mk, generated.privateKey, VAPID_AAD),
-    })
-    .onConflictDoNothing({ target: vapidKeys.id })
-    .run();
-  const row = await db.select().from(vapidKeys).where(eq(vapidKeys.id, VAPID_ROW_ID)).get();
-  if (!row) {
-    throw new Error('VAPID 密钥生成失败'); // 理论不可达：插入后必可读
-  }
-  const mk2 = await loadMasterKey(dataDir);
-  return {
-    publicKey: row.publicKey,
-    privateKey: decryptWith(mk2, row.privateKey.slice(VAPID_ENC_PREFIX.length), VAPID_AAD),
-  };
-}
-
-/** 鉴权 + 租户校验：401 / 403 / { tenantId }（与 pets.ts 同规矩） */
-async function scopedTenantId(
-  req: Request,
-  config: PushDeps['config'],
-): Promise<{ tenantId: string } | { error: 401 | 403 }> {
-  const session = await resolveTenantFromRequest(req, config.sessionSecret);
-  if (!session) return { error: 401 };
-
-  const db = await getDb(config.dataDir);
-  const relation = await db
-    .select()
-    .from(userTenants)
-    .where(
-      and(eq(userTenants.userId, session.sub), eq(userTenants.tenantId, session.tenantId)),
-    )
-    .get();
-  if (!relation) return { error: 403 };
-  if (!TENANT_ID_RE.test(session.tenantId)) return { error: 403 };
-
-  return { tenantId: session.tenantId };
-}
 
 /** 订阅体（结构与浏览器 PushSubscription.toJSON() 对齐） */
 interface SubscribeBody {
@@ -142,22 +46,21 @@ function parseSubscribeBody(
   return { endpoint, p256dh: keys.p256dh, auth: keys.auth };
 }
 
-export function createPushRoutes({ config }: PushDeps): Hono {
-  const app = new Hono();
+export function createPushRoutes({ config }: PushDeps): Hono<TenantEnv> {
+  const service = createPushService({ config });
+  const app = new Hono<TenantEnv>();
 
   /** GET /api/push/vapid-key — 公开（浏览器订阅前拉取；无泄漏风险） */
   app.get('/vapid-key', async (c) => {
-    const keys = await getVapidKeys(config.dataDir);
-    return c.json({ success: true, data: { publicKey: keys.publicKey } });
+    return c.json({ success: true, data: await service.getPublicKey() });
   });
+
+  // 订阅类端点走租户校验；vapid-key 公开所以中间件只挂在其后注册的路由上
+  app.use('/subscribe', requireTenant(config));
+  app.use('/status', requireTenant(config));
 
   /** POST /api/push/subscribe — 登记订阅（endpoint 幂等） */
   app.post('/subscribe', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
-
     let body: SubscribeBody;
     try {
       body = (await c.req.json()) as SubscribeBody;
@@ -168,47 +71,11 @@ export function createPushRoutes({ config }: PushDeps): Hono {
     if ('invalid' in parsed) {
       return c.json(jsonError(parsed.invalid), 400);
     }
-
-    const db = await getDb(config.dataDir);
-    const now = Date.now();
-    // 单语句 upsert（SELECT-then-INSERT 并发双击会撞唯一约束 500）。
-    // lastNotifiedAt 语义：新订阅/换租户重置为 now——只通知订阅后的新内容，
-    // 首次事件不追发历史；同租户续订保留（不因浏览器刷新重复收旧内容）。
-    // 注：endpoint 是 Web Push 的 capability URL（高熵机密），归属转移
-    // 即"设备换号"——持有 endpoint 即视为设备本人在操作（已接受的设计取舍）
-    await db
-      .insert(pushSubscriptions)
-      .values({
-        id: crypto.randomUUID(),
-        tenantId: scoped.tenantId,
-        endpoint: parsed.endpoint,
-        p256dh: parsed.p256dh,
-        auth: parsed.auth,
-        lastNotifiedAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: pushSubscriptions.endpoint,
-        set: {
-          tenantId: scoped.tenantId,
-          p256dh: parsed.p256dh,
-          auth: parsed.auth,
-          updatedAt: now,
-          lastNotifiedAt: sql`CASE WHEN push_subscriptions.tenant_id = ${scoped.tenantId} THEN push_subscriptions.last_notified_at ELSE ${now} END`,
-        },
-      })
-      .run();
-    return c.json({ success: true, data: { upserted: true } }, 200);
+    return c.json({ success: true, data: await service.subscribe(c.get('tenantId'), parsed) }, 200);
   });
 
   /** DELETE /api/push/subscribe — 按 endpoint 退订（限本租户） */
   app.delete('/subscribe', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
-
     let body: { endpoint?: unknown };
     try {
       body = (await c.req.json()) as { endpoint?: unknown };
@@ -218,22 +85,18 @@ export function createPushRoutes({ config }: PushDeps): Hono {
     if (typeof body.endpoint !== 'string' || !body.endpoint) {
       return c.json(jsonError('endpoint 必填'), 400);
     }
+    const result = await service.unsubscribe(c.get('tenantId'), body.endpoint);
+    return result
+      ? c.json({ success: true, data: result })
+      : c.json(jsonError('订阅不存在'), 404);
+  });
 
-    const db = await getDb(config.dataDir);
-    // 只删本租户的行：他租户的 endpoint 存在与否不可探测（404 统一）
-    const deleted = await db
-      .delete(pushSubscriptions)
-      .where(
-        and(
-          eq(pushSubscriptions.endpoint, body.endpoint),
-          eq(pushSubscriptions.tenantId, scoped.tenantId),
-        ),
-      )
-      .run();
-    if (deleted.rowsAffected === 0) {
-      return c.json(jsonError('订阅不存在'), 404);
-    }
-    return c.json({ success: true, data: { deleted: true } });
+  /**
+   * GET /api/push/status — 首推送达标记（租户空态文案数据源）。
+   * pendingDelivery：有订阅、存在可通知内容、且比所有设备的已通知位都新。
+   */
+  app.get('/status', async (c) => {
+    return c.json({ success: true, data: await service.getStatus(c.get('tenantId')) });
   });
 
   return app;

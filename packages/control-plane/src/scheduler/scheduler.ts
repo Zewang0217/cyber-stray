@@ -26,10 +26,12 @@
 
 import { eq } from 'drizzle-orm';
 import type { ControlDb } from '../db/client.js';
-import { pets, tenants } from '../db/schema.js';
+import { pets, pushSubscriptions, tenants } from '../db/schema.js';
 import type { EventBus } from '../events/bus.js';
 import { tenantDataDir } from '../tenant.js';
 import { planLimits } from '../plan/limits.js';
+import { latestNotifiableSpeak } from '../push/push-gateway.js';
+import { sendOpsAlert } from './ops-alert.js';
 import {
   propagate,
   isReady,
@@ -43,8 +45,26 @@ import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
 import { isSleeping } from './sleep.js';
 import { DIARY_FALLBACK_HOUR, shouldGenerateDiary } from './diary-schedule.js';
 import type { DiaryRunner } from './diary-runner.js';
+import { planBudgetYuan, todayLlmCostYuan, type LlmBudgetConfig } from './budget.js';
+import { localDateKey } from '../usage.js';
 
 export { MINUTE_MS } from './propagate.js';
+
+/**
+ * LLM 整轮超时安全余量（#265）：workerTimeoutMs 扣除后经 --plan-args 下发，
+ * agent 侧超时先于 CP SIGKILL 触发，worker 得以优雅退出（exit 1 走重试/冷却、
+ * stderr 留排障尾巴），而非被 SIGKILL 硬杀丢 stats 写回。
+ */
+const LLM_TIMEOUT_MARGIN_MS = 30_000;
+
+// ─── #275 首推保证（决议 #270） ──────────────────────────────────────────
+
+/** 首推期 = 领养后 24h：期内 worker 失败走短退避，不进常规冷却 */
+export const FIRST_PUSH_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** 首推期失败短退避（5min）：保证 24h 内有足够重试机会把首推送出去 */
+export const FIRST_PUSH_RETRY_BACKOFF_MS = 5 * 60_000;
+/** 首推期短退避重试上限（×3）：超过后仍回 DB 冷却——持续失败必须有界，24h 未送达由告警兜底 */
+export const FIRST_PUSH_MAX_RETRIES = 3;
 
 /** 本地日期字符串（YYYY-MM-DD；日记文件名与按天去重基准） */
 function todayFor(nowMs: number): string {
@@ -55,15 +75,26 @@ function todayFor(nowMs: number): string {
   return `${y}-${m}-${day}`;
 }
 
-/** 套餐执行参数（S11：scheduler 从 pet 行带出，runner 透传 worker CLI） */
+  /** 套餐执行参数（S11：scheduler 从 pet 行带出，runner 透传 worker CLI） */
 export interface PlanJobArgs {
-  plan: 'free' | 'pro' | 'byok';
-  /** 每日推送上限（gate 放行 speak 落盘数） */
-  pushesPerDay: number;
-  /** 推送时间窗（本地小时；null = 全天） */
-  pushWindowStart: number | null;
-  pushWindowEnd: number | null;
-}
+    plan: 'free' | 'pro' | 'byok';
+    /** 每日推送上限（gate 放行 speak 落盘数） */
+    pushesPerDay: number;
+    /** 推送时间窗（本地小时；null = 全天） */
+    pushWindowStart: number | null;
+    pushWindowEnd: number | null;
+    /**
+     * 单轮游荡整体预算 ms（#265：workerTimeoutMs 扣除安全余量，经 --plan-args 下发；
+     * agent 侧 wander-loop 据此设 abortSignal，超时优雅退出而非被 CP SIGKILL 硬杀）。
+     * undefined = 不设限（单用户模式 / CP 超时小于余量时的边界）。
+     */
+    llmTimeoutMs?: number;
+    /**
+     * 首推模式（#275：本次是该宠第一次游荡，lastRunAt == null 判定）。agent 侧
+     * 注入「必须产出首推」上下文——不豁免质量自判断，只把“可沉默”偏置成“必产出”。
+     */
+    firstPush?: boolean;
+  }
 
 /** 一次游荡任务（runner 入参） */
 export interface WorkerJob {
@@ -104,6 +135,10 @@ export interface SchedulerConfig {
   workerTimeoutMs: number;
   /** 前推速率基准（DEFAULT_RATES；性格倍率乘在此基准上） */
   rates: PropagationRates;
+  /** 每租户每日 LLM 预算闸（#265；enabled=false 或套餐 0 = 不限） */
+  llmBudget: LlmBudgetConfig;
+  /** 运维告警 webhook（#275 首推 24h 未送达；空 = 未配置只发事件不外呼） */
+  alertWebhookUrl: string;
 }
 
 export interface SchedulerDeps {
@@ -147,6 +182,12 @@ export class Scheduler {
   private readonly memeEnabled: boolean;
   /** ADR-0013：数值未迁移已告警过的宠物（进程内去抖） */
   private readonly unmigratedWarned = new Set<string>();
+  /** #265 预算闸：预算耗尽停派中的宠物（转变沿发 exhausted/resumed 事件） */
+  private readonly budgetPaused = new Set<string>();
+  /** #265 预算闸：判定失败已告警过的宠物（判定恢复即清；防分钟级刷屏） */
+  private readonly budgetCheckFailed = new Set<string>();
+  /** #275 首推 24h 告警：已告警/已送达的宠物（进程内去重，防分钟级刷屏） */
+  private readonly firstPushAlerted = new Set<string>();
   private timer?: ReturnType<typeof setInterval>;
 
   constructor(private readonly deps: SchedulerDeps) {
@@ -218,6 +259,16 @@ export class Scheduler {
 
     for (const pet of rows) {
       if (pet.status !== 'active') continue;
+
+      // #275 首推 24h 告警：领养超 24h 且首推仍未送达任何设备 → 运维告警。
+      // 无订阅不标记（用户可能之后才开通知，下个 tick 再判）；已送达/已告警
+      // 才永久标记（进程内去重，防分钟级刷屏）
+      if (nowMs - pet.createdAt > FIRST_PUSH_WINDOW_MS && !this.firstPushAlerted.has(pet.id)) {
+        if (await this.alertFirstPushOverdue(pet, nowMs)) {
+          this.firstPushAlerted.add(pet.id);
+        }
+      }
+
       if (pet.cooldownUntil !== null && nowMs < pet.cooldownUntil) continue; // DB 冷却
       // 睡眠期跳过游荡（游荡计数不增长）；未设置作息恒 false，与现状一致
       if (isSleeping(localHour, pet.sleepStart, pet.sleepEnd)) continue;
@@ -243,6 +294,11 @@ export class Scheduler {
       const state = propagate(pet, nowMs, resolveRates(pet.personality, config.rates));
       if (!isReady(state)) continue;
 
+      // #265 预算闸：闸在就绪后、pet_ready 前——超预算的宠物对租户是「在睡觉」，
+      // 不该广播 ready。fail-closed：判定失败也拦（查不清就不烧钱）。
+      const plan = planByTenant.get(pet.tenantId) ?? 'free';
+      if (!(await this.budgetAllows(pet.id, pet.tenantId, plan, nowMs))) continue;
+
       bus.publish(pet.tenantId, {
         type: 'pet_ready',
         tenantId: pet.tenantId,
@@ -250,7 +306,7 @@ export class Scheduler {
         at: nowMs,
       });
       this.launch(
-        { ...pet, plan: planByTenant.get(pet.tenantId) ?? 'free' },
+        { ...pet, plan },
         // 守卫已保证 mood/temper 非空：注入值 = 前推瞬时值 + 库中心情/脾气
         { energy: state.energy, boredom: state.boredom, mood: pet.mood, temper: pet.temper },
         dataDir,
@@ -264,6 +320,60 @@ export class Scheduler {
     // #92 睡前任务：睡眠开始（或无作息固定时刻）触发当天日记。
     // 与游荡解耦——独立 diaryRunning 在飞集合，不占游荡并发槽。
     this.runDiaryTriggers(rows, dataDir, nowMs, localHour, todayFor(nowMs));
+  }
+
+  /**
+   * #275 首推 24h 告警判定（决议 #270-3）：领养超 24h 且首推未送达任何设备。
+   * 「未送达」= 有订阅但（无可通知内容（agent 沉默 24h）或 最新可通知内容比
+   * 所有设备的 lastNotifiedAt 都新（网关没送到））。
+   *
+   * @returns true = 已告警（或确认已送达，无需再看）；false = 暂不判定（无订阅），下 tick 再查
+   */
+  private async alertFirstPushOverdue(
+    pet: { id: string; tenantId: string },
+    nowMs: number,
+  ): Promise<boolean> {
+    const { dataDir, bus, config } = this.deps;
+    const dbh = await this.deps.db();
+    const subs = await dbh
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.tenantId, pet.tenantId))
+      .all();
+    if (subs.length === 0) return false; // 从未授权通知：横幅路径负责，不是运维故障
+
+    // 送达判定：网关逐设备记 lastNotifiedAt（= 已送达内容的 timestamp）；
+    // 订阅时预置为订阅时刻（只通知订阅后的新内容）。最新可通知内容比所有
+    // 设备都新 = 谁都没收到过；压根没有可通知内容 = agent 沉默满 24h，同告。
+    const notifiedCeiling = Math.max(...subs.map((s) => s.lastNotifiedAt ?? 0));
+    const latest = await latestNotifiableSpeak(dataDir, pet.tenantId);
+    const contentAt = latest ? new Date(String(latest.timestamp)).getTime() : null;
+    if (contentAt !== null && !Number.isNaN(contentAt) && contentAt <= notifiedCeiling) {
+      return true; // 已送达：首推承诺已兑现
+    }
+
+    const detail =
+      contentAt === null
+        ? '领养超 24h，无订阅后的可通知产出（agent 首推沉默）'
+        : '领养超 24h，最新可通知内容未送达任何设备';
+    bus.publish(pet.tenantId, {
+      type: 'first_push_overdue',
+      tenantId: pet.tenantId,
+      petId: pet.id,
+      at: nowMs,
+      detail,
+    });
+    if (config.alertWebhookUrl) {
+      await sendOpsAlert(
+        config.alertWebhookUrl,
+        `[cyber-stray] 首推超时：租户 ${pet.tenantId} 宠物 ${pet.id}——${detail}`,
+      ).catch((error: unknown) => {
+        // 告警外呼失败不吞：留 log，且不清标记——进程存活期内不再重试（事件已发），
+        // #267 告警通道落地后由统一探测兜底
+        console.error('[scheduler] 首推超时告警 webhook 发送失败：', error);
+      });
+    }
+    return true;
   }
 
   /**
@@ -397,7 +507,7 @@ export class Scheduler {
    * S5 review 修复：拆分成功写回（handleSuccess）与失败处理（handleFailure）。
    */
   private launch(
-    pet: { id: string; tenantId: string; plan: string; pushWindowStart: number | null; pushWindowEnd: number | null; personality: PersonalityId; catchphrases?: string | null },
+    pet: { id: string; tenantId: string; plan: string; lastRunAt: number | null; createdAt: number; pushWindowStart: number | null; pushWindowEnd: number | null; personality: PersonalityId; catchphrases?: string | null },
     stats: PetStats,
     dataRoot: string,
     bus: EventBus,
@@ -438,7 +548,7 @@ export class Scheduler {
         await this.handleSuccess(petId, tenantId, result.stats, bus, now);
       } catch (error) {
         if (!isOwner()) return; // 已被 TTL 重认领：旧失败不干预新任务
-        await this.handleFailure(petId, tenantId, bus, now, config, error);
+        await this.handleFailure(petId, tenantId, pet.createdAt, bus, now, config, error);
       } finally {
         // 只删自己持有的条目（TTL 重认领后条目属于新任务）
         if (isOwner()) this.running.delete(petId);
@@ -448,9 +558,60 @@ export class Scheduler {
     void task.finally(() => this.inFlight.delete(task));
   }
 
+  /**
+   * 预算闸（#265）：true = 可派发。三态收口于此，tick 主循环只看布尔：
+   * - 超限：拦 + 转变沿发 budget_exhausted（detail = ¥水位/¥上限）
+   * - 判定失败（读当日 usage 出错）：fail-closed 拦 + 去重告警 budget_check_failed
+   *   ——「查不清」绝不按「没花钱」放行（禁兜底红线），但只停本租户不停全厂
+   * - 恢复（次日归零 / admin 调高阈值重启）：转变沿发 budget_resumed
+   */
+  private async budgetAllows(
+    petId: string,
+    tenantId: string,
+    plan: string,
+    nowMs: number,
+  ): Promise<boolean> {
+    const { dataDir, bus } = this.deps;
+    const limit = planBudgetYuan(this.deps.config.llmBudget, plan);
+    if (limit === null) return true; // 未启用/该套餐不限：无闸可谈
+
+    let cost: number;
+    try {
+      cost = await todayLlmCostYuan(dataDir, tenantId, localDateKey(new Date(nowMs)));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[scheduler] ${tenantId}/${petId} 预算判定失败，停派（fail-closed）：`, detail);
+      if (!this.budgetCheckFailed.has(petId)) {
+        this.budgetCheckFailed.add(petId);
+        bus.publish(tenantId, { type: 'budget_check_failed', tenantId, petId, at: nowMs, detail });
+      }
+      return false;
+    }
+    this.budgetCheckFailed.delete(petId); // 判定恢复：去重集清掉，下次失败再告警
+
+    if (cost >= limit) {
+      if (!this.budgetPaused.has(petId)) {
+        this.budgetPaused.add(petId);
+        bus.publish(tenantId, {
+          type: 'budget_exhausted',
+          tenantId,
+          petId,
+          at: nowMs,
+          detail: `¥${cost.toFixed(2)}/¥${limit.toFixed(2)}`,
+        });
+      }
+      return false;
+    }
+    if (this.budgetPaused.delete(petId)) {
+      bus.publish(tenantId, { type: 'budget_resumed', tenantId, petId, at: nowMs });
+    }
+    return true;
+  }
+
   /** 套餐执行参数（S11：scheduler 是策略点，runner 机械透传） */
   private planArgsFor(pet: {
     plan: string;
+    lastRunAt: number | null;
     pushWindowStart: number | null;
     pushWindowEnd: number | null;
   }): PlanJobArgs {
@@ -459,6 +620,15 @@ export class Scheduler {
       pushesPerDay: planLimits(pet.plan).pushesPerDay,
       pushWindowStart: pet.pushWindowStart,
       pushWindowEnd: pet.pushWindowEnd,
+      // #275：首推模式 = 该宠第一次游荡（lastRunAt 从未写回）。经 plan-args
+      // 下发，agent 侧注入「必须产出首推」上下文
+      firstPush: pet.lastRunAt === null,
+      // #265：整轮 LLM 预算 = CP 挂死判定扣余量；余量给优雅退出（错误回报 +
+      // stderr 尾巴）。扣完 ≤0 说明 CP 超时本身比余量还短，下发无意义，不设限
+      llmTimeoutMs:
+        this.deps.config.workerTimeoutMs > LLM_TIMEOUT_MARGIN_MS
+          ? this.deps.config.workerTimeoutMs - LLM_TIMEOUT_MARGIN_MS
+          : undefined,
     };
   }
 
@@ -500,23 +670,32 @@ export class Scheduler {
     });
   }
 
-  /** 失败：lease 重试；超限放弃 + DB 冷却（重启安全）。无数值写回——
-   * worker 未回报（ADR-0013 采信回报；冷却语义见下） */
+  /**
+   * 失败：lease 重试；超限放弃 + DB 冷却（重启安全）。无数值写回——
+   * worker 未回报（ADR-0013 采信回报；冷却语义见下）。
+   * #275 首推期（领养后 24h）特例：退避/上限换成短退避 5min×3——首推必须
+   * 尽快出去，常规冷却（就绪基线重置，一等数小时）会静默吞掉首推窗口；
+   * ×3 用尽后仍回 DB 冷却（持续失败必须有界），超时未送达由告警兜底。
+   */
   private async handleFailure(
     petId: string,
     tenantId: string,
+    createdAt: number,
     bus: EventBus,
     now: () => number,
     config: SchedulerConfig,
     error: unknown,
   ): Promise<void> {
     const failAt = now();
+    const firstPushPeriod = failAt - createdAt < FIRST_PUSH_WINDOW_MS;
+    const maxRetries = firstPushPeriod ? FIRST_PUSH_MAX_RETRIES : config.maxRetries;
+    const backoffMs = firstPushPeriod ? FIRST_PUSH_RETRY_BACKOFF_MS : config.retryBackoffMs;
     const prior = this.leases.get(petId);
     const retries = (prior?.retries ?? 0) + 1;
-    if (retries <= config.maxRetries) {
+    if (retries <= maxRetries) {
       this.leases.set(petId, {
         retries,
-        nextEligibleAt: failAt + config.retryBackoffMs,
+        nextEligibleAt: failAt + backoffMs,
       });
       bus.publish(tenantId, {
         type: 'worker_retry',
@@ -535,7 +714,7 @@ export class Scheduler {
       .update(pets)
       .set({
         lastRunAt: failAt,
-        cooldownUntil: failAt + config.retryBackoffMs,
+        cooldownUntil: failAt + backoffMs,
       })
       .where(eq(pets.id, petId))
       .run();

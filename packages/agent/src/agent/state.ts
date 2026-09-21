@@ -1,9 +1,11 @@
-import { readFile, writeFile } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import type { AgentState, Mood } from '../types';
 import { getDataPath } from '../config';
 import { consola } from '../logger';
 import { getInterestGraph } from '../memory/interest-graph.js';
+import { DEFAULT_INTEREST_SEEDS } from '@cyber-stray/shared/interest-graph';
+import { atomicWriteJson } from '../utils/atomic-json.js';
 
 /**
  * 默认初始状态
@@ -27,7 +29,7 @@ function createDefaultState(): AgentState {
 
     // Agent 个性化（ReAct 架构）
     // 注意：agentInterests 由 InterestGraph 驱动，此处为兼容保留
-    agentInterests: ['科技', 'AI', '互联网'],
+    agentInterests: [...DEFAULT_INTEREST_SEEDS],
 
     // 统计
     totalWanders: 0,
@@ -58,15 +60,8 @@ function parseStateJson(content: string): AgentState {
 }
 
 /**
- * 将状态序列化为 JSON
- */
-function serializeStateJson(state: AgentState): string {
-  return JSON.stringify(state, null, 2);
-}
-
-/**
  * 加载 Agent 状态
- * 
+ *
  * 从 state.json 加载基础状态，并从 InterestGraph 同步 agentInterests。
  */
 export async function loadState(): Promise<AgentState> {
@@ -96,24 +91,38 @@ export async function loadState(): Promise<AgentState> {
 }
 
 /**
- * 保存 Agent 状态
+ * 保存 Agent 状态（原子写：tmp + rename，SIGKILL 不留截断文件）
  */
 export async function saveState(state: AgentState): Promise<void> {
   const statePath = getDataPath('state.json');
-  const content = serializeStateJson(state);
-  await writeFile(statePath, content, 'utf-8');
+  await atomicWriteJson(statePath, state);
 }
 
 /**
- * 更新状态（部分更新）
+ * state.json 读-改-写串行链（MemoryIndex 的 persistChain 模式）：
+ * 心跳 / 游荡收尾同进程并发做 RMW，无锁时各自读到同一基线，last-writer-wins
+ * 丢更新。链上任务失败传给当次调用方；链本身吞错恢复，不毒化后续写。
+ */
+let stateRmwChain: Promise<unknown> = Promise.resolve();
+
+function enqueueStateRmw<T>(task: () => Promise<T>): Promise<T> {
+  const next = stateRmwChain.then(task);
+  stateRmwChain = next.catch(() => {});
+  return next;
+}
+
+/**
+ * 更新状态（部分更新；读-改-写整体串行，合并不丢并发更新）
  */
 export async function updateState(
   updates: Partial<AgentState>
 ): Promise<AgentState> {
-  const state = await loadState();
-  const newState = { ...state, ...updates };
-  await saveState(newState);
-  return newState;
+  return enqueueStateRmw(async () => {
+    const state = await loadState();
+    const newState = { ...state, ...updates };
+    await saveState(newState);
+    return newState;
+  });
 }
 
 /**

@@ -17,6 +17,10 @@ export interface TenantUsage {
   imageCount: number;
   visionCount: number;
   cost: number;
+  /** #265 今日 LLM 成本（¥；与预算上限配对展示水位） */
+  llmCostToday: number;
+  /** #265 每日预算上限（¥）；null = 未启用/该套餐不限 */
+  llmBudgetYuan: number | null;
   lastActive: string | null;
 }
 

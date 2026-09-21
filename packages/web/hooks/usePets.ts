@@ -25,6 +25,8 @@ export interface Pet {
   diaryStyle: "personality" | "casual" | "careful" | "literary";
   /** 是否推送每日日记（#92；Web Push） */
   diaryPushEnabled: boolean;
+  /** #265 每日 LLM 预算耗尽停派（租户侧语义「宠物在睡觉」；SSE 不重放，刷新后靠本字段） */
+  budgetPaused: boolean;
   createdAt: number;
   updatedAt: number;
 }

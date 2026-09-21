@@ -13,6 +13,8 @@
 | `Dockerfile.web` | web 镜像（Next.js standalone + node 运行时） |
 | `container-update.sh` | 生产机更新：拉镜像 → 起容器 → 健康门 → 镜像清理 |
 | `backup.sh` / `restore.sh` | 备份 / 恢复（数据路径不变，零迁移） |
+| `cyber-stray-backup.service` / `.timer` | 备份定时器（每日 03:00；#268） |
+| `backup-timer-install.sh` | 定时器幂等安装（发布流水线自动执行；#268） |
 
 > 旧 systemd 拓扑脚本（deploy.sh / *.service / setup-casdoor.sh / create-app.sh）
 > 已随容器化退役删除（ADR-0008）；切换步骤见 `docs/runbooks/container-switchover.md`。
@@ -41,15 +43,52 @@
 ## 备份 / 恢复
 
 ```bash
-# 备份（建议 cron：0 3 * * * /opt/cyber-stray/deploy/backup.sh）
-/opt/cyber-stray/deploy/backup.sh  # → /backup/cyber-stray/cyber-stray-<时间戳>.tar.gz
-BACKUP_KEEP=14 /opt/cyber-stray/deploy/backup.sh     # 保留 14 份（默认 7）
+# 备份（定时器已装则每日 03:00 自动跑；手动触发同款）
+sudo systemctl start cyber-stray-backup.service
+/opt/cyber-stray/deploy/backup.sh   # → /backup/cyber-stray/cyber-stray-<时间戳>.tar.gz
+BACKUP_KEEP=14 /opt/cyber-stray/deploy/backup.sh     # 本地保留 14 份（默认 7）
 
 # 恢复（容器化后路径不变）
 sudo /opt/cyber-stray/deploy/restore.sh /backup/cyber-stray/cyber-stray-20260816-214133.tar.gz
 # 容器重读挂载文件（bind mount 目录：restore 换新文件后需重启容器）
 sudo docker compose -f /opt/cyber-stray/deploy/compose.yaml restart
 ```
+
+### 备份定时（#268）
+
+`cyber-stray-backup.timer`（每日 03:00，`Persistent=true` 补跑错过的窗口）随
+发布流水线 scp 后幂等安装（`backup-timer-install.sh`：拷 unit → daemon-reload →
+`enable --now`）。首次部署需要生产机 sudoers 放行一行，之后全自动：
+
+```
+<deploy 用户> ALL=(root) NOPASSWD: /opt/cyber-stray/deploy/backup-timer-install.sh
+```
+
+验证：`systemctl list-timers cyber-stray-backup.timer`。
+
+### 异地副本（#268）
+
+备份与生产同机——主机级故障 = 数据与唯一备份同灭。`backup.sh` 在本地 tar
+落地后把本次产物推 S3 兼容对象存储（经 docker 跑 pinned `amazon/aws-cli`，
+不新增宿主机依赖），**本地保留 7 份不变，异地保留 30 份**（`BACKUP_OFFSITE_KEEP`）。
+
+凭据写生产机 `/opt/cyber-stray/backup.env`（service 经 `EnvironmentFile` 注入）：
+
+```bash
+# /opt/cyber-stray/backup.env  （owner root, chmod 600；凭据属 HITL checklist）
+BACKUP_OFFSITE_ENDPOINT=https://<accountid>.r2.cloudflarestorage.com   # R2/OSS/S3 任一
+BACKUP_OFFSITE_BUCKET=cyber-stray-backups
+BACKUP_OFFSITE_ACCESS_KEY=...
+BACKUP_OFFSITE_SECRET_KEY=...
+BACKUP_OFFSITE_KEEP=30
+# 可选：备份失败/异地推送失败告警（与 #267 运维告警同一 webhook）
+BACKUP_ALERT_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
+```
+
+语义：四项必填 env 任一缺失 → 显式跳过异地副本（每日备份照常成功，缺省
+不弄脏）；配置了但推送/清理失败 → `backup.sh` 非零退出（`systemctl` 可见
+失败）+ webhook 告警。手动测试：`BACKUP_DIR=/tmp/bk BACKUP_OFFSITE_* 同上 ./backup.sh`。
+
 
 ## 恢复演练记录（2026-08-16，v2 备份布局）
 

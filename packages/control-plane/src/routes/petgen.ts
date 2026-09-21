@@ -1,43 +1,22 @@
 /**
- * petgen 路由 — /api/petgen*（#94 宠物 IP 自定义生成，Pro/BYOK 专属）
+ * petgen 路由 — /api/petgen*（接口层）
  *
- * 垂直切片用户面：
- * - POST /api/petgen/tasks：提交 spec（纯文本 + 选项 + 风格预设）→ 异步任务
- *   （状态机由 PetGenProcessor tick 推进；返回后轮询 GET 看进度）
- * - GET  /api/petgen/tasks：当前租户任务列表（新→旧）
- * - GET  /api/petgen/tasks/:id：任务详情（含概念图 URL / 质检结果 / 错误）
- * - POST /api/petgen/tasks/:id/confirm：确认概念图 → 开始多状态生成
- * - POST /api/petgen/tasks/:id/restart：不满意 → 改 spec 重出概念图
- *   （概念图确认是用户锚点，ADR-0001 参考图锁角色）
- * - GET  /api/petgen/tasks/:id/concept.png：概念图草稿（确认流展示）
- * - GET  /api/petgen/quota：本月配额（limit/used/remaining）
- * - GET  /api/petgen/assets/:file：成品素材（manifest.json + 状态 PNG，租户私有）
+ * 宠物 IP 自定义生成（Pro/BYOK 专属）的用户面：
+ * - POST /api/petgen/tasks：提交 spec → 异步任务（PetGenProcessor tick 推进）
+ * - GET  /api/petgen/tasks[/turbo/:id]：列表 / 详情 / 概念图 / 确认 / 重启
+ * - GET  /api/petgen/quota：本月配额；GET /api/petgen/assets/:file：成品素材
  *
- * 约束：
- * - 鉴权/租户与 data/pets 同规矩（session claim + user_tenants + TENANT_ID_RE；
- *   x-tenant-* 一律忽略）
- * - 免费用户无入口：plan 非 pro/byok → 403
- * - 配额超限（剩余 0）→ 429；失败任务不占配额（只统计 done）
+ * 约束：租户隔离走 requireTenant 中间件；免费用户无入口（403）；配额超限
+ * 429；失败任务不占配额（只统计 done）。用例在 services/petgen-service，
+ * 存储在 infra/petgen-repo；spec/文件名校验留本层（边界校验）。
  */
 
 import { Hono } from 'hono';
-import { randomUUID } from 'crypto';
-import { readFile } from 'fs/promises';
-import { extname, join } from 'path';
-import { and, desc, eq } from 'drizzle-orm';
-import {
-  DEFAULT_PET_PRESET,
-  isPetPresetId,
-  type PetPresetId,
-} from '@cyber-stray/shared/pet';
+import { isPetPresetId, type PetPresetId } from '@cyber-stray/shared/pet';
 import type { ControlPlaneConfig } from '../config.js';
-import { getDb } from '../db/client.js';
-import { petGenTasks, tenants, userTenants, type PetGenTask } from '../db/schema.js';
-import { tenantDataDir } from '../tenant.js';
-import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
-import { resolveTenantFromRequest } from '../request-tenant.js';
-import { petGenQuota, nextMonthStart } from '../petgen/quota.js';
-import type { PetSpec, PetGenTaskStatus } from '../petgen/types.js';
+import { requireTenant, type TenantEnv } from '../middleware/require-tenant.js';
+import type { PetSpec } from '../petgen/types.js';
+import { createPetGenService } from '../services/petgen-service.js';
 
 export interface PetGenDeps {
   config: Pick<
@@ -47,26 +26,6 @@ export interface PetGenDeps {
 }
 
 const jsonError = (message: string) => ({ success: false, error: message });
-
-/** 鉴权 + 租户校验：401 / 403 / { tenantId }（与 pets.ts 同规矩） */
-async function scopedTenantId(
-  req: Request,
-  config: PetGenDeps['config'],
-): Promise<{ tenantId: string } | { error: 401 | 403 }> {
-  const session = await resolveTenantFromRequest(req, config.sessionSecret);
-  if (!session) return { error: 401 };
-  const db = await getDb(config.dataDir);
-  const relation = await db
-    .select()
-    .from(userTenants)
-    .where(
-      and(eq(userTenants.userId, session.sub), eq(userTenants.tenantId, session.tenantId)),
-    )
-    .get();
-  if (!relation) return { error: 403 };
-  if (!TENANT_ID_RE.test(session.tenantId)) return { error: 403 };
-  return { tenantId: session.tenantId };
-}
 
 /** 选项字段（均可选，≤100 字符） */
 function validOption(v: unknown): v is string {
@@ -123,46 +82,21 @@ function parseSpecBody(body: unknown):
   };
 }
 
-/** 租户套餐是否可用 IP 定制（Pro/BYOK 专属；免费无入口） */
-async function planAllowed(db: Awaited<ReturnType<typeof getDb>>, tenantId: string): Promise<boolean> {
-  const tenant = await db.select().from(tenants).where(eq(tenants.id, tenantId)).get();
-  return tenant?.plan === 'pro' || tenant?.plan === 'byok';
-}
-
-/** 任务 → API 视图（去掉内部列，附概念图/素材 URL） */
-function toTaskView(task: PetGenTask) {
-  return {
-    id: task.id,
-    status: task.status,
-    specText: task.specText,
-    options: task.options ? (JSON.parse(task.options) as PetSpec['options']) : undefined,
-    stylePreset: (task.stylePreset ?? DEFAULT_PET_PRESET) as PetPresetId,
-    conceptUrl: task.conceptPath ? `/api/petgen/tasks/${task.id}/concept.png` : null,
-    error: task.error,
-    qcResult: task.qcResult ? (JSON.parse(task.qcResult) as unknown) : null,
-    conceptAttempts: task.conceptAttempts,
-    createdAt: task.createdAt,
-    updatedAt: task.updatedAt,
-    completedAt: task.completedAt,
-    assetBase: task.status === 'done' ? '/api/petgen/assets' : null,
-  };
-}
-
 /** 素材文件名白名单（防路径穿越；assets 目录只放 manifest + 状态 PNG + concept） */
 const ASSET_FILE_RE = /^[a-z0-9][a-z0-9.-]*\.(png|json)$/;
 
-export function createPetGenRoutes({ config }: PetGenDeps): Hono {
-  const app = new Hono();
+export function createPetGenRoutes({ config }: PetGenDeps): Hono<TenantEnv> {
+  const service = createPetGenService({ config });
+  const app = new Hono<TenantEnv>();
+
+  app.use('*', requireTenant(config));
 
   /** POST /api/petgen/tasks — 提交 spec（Pro/BYOK 专属 + 配额拦截） */
   app.post('/tasks', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
-    const db = await getDb(config.dataDir);
-    if (!(await planAllowed(db, scoped.tenantId))) {
-      return c.json(jsonError('宠物 IP 定制是 Pro/BYOK 专属功能'), 403);
+    // 套餐闸先于请求体校验（旧实现顺序）：免费用户 403，不泄露参数校验细节
+    const planGate = await service.ensureProPlan(c.get('tenantId'));
+    if (planGate) {
+      return c.json(jsonError(planGate.error), planGate.status);
     }
     let body: unknown;
     try {
@@ -174,103 +108,36 @@ export function createPetGenRoutes({ config }: PetGenDeps): Hono {
     if ('invalid' in parsed) {
       return c.json(jsonError(parsed.invalid), 400);
     }
-    const quota = await petGenQuota(db, scoped.tenantId, config.petGenMonthlyQuota);
-    if (quota.remaining <= 0) {
-      return c.json(
-        {
-          success: false,
-          error: `本月配额已用完（${quota.limit} 套/月），下月 ${new Date(nextMonthStart(Date.now())).toISOString().slice(0, 7)} 重置`,
-          data: { ...quota, resetAt: new Date(nextMonthStart(Date.now())).toISOString().slice(0, 7) },
-        },
-        429,
-      );
-    }
-    const id = randomUUID();
-    const task: PetGenTask = {
-      id,
-      tenantId: scoped.tenantId,
-      status: 'spec_submitted',
-      specText: parsed.spec.specText,
-      options: parsed.spec.options ? JSON.stringify(parsed.spec.options) : null,
-      stylePreset: parsed.spec.stylePreset ?? null,
-      conceptPath: null,
-      strategy: 'quad',
-      batchRetries: 0,
-      qcRetries: 0,
-      qcResult: null,
-      pendingStates: null,
-      conceptAttempts: 0,
-      error: null,
-      completedAt: null,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    await db.insert(petGenTasks).values(task).run();
-    return c.json({ success: true, data: toTaskView(task) }, 201);
+    const outcome = await service.submitTask(c.get('tenantId'), parsed.spec);
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data }, 201)
+      : c.json(
+          { success: false, error: outcome.error, ...(outcome.data !== undefined ? { data: outcome.data } : {}) },
+          outcome.status,
+        );
   });
 
   /** GET /api/petgen/tasks — 当前租户任务列表（新→旧） */
   app.get('/tasks', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
-    const db = await getDb(config.dataDir);
-    const rows = await db
-      .select()
-      .from(petGenTasks)
-      .where(eq(petGenTasks.tenantId, scoped.tenantId))
-      .orderBy(desc(petGenTasks.createdAt))
-      .all();
-    return c.json({ success: true, data: rows.map(toTaskView) });
+    return c.json({ success: true, data: await service.listTasks(c.get('tenantId')) });
   });
 
   /** GET /api/petgen/tasks/:id — 任务详情（租户隔离：他人任务 404） */
   app.get('/tasks/:id', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
-    const db = await getDb(config.dataDir);
-    const task = await db
-      .select()
-      .from(petGenTasks)
-      .where(and(eq(petGenTasks.id, c.req.param('id')), eq(petGenTasks.tenantId, scoped.tenantId)))
-      .get();
-    if (!task) return c.json(jsonError('任务不存在'), 404);
-    return c.json({ success: true, data: toTaskView(task) });
+    const task = await service.getTask(c.get('tenantId'), c.req.param('id'));
+    return task ? c.json({ success: true, data: task }) : c.json(jsonError('任务不存在'), 404);
   });
 
   /** POST /api/petgen/tasks/:id/confirm — 确认概念图 → 多状态生成 */
   app.post('/tasks/:id/confirm', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
-    const db = await getDb(config.dataDir);
-    const task = await db
-      .select()
-      .from(petGenTasks)
-      .where(and(eq(petGenTasks.id, c.req.param('id')), eq(petGenTasks.tenantId, scoped.tenantId)))
-      .get();
-    if (!task) return c.json(jsonError('任务不存在'), 404);
-    if (task.status !== 'awaiting_confirmation') {
-      return c.json(jsonError(`当前状态 ${task.status} 不可确认（需等待概念图确认）`), 409);
-    }
-    await db
-      .update(petGenTasks)
-      .set({ status: 'generating_states', updatedAt: Date.now() })
-      .where(eq(petGenTasks.id, task.id))
-      .run();
-    return c.json({ success: true, data: toTaskView({ ...task, status: 'generating_states' }) });
+    const outcome = await service.confirmTask(c.get('tenantId'), c.req.param('id'));
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
   });
 
   /** POST /api/petgen/tasks/:id/restart — 不满意：改 spec 重出概念图 */
   app.post('/tasks/:id/restart', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
     let body: unknown;
     try {
       body = await c.req.json();
@@ -281,116 +148,38 @@ export function createPetGenRoutes({ config }: PetGenDeps): Hono {
     if ('invalid' in parsed) {
       return c.json(jsonError(parsed.invalid), 400);
     }
-    const db = await getDb(config.dataDir);
-    const task = await db
-      .select()
-      .from(petGenTasks)
-      .where(and(eq(petGenTasks.id, c.req.param('id')), eq(petGenTasks.tenantId, scoped.tenantId)))
-      .get();
-    if (!task) return c.json(jsonError('任务不存在'), 404);
-    if (task.status !== 'awaiting_confirmation' && task.status !== 'failed') {
-      return c.json(jsonError(`当前状态 ${task.status} 不可重来（仅等待确认/失败后可改 spec）`), 409);
-    }
-    // 重启也是一次"生成尝试"：配额超限同样拦截（防绕过）
-    const quota = await petGenQuota(db, scoped.tenantId, config.petGenMonthlyQuota);
-    if (quota.remaining <= 0) {
-      return c.json({ success: false, error: '本月配额已用完', data: quota }, 429);
-    }
-    const now = Date.now();
-    await db
-      .update(petGenTasks)
-      .set({
-        specText: parsed.spec.specText,
-        options: parsed.spec.options ? JSON.stringify(parsed.spec.options) : null,
-        stylePreset: parsed.spec.stylePreset ?? null,
-        status: 'spec_submitted' as PetGenTaskStatus,
-        conceptPath: null,
-        strategy: 'quad',
-        batchRetries: 0,
-        qcRetries: 0,
-        qcResult: null,
-        pendingStates: null,
-        error: null,
-        completedAt: null,
-        updatedAt: now,
-      })
-      .where(eq(petGenTasks.id, task.id))
-      .run();
-    const updated = await db
-      .select()
-      .from(petGenTasks)
-      .where(eq(petGenTasks.id, task.id))
-      .get();
-    return c.json({ success: true, data: toTaskView(updated ?? task) });
+    const outcome = await service.restartTask(c.get('tenantId'), c.req.param('id'), parsed.spec);
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(
+          { success: false, error: outcome.error, ...(outcome.data !== undefined ? { data: outcome.data } : {}) },
+          outcome.status,
+        );
   });
 
   /** GET /api/petgen/tasks/:id/concept.png — 概念图草稿（确认流展示） */
   app.get('/tasks/:id/concept.png', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
-    const db = await getDb(config.dataDir);
-    const task = await db
-      .select()
-      .from(petGenTasks)
-      .where(and(eq(petGenTasks.id, c.req.param('id')), eq(petGenTasks.tenantId, scoped.tenantId)))
-      .get();
-    if (!task || !task.conceptPath) return c.json(jsonError('概念图不存在'), 404);
-    try {
-      const abs = join(tenantDataDir(config.dataDir, scoped.tenantId), task.conceptPath);
-      const bytes = await readFile(abs);
-      return c.body(bytes, 200, { 'content-type': 'image/png' });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return c.json(jsonError('概念图不存在'), 404);
-      }
-      throw error;
-    }
+    const bytes = await service.getConceptPng(c.get('tenantId'), c.req.param('id'));
+    return bytes
+      ? c.body(new Uint8Array(bytes), 200, { 'content-type': 'image/png' })
+      : c.json(jsonError('概念图不存在'), 404);
   });
 
   /** GET /api/petgen/quota — 本月配额（剩余量展示） */
   app.get('/quota', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
-    const db = await getDb(config.dataDir);
-    if (!(await planAllowed(db, scoped.tenantId))) {
-      return c.json({ success: true, data: { limit: 0, used: 0, remaining: 0, available: false } });
-    }
-    const quota = await petGenQuota(db, scoped.tenantId, config.petGenMonthlyQuota);
-    return c.json({
-      success: true,
-      data: {
-        ...quota,
-        available: true,
-        resetAt: new Date(nextMonthStart(Date.now())).toISOString().slice(0, 7),
-      },
-    });
+    return c.json({ success: true, data: await service.getQuota(c.get('tenantId')) });
   });
 
   /** GET /api/petgen/assets/:file — 成品素材（manifest + 状态 PNG，租户私有） */
   app.get('/assets/:file', async (c) => {
-    const scoped = await scopedTenantId(c.req.raw, config);
-    if ('error' in scoped) {
-      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
-    }
     const file = c.req.param('file');
     if (!ASSET_FILE_RE.test(file)) {
       return c.json(jsonError('非法文件名'), 400);
     }
-    const abs = join(tenantDataDir(config.dataDir, scoped.tenantId), 'pet-assets', file);
-    try {
-      const bytes = await readFile(abs);
-      const contentType = extname(file) === '.json' ? 'application/json' : 'image/png';
-      return c.body(bytes, 200, { 'content-type': contentType });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return c.json(jsonError('素材不存在'), 404);
-      }
-      throw error;
-    }
+    const asset = await service.getAsset(c.get('tenantId'), file);
+    return asset
+      ? c.body(new Uint8Array(asset.bytes), 200, { 'content-type': asset.contentType })
+      : c.json(jsonError('素材不存在'), 404);
   });
 
   return app;

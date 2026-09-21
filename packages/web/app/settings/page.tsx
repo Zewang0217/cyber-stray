@@ -5,7 +5,6 @@ import { useWebPush } from "@/hooks/useWebPush";
 import { Switch } from "@/components/ui/Switch";
 import { useChannels } from "@/hooks/useChannels";
 import { usePlan } from "@/hooks/usePlan";
-import { useWechatStatus } from "@/hooks/useWechatStatus";
 import { usePets } from "@/hooks/usePets";
 import { CatchphraseEditor } from "@/components/dashboard/CatchphraseEditor";
 
@@ -13,7 +12,7 @@ import { CatchphraseEditor } from "@/components/dashboard/CatchphraseEditor";
 type View = "root" | "channels" | "pet" | "account" | "admin";
 
 const ROWS: Array<[View, string, string]> = [
-  ["channels", "通道", "飞书 / 微信 / 系统推送"],
+  ["channels", "通道", "飞书 / 系统推送"],
   ["pet", "宠物", "作息 / 日记 / 口头禅"],
   ["account", "账号", "套餐 / BYOK / 退出"],
 ];
@@ -31,7 +30,6 @@ export default function SettingsPage() {
   const { state: pushState, error: pushError, enable, disable } = useWebPush();
   const { channels, bindFeishu, unbindFeishu, error: channelError } = useChannels();
   const { plan, error: planError, switchPlan, setPushWindow, clearPushWindow, bindByokKey } = usePlan();
-  const { status: wechatStatus } = useWechatStatus();
   const [sleepSaved, setSleepSaved] = useState(false);
   const { pets, setSleepSchedule, clearSleepSchedule, setDiaryStyle, setDiaryPush, setCatchphrases, error: petsError } = usePets();
   const sleepPet = pets[0] ?? null;
@@ -98,23 +96,6 @@ export default function SettingsPage() {
               </form>
             )}
             {channelError ? <p className="mt-2 text-[13px] text-[var(--bad)]">{channelError}</p> : null}
-          </section>
-
-          <section className="border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
-            <h3 className="mb-1 text-[14px] text-[var(--paper)]">微信（可选）</h3>
-            <p className="mb-2 text-[12px] leading-[1.6] text-[var(--curb)]">扫码绑定后可在微信里和宠物聊天</p>
-            {!wechatStatus ? (
-              <p className="text-[13px] text-[var(--curb)]">加载中…</p>
-            ) : !wechatStatus.bound ? (
-              <a href="/wechat" className="text-[13px] text-[var(--act)] underline">去扫码绑定 ▶</a>
-            ) : wechatStatus.status === "expired" ? (
-              <div className="flex items-center gap-3">
-                <span className="text-[13px] text-[var(--bad)]">{wechatStatus.expiredHint ?? "微信通道已过期，发条消息重新激活"}</span>
-                <a className="text-[13px] text-[var(--act)] underline" href={`/wechat?rebind=${encodeURIComponent(wechatStatus.tenantId ?? "")}`}>重新激活</a>
-              </div>
-            ) : (
-              <span className="text-[13px] text-[var(--ok)]">已绑定（{wechatStatus.status === "active" ? "活跃中" : "等待激活"}）</span>
-            )}
           </section>
         </SubView>
       )}
