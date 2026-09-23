@@ -1,10 +1,10 @@
 /**
- * IP 表情包参考图（#96）—— 宠物概念图 → 白底 JPEG
+ * IP 表情包参考图 —— 宠物概念图 → 白底 JPEG
  *
- * IP 模式用宠物概念图锁角色（ADR-0001 参考图机制，与 #94 同）。概念图是
- * 透明底 PNG（pet-assets/concept.png），Seedream 参考图 image 字段用 data URL，
- * 透明 PNG 体积大 → 用 pet-sheet.py --flatten 压成白底 JPEG（与 #94
- * splitter.flattenReference 同一脚本、同一模式；小图省带宽、更稳）。
+ * IP 模式用宠物概念图锁角色（ADR-0001 参考图机制）。概念图是透明底 PNG
+ * （pet-assets/concept.png），Seedream 参考图 image 字段用 data URL，
+ * 透明 PNG 体积大 → 用 pet-sheet.py --flatten 压成白底 JPEG（与 CP
+ * petgen splitter 同一脚本、同一模式；小图省带宽、更稳）。
  *
  * 依赖注入 spawn（测试 fake）；脚本路径 import.meta.url 仓库内锚定。
  */
@@ -14,9 +14,9 @@ import { fileURLToPath } from 'url';
 import { access, mkdir } from 'fs/promises';
 import { basename, join } from 'path';
 
-/** pet-sheet.py 绝对路径（web/scripts 下；与 CP splitter 同一锚点） */
+/** pet-sheet.py 绝对路径（仓库根 scripts/；与 CP splitter 同一脚本） */
 const PET_SHEET_PY = fileURLToPath(
-  new URL('../../../web/scripts/pet-sheet.py', import.meta.url),
+  new URL('../../../../scripts/pet-sheet.py', import.meta.url),
 );
 
 /** 注入式 spawn（测试 fake） */

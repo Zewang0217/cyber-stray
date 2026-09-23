@@ -16,8 +16,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-ROOT = Path(__file__).resolve().parent.parent.parent.parent
-SCRIPT = ROOT / "packages/web/scripts/pet-sheet.py"
+ROOT = Path(__file__).resolve().parent.parent
+SCRIPT = ROOT / "scripts/pet-sheet.py"
 
 
 def synth_strip_grid() -> Path:

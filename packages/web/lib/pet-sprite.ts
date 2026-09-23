@@ -1,9 +1,9 @@
 /**
  * 宠物精灵图 manifest(素材契约)
  *
- * 素材来自 AI 生图管线(scripts/pet-sheet.py):参考图锁定角色 → 3x3 网格
+ * 素材来自 AI 生图管线(仓库根 scripts/pet-sheet.py):参考图锁定角色 → 3x3 网格
  * → 每状态一条横排帧条 PNG(public/pet/<state>.png,256px 方帧,透明底)。
- * 重生成素材:改提示词 → qwen-image 出图 → python3 scripts/pet-sheet.py <raw> --grid --states <...> --out public/pet
+ * 重生成素材:改提示词 → qwen-image 出图 → python3 scripts/pet-sheet.py <raw> --grid --states <...> --out packages/web/public/pet(仓库根执行)
  * 帧数/时长改了才需要动这里。
  *
  * #94：状态注册表（PET_STATES/PetState/PetStateSpec）上移到

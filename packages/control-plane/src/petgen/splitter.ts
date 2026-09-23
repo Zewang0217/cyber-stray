@@ -1,8 +1,8 @@
 /**
- * pet-sheet.py 封装（#94）：网格切分 / 概念图归一 / 参考图压平
+ * pet-sheet.py 封装：网格切分 / 概念图归一 / 参考图压平。
  *
- * 脚本复用 packages/web/scripts/pet-sheet.py（spike #89 产物，含 cells 模式），
- * 路径经 import.meta.url 仓库内锚定——不依赖 cwd。spawn 可注入（测试 fake）。
+ * 脚本在仓库根 scripts/（CP petgen 与 agent meme 参考图共用），路径经
+ * import.meta.url 仓库内锚定——不依赖 cwd。spawn 可注入（测试 fake）。
  * 脚本退出码非 0 / 输出缺文件 → 显式抛错（禁兜底）。
  */
 
@@ -15,7 +15,7 @@ import type { Splitter } from './types.js';
 
 /** pet-sheet.py 绝对路径（仓库内锚定，与 worker-runner AGENT_CLI 同款） */
 const PET_SHEET_PY = fileURLToPath(
-  new URL('../../../web/scripts/pet-sheet.py', import.meta.url),
+  new URL('../../../../scripts/pet-sheet.py', import.meta.url),
 );
 
 /** 注入式 spawn（测试 fake；真实实现见 realSpawn） */

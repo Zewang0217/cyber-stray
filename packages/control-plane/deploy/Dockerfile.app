@@ -33,12 +33,15 @@ RUN corepack enable \
 COPY packages/shared ./packages/shared
 COPY packages/control-plane ./packages/control-plane
 COPY packages/agent ./packages/agent
+# 仓库根 scripts/（pet-sheet.py：CP petgen 与 agent meme 生产依赖）
+COPY scripts ./scripts
 
 FROM oven/bun:1-slim
 WORKDIR /app
 # 仓库级 node_modules（.pnpm + workspace 相对链接）整树拷贝，链接保持有效
 COPY --from=builder /repo/node_modules /app/node_modules
 COPY --from=builder /repo/packages ./packages
+COPY --from=builder /repo/scripts ./scripts
 # 数据目录由 compose bind mount 注入（CP_DATA_DIR=/data ← /opt/cyber-stray/data）
 ENV CP_DATA_DIR=/data
 EXPOSE 8787
