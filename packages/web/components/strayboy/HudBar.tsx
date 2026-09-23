@@ -1,5 +1,5 @@
 /**
- * 分段计量条（design-v3/DESIGN.md §4-4）：10 格墨条（2px 墨描边 + 色块），禁连续进度条。
+ * 分段计量条（docs/design-v3/DESIGN.md §4-4）：10 格墨条（2px 墨描边 + 色块），禁连续进度条。
  * 色语义（§2 NES 纪律）：正常 = --ok；告警（值 ≥ warnAt）= --bad 闪烁。
  */
 export function HudBar({

@@ -30,7 +30,7 @@ export function PetSprite({
   anim: string;
   scale?: number;
   hungry?: boolean;
-  /** 毛色皮肤滤镜（delight B12，design-v3/DESIGN.md §7 图鉴皮肤） */
+  /** 毛色皮肤滤镜（delight B12，docs/design-v3/DESIGN.md §7 图鉴皮肤） */
   coat?: "orange" | "black" | "calico";
   className?: string;
 }) {

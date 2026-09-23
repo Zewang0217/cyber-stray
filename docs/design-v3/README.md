@@ -33,7 +33,7 @@ v2（贴纸街）被否——手作质感成立，但"纸片拼贴"的气质与"
 
 ## 下一步
 
-1. 世界宪法就地在 `design-v3/DESIGN.md`——根目录不放 DESIGN.md，`AGENTS.md` 指向这里
+1. 世界宪法就地在 `docs/design-v3/DESIGN.md`——根目录不放 DESIGN.md，`AGENTS.md` 指向这里
 2. 按 stack.md 调依赖（移除 three 系与 Rive 计划，加字体包）
 3. 像素资产开工：猫（idle 4帧/walk 4帧/pat 2帧/pounce 2帧）+ 场景贴图 + 图标，全部 1x 像素网格
 4. 按 components.md 搭组件，demo.html 当动效验收基准

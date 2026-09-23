@@ -24,7 +24,7 @@ const TABS = [
 ] as const;
 
 /**
- * 游戏菜单条（design-v3/DESIGN.md §5 / #170 全局骨架 1）：4 tab + START 键。
+ * 游戏菜单条（docs/design-v3/DESIGN.md §5 / #170 全局骨架 1）：4 tab + START 键。
  * 桌面底部居中悬浮、移动端底部通栏（demo 为准）；子屏（日记/梦呓/贴纸册）
  * 由 START 打开——子屏票（T1-7）接线，当前仅键位占位。
  */

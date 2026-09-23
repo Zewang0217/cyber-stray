@@ -56,7 +56,7 @@ const MOON_PHASES: Array<{ name: string; shadow: number }> = [
 ];
 
 /**
- * 像素夜城街景（design-v3/DESIGN.md §1 主屏）：sky/楼/窗/星/月/路缘 + 猫的活动层。
+ * 像素夜城街景（docs/design-v3/DESIGN.md §1 主屏）：sky/楼/窗/星/月/路缘 + 猫的活动层。
  * #208 可交互装饰：点窗灯（亮/灭）、点月亮换相、点水沟盖冒蒸汽、霓虹招牌 hover 亮。
  * 动效纪律（motion.md §5）：装饰静态定位；新增动效仅水沟盖蒸汽一处一次性
  * transform/opacity（事件触发，reduced-motion 停帧），霓虹 hover 为静态 opacity 态。

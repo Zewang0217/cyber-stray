@@ -1,9 +1,9 @@
 import { DayClock } from "@/components/strayboy/DayClock";
 
 /**
- * 掌机顶栏（design-v3/DESIGN.md §5）：STRAY-BOY 型号铭牌 + 电源灯 + DAY/N 时钟。
+ * 掌机顶栏（docs/design-v3/DESIGN.md §5）：STRAY-BOY 型号铭牌 + 电源灯 + DAY/N 时钟。
  * 纯展示；N 的真实数据接线在街角票（当前为占位 DAY 1）。
- * 字体纪律：PS2P ≥12px（禁令 8）；时钟为数字走 VT323 ≥20px（design-v3/DESIGN.md §3）。
+ * 字体纪律：PS2P ≥12px（禁令 8）；时钟为数字走 VT323 ≥20px（docs/design-v3/DESIGN.md §3）。
  */
 export function TopBar() {
   return (

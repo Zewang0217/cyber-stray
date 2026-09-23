@@ -1,6 +1,6 @@
 # Web 仪表盘规范
 
-`packages/web/` — Next.js + Tailwind CSS 4。视觉世界 = design-v3「像素街区 · STRAY-BOY」（DESIGN / components / motion / stack 四文档 + demo.html 为验收基准）；重写实施计划见 `docs/spec/web-rewrite.md`。
+`packages/web/` — Next.js + Tailwind CSS 4。视觉世界 = docs/design-v3「像素街区 · STRAY-BOY」（DESIGN / components / motion / stack 四文档 + demo.html 为验收基准）；重写实施计划见 `docs/spec/web-rewrite.md`。
 
 ## 只读契约（不可破坏）
 
@@ -12,8 +12,8 @@
 ## Pre-Development Checklist
 
 - [ ] 数据获取只走 CP API / SSE / Web Push，不引入任何直接读数据目录的路径
-- [ ] 视觉与动效符合 design-v3 宪法（14 色、直角、实色影、两帧法则、steps() 动画）
-- [ ] 遵循既有组件风格（Tailwind 4 + 无头行为基座，见 design-v3/stack.md 依赖宪法）
+- [ ] 视觉与动效符合 docs/design-v3 宪法（14 色、直角、实色影、两帧法则、steps() 动画）
+- [ ] 遵循既有组件风格（Tailwind 4 + 无头行为基座，见 docs/design-v3/stack.md 依赖宪法）
 - [ ] SSE 事件类型与 CP 发布面一致（新增事件需同步 `useTenantEvents` 类型副本）
 
 ## 命令

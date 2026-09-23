@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 /**
- * 图鉴毛色皮肤（delight B12，design-v3/DESIGN.md §7）：橘/黑/三花三套重映射 + 名牌。
+ * 图鉴毛色皮肤（delight B12，docs/design-v3/DESIGN.md §7）：橘/黑/三花三套重映射 + 名牌。
  * localStorage 记住选择（跨页面），图鉴/街角消费同一 key。
  * 重映射能力在 B 侧原型实证（prototype/sprite-ab），此处为 CSS 滤镜快速版：
  * hue-rotate 对黑猫不可用，故黑猫用 brightness(0.25) + saturate(0.3) 近似。

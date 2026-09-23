@@ -10,8 +10,8 @@ function dayCount(createdAt: number | undefined, now: number | null): number {
 }
 
 /**
- * DAY/N 时钟（design-v3/DESIGN.md §5 顶栏）：N = 领养日起的自然日数 + HH:MM。
- * 数字 VT323 20px（design-v3/DESIGN.md §3）；suppressHydrationWarning——SSR 与客户端
+ * DAY/N 时钟（docs/design-v3/DESIGN.md §5 顶栏）：N = 领养日起的自然日数 + HH:MM。
+ * 数字 VT323 20px（docs/design-v3/DESIGN.md §3）；suppressHydrationWarning——SSR 与客户端
  * 首帧时间天然可能跨分，属预期差异。
  */
 export function DayClock() {
