@@ -20,7 +20,7 @@ import { PauseAnims } from "@/components/strayboy/PauseAnims";
  *   Noto Sans SC（长文铁律）+ IBM Plex Mono（日期签）。
  * STORY: 打开 → 街角猫活着（sprite 帧动画）→ 状态墨条随 SSE 跳 → 明信片寄回有编排 →
  *   拍拍有性格反馈 → 图鉴/日记/贴纸册像游戏子屏。
- * FORM: 掌机框架 = 顶栏铭牌 + 主屏（游戏层）+ 底部 4 tab 菜单条 + START 键（DESIGN.md §5）。
+ * FORM: 掌机框架 = 顶栏铭牌 + 主屏（游戏层）+ 底部 4 tab 菜单条 + START 键（design-v3/DESIGN.md §5）。
  *   重写计划见 docs/spec/web-rewrite.md；旧世界组件随各票重铸摘除。
  * FONTS: 本地化 @fontsource（国内服务器构建不依赖 Google Fonts）；--font-* 定义在 globals.css。
  */

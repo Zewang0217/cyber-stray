@@ -1,5 +1,5 @@
 /**
- * 对话框（DESIGN.md §4-6）：paper 底 + 底部三角尾巴 + <名字> 标签，游戏 AV 语法。
+ * 对话框（design-v3/DESIGN.md §4-6）：paper 底 + 底部三角尾巴 + <名字> 标签，游戏 AV 语法。
  */
 export function DialogBox({ name, text }: { name: string; text: string }) {
   return (

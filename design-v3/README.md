@@ -3,7 +3,7 @@
 > 风格：**Pixel / 8-bit**（Styles Vault 05 号档案）
 > 品牌参考：**Nintendo 2001**（只借"主机语法"，金属面板材质被否，见下）
 > 宠物活体：**像素 sprite 管线**（Aseprite → spritesheet → CSS steps()，不用 Rive，理由见 stack.md）
-> 状态：待 review ｜ 上一版（design-v2 贴纸街）已否，保留供对照
+> 状态：**已采纳**——当前世界宪法（决策见 `CONTEXT.md` 视觉决策段）｜ 上一版（design-v2 贴纸街）已否，保留供对照
 
 ## 已定决策
 
@@ -31,9 +31,9 @@ v2（贴纸街）被否——手作质感成立，但"纸片拼贴"的气质与"
 | [demo.html](demo.html) | 掌机首页 demo：拍拍、让它出门溜达、新邮件到达的完整编排 |
 | [preview-desktop.png](preview-desktop.png) / [preview-mobile.png](preview-mobile.png) | 截图 |
 
-## 下一步（review 通过后）
+## 下一步
 
-1. DESIGN.md 放到项目根目录替换旧版
+1. 世界宪法就地在 `design-v3/DESIGN.md`——根目录不放 DESIGN.md，`AGENTS.md` 指向这里
 2. 按 stack.md 调依赖（移除 three 系与 Rive 计划，加字体包）
 3. 像素资产开工：猫（idle 4帧/walk 4帧/pat 2帧/pounce 2帧）+ 场景贴图 + 图标，全部 1x 像素网格
 4. 按 components.md 搭组件，demo.html 当动效验收基准

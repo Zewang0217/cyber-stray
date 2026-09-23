@@ -1,72 +1,45 @@
 # cyber-stray AGENTS.md
 
-> 本仓库的 agent 行为入口。与全局 `~/.agents/AGENTS.md` 的通用准则冲突时，以本文件为准。
+> 本仓库的 agent 行为入口。
 
-## 项目本质
+**项目本质**：自进化赛博宠物——被自己不断进化的好奇心驱动去探索和学习，并主动推送主人会感兴趣的内容。宠物是产品本体：活着的、有脾气的、看得见的，不是信息流的隐喻层。
 
-自进化赛博宠物：被自己进化的好奇心驱动探索与学习，并主动推送主人感兴趣的内容（飞书/Telegram）。
-
-- **主轴（不可妥协）**：兴趣会进化 + 能主动推主人感兴趣的内容。推送渠道 / 仪表盘 / 搜索源都可失败或替换；一切 tradeoff 保主轴。
-- 技术栈：pnpm monorepo — `packages/agent`（Node/tsx，ReAct 循环 + 三层记忆 + Ink TUI）、`packages/web`（Next.js 仪表盘）、`packages/slides`（Slidev）。
+**主轴（不可妥协）**：兴趣会进化 + 能主动推主人感兴趣的内容。推送渠道 / 仪表盘 / 搜索源都可以失败或替换；冲突时一切 tradeoff 保主轴。
 
 ## 规范真相源：`.trellis/spec/`
 
-仓库规范的**唯一真相源**在 `.trellis/spec/`（`.claude/CLAUDE.md` 等平台适配文件由它派生，勿直接改派生产物）。动手前按改动范围读：
+规范只写在那里，本文件不复述。动手前按改动范围读：
 
-- 改 `packages/agent` → `agent/core/`：架构 + 开发前 checklist + `conventions.md` 硬约定
-- 改 `packages/web` → `web/frontend/`：**只读契约**——仪表盘绝不写 agent 数据
-- 全局决策 / 行为红线 / 思维指南 → `guides/`
+| 改动范围                                     | 先读                                                                                                                                                                                                     |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/agent`                             | `.trellis/spec/agent/core/`——`index.md` 架构 + 开发前 checklist、`conventions.md` 硬约定全文                                                                                                             |
+| `packages/web` UI / 视觉                     | `.trellis/spec/web/frontend/`（**只读契约**）+ `design-v3/DESIGN.md`（像素街区世界宪法；组件 / 动效 / 依赖见同目录另三份文档）                                                                           |
+| `packages/control-plane` / `packages/shared` | 该层暂无 `.trellis/spec/`：分层（`routes → services → domain → infra`）与 lint 门禁、跨包契约下沉 `shared` 的硬约定见 `docs/refactor/README.md`；多租户 / 鉴权 / 计费决策见根 `CONTEXT.md` + `docs/adr/` |
+| 跨包、发布、分支                             | `.trellis/spec/guides/`——核心价值、架构决策、行为红线、Git 与分支流程（ADR-0009）                                                                                                                        |
+| 领域词汇 / 已锁定决策                        | 根 `CONTEXT.md` + `CONTEXT-MAP.md` + `docs/adr/`                                                                                                                                                         |
 
-## 硬约定（写 agent 代码必守，源自 agent/core/conventions.md）
+## 硬约定（写 agent 代码必守）
 
-- **禁兜底**：错误抛明确异常，不用默认值 / 降级 / 推断掩盖
-- **路径**：数据一律走 `getDataPath()`；禁模块级路径常量（import 时求值会把测试写穿生产数据）
-- **异步**：禁 `execSync`（卡死事件循环——心跳 / TUI / 反思调度全停摆）；I/O 用 `fs/promises`
-- **grounding**：反思洞察必引 ≥1 条真实 `sourceIds`，无源整条丢弃，不得绕过
-- **记忆**：索引复用 `MemoryIndex`，不另建并行索引；provenance 标记 `untrusted:web` / `self:reflection` / `self:action`
-- **DB 改动先征得同意**；LLM 产出用 Zod 校验
-- 方法 ≤ 50 行；缩进 ≤ 3 层（Guard Clause 优先）；无魔法值；公开 API 写"为什么"注释
+- **无兜底**：失败就抛明确异常、让调用方看见真实错误；不用默认值 / 降级 / 推断掩盖。
+- **路径**：数据文件走 `getDataPath()`，不写模块级路径常量——import 时求值会把测试写穿生产数据。
+- **异步**：耗时 I/O 用 `execFile` / `spawn` + `AbortController`；`execSync` 会卡死事件循环，心跳 / TUI / 反思调度全停摆。
+- **grounding**：反思洞察必引 ≥1 条真实 `sourceIds`，无源整条丢弃，不得绕过。
+- **记忆**：索引复用 `MemoryIndex`，不另建并行索引；provenance 标 `untrusted:web` / `self:reflection` / `self:action`。
+- **DB 改动先征得同意**；LLM 产出用 Zod 校验。
 
-## 常用命令
+## 工作流
 
-```bash
-pnpm dev:agent     # Agent（TUI + 心跳）
-pnpm dev:web       # Next.js 仪表盘
-pnpm dev:slides    # Slidev
-pnpm test          # Vitest
-pnpm lint          # ESLint
-pnpm typecheck     # TS 类型检查
-pnpm setup:browser # 安装 agent-browser CLI
-```
-
-## 工作流程
-
-1. **读 spec** → 验收：能说出本次改动涉及哪几条硬约定
-2. **Think First**：动手前用 1-2 句说清方案 → 验收：方案先说出口，不是边写边改
-3. **最小变更**：只动该动的，优先复用既有实现（见 `guides/code-reuse-thinking-guide.md`）→ 验收：diff 只含任务直接相关的行
-4. **分步推进**：较大任务分步汇报，不一次性堆大量改动 → 验收：每一步独立可验证
-5. **验证** → 验收：改动范围的 `pnpm test` / `lint` / `typecheck` 通过；UI 改动在浏览器实测；push 前 diff 无 `console.log` / TODO / 敏感信息
+1. **读 spec**：能说出本次改动涉及哪几条硬约定，再动手。
+2. **先说方案**：用 1-2 句讲清怎么做，方案先出口，不是边写边改。
+3. **最小变更**：只动该动的，先问能不能复用既有实现（`.trellis/spec/guides/code-reuse-thinking-guide.md`）。
+4. **验证**：改动范围的 `pnpm test` / `lint` / `typecheck` 通过；UI 改动在浏览器实测；push 前确认 diff 无 `console.log` / TODO / 敏感信息。
 
 ## Git
 
-- Commit 中文 + Conventional Commits（`feat` / `fix` / `refactor` / `chore` / `docs`）
-- 一个提交 = 一个逻辑单元（按功能点，不按文件）
-- 分支：`feat/xxx`、`fix/xxx`、`refactor/xxx`、`chore/xxx`；PR 目标默认 `develop`
+只在 `develop` 开发，PR 目标 `develop`（ADR-0009：`main` 只接受 develop 的发布 PR）。提交信息、分支命名、开发前拉取的细则见 `.trellis/spec/guides/index.md` §Git。
 
 ## Agent skills
 
-### Issue tracker
-
-Issues 存于 GitHub Issues，用 `gh` CLI 操作（创建/读取/评论/标签）。见 `docs/agents/issue-tracker.md`。
-
-### Triage labels
-
-五个规范角色用同名标签：`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`。见 `docs/agents/triage-labels.md`。
-
-### Issue labels
-
-完整标签体系（类型 / 形态 / triage / `待验收`）与流转规则见 `docs/agents/issue-labels.md`。关键规则：实施 PR 合并后摘 `ready-for-agent`，有验收项改挂 `待验收`，验收通过才关闭。
-
-### Domain docs
-
-单上下文：根 `CONTEXT.md`（领域词汇）+ `docs/adr/`（架构决策）。见 `docs/agents/domain.md`。
+- **Issue tracker**：GitHub Issues，用 `gh` 操作；外部贡献者的 PR 也进同一 triage 队列 → `docs/agents/issue-tracker.md`
+- **Issue 标签**：三维度（类型 / 形态 / triage）+ `待验收` 生命周期，PR 合并后摘 `ready-for-agent` → `docs/agents/issue-labels.md`、`docs/agents/triage-labels.md`
+- **Domain docs**：`CONTEXT-MAP.md` 定位各 context 的 `CONTEXT.md`，输出里的领域概念用词以词表为准 → `docs/agents/domain.md`

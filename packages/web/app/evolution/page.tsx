@@ -78,7 +78,7 @@ function EvolutionInner() {
         <h2 className="font-ps2p mb-3 mt-8 text-xs text-[var(--hi)] lg:mt-0">SKIN · 图鉴皮肤</h2>
         <div className="mb-2 border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
           <CoatPicker />
-          <p className="mt-1.5 text-[11px] text-[var(--curb)]">选择后街角同步换色（橘/黑/三花，DESIGN.md §7）。</p>
+          <p className="mt-1.5 text-[11px] text-[var(--curb)]">选择后街角同步换色（橘/黑/三花，design-v3/DESIGN.md §7）。</p>
         </div>
       </div>
 

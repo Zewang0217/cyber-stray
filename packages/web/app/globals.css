@@ -295,11 +295,8 @@ details[open] > summary .disclosure-chevron {
   transform: rotate(90deg);
 }
 
-/* ============================================
-   按钮(DESIGN.md 活版印刷规格)
-   主 = 墨底纸字 + hover 琥珀底阴影;次 = 纸底 + 铜版细框 + hover 琥珀框
-   排版/尺寸由 Tailwind 类负责(px-4 py-2 rounded-sm text-small),本类只管颜色
-   ============================================ */
+/* 按钮:主 = 墨底纸字 + hover 琥珀底阴影;次 = 纸底 + 铜版细框 + hover 琥珀框。
+   排版/尺寸由 Tailwind 类负责(px-4 py-2 rounded-sm text-small),本类只管颜色 */
 .btn-primary {
   background-color: var(--c-ink);
   color: var(--c-paper);
@@ -471,7 +468,7 @@ html[data-theme="night"] .pet-player {
    旧世界随重写票逐段摘除，见 docs/spec/web-rewrite.md）
    ============================================================ */
 :root {
-  /* 14 色宇宙（DESIGN.md §2）+ 猫本体色组（17 色豁免，#169） */
+  /* 14 色宇宙（design-v3/DESIGN.md §2）+ 猫本体色组（17 色豁免，#169） */
   --sky: #1a1c2c;
   --bld-far: #29366f;
   --bld-near: #3b5dc9;
@@ -493,7 +490,7 @@ html[data-theme="night"] .pet-player {
   --cat-cream: #f6e6c8;
   /* 窗灯熄灭态（宪法外唯一派生暗色，components.md .win.off） */
   --window-off: #141626;
-  /* 字体栈（DESIGN.md §3；@fontsource 本地化，layout 引入） */
+  /* 字体栈（design-v3/DESIGN.md §3；@fontsource 本地化，layout 引入） */
   --font-ps2p: "Press Start 2P";
   --font-fusion-pixel: "Fusion Pixel 12px Proportional SC";
   --font-vt323: "VT323";

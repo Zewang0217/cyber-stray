@@ -136,7 +136,7 @@ export class InterestGraph {
   /**
    * 从文件加载兴趣图谱。
    * 文件不存在时返回空图谱（调用方应随后 seedDefaults）。
-   * 解析/schema 失败抛错（D-09 / CLAUDE.md 红线）。
+   * 解析/schema 失败抛错（D-09 / 无兜底红线）。
    */
   async load(): Promise<void> {
     if (!existsSync(this.filePath)) {

@@ -1,6 +1,6 @@
 # cyber-stray Spec
 
-> 本目录是项目规范的**唯一真相源**。`.claude/`、`AGENTS.md` 等平台适配文件由 Trellis 从此处派生，勿直接改派生产物。
+> 本目录是项目规范的**唯一真相源**。`AGENTS.md` 是 agent 入口（手写，只放导航与硬约定，规范内容写这里）；`.claude/CLAUDE.md` 只是一行 `@` 导入指向 AGENTS.md。
 
 ## 这是什么
 

@@ -55,7 +55,7 @@ export function createDefaultJsonIndex(): MemoryJsonIndex {
 
 /**
  * 加载 .index.json。文件不存在返空（合法），解析/schema 失败抛错。
- * @throws Error JSON 非法或 schema 不匹配——不兜底返默认（D-09 / CLAUDE.md 红线）。
+ * @throws Error JSON 非法或 schema 不匹配——不兜底返默认（D-09 / 无兜底红线）。
  */
 export async function loadJsonIndex(path: string): Promise<MemoryJsonIndex> {
   if (!existsSync(path)) {

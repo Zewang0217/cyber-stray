@@ -5,7 +5,7 @@ import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib/utils";
 
 /**
- * 统一按钮(活版印刷规格,见 globals.css .btn-* 与 DESIGN.md)
+ * 统一按钮(规格见 globals.css .btn-*)
  * variant:primary=墨底纸字+hover 琥珀底阴影;secondary=纸底铜版细框;
  * danger=警告色;ghost=纯文字。
  * 尺寸:sm=表内/紧凑,md=常规,lg=主行动。
