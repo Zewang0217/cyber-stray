@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { InterestNodeData } from "@/lib/types";
+import type { InterestNode } from "@cyber-stray/shared/interest-graph";
 
 /** 兴趣来源方签（NES 语义色：reflection=act / feedback=ok / default=curb）。 */
 const SOURCE_STYLE: Record<string, string> = {
@@ -11,12 +11,12 @@ const SOURCE_STYLE: Record<string, string> = {
 };
 
 /**
- * 图鉴条目轨道（#170）：按有效权重排序的条目行——编号/话题名/像素墨条/
- * 强化计数/来源方签。新条目首次出现翻转亮起（f12，motion.md §4）。
+ * 图鉴条目轨道：按权重排序的条目行——编号/话题名/像素墨条/
+ * 强化计数/来源方签。新条目首次出现翻转亮起（motion.md §4）。
  */
-export function InterestAtlas({ nodes }: { nodes: InterestNodeData[] }) {
+export function InterestAtlas({ nodes }: { nodes: InterestNode[] }) {
   const sorted = useMemo(
-    () => [...nodes].sort((a, b) => b.effectiveWeight - a.effectiveWeight),
+    () => [...nodes].sort((a, b) => b.weight - a.weight),
     [nodes],
   );
   const seen = useRef<Set<string> | null>(null);
@@ -24,7 +24,7 @@ export function InterestAtlas({ nodes }: { nodes: InterestNodeData[] }) {
   const [fresh, setFresh] = useState<Set<string>>(new Set());
 
   // 新条目检测：首帧记录基线，其后新出现的 id 标记「刚叼回来」并翻转亮起。
-  // 定时器持 ref——重渲染不重置 2s 收尾（评审 #190 P1）。
+  // 定时器持 ref——重渲染不重置 2s 收尾。
   useEffect(() => {
     if (seen.current === null) {
       seen.current = new Set(sorted.map((n) => n.id));
@@ -52,7 +52,7 @@ export function InterestAtlas({ nodes }: { nodes: InterestNodeData[] }) {
   return (
     <ol className="flex flex-col gap-2.5">
       {sorted.map((n, i) => {
-        const cells = Math.max(1, Math.round(n.effectiveWeight * 10));
+        const cells = Math.max(1, Math.round(n.weight * 10));
         const isNew = fresh.has(n.id);
         return (
           <li
@@ -67,7 +67,7 @@ export function InterestAtlas({ nodes }: { nodes: InterestNodeData[] }) {
               </span>
             </div>
             <div className="mt-2 flex items-center gap-2 pl-9">
-              <div aria-label={`有效权重 ${Math.round(n.effectiveWeight * 100)}%`} className="flex h-3.5 flex-1 gap-[2px] border-2 border-black bg-[var(--window-off)] p-[2px]">
+              <div aria-label={`权重 ${Math.round(n.weight * 100)}%`} className="flex h-3.5 flex-1 gap-[2px] border-2 border-black bg-[var(--window-off)] p-[2px]">
                 {Array.from({ length: 10 }, (_, k) => (
                   <b key={k} className={`flex-1 ${k < cells ? "bg-[var(--hi)]" : "bg-[var(--street)]"}`} />
                 ))}

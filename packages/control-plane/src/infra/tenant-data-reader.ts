@@ -8,6 +8,7 @@
 
 import { readFile, readdir } from 'fs/promises';
 import { join } from 'path';
+import type { SpeakHistoryItem } from '@cyber-stray/shared/push';
 import { parseHistoryJsonl } from '../domain/history-view.js';
 import { isEnoent } from './enoent.js';
 import { tenantDataDir } from '../tenant.js';
@@ -99,7 +100,7 @@ export async function readInterestHistorySnapshots(dataDir: string, tenantId: st
 export async function readPushHistoryItems(
   dataDir: string,
   tenantId: string,
-): Promise<Array<Record<string, unknown>>> {
+): Promise<SpeakHistoryItem[]> {
   const historyDir = join(tenantDataDir(dataDir, tenantId), 'history');
   let files: string[];
   try {
@@ -111,7 +112,7 @@ export async function readPushHistoryItems(
     throw new Error('历史目录不可读');
   }
 
-  const items: Array<Record<string, unknown>> = [];
+  const items: SpeakHistoryItem[] = [];
   // 全量遍历（分页契约要求 total/hasMore 基于全部记录；speaks 每天数行，解析开销毫秒级）
   for (const file of files) {
     let content: string;

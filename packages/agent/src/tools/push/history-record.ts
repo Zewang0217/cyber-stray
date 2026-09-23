@@ -6,10 +6,9 @@
  * 工具入参 schema（多加字段会让 LLM 每次 speak 都要多想两件事）。
  */
 
+import { SPEAK_TYPE_LABELS, type SpeakRecord, type SpeakType } from '@cyber-stray/shared/push';
 import type { Mood } from '../../types.js';
 import { extractUrl } from '../dedup/url-tracker.js';
-// 仅类型导入，编译期擦除，与 speak.ts 的反向值依赖不构成运行时循环
-import type { SpeakType } from './speak.js';
 
 /** 标题最大字符数（按字符而非字节，中文场景下与显示宽度一致） */
 const TITLE_MAX_CHARS = 40;
@@ -17,48 +16,8 @@ const TITLE_MAX_CHARS = 40;
 /** 摘要最大字符数 */
 const SUMMARY_MAX_CHARS = 120;
 
-/** 无法从内容提取标题时的兜底名称 */
-const TYPE_LABELS: Record<SpeakType, string> = {
-  share: '分享',
-  nonsense: '碎碎念',
-  article: '文章',
-};
-
-/** 推送历史记录条目 */
-export interface SpeakRecord {
-  content: string;
-  type: SpeakType;
-  pushed: boolean;
-  timestamp: string;
-  messageId?: string;
-  /** 卡片标题，从 content 派生 */
-  title: string;
-  /** 内容中的第一个链接，无则省略 */
-  url?: string;
-  /** 卡片摘要，从 content 派生 */
-  summary: string;
-  /** 推送当时的心情 */
-  mood?: Mood;
-  /** 是否被推送门控拦截（true 表示只学习没推送） */
-  gated?: boolean;
-  /** 是否被套餐日预算/时间窗拦下（S11：内容落盘但未推——与 gated 同为
-   * "仅记录"，但原因可区分，供仪表盘解释与 push-gateway 跳过） */
-  planLimited?: boolean;
-  /** 门控评分 */
-  gateScore?: number;
-  /** 推送理由（门控各因子得分，人类可读；S8 推送流展示） */
-  gateReasons?: string[];
-  /** 门控命中的兴趣话题（S9 反馈归因持久化——worker 短命进程退出后
-   * 内存 map 即失效，REST 反馈从 speaks 历史按 messageId 反查） */
-  matchedTopics?: string[];
-  /** 本次 speak 用到的口头禅文本（#114 反馈归因：按内容包含扫描落盘，
-   * 反馈时按 messageId 反查做权重归因；同 matchedTopics 的持久化模式）。
-   * 取舍（review P4）：存文本而非 catchphraseId——LLM 自由发挥 speak，
-   * 无法结构化标记用了哪条，文本包含扫描是唯一务实方案；副作用是设置页
-   * 改写口头禅文案后，旧 speak 点赞按文本找不到条目 → 归因静默跳过
-   * （权重不更新，不误归因、不报错）。 */
-  matchedCatchphrases?: string[];
-}
+/** 记录形状契约在 shared/push（CP 归一化、web 渲染同源） */
+export type { SpeakRecord };
 
 /** 构建记录时的附加信息 */
 export interface SpeakRecordMeta {
@@ -101,7 +60,7 @@ export function deriveTitle(content: string, type: SpeakType): string {
       return truncate(cleaned, TITLE_MAX_CHARS);
     }
   }
-  return TYPE_LABELS[type];
+  return SPEAK_TYPE_LABELS[type];
 }
 
 /**

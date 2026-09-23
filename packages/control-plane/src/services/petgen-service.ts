@@ -13,7 +13,9 @@ import { join } from 'path';
 import {
   DEFAULT_PET_PRESET,
   type PetPresetId,
+  type PetStateId,
 } from '@cyber-stray/shared/pet';
+import type { PetGenQuota, PetGenTaskView, StateQcResult } from '@cyber-stray/shared/petgen';
 import type { ControlPlaneConfig } from '../config.js';
 import type { ControlDb } from '../db/client.js';
 import { getDb } from '../db/client.js';
@@ -34,7 +36,7 @@ export type PetGenOutcome<T> =
   | { ok: false; status: 403 | 404 | 409 | 429; error: string; data?: unknown };
 
 /** 任务 → API 视图（去掉内部列，附概念图/素材 URL） */
-function toTaskView(task: PetGenTask) {
+function toTaskView(task: PetGenTask): PetGenTaskView {
   return {
     id: task.id,
     status: task.status,
@@ -43,7 +45,7 @@ function toTaskView(task: PetGenTask) {
     stylePreset: (task.stylePreset ?? DEFAULT_PET_PRESET) as PetPresetId,
     conceptUrl: task.conceptPath ? `/api/petgen/tasks/${task.id}/concept.png` : null,
     error: task.error,
-    qcResult: task.qcResult ? (JSON.parse(task.qcResult) as unknown) : null,
+    qcResult: task.qcResult ? (JSON.parse(task.qcResult) as Record<PetStateId, StateQcResult>) : null,
     conceptAttempts: task.conceptAttempts,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
@@ -186,7 +188,7 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
   }
 
   /** 本月配额（非 Pro/BYOK → available:false 全 0） */
-  async function getQuota(tenantId: string) {
+  async function getQuota(tenantId: string): Promise<PetGenQuota> {
     const db = await getDb(config.dataDir);
     if (!(await planAllowed(db, tenantId))) {
       return { limit: 0, used: 0, remaining: 0, available: false };

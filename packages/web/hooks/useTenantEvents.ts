@@ -1,28 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { TenantEvent } from "@cyber-stray/shared/tenant-events";
 
-/** 控制面租户事件（与 packages/control-plane/src/events/bus.ts 的 TenantEvent 对齐） */
-export interface TenantEvent {
-  type:
-    | "pet_ready"
-    | "worker_started"
-    | "worker_succeeded"
-    | "worker_retry"
-    | "worker_failed"
-    | "worker_timeout"
-    | "diary_generated"
-    | "budget_exhausted"
-    | "budget_resumed"
-    | "budget_check_failed";
-  tenantId: string;
-  petId: string;
-  at: number;
-  detail?: string;
-}
+/** 事件形状契约在 shared/tenant-events（CP 事件总线同源） */
+export type { TenantEvent };
 
-/** worker 生命周期事件 = 一轮游荡可能改了 state/interests/推送历史。
- * #265 预算事件一并刷新：budgetPaused 的真相源是 CP pets GET（SSE 只给转变沿） */
+/** worker 生命周期事件 = 一轮游荡可能改了状态/兴趣/推送历史；
+ * 预算事件一并刷新：budgetPaused 的真相源是 CP pets GET（SSE 只给转变沿） */
 const REFRESH_EVENT_TYPES = new Set<TenantEvent["type"]>([
   "worker_succeeded",
   "worker_failed",
@@ -47,7 +32,7 @@ interface UseTenantEventsReturn {
 }
 
 /**
- * 租户实时事件（S8）：EventSource 订阅 /api/events（cookie 鉴权，租户由
+ * 租户实时事件：EventSource 订阅 /api/events（cookie 鉴权；租户由
  * session claim 决定，服务端隔离）。
  *
  * 降级：连接失败/中断 → connected=false，消费方回落轮询；EventSource

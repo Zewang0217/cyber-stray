@@ -12,10 +12,10 @@
 import { describe, it, expect, vi, type Mock, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { PushContent } from '@/lib/types';
+import type { SpeakHistoryItem } from '@cyber-stray/shared/push';
 import { useHistory } from './useHistory';
 
-function makeItem(n: number): PushContent {
+function makeItem(n: number): SpeakHistoryItem {
   return {
     message: `m${n}`,
     title: `t${n}`,
@@ -25,7 +25,7 @@ function makeItem(n: number): PushContent {
 }
 
 interface ProbeValue {
-  items: PushContent[];
+  items: SpeakHistoryItem[];
   total: number;
   isLoading: boolean;
   isLoadingMore: boolean;
@@ -50,7 +50,7 @@ const ALL = Array.from({ length: 5 }, (_, i) => makeItem(i));
 /** API 按 timestamp 倒序（最新在前） */
 const DESC = [...ALL].reverse();
 
-function jsonResponse(data: PushContent[], offset: number, limit: number) {
+function jsonResponse(data: SpeakHistoryItem[], offset: number, limit: number) {
   const total = DESC.length;
   return {
     success: true,

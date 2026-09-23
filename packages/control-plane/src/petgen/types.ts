@@ -1,42 +1,22 @@
 /**
- * 宠物 IP 生成管线领域类型（#94）
+ * 宠物 IP 生成管线领域类型。
  *
- * 状态机（异步队列，PetGenProcessor tick 推进）：
- * spec_submitted → concept_generating → awaiting_confirmation →
- * generating_states → qc → done | failed
- *
- * 生成/视觉/切分全部接口化——测试注入 fake，真实实现见 qwen.ts / splitter.ts。
+ * 跨包契约（状态机 / spec / 质检结果 / API 视图）在 shared/petgen；此处保留
+ * 管线内部接口——生成/视觉/切分全部接口化，测试注入 fake，真实实现见
+ * qwen.ts / splitter.ts / structure-qc.ts。
  */
 
 import type { PetPresetId, PetStateId } from '@cyber-stray/shared/pet';
+import type { PetGenTaskStatus, PetSpec, StateQcResult } from '@cyber-stray/shared/petgen';
 import type { ControlDb } from '../db/client.js';
 import type { PetGenTask } from '../db/schema.js';
 import type { PetUsageRecorder } from '../usage.js';
 
-export type PetGenTaskStatus = PetGenTask['status'];
+/** 契约同源转发（既有 import 路径不变） */
+export type { PetGenTaskStatus, PetSpec, StateQcResult };
 
-/** 生成策略（spike 结论：四宫格主路径，九宫格/逐状态回退） */
+/** 生成策略（四宫格主路径，九宫格/逐状态回退） */
 export type GenStrategy = 'quad' | 'nine' | 'per';
-
-/** 用户提交的 spec：纯文本 + 选项 + 风格预设（web 表单 → CP API） */
-export interface PetSpec {
-  /** 角色描述纯文本（1-500 字符） */
-  specText: string;
-  /** 可选项：主色调 / 体型 / 补充备注 */
-  options?: {
-    palette?: string;
-    size?: string;
-    note?: string;
-  };
-  /** 风格预设 id（缺省 chibi-kawaii，见 shared PET_STYLE_PRESETS） */
-  stylePreset?: PetPresetId;
-}
-
-/** 单状态质检结果 */
-export interface StateQcResult {
-  pass: boolean;
-  issues: string[];
-}
 
 /** 图像生成请求 */
 export interface ImageGenRequest {

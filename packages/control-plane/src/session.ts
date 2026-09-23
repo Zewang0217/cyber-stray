@@ -1,20 +1,19 @@
 /**
- * session JWT — 控制面自签会话（stateless）
- *
- * 登录成功后控制面签发自己的 HS256 session JWT（含 sub + tenantId），
- * 存 httpOnly cookie。后续请求只认这个 JWT——这是租户真相的唯一来源。
+ * session JWT — 控制面自签会话（stateless）：登录成功后签发 HS256 JWT
+ * （sub + tenantId）存 httpOnly cookie。后续请求只认这个 JWT——租户真相
+ * 的唯一来源，绝不读客户端可控的 header。
  */
 
 import { SignJWT, jwtVerify } from 'jose';
 
-/** session cookie 名 */
-export const SESSION_COOKIE = 'cs_session';
+/** cookie 名契约在 shared（web 中间件登录墙同源） */
+export { SESSION_COOKIE } from '@cyber-stray/shared/session';
 
 /** session claims */
 export interface SessionClaims {
   /** Casdoor 用户标识（sub） */
   sub: string;
-  /** 租户 id（= sub，S2 决策：单用户租户=1，S3 建关系表后可能分化） */
+  /** 租户 id（= sub：单用户租户；建关系表后可能分化） */
   tenantId: string;
 }
 

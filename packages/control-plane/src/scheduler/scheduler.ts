@@ -42,7 +42,7 @@ import {
 import type { PetStats, WanderStatsReport } from '@cyber-stray/shared/pet-stats';
 import type { PersonalityId } from '@cyber-stray/shared';
 import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
-import { isSleeping } from './sleep.js';
+import { isSleeping } from '@cyber-stray/shared/sleep';
 import { DIARY_FALLBACK_HOUR, shouldGenerateDiary } from './diary-schedule.js';
 import type { DiaryRunner } from './diary-runner.js';
 import { planBudgetYuan, todayLlmCostYuan, type LlmBudgetConfig } from './budget.js';

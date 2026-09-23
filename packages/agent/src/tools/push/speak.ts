@@ -1,3 +1,4 @@
+import type { SpeakType } from '@cyber-stray/shared/push';
 import { appendFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { consola } from '../../logger.js';
@@ -10,8 +11,8 @@ import type { Mood } from '../../types.js';
 
 const logger = consola.withTag('speak');
 
-/** speak 工具内容类型。与 memory/push-gate.ts 的 SpeakType 同步保持。 */
-export type SpeakType = 'share' | 'nonsense' | 'article';
+/** speak 内容类型契约在 shared/push（push-gate、CP、web 同源） */
+export type { SpeakType };
 
 /** speak 工具入参 */
 export interface SpeakInput {
@@ -23,11 +24,11 @@ export interface SpeakInput {
 export interface SpeakResult {
   success: boolean;
   pushed: boolean;     // 是否已推送到飞书/Telegram
-  /** Phase 5: 是否被推送门控拦截 */
+  /** 是否被推送门控拦截 */
   gated?: boolean;
-  /** Phase 5: 门控评分 */
+  /** 门控评分 */
   gateScore?: number;
-  /** Phase 5: 门控理由 */
+  /** 门控理由 */
   gateReasons?: string[];
   timestamp: string;
   messageId?: string; // 飞书消息 ID（用于关联反馈）

@@ -16,7 +16,7 @@
  * 与 #91 的 isSleeping 语义对齐（窗口 [start, end)，跨午夜 [start,24)∪[0,end)）。
  */
 
-import { isSleeping } from './sleep.js';
+import { isSleeping } from '@cyber-stray/shared/sleep';
 
 /** 无作息租户（默认）的固定日记触发时刻（本地小时，24h 制） */
 export const DIARY_FALLBACK_HOUR = 23;

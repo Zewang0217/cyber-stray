@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { stampLabel } from "@/lib/strayboy/mail";
-import type { PushContent } from "@/lib/types";
+import type { SpeakHistoryItem } from "@cyber-stray/shared/push";
 
 /**
  * 明信片详情（#205）：墙上卡片只显标题，完整 message 正文在这里读。
@@ -17,10 +17,10 @@ export function PostcardDetail({
   pending,
   onClose,
 }: {
-  card: PushContent;
+  card: SpeakHistoryItem;
   adoptedAt: number;
-  onFeedback: (type: "like" | "dislike", card: PushContent) => void;
-  onPin: (card: PushContent) => void;
+  onFeedback: (type: "like" | "dislike", card: SpeakHistoryItem) => void;
+  onPin: (card: SpeakHistoryItem) => void;
   pending: boolean;
   onClose: () => void;
 }) {

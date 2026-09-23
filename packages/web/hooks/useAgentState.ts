@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { AgentState, ApiResponse } from "@/lib/types";
+import type { AgentStateSnapshot } from "@cyber-stray/shared/agent-state";
+import type { ApiResponse } from "@/lib/types";
 
 interface UseAgentStateOptions {
-  /** S8：SSE 刷新信号（变化即拉取；SSE 断开时回落定时轮询） */
+  /** SSE 刷新信号（变化即拉取；SSE 断开时回落定时轮询） */
   refreshSignal?: number;
   /** SSE 是否连通（连通时降频轮询为健康心跳） */
   realtimeConnected?: boolean;
@@ -13,7 +14,7 @@ interface UseAgentStateOptions {
 }
 
 interface UseAgentStateReturn {
-  state: AgentState | null;
+  state: AgentStateSnapshot | null;
   isLoading: boolean;
   error: string | null;
 }
@@ -27,7 +28,7 @@ export function useAgentState(
   options: UseAgentStateOptions = {},
 ): UseAgentStateReturn {
   const { refreshSignal = 0, realtimeConnected = false, enabled = true } = options;
-  const [state, setState] = useState<AgentState | null>(null);
+  const [state, setState] = useState<AgentStateSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const fetchStateRef = useRef<() => Promise<void>>(async () => {});
@@ -40,7 +41,7 @@ export function useAgentState(
     const fetchState = async (): Promise<void> => {
       try {
         const res = await fetch("/api/state");
-        const json = (await res.json()) as ApiResponse<AgentState>;
+        const json = (await res.json()) as ApiResponse<AgentStateSnapshot>;
 
         if (!json.success) {
           throw new Error(json.error ?? "获取状态失败");

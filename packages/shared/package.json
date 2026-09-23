@@ -1,7 +1,7 @@
 {
   "name": "@cyber-stray/shared",
   "version": "0.1.0",
-  "description": "赛博街溜子跨包共享契约——性格注册表（认领/行为参数/游荡效果/探索倾向/语气/日记风格）+ 宠物素材契约（状态注册表/风格预设，#94/#95）",
+  "description": "赛博街溜子跨包共享契约：性格注册表 / 宠物素材 / 数值 / 日记 / 兴趣图谱 / SSE 事件 / 会话 cookie / 作息 / petgen / Agent 状态 / 推送记录",
   "private": true,
   "type": "module",
   "exports": {
@@ -9,7 +9,13 @@
     "./pet": "./src/pet.ts",
     "./pet-stats": "./src/pet-stats.ts",
     "./diary": "./src/diary.ts",
-    "./interest-graph": "./src/interest-graph.ts"
+    "./interest-graph": "./src/interest-graph.ts",
+    "./tenant-events": "./src/tenant-events.ts",
+    "./session": "./src/session.ts",
+    "./sleep": "./src/sleep.ts",
+    "./petgen": "./src/petgen.ts",
+    "./agent-state": "./src/agent-state.ts",
+    "./push": "./src/push.ts"
   },
   "scripts": {
     "test": "vitest",

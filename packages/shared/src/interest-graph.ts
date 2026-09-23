@@ -59,3 +59,21 @@ export function shannonEntropy(weights: number[]): number {
   }
   return entropy;
 }
+
+/** 快照中的单个兴趣节点（effectiveWeight = agent 计算的时间衰减有效权重） */
+export interface InterestSnapshotNode {
+  id: string;
+  weight: number;
+  effectiveWeight: number;
+  source: string;
+  reinforceCount: number;
+}
+
+/** 兴趣图谱快照（interest-history.jsonl 一行；agent 写，web 时间机器渲染） */
+export interface InterestSnapshot {
+  timestamp: string;
+  hash: string;
+  nodes: InterestSnapshotNode[];
+  entropy: number;
+  nodeCount: number;
+}

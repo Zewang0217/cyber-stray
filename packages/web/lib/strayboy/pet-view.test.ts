@@ -3,18 +3,18 @@
  */
 import { describe, expect, it } from "vitest";
 import { deriveStreetView, HUNGRY_ENERGY_THRESHOLD } from "./pet-view";
-import type { AgentState } from "@/lib/types";
+import type { AgentState } from "@cyber-stray/shared/agent-state";
 
 const PET = { name: "年糕", createdAt: Date.now() - 3 * 86_400_000, sleepStart: null, sleepEnd: null };
 
 function state(over: Partial<AgentState>): AgentState {
   return {
     boredom: 30, energy: 80, mood: "playful", temper: 10, stubbornness: 20,
-    lastAction: null, lastActionTime: null, lastHuntResult: null, recentTopics: [],
-    userLikes: [], userDislikes: [], agentInterests: [], wanderHistory: [],
-    totalHunts: 0, totalWanders: 23, totalSteps: 0, totalPushes: 0,
-    consecutiveFailures: 0, ...over,
-  } as AgentState;
+    lastActionTime: null, recentTopics: [], userLikes: [], userDislikes: [],
+    agentInterests: [], totalWanders: 23, totalSteps: 0, totalPushes: 0,
+    consecutiveFailures: 0, lastHeartbeat: new Date().toISOString(),
+    lastWander: null, lastRest: null, ...over,
+  };
 }
 
 describe("deriveStreetView", () => {
@@ -28,7 +28,7 @@ describe("deriveStreetView", () => {
     expect(v.away).toBe(false);
   });
 
-  it("#217 未知态：state=null → 三墨条 null + 心情 null，禁伪装健康兜底", () => {
+  it("未知态：state=null → 三墨条 null + 心情 null，禁伪装健康兜底", () => {
     const v = deriveStreetView(null, PET, new Date(), false);
     expect(v.bars).toEqual({ energy: null, boredom: null, temper: null });
     expect(v.mood).toBeNull();
@@ -36,13 +36,13 @@ describe("deriveStreetView", () => {
     expect(v.level).toBe(0);
   });
 
-  it("游荡进行中 → 出屏 walk；连续失败不再入 baseline（#218：失败态是瞬时覆盖，归街角）", () => {
+  it("游荡进行中 → 出屏 walk；连续失败不再入 baseline（失败态是瞬时覆盖，归街角）", () => {
     expect(deriveStreetView(state({}), PET, new Date(), true).away).toBe(true);
     expect(deriveStreetView(state({}), PET, new Date(), true).anim).toBe("walk");
     expect(deriveStreetView(state({ consecutiveFailures: 3 }), PET, new Date(), false).anim).toBe("idle");
   });
 
-  it("#218 数值联动：无聊 ≥80 → grumpy 常态；精力 ≤25 且非睡眠期 → 打盹", () => {
+  it("数值联动：无聊 ≥80 → grumpy 常态；精力 ≤25 且非睡眠期 → 打盹", () => {
     const bored = deriveStreetView(state({ boredom: 85 }), PET, new Date(), false);
     expect(bored.bored).toBe(true);
     expect(bored.anim).toBe("grumpy");
@@ -56,7 +56,7 @@ describe("deriveStreetView", () => {
     expect(nightNap.napping).toBe(false);
   });
 
-  it("#218 未知态不联动：数值 null → bored/napping 均 false", () => {
+  it("未知态不联动：数值 null → bored/napping 均 false", () => {
     const v = deriveStreetView(null, PET, new Date(), false);
     expect(v.bored).toBe(false);
     expect(v.napping).toBe(false);
@@ -72,7 +72,7 @@ describe("deriveStreetView", () => {
     expect(v.away).toBe(false);
   });
 
-  it("#265 预算耗尽 → 共用睡眠演出（白天也夜幕 + sleep 帧）；无预算字段行为不变", () => {
+  it("预算耗尽 → 共用睡眠演出（白天也夜幕 + sleep 帧）；无预算字段行为不变", () => {
     const paused = { ...PET, budgetPaused: true };
     const v = deriveStreetView(state({}), paused, new Date(), false);
     expect(v.sleeping).toBe(true);

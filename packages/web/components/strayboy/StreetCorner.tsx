@@ -23,7 +23,7 @@ import { AdoptionRitual } from "@/components/strayboy/AdoptionRitual";
 import { PushNudgeBanner } from "@/components/strayboy/PushNudgeBanner";
 import { useWebPush, type PushState } from "@/hooks/useWebPush";
 import { DEMO_PET, DEMO_STATE, demoEventStream } from "@/lib/strayboy/demo";
-import type { AgentState } from "@/lib/types";
+import type { AgentStateSnapshot } from "@cyber-stray/shared/agent-state";
 import type { PetRecord } from "@/lib/strayboy/pet-view";
 
 /** 「让它去溜达」需 POST /api/walk（spec Decision 8，动 CP 侧须持机人同意）——落地前按钮不上。 */
@@ -107,7 +107,7 @@ interface MainProps {
   demo: boolean;
   /** PetRecord（Pet 为其超集）：budgetPaused 走可选字段（#265），demo 夹具不感知 */
   pet: PetRecord;
-  state: AgentState | null;
+  state: AgentStateSnapshot | null;
   connected: boolean;
   lastEvent: ReturnType<typeof useTenantEvents>["lastEvent"];
   /** #275 通知补开横幅（undefined = 不显示，demo 用） */

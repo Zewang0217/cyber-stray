@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ApiResponse, PaginationMeta, PushContent } from "@/lib/types";
+import type { SpeakHistoryItem } from "@cyber-stray/shared/push";
+import type { ApiResponse, PaginationMeta } from "@/lib/types";
 
 interface UseHistoryOptions {
   /** S8：SSE 刷新信号（变化即拉取） */
@@ -14,7 +15,7 @@ interface UseHistoryOptions {
 }
 
 interface UseHistoryReturn {
-  items: PushContent[];
+  items: SpeakHistoryItem[];
   /** 记录总数（分页元数据） */
   total: number;
   /** 首屏加载中 */
@@ -27,12 +28,12 @@ interface UseHistoryReturn {
 }
 
 /** /api/history 分页响应（ApiResponse + pagination） */
-interface HistoryResponse extends ApiResponse<PushContent[]> {
+interface HistoryResponse extends ApiResponse<SpeakHistoryItem[]> {
   pagination?: PaginationMeta;
 }
 
 /** 记录去重键（无稳定 id：timestamp+正文） */
-function recordKey(it: PushContent): string {
+function recordKey(it: SpeakHistoryItem): string {
   return `${it.timestamp}|${it.message}`;
 }
 
@@ -49,7 +50,7 @@ function recordKey(it: PushContent): string {
  */
 export function useHistory(options: UseHistoryOptions = {}): UseHistoryReturn {
   const { refreshSignal = 0, realtimeConnected = false, pageSize = 50 } = options;
-  const [items, setItems] = useState<PushContent[]>([]);
+  const [items, setItems] = useState<SpeakHistoryItem[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -59,11 +60,11 @@ export function useHistory(options: UseHistoryOptions = {}): UseHistoryReturn {
   /** 已加载条数（append 的 offset 基准） */
   const loadedRef = useRef(0);
   /** items 同步镜像（updater 外读当前列表） */
-  const itemsRef = useRef<PushContent[]>([]);
+  const itemsRef = useRef<SpeakHistoryItem[]>([]);
   /** 基线请求 id：reset/merge 递增，使在飞旧请求结果作废（防乱序覆盖） */
   const reqIdRef = useRef(0);
 
-  const applyItems = useCallback((updater: (prev: PushContent[]) => PushContent[]) => {
+  const applyItems = useCallback((updater: (prev: SpeakHistoryItem[]) => SpeakHistoryItem[]) => {
     setItems((prev) => {
       const next = updater(prev);
       itemsRef.current = next;

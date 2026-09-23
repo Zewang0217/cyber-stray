@@ -1,41 +1,18 @@
 /**
- * 租户事件总线（S5，为 S8 SSE 预留）
+ * 租户事件总线：事件按 tenantId 路由，订阅者只收本租户事件；发布同步、
+ * 单个订阅者抛错不传染其余订阅者与发布方。
  *
- * 事件按 tenantId 路由：订阅者只收本租户事件。发布同步、订阅者隔离。
+ * 纯进程内存——订阅前发布的事件不可重放（SSE 断线重连丢中间事件，前端
+ * 靠刷新信号 + 轮询兜底）；多实例部署下事件与调度器状态会跨实例分叉，
+ * 多实例前需总线外置（如 Redis）+ DB 级租约。
  *
- * 约束（S8 接 SSE 前须知）：纯进程内存——订阅前发布的事件不可重放
- * （SSE 断线重连丢中间事件）；多实例部署下事件与调度器状态会跨实例
- * 分叉，多实例前需总线外置（如 Redis）+ DB 级租约。
- * S8 接法：SSE 路由 `bus.subscribe(tenantId, (ev) => stream.write(ev))`。
- * S10 接法：推送分发器 `bus.subscribeAll(ev => dispatchPush(ev))`。
+ * 消费方：SSE 路由 subscribe(tenantId, …)；推送分发器 subscribeAll(…)。
  */
 
-/** 控制面事件（调度器目前是唯一发布方；S8 SSE / S10 推送消费） */
-export interface TenantEvent {
-  type:
-    | 'pet_ready'
-    | 'worker_started'
-    | 'worker_succeeded'
-    | 'worker_retry'
-    | 'worker_failed'
-    | 'worker_timeout'
-    /** #92 日记：睡前任务生成当天日记（Web Push 消费） */
-    | 'diary_generated'
-    /** #265 预算闸：今日 LLM 预算耗尽，停派发（租户侧语义「宠物在睡觉」；detail = ¥水位/¥上限） */
-    | 'budget_exhausted'
-    /** #265 预算闸：恢复派发（次日归零 / admin 调高阈值后重启），转变沿发一次 */
-    | 'budget_resumed'
-    /** #265 预算闸：当日用量读取失败，fail-closed 停派（去重后发；detail = 错误信息） */
-    | 'budget_check_failed'
-    /** #275 首推保证：领养超 24h 且首推仍未送达任何设备（每宠进程内去重；detail = 说明） */
-    | 'first_push_overdue';
-  tenantId: string;
-  petId: string;
-  /** 事件时刻（unix ms） */
-  at: number;
-  /** 附加信息（如失败原因） */
-  detail?: string;
-}
+import type { TenantEvent } from '@cyber-stray/shared/tenant-events';
+
+/** 事件形状契约在 shared（web SSE 消费方同源） */
+export type { TenantEvent };
 
 export type TenantEventHandler = (event: TenantEvent) => void;
 

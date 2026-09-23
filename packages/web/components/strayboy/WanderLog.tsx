@@ -1,6 +1,6 @@
 "use client";
 
-import type { WanderStep } from "@/lib/types";
+import type { WanderStep } from "@cyber-stray/shared/agent-state";
 
 /** WanderLog 4 行（components.md §游戏屏：游戏 log 不留历史，历史在 LOG 存档抽屉）。 */
 export function WanderLog({ history }: { history: WanderStep[] }) {

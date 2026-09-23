@@ -13,6 +13,7 @@ import { sqliteTable, text, integer, primaryKey, uniqueIndex, index } from 'driz
 import { PERSONALITY_IDS, DEFAULT_PERSONALITY } from '@cyber-stray/shared';
 import { PET_MOODS } from '@cyber-stray/shared/pet-stats';
 import { DIARY_STYLES, DEFAULT_DIARY_STYLE } from '@cyber-stray/shared/diary';
+import { PET_GEN_TASK_STATUSES } from '@cyber-stray/shared/petgen';
 
 /** 时间戳：unix 毫秒（SQLite 无原生 datetime，integer 跨方言最稳） */
 const now = () => Date.now();
@@ -178,17 +179,7 @@ export const petGenTasks = sqliteTable('pet_gen_tasks', {
     .notNull()
     .references(() => tenants.id, { onDelete: 'cascade' }),
   /** 状态机状态（推进见 petgen/processor.ts） */
-  status: text('status', {
-    enum: [
-      'spec_submitted',
-      'concept_generating',
-      'awaiting_confirmation',
-      'generating_states',
-      'qc',
-      'done',
-      'failed',
-    ],
-  })
+  status: text('status', { enum: [...PET_GEN_TASK_STATUSES] })
     .notNull()
     .default('spec_submitted'),
   /** 用户 spec 纯文本（1-500 字符） */

@@ -1,7 +1,7 @@
 "use client";
 
 import { isUnread, pickStamp, stampLabel } from "@/lib/strayboy/mail";
-import type { PushContent } from "@/lib/types";
+import type { SpeakHistoryItem } from "@cyber-stray/shared/push";
 
 /** 邮票 4 款（16×16 像素画语法：小方格拼绘，禁平滑图标）。 */
 function Stamp({ kind }: { kind: string }) {
@@ -41,14 +41,14 @@ export function MailCard({
   pending,
   onOpen,
 }: {
-  card: PushContent;
+  card: SpeakHistoryItem;
   adoptedAt: number;
   seenMs: number;
-  onFeedback: (type: "like" | "dislike", card: PushContent) => void;
-  onPin: (card: PushContent) => void;
+  onFeedback: (type: "like" | "dislike", card: SpeakHistoryItem) => void;
+  onPin: (card: SpeakHistoryItem) => void;
   pending: boolean;
   /** #205：墙上卡片只显标题，点卡片进详情读全文 */
-  onOpen: (card: PushContent) => void;
+  onOpen: (card: SpeakHistoryItem) => void;
 }) {
   const { day, hhmm } = stampLabel(card.timestamp, adoptedAt);
   const unread = isUnread(card.timestamp, seenMs);

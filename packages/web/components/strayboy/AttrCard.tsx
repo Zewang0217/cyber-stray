@@ -1,6 +1,6 @@
 "use client";
 
-import type { AgentState } from "@/lib/types";
+import type { AgentState } from "@cyber-stray/shared/agent-state";
 import type { PetRecord } from "@/lib/strayboy/pet-view";
 
 const PERSONALITY_LABEL: Record<string, string> = {

@@ -1,7 +1,7 @@
 /**
  * 兴趣历史追踪（Interest History）
  *
- * Phase 6 (OBS-01)：记录兴趣图谱权重快照，支撑 Web 面板时间序列展示与坍缩检测。
+ * 记录兴趣图谱权重快照，支撑 web 面板时间序列展示与坍缩检测。
  *
  * JSONL 存储：每行一个快照 { timestamp, hash, nodes[], entropy, nodeCount }
  * 自动去重：连续相同 hash 的快照不重复记录。
@@ -11,47 +11,27 @@
 
 import { appendFile, readFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
+import type { InterestSnapshot, InterestSnapshotNode } from '@cyber-stray/shared/interest-graph';
 import { consola } from '../logger.js';
 import { getDataPath } from '../config.js';
 
 const logger = consola.withTag('InterestHistory');
 
-// ============================================
 // Types
-// ============================================
 
-/** 快照中的单个兴趣节点 */
-export interface InterestSnapshotNode {
-  id: string;
-  weight: number;
-  effectiveWeight: number;
-  source: string;
-  reinforceCount: number;
-}
-
-/** 一次兴趣图谱快照 */
-export interface InterestSnapshot {
-  timestamp: string;
-  hash: string;
-  nodes: InterestSnapshotNode[];
-  entropy: number;
-  nodeCount: number;
-}
+/** 快照形状契约在 shared/interest-graph（web 时间机器渲染同源） */
+export type { InterestSnapshot, InterestSnapshotNode };
 
 /** recordInterestSnapshot 的入参 — 不含 hash（由函数内部计算） */
 export type InterestSnapshotInput = Omit<InterestSnapshot, 'hash'>;
 
-// ============================================
 // 文件路径
-// ============================================
 
 function getHistoryPath(): string {
   return getDataPath('interest-history.jsonl');
 }
 
-// ============================================
 // 简单哈希（用于去重）
-// ============================================
 
 /**
  * 计算快照内容的简单哈希（用于去重）。
@@ -72,9 +52,7 @@ function computeHash(input: InterestSnapshotInput): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
-// ============================================
 // 公开 API
-// ============================================
 
 /**
  * 记录一次兴趣图谱快照。
@@ -173,9 +151,7 @@ export async function getInterestHistory(
   }
 }
 
-// ============================================
 // 内部辅助
-// ============================================
 
 /** 读取最后一行的 hash（用于去重） */
 async function readLastHash(): Promise<string | null> {
