@@ -66,7 +66,7 @@
 10. **主题变体**：深夜霓虹（默认）/ 雨夜 / 白天（作息联动自动切，A 组 #3）/ 图鉴毛色皮肤（B 组，依赖毛色重映射能力）；手动切换器 = 顶栏下拉（demo 已示，#170 全局骨架 5）；主题色板切换走 tailwind v4 CSS 变量（docs/design-v3/DESIGN.md §7 一色一换）。
 11. **delight 落位**：A 组 8 条随 T1 验收（待机小剧场/拍拍差异化/作息联动/真实月相/回滚 grumpy/叼话题 pounce/触觉反馈/LV 升级）；B 组 5 条 T2（实施必读附件 = #171 决议全文：邮差动画定级翻转为可做——管线已落锤程序派生，邮差剪影 = 程序骨架资产；attract mode ~5min 进霓虹闪烁 + 猫自主游荡循环；成就徽章墙放 START 菜单、全部前端派生；毛色皮肤 = 橘/黑/三花重映射 + 名牌；霓虹换牌 = 图鉴 No.1 更替时短暂换文案）；C 组 4 条不入本 spec（下一张地图输入）。
 12. **PWA**：新增 manifest（名称/图标/主题色 `#1A1C2C`/display standalone/移动优先竖屏）+ 基础 SW 注册；**离线策略与 SW 更新策略不入本 spec**（地图雾区，影响信息架构时再票化）。
-13. **spec 修订项（随本 spec 一并提交）**：`.trellis/spec/web/frontend/` 现状纠偏——「直接读 data 目录」改为「CP API 只读消费方（session 鉴权 + SSE）」；设计系统索引补 docs/design-v3 四文档为视觉真相源；CONTEXT.md 修订（混合管线/三层质检/视觉基准）随 PR #182 合入——合入前以该 PR 内容为准。
+13. **spec 修订项（已完成）**：web 只读契约（「直接读 data 目录」→「CP API 只读消费方：session 鉴权 + SSE」）与 docs/design-v3 视觉真相源索引已并入根 `AGENTS.md` §硬约定；CONTEXT.md 修订（混合管线/三层质检/视觉基准）随 PR #182 合入。
 14. **旧资产处置**：`design-v2/` 本地目录留档不删（未入库，不阻塞）；v2 3D/字体依赖按 stack.md §1 移除；`packages/web/public/pet/` 旧单帧资产重写期间保留（pet-assets 回退与对照用），追平合并时处置建议随收尾票给出。
 15. **可访问性与性能红线**（motion.md §5 全收）：只动 transform/opacity/background-position；`prefers-reduced-motion` 停帧；visibilitychange 移除 infinite；中端安卓 60fps（sprite 方案零 JS 运行时天然达标）。
 
@@ -92,5 +92,5 @@
 
 - **持机人检查点**：① `ARK_API_KEY`（B 侧冒烟 ≈¥1–3，资产升级用，不阻塞重写）；② 动 CP 侧（POST /api/walk、petgen 替换）动工同意。
 - 领养毛色变体（橘/黑/三花）= 程序重映射，图鉴皮肤（B 组）同源；落地节奏随 T2。
-- 现有 `.trellis/spec/web/frontend/*.md` 的工程规约（组件/hook/状态/类型/质量）继续有效，重写照旧遵守；本 spec 只补视觉世界与分期。
+- web 工程规约（只读契约、视觉宪法指针、SSE 事件类型副本同步）见根 `AGENTS.md` §硬约定 web 段，重写照旧遵守；本 spec 只补视觉世界与分期。
 - 帧表 v2 与播放契约的规范原文在 docs/design-v3/motion.md §3/§3.5；组件规格在 components.md；验收动效演示在 demo.html。

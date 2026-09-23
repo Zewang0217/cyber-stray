@@ -52,7 +52,6 @@ data/dedup/visited-urls.json
 # 运行时产物/误入文件（不入库）
 bun.lock
 web-standalone.tar.gz
-.claude/skills/
 
 # 本地脚本/锁文件（不入库）
 generate-ppt.cjs
