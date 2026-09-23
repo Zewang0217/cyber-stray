@@ -16,7 +16,7 @@ import { eq } from 'drizzle-orm';
 import { getDb, _resetDb, type ControlDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { pushSubscriptions, pets, tenants } from '../db/schema.js';
-import { getOrCreateTenant, tenantDataDir } from '../tenant.js';
+import { getOrCreateTenant, tenantDataDir } from '../infra/tenant.js';
 import { createEventBus, type EventBus } from '../events/bus.js';
 import {
   Scheduler,

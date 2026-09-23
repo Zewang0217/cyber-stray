@@ -23,8 +23,8 @@ import { extname, join, resolve, sep } from 'path';
 import type { ControlPlaneConfig } from '../config.js';
 import { findUserTenantRelation } from '../infra/tenant-access.js';
 import { readTenantAsset } from '../infra/tenant-data-reader.js';
-import { resolveTenantFromRequest } from '../request-tenant.js';
-import { tenantDataDir } from '../tenant.js';
+import { resolveTenantFromRequest } from '../auth/request-tenant.js';
+import { tenantDataDir } from '../infra/tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 
 export interface PetAssetDeps {

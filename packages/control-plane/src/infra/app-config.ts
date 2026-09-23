@@ -1,5 +1,5 @@
 /**
- * 全局模型配置（#131，ADR-0007 决策 3）—— DB 存 + admin 热更新 + 内存缓存
+ * 全局模型配置（ADR-0007 决策 3）—— DB 存 + admin 热更新 + 内存缓存
  *
  * admin 面板改 → 写 app_config 表 → 刷新进程内缓存 → 下一次生图用新模型
  * （无重启）。CP 单进程，模块级缓存即进程内单例；defaults 来自 env（config.ts），
@@ -10,8 +10,8 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { getDb } from './db/client.js';
-import { appConfig } from './db/schema.js';
+import { getDb } from '../db/client.js';
+import { appConfig } from '../db/schema.js';
 
 export interface ModelConfig {
   imageModel: string;

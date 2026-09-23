@@ -29,7 +29,7 @@ import {
   type PetStateId,
 } from '@cyber-stray/shared/pet';
 import { petGenTasks, type PetGenTask } from '../db/schema.js';
-import { tenantDataDir } from '../tenant.js';
+import { tenantDataDir } from '../infra/tenant.js';
 import { buildConceptPrompt, buildGridPrompt } from './prompt.js';
 import {
   type GenStrategy,

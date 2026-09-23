@@ -1,17 +1,17 @@
 /**
- * 租户注册（S3：SQLite + Drizzle）
+ * 租户注册（SQLite + Drizzle）
  *
  * 首登自动建租户：控制面 DB 的 tenants + user_tenants 行 + 租户数据目录
  * `tenants/<sub>/`（agent 的 markdown 数据层，不迁移）。
  *
  * 租户键 = Casdoor sub（uuid）。幂等（含并发首登）：tenants 主键冲突即已有，
- * onConflictDoNothing 原子处理。S2 的 JSON 注册表被 DB 取代，发现残留时归档。
+ * onConflictDoNothing 原子处理。旧 JSON 注册表已被 DB 取代，发现残留时归档。
  */
 
 import { mkdir, rename } from 'fs/promises';
 import { join } from 'path';
-import { getDb } from './db/client.js';
-import { tenants, userTenants } from './db/schema.js';
+import { getDb } from '../db/client.js';
+import { tenants, userTenants } from '../db/schema.js';
 
 /** 租户数据目录（agent 的 DATA_DIR = 租户键，指向此处） */
 export function tenantDataDir(dataDir: string, tenantId: string): string {
@@ -24,7 +24,7 @@ export interface TenantResult {
   created: boolean;
 }
 
-/** S2 遗留 JSON 注册表（DB 取代后归档，防误读为活状态） */
+/** 旧 JSON 注册表（DB 取代后归档，防误读为活状态） */
 const LEGACY_REGISTRY_FILE = 'tenants-registry.json';
 
 /**
@@ -65,7 +65,7 @@ export async function getOrCreateTenant(
   return { tenantId: sub, created };
 }
 
-/** 归档 S2 遗留 JSON 注册表（存在则改名 .bak；幂等） */
+/** 归档旧 JSON 注册表（存在则改名 .bak；幂等） */
 async function archiveLegacyRegistry(dataDir: string): Promise<void> {
   const legacy = join(dataDir, LEGACY_REGISTRY_FILE);
   try {

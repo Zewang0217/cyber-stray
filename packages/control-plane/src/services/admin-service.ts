@@ -12,11 +12,11 @@ import {
   getModelConfig,
   setModelConfig,
   type ModelConfig,
-} from '../app-config.js';
+} from '../infra/app-config.js';
 import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
 import type { PlanValue } from '../plan/limits.js';
-import { localDateKey, readTenantUsage } from '../usage.js';
+import { localDateKey, readTenantUsage } from '../infra/usage.js';
 import { aggregateTenantUsage } from '../domain/usage-agg.js';
 import * as adminRepo from '../infra/admin-repo.js';
 import * as petsRepo from '../infra/pets-repo.js';
@@ -26,7 +26,7 @@ import {
   updateTenantPlan,
 } from '../infra/tenant-access.js';
 import { readTenantWanderStats } from '../infra/tenant-data-reader.js';
-import { costOf } from '../pricing.js';
+import { costOf } from '../domain/pricing.js';
 
 export interface AdminServiceDeps {
   config: Pick<

@@ -13,7 +13,7 @@
  */
 
 import * as jose from 'jose';
-import type { ControlPlaneConfig } from './config.js';
+import type { ControlPlaneConfig } from '../config.js';
 
 /** OIDC 登录用户 */
 export interface OidcUser {

@@ -20,11 +20,11 @@ import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { pets, tenants } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { getOrCreateTenant, tenantDataDir } from '../tenant.js';
-import { signSession, SESSION_COOKIE } from '../session.js';
+import { getOrCreateTenant, tenantDataDir } from '../infra/tenant.js';
+import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { getPersonality } from '@cyber-stray/shared';
 import { createPetsRoutes } from './pets.js';
-import { localDateKey } from '../usage.js';
+import { localDateKey } from '../infra/usage.js';
 
 const SECRET = 'x'.repeat(40);
 

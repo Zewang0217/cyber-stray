@@ -18,7 +18,7 @@ import { eq } from 'drizzle-orm';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { pets, pushSubscriptions } from '../db/schema.js';
-import { getOrCreateTenant, tenantDataDir } from '../tenant.js';
+import { getOrCreateTenant, tenantDataDir } from '../infra/tenant.js';
 import { createEventBus, type TenantEvent } from '../events/bus.js';
 import { attachPushGateway, type PushSendFn } from './push-gateway.js';
 import webpush from 'web-push';

@@ -11,8 +11,8 @@
  * 「判定不了」当「没花钱」。
  */
 
-import { costOf } from '../pricing.js';
-import { readTenantUsage } from '../usage.js';
+import { costOf } from '../domain/pricing.js';
+import { readTenantUsage } from '../infra/usage.js';
 
 /** 预算闸配置（SchedulerConfig.llmBudget） */
 export interface LlmBudgetConfig {

@@ -1,5 +1,5 @@
 /**
- * 控制面日志（#116）——consola 单例 + JSONL 双写
+ * 控制面日志——consola 单例 + JSONL 双写
  *
  * - stdout：结构化 JSON 单行（生产 journald 捕获；非彩色纯文本——可被
  *   journalctl 按字段过滤）

@@ -20,7 +20,8 @@
 | #284 / PR #285（R2） | pets.ts 迁入（512→310 行）+ 兴趣图谱契约下沉 shared（跨包镜像清零） | ✅ 已合入 rebuild-dev（待验收） |
 | #286 / PR #287（R3） | data.ts（327→101）+ admin.ts（380→216）迁入 + Shannon 熵下沉 shared（跨包公式镜像清零） | ✅ 已合入 rebuild-dev（待验收） |
 | #288 / PR #289（R4a） | requireTenant 中间件 + footprint/diary/events/channels/pet-assets 迁入（auth 核实免迁移） | ✅ 已合入 rebuild-dev（待验收） |
-| #290（R4b，本 PR） | petgen/push/plan/evolution/meme/dream 迁入 + **门禁全目录化（收官）** | 实施中 |
+| #290（R4b） | petgen/push/plan/evolution/meme/dream 迁入 + **门禁全目录化（收官）** | ✅ 已合入（随 rebuild-dev 回流 develop） |
+| 收官批（2026-09） | 跨包契约镜像清零：六契约下沉 shared（SSE / cookie / 作息 / petgen / Agent 状态 / 推送记录），web 删五处镜像并修两处已发生漂移；pet-sheet.py 迁仓库根 `scripts/`（Dockerfile.app 补 COPY——此前生产镜像缺该脚本）；CP 根文件归层（`auth/` 新增竖切，tenant / usage / app-config / logger / catchphrase-history 归 `infra/`，pricing 归 `domain/`） | ✅ 已合入 rebuild-dev（待验收） |
 | 后续（未立票） | agent 侧 `speak.ts`：先 characterization test 再拆 PushGate / ChannelSender；web `StreetCorner` 抽 `useStreetPerformance`（配合测试票 #260/#261）；config.ts 全局租户上下文只加 lint 约束、待 core 有测试缝再动结构 | 排队 |
 
 **收官状态（R4b）**：`routes/` 16 个文件全部只剩鉴权 + 校验 + HTTP 映射；

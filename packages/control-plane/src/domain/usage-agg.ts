@@ -5,7 +5,7 @@
  * 的计算核心。成本按内置默认单价表折算（pricing.ts），未知模型 0（不瞎估）。
  */
 
-import { costOf, type UsageRow } from '../pricing.js';
+import { costOf, type UsageRow } from './pricing.js';
 
 export interface TenantUsageAgg {
   llmTokens: number;

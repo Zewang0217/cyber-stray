@@ -10,11 +10,11 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { ControlPlaneConfig } from '../config.js';
-import type { OidcProvider } from '../oidc.js';
-import { StateStore } from '../state-store.js';
-import { signSession, SESSION_COOKIE } from '../session.js';
-import { getOrCreateTenant } from '../tenant.js';
-import { resolveTenantFromRequest } from '../request-tenant.js';
+import type { OidcProvider } from '../auth/oidc.js';
+import { StateStore } from '../auth/state-store.js';
+import { signSession, SESSION_COOKIE } from '../auth/session.js';
+import { getOrCreateTenant } from '../infra/tenant.js';
+import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 
 export interface AuthDeps {
   config: ControlPlaneConfig;

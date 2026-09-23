@@ -17,7 +17,7 @@ import type { CliSpawn } from '../infra/agent-cli-client.js';
 import { findUserTenantRelation } from '../infra/tenant-access.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { createFeedbackService } from '../services/feedback-service.js';
-import { resolveTenantFromRequest } from '../request-tenant.js';
+import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 
 /** topic 最大长度（字符） */
 const TOPIC_MAX_CHARS = 50;

@@ -10,7 +10,7 @@ import { appendFile, mkdir, readFile, readdir } from 'fs/promises';
 import { join } from 'path';
 import { tenantDataDir } from './tenant.js';
 import { logger } from './logger.js';
-import type { UsageRow } from './pricing.js';
+import type { UsageRow } from '../domain/pricing.js';
 
 export type UsageKind = 'llm' | 'image' | 'vision_qc';
 

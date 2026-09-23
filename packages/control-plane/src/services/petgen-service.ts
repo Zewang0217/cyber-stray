@@ -25,7 +25,7 @@ import { readTenantAsset } from '../infra/tenant-data-reader.js';
 import { findTenantPlan } from '../infra/tenant-access.js';
 import { nextMonthStart, petGenQuota } from '../petgen/quota.js';
 import type { PetSpec, PetGenTaskStatus } from '../petgen/types.js';
-import { tenantDataDir } from '../tenant.js';
+import { tenantDataDir } from '../infra/tenant.js';
 
 export interface PetGenServiceDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'petGenMonthlyQuota'>;

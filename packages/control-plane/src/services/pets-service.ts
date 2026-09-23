@@ -12,7 +12,7 @@ import type { Catchphrase, PersonalityId } from '@cyber-stray/shared';
 import { getPersonality } from '@cyber-stray/shared';
 import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
 import { generateCandidates } from '../adoption/candidates.js';
-import { appendCatchphraseHistory } from '../catchphrase-history.js';
+import { appendCatchphraseHistory } from '../infra/catchphrase-history.js';
 import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
 import type { NewPet } from '../db/schema.js';
@@ -21,8 +21,8 @@ import * as petsRepo from '../infra/pets-repo.js';
 import { findTenantPlan } from '../infra/tenant-access.js';
 import { openTenantSecrets } from '../secrets/tenant-secrets.js';
 import { planBudgetYuan, todayLlmCostYuan } from '../scheduler/budget.js';
-import { localDateKey } from '../usage.js';
-import { tenantDataDir } from '../tenant.js';
+import { localDateKey } from '../infra/usage.js';
+import { tenantDataDir } from '../infra/tenant.js';
 
 export interface PetsServiceDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'llmBudgetEnabled' | 'llmBudgetYuan'>;

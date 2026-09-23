@@ -18,7 +18,7 @@ import { join } from 'path';
 import { eq } from 'drizzle-orm';
 import { getDb, _resetDb, type ControlDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { getOrCreateTenant } from '../tenant.js';
+import { getOrCreateTenant } from '../infra/tenant.js';
 import { petGenTasks, tenants, type PetGenTask } from '../db/schema.js';
 import { PetGenProcessor } from './processor.js';
 import { petGenQuota } from './quota.js';

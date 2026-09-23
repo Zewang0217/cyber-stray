@@ -15,9 +15,9 @@ import { Hono } from 'hono';
 import { createEventBus } from './events/bus.js';
 import { loadConfig } from './config.js';
 import { createApp, type AppDeps } from './app.js';
-import { initLogger, getLogFilePath, _resetLogger } from './logger.js';
-import { signSession, SESSION_COOKIE } from './session.js';
-import type { OidcProvider, OidcUser } from './oidc.js';
+import { initLogger, getLogFilePath, _resetLogger } from './infra/logger.js';
+import { signSession, SESSION_COOKIE } from './auth/session.js';
+import type { OidcProvider, OidcUser } from './auth/oidc.js';
 
 const SECRET = 'test-session-secret-0123456789abcdef0123456789abcdef';
 

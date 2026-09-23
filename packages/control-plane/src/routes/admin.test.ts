@@ -6,11 +6,11 @@ import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { getOrCreateTenant, tenantDataDir } from '../tenant.js';
-import { signSession, SESSION_COOKIE } from '../session.js';
+import { getOrCreateTenant, tenantDataDir } from '../infra/tenant.js';
+import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { admins, pets, tenants } from '../db/schema.js';
 import { createAdminRoutes } from './admin.js';
-import { refreshModelConfig } from '../app-config.js';
+import { refreshModelConfig } from '../infra/app-config.js';
 
 const SECRET = 'x'.repeat(40);
 

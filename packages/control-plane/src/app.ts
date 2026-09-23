@@ -11,10 +11,10 @@ declare module 'hono' {
     startedAt: number;
   }
 }
-import type { OidcProvider } from './oidc.js';
+import type { OidcProvider } from './auth/oidc.js';
 import type { EventBus } from './events/bus.js';
 import { createAuthRoutes } from './routes/auth.js';
-import { StateStore } from './state-store.js';
+import { StateStore } from './auth/state-store.js';
 import { createDataRoutes } from './routes/data.js';
 import { createPetsRoutes } from './routes/pets.js';
 import { createEventsRoutes } from './routes/events.js';
@@ -30,8 +30,8 @@ import { createDreamRoutes } from './routes/dream.js';
 import { createPetGenRoutes } from './routes/petgen.js';
 import { createMemeRoutes } from './routes/meme.js';
 import { createPetAssetRoutes } from './routes/pet-assets.js';
-import { resolveTenantFromRequest } from './request-tenant.js';
-import { logger } from './logger.js';
+import { resolveTenantFromRequest } from './auth/request-tenant.js';
+import { logger } from './infra/logger.js';
 export interface AppDeps {
   config: ControlPlaneConfig;
   oidc: OidcProvider;

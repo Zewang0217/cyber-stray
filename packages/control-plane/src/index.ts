@@ -4,7 +4,7 @@
 
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
-import { createCasdoorOidc } from './oidc.js';
+import { createCasdoorOidc } from './auth/oidc.js';
 import { getDb } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
 import { loadMasterKey } from './secrets/master-key.js';
@@ -23,10 +23,10 @@ import { createImageGenerator } from './petgen/ark.js';
 import { createVisionQc } from './petgen/vision.js';
 import { createSplitter } from './petgen/splitter.js';
 import { createStructureQc } from './petgen/structure-qc.js';
-import { createPetUsageRecorder } from './usage.js';
-import { refreshModelConfig, getModelConfig } from './app-config.js';
+import { createPetUsageRecorder } from './infra/usage.js';
+import { refreshModelConfig, getModelConfig } from './infra/app-config.js';
 import { runGracefulShutdown } from './graceful-shutdown.js';
-import { initLogger } from './logger.js';
+import { initLogger } from './infra/logger.js';
 
 const config = loadConfig();
 

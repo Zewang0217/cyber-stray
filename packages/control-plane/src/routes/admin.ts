@@ -14,10 +14,10 @@
 
 import { Hono } from 'hono';
 import type { ControlPlaneConfig } from '../config.js';
-import { validateModelId } from '../app-config.js';
+import { validateModelId } from '../infra/app-config.js';
 import { findAdminBySub } from '../infra/admin-repo.js';
 import { PLAN_VALUES, type PlanValue } from '../plan/limits.js';
-import { resolveTenantFromRequest } from '../request-tenant.js';
+import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { createAdminService } from '../services/admin-service.js';
 

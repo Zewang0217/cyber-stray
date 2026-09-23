@@ -10,15 +10,15 @@ import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { eq } from 'drizzle-orm';
-import { getDb, _resetDb } from '../db/client.js';
-import { runMigrations } from '../db/migrate.js';
+import { getDb, _resetDb } from './client.js';
+import { runMigrations } from './migrate.js';
 import {
   tenants,
   userTenants,
   pets,
   billing,
   tenantSecrets,
-} from '../db/schema.js';
+} from './schema.js';
 
 describe('控制面数据模型', () => {
   let dataDir: string;

@@ -11,11 +11,11 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { eq } from 'drizzle-orm';
 import { getOrCreateTenant, tenantDataDir } from './tenant.js';
-import { signSession, verifySession } from './session.js';
-import { resolveTenantFromRequest } from './request-tenant.js';
-import { getDb, _resetDb } from './db/client.js';
-import { runMigrations } from './db/migrate.js';
-import { tenants, userTenants } from './db/schema.js';
+import { signSession, verifySession } from '../auth/session.js';
+import { resolveTenantFromRequest } from '../auth/request-tenant.js';
+import { getDb, _resetDb } from '../db/client.js';
+import { runMigrations } from '../db/migrate.js';
+import { tenants, userTenants } from '../db/schema.js';
 
 const TEST_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
 

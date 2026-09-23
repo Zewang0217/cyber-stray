@@ -13,7 +13,7 @@
 
 import { Hono } from 'hono';
 import type { ControlPlaneConfig } from '../config.js';
-import { requireTenant, type TenantEnv } from '../middleware/require-tenant.js';
+import { requireTenant, type TenantEnv } from '../auth/require-tenant.js';
 import { createDataService } from '../services/data-service.js';
 
 export interface DreamDeps {

@@ -10,7 +10,7 @@ import type { PetPresetId, PetStateId } from '@cyber-stray/shared/pet';
 import type { PetGenTaskStatus, PetSpec, StateQcResult } from '@cyber-stray/shared/petgen';
 import type { ControlDb } from '../db/client.js';
 import type { PetGenTask } from '../db/schema.js';
-import type { PetUsageRecorder } from '../usage.js';
+import type { PetUsageRecorder } from '../infra/usage.js';
 
 /** 契约同源转发（既有 import 路径不变） */
 export type { PetGenTaskStatus, PetSpec, StateQcResult };

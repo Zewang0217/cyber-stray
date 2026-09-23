@@ -54,11 +54,11 @@ agent 内核（`packages/agent/src/`）= 三层 + hook：
 - **绝不写** agent 的数据文件——agent 是唯一写入方；CP 侧写操作只经 CP API 的显式端点。
 - **不复刻 agent / CP 的解析规则**：字段由上游派生，web 只渲染（规则一改必然漏掉一边）。
 - 鉴权经 Casdoor（IdP）+ CP session，web 不自管密码。
-- 视觉与动效遵 `docs/design-v3/DESIGN.md`（14 色宇宙、一切直角、实色偏移阴影、两帧法则 `steps()`、像素字体不排长文）；组件 / 动效 / 依赖见同目录 `components.md`、`motion.md`、`stack.md`，`demo.html` 是动效验收基准；新增 SSE 事件需同步 `useTenantEvents` 类型副本。重写实施计划：`docs/spec/web-rewrite.md`。
+- 视觉与动效遵 `docs/design-v3/DESIGN.md`（14 色宇宙、一切直角、实色偏移阴影、两帧法则 `steps()`、像素字体不排长文）；组件 / 动效 / 依赖见同目录 `components.md`、`motion.md`、`stack.md`，`demo.html` 是动效验收基准；SSE 事件契约在 `@cyber-stray/shared/tenant-events`（CP 与 web 同源，新增事件只改 shared）。重写实施计划：`docs/spec/web-rewrite.md`。
 
 **control-plane**
 
-- 分层 `routes → services → domain → infra`，依赖单向；route 只做鉴权 + 参数校验 + HTTP 映射。
+- 分层 `routes → services → domain → infra`（另有 `auth/` 鉴权竖切与 `scheduler/`、`petgen/` 等功能竖切目录），依赖单向；route 只做鉴权 + 参数校验 + HTTP 映射。
 - `src/routes/**` 有 ESLint 棘轮门禁（禁 `**/db/**`、`node:fs`、`node:child_process`、裸 `fetch`；测试文件豁免）——**只收紧不放松**；验收 grep 用 `from ['"][^']*/db/`（带斜杠，否则误中 fee**db**ack）。
 - 分层标准、票流与路线图：`docs/refactor/README.md`。
 

@@ -11,7 +11,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { getOrCreateTenant } from '../tenant.js';
+import { getOrCreateTenant } from '../infra/tenant.js';
 import { petGenTasks } from '../db/schema.js';
 import { monthStart, nextMonthStart, petGenQuota } from './quota.js';
 

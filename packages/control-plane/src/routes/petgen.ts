@@ -14,7 +14,7 @@
 import { Hono } from 'hono';
 import { isPetPresetId, type PetPresetId } from '@cyber-stray/shared/pet';
 import type { ControlPlaneConfig } from '../config.js';
-import { requireTenant, type TenantEnv } from '../middleware/require-tenant.js';
+import { requireTenant, type TenantEnv } from '../auth/require-tenant.js';
 import type { PetSpec } from '../petgen/types.js';
 import { createPetGenService } from '../services/petgen-service.js';
 

@@ -5,8 +5,8 @@ import { join } from 'path';
 import { Hono } from 'hono';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { getOrCreateTenant, tenantDataDir } from '../tenant.js';
-import { signSession, SESSION_COOKIE } from '../session.js';
+import { getOrCreateTenant, tenantDataDir } from '../infra/tenant.js';
+import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { createEvolutionRoutes } from './evolution.js';
 
 const SECRET = 'x'.repeat(40);

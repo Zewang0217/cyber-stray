@@ -18,7 +18,7 @@ import { and, eq, isNull, lt, or } from 'drizzle-orm';
 import webpush from 'web-push';
 import { getDb, type ControlDb } from '../db/client.js';
 import { pets, pushSubscriptions, type PushSubscription } from '../db/schema.js';
-import { tenantDataDir } from '../tenant.js';
+import { tenantDataDir } from '../infra/tenant.js';
 import { getVapidKeys } from '../infra/push-repo.js';
 import type { EventBus, TenantEvent, TenantEventHandler } from '../events/bus.js';
 

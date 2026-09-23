@@ -18,9 +18,9 @@ import { eq } from 'drizzle-orm';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { pets, tenants, userTenants } from '../db/schema.js';
-import { getOrCreateTenant } from '../tenant.js';
-import { tenantDataDir } from '../tenant.js';
-import { signSession, SESSION_COOKIE } from '../session.js';
+import { getOrCreateTenant } from '../infra/tenant.js';
+import { tenantDataDir } from '../infra/tenant.js';
+import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { createFeedbackRoutes } from './feedback.js';
 
 const SECRET = 'x'.repeat(40);

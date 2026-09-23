@@ -12,7 +12,7 @@
 import type { Context, Next } from 'hono';
 import type { ControlPlaneConfig } from '../config.js';
 import { findUserTenantRelation } from '../infra/tenant-access.js';
-import { resolveTenantFromRequest } from '../request-tenant.js';
+import { resolveTenantFromRequest } from './request-tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 
 export type TenantEnv = { Variables: { tenantId: string } };

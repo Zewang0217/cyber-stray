@@ -28,7 +28,7 @@ import { eq } from 'drizzle-orm';
 import type { ControlDb } from '../db/client.js';
 import { pets, pushSubscriptions, tenants } from '../db/schema.js';
 import type { EventBus } from '../events/bus.js';
-import { tenantDataDir } from '../tenant.js';
+import { tenantDataDir } from '../infra/tenant.js';
 import { planLimits } from '../plan/limits.js';
 import { latestNotifiableSpeak } from '../push/push-gateway.js';
 import { sendOpsAlert } from './ops-alert.js';
@@ -46,7 +46,7 @@ import { isSleeping } from '@cyber-stray/shared/sleep';
 import { DIARY_FALLBACK_HOUR, shouldGenerateDiary } from './diary-schedule.js';
 import type { DiaryRunner } from './diary-runner.js';
 import { planBudgetYuan, todayLlmCostYuan, type LlmBudgetConfig } from './budget.js';
-import { localDateKey } from '../usage.js';
+import { localDateKey } from '../infra/usage.js';
 
 export { MINUTE_MS } from './propagate.js';
 
@@ -57,7 +57,7 @@ export { MINUTE_MS } from './propagate.js';
  */
 const LLM_TIMEOUT_MARGIN_MS = 30_000;
 
-// ─── #275 首推保证（决议 #270） ──────────────────────────────────────────
+// 首推保证
 
 /** 首推期 = 领养后 24h：期内 worker 失败走短退避，不进常规冷却 */
 export const FIRST_PUSH_WINDOW_MS = 24 * 60 * 60 * 1000;

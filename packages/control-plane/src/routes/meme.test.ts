@@ -15,8 +15,8 @@ import { join } from 'path';
 import { Hono } from 'hono';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { getOrCreateTenant } from '../tenant.js';
-import { signSession, SESSION_COOKIE } from '../session.js';
+import { getOrCreateTenant } from '../infra/tenant.js';
+import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { createMemeRoutes } from './meme.js';
 import { memeAssetsDir, memeManifestPath } from '../meme/storage.js';
 

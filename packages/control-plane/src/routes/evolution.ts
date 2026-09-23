@@ -15,7 +15,7 @@
 import { Hono } from 'hono';
 import type { ControlPlaneConfig } from '../config.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
-import { resolveTenantFromRequest } from '../request-tenant.js';
+import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 import { createEvolutionService } from '../services/evolution-service.js';
 
 export interface EvolutionDeps {

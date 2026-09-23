@@ -11,7 +11,7 @@ import { join } from 'path';
 import type { SpeakHistoryItem } from '@cyber-stray/shared/push';
 import { parseHistoryJsonl } from '../domain/history-view.js';
 import { isEnoent } from './enoent.js';
-import { tenantDataDir } from '../tenant.js';
+import { tenantDataDir } from './tenant.js';
 
 /**
  * state.json 合成游荡历史（读边界）：state.json 本无 wanderHistory 字段，

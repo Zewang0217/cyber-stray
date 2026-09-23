@@ -31,7 +31,7 @@ import { isDiaryStyleChoice } from '@cyber-stray/shared/diary';
 import { DEFAULT_INTEREST_SEEDS } from '@cyber-stray/shared/interest-graph';
 import type { ControlPlaneConfig } from '../config.js';
 import { findUserTenantRelation } from '../infra/tenant-access.js';
-import { resolveTenantFromRequest } from '../request-tenant.js';
+import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { createPetsService, type AdoptInput } from '../services/pets-service.js';
 

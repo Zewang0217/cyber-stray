@@ -13,7 +13,7 @@
 
 import type { Catchphrase } from '@cyber-stray/shared';
 import type { PetMood } from '@cyber-stray/shared/pet-stats';
-import { appendCatchphraseHistory } from '../catchphrase-history.js';
+import { appendCatchphraseHistory } from '../infra/catchphrase-history.js';
 import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
 import { isWellFormedStatsUpdate, type StatsUpdate } from '../domain/pet-stats-guard.js';
@@ -21,7 +21,7 @@ import { realSpawn, runFeedbackCli, type CliSpawn } from '../infra/agent-cli-cli
 import * as petsRepo from '../infra/pets-repo.js';
 import { findTenantPlan } from '../infra/tenant-access.js';
 import { planLimits } from '../plan/limits.js';
-import { tenantDataDir } from '../tenant.js';
+import { tenantDataDir } from '../infra/tenant.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

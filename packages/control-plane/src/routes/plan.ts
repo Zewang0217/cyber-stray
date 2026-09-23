@@ -13,7 +13,7 @@ import { Hono } from 'hono';
 import { PLAN_VALUES, type PlanValue } from '../plan/limits.js';
 import type { ControlPlaneConfig } from '../config.js';
 import { adminSession } from './admin.js';
-import { requireTenant, type TenantEnv } from '../middleware/require-tenant.js';
+import { requireTenant, type TenantEnv } from '../auth/require-tenant.js';
 import { createPlanService } from '../services/plan-service.js';
 
 export interface PlanDeps {

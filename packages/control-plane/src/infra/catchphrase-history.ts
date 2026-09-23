@@ -1,5 +1,5 @@
 /**
- * 口头禅演化历史（#114 / ADR 0005）
+ * 口头禅演化历史（ADR-0005）
  *
  * catchphrase-history.jsonl：O_APPEND 单行原子追加（与 interest-history.jsonl
  * 同语义——整文件重写会与并发方竞态丢行）。暂不展示，可扩展为设置页

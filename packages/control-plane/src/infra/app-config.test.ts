@@ -6,9 +6,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { getDb, _resetDb } from './db/client.js';
-import { runMigrations } from './db/migrate.js';
-import { appConfig } from './db/schema.js';
+import { getDb, _resetDb } from '../db/client.js';
+import { runMigrations } from '../db/migrate.js';
+import { appConfig } from '../db/schema.js';
 import {
   refreshModelConfig,
   getModelConfig,

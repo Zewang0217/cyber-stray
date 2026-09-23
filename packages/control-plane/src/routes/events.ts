@@ -14,7 +14,7 @@
 import { Hono } from 'hono';
 import type { ControlPlaneConfig } from '../config.js';
 import type { EventBus, TenantEvent } from '../events/bus.js';
-import { requireTenant, type TenantEnv } from '../middleware/require-tenant.js';
+import { requireTenant, type TenantEnv } from '../auth/require-tenant.js';
 
 export interface EventsDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
