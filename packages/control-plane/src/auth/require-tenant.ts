@@ -12,6 +12,8 @@
 import type { Context, Next } from 'hono';
 import type { ControlPlaneConfig } from '../config.js';
 import { findUserTenantRelation } from '../infra/tenant-access.js';
+import { recordTenantActivity } from '../infra/tenant-activity.js';
+import { tenantDataDir } from '../infra/tenant.js';
 import { resolveTenantFromRequest } from './request-tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 
@@ -29,6 +31,8 @@ export function requireTenant(config: Pick<ControlPlaneConfig, 'dataDir' | 'sess
     }
 
     c.set('tenantId', session.tenantId);
+    // X1「回访」信号（#272）：每个鉴权请求记一行活跃，no-throw 不影响业务
+    void recordTenantActivity(tenantDataDir(config.dataDir, session.tenantId), session.tenantId);
     await next();
   };
 }
