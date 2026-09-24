@@ -167,6 +167,9 @@ export function AdoptionRitual({
             {`我叫${name}。从今晚起我出门替你逛这座城——找到好货就寄明信片。`}
           </div>
         </div>
+        <p className="text-[12px] leading-[1.7] text-[var(--curb)]">
+          内测期间数据可能随版本调整重置；你的反馈会直接帮这只街溜子长大。
+        </p>
         <button
           type="button"
           onClick={() => onAdopted()}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAdmin } from "@/hooks/useAdmin";
 import UsagePanel from "./usage-panel";
+import InvitesPanel from "./invites-panel";
 
 /**
  * 维修口（/admin，#170 T2 最后铸）：保功能可用 + 世界底线（直角/14 色/实色影/
@@ -13,7 +14,7 @@ export default function AdminPage(): React.ReactElement {
   const { users, admins, error, isAdmin, setPlan, setPetStatus, grantAdmin, revokeAdmin } =
     useAdmin();
   const [grantSub, setGrantSub] = useState("");
-  const [tab, setTab] = useState<"users" | "usage">("users");
+  const [tab, setTab] = useState<"users" | "usage" | "invites">("users");
 
   if (isAdmin === false) {
     return (
@@ -43,7 +44,7 @@ export default function AdminPage(): React.ReactElement {
 
       {/* 子面板切换：像素按钮（非游戏 tab chrome） */}
       <div className="mb-4 flex gap-2">
-        {([["users", "用户管理"], ["usage", "用量"]] as const).map(([id, label]) => (
+        {([["users", "用户管理"], ["usage", "用量"], ["invites", "邀请"]] as const).map(([id, label]) => (
           <button
             key={id}
             type="button"
@@ -56,6 +57,7 @@ export default function AdminPage(): React.ReactElement {
       </div>
 
       {tab === "usage" && <UsagePanel />}
+      {tab === "invites" && <InvitesPanel />}
 
       {tab === "users" && (
         <>

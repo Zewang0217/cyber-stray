@@ -173,6 +173,7 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     // app2：env 白名单为空（生产形态），admin-1 先入表才能操作
     const emptyEnvConfig = {
       dataDir, sessionSecret: SECRET, adminSubs: [],
+      webOrigin: 'http://localhost:3000',
       arkImageModel: 'default-img',
       visionModel: 'default-vl',
       llmBudgetEnabled: true,

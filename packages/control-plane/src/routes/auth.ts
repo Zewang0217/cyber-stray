@@ -14,6 +14,8 @@ import type { OidcProvider } from '../auth/oidc.js';
 import { StateStore } from '../auth/state-store.js';
 import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { getOrCreateTenant } from '../infra/tenant.js';
+import { findUserTenantRelation } from '../infra/tenant-access.js';
+import { validateInvite, consumeInvite } from '../infra/invites-repo.js';
 import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 
 export interface AuthDeps {
@@ -25,10 +27,11 @@ export interface AuthDeps {
 export function createAuthRoutes({ config, oidc, states }: AuthDeps): Hono {
   const app = new Hono();
 
-  /** 登录：跳转 Casdoor 授权页 */
+  /** 登录：跳转 Casdoor 授权页（?invite= 邀请 raw token 随 state 穿越往返） */
   app.get('/login', async (c) => {
     const { url, state, nonce, verifier } = await oidc.buildAuthUrl();
-    states.set(state, nonce, verifier); // state 防 CSRF 重放，一次性
+    const inviteToken = c.req.query('invite');
+    states.set(state, nonce, verifier, inviteToken); // state 防 CSRF 重放，一次性
     return c.redirect(url, 302);
   });
 
@@ -53,12 +56,25 @@ export function createAuthRoutes({ config, oidc, states }: AuthDeps): Hono {
       );
     }
 
-    // 首登自动建租户（租户键 = sub；幂等；name 取 OIDC display name）
-    const { tenantId, created } = await getOrCreateTenant(
-      config.dataDir,
-      user.sub,
-      user.name,
-    );
+    // 邀请门（#301，#273 拍板）：老租户直接放行；新租户必须持有效邀请
+    //（一次性：validate 通过后仍以条件更新消费，并发抢同一条只有一人成功）。
+    // 租户键 = sub；幂等；name 取 OIDC display name。
+    let tenantId: string;
+    if (await findUserTenantRelation(config.dataDir, user.sub, user.sub)) {
+      tenantId = user.sub;
+    } else {
+      const invite = entry.inviteToken
+        ? await validateInvite(config.dataDir, entry.inviteToken)
+        : null;
+      if (!invite) {
+        return c.redirect(`${config.webOrigin}/need-invite`, 302);
+      }
+      tenantId = (await getOrCreateTenant(config.dataDir, user.sub, user.name)).tenantId;
+      if (!(await consumeInvite(config.dataDir, invite.id, tenantId))) {
+        // 邀请被并发消费：宁可拒绝也不放行（一次性语义硬保证）
+        return c.redirect(`${config.webOrigin}/need-invite`, 302);
+      }
+    }
 
     // 签发控制面 session
     const token = await signSession(

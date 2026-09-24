@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseSpriteContract } from "@/lib/strayboy/sprite";
@@ -10,9 +11,11 @@ import { StreetCorner } from "@/components/strayboy/StreetCorner";
 export default async function StreetCornerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ demo?: string }>;
+  searchParams: Promise<{ demo?: string; invite?: string }>;
 }) {
   const sp = await searchParams;
+  // 邀请链接落在首页（#301）：原样转发进登录流，token 穿越到 CP callback 消费
+  if (sp.invite) redirect(`/login?invite=${encodeURIComponent(sp.invite)}`);
   const contract = parseSpriteContract(
     JSON.parse(readFileSync(join(process.cwd(), "public/pet/strayboy/frames.json"), "utf8")),
   );

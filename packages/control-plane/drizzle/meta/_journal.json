@@ -120,6 +120,13 @@
       "when": 1789823075767,
       "tag": "0016_drop_wechat_bindings",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1790263815760,
+      "tag": "0017_invites",
+      "breakpoints": true
     }
   ]
 }

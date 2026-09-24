@@ -19,7 +19,8 @@ import type { OidcProvider, OidcUser } from '../auth/oidc.js';
 import { tenantDataDir } from '../infra/tenant.js';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { tenants } from '../db/schema.js';
+import { tenants, invites } from '../db/schema.js';
+import { createInvite } from '../infra/invites-repo.js';
 
 const SECRET = 'test-session-secret-0123456789abcdef0123456789abcdef';
 
@@ -67,6 +68,11 @@ describe('auth 路由', () => {
   let deps: AppDeps;
   let app: Hono;
 
+  /** 铸一条有效邀请，返回 raw token（门禁用例的公共前置） */
+  async function mintInvite(): Promise<string> {
+    return (await createInvite(dataDir, { createdBy: 'admin-test', label: '测试' })).token;
+  }
+
   beforeEach(async () => {
     dataDir = mkdtempSync(join(tmpdir(), 'cp-app-'));
     oidc = makeMockOidc();
@@ -88,9 +94,10 @@ describe('auth 路由', () => {
     expect(location).toMatch(/^http:\/\/casdoor\.local\/login\?state=/);
   });
 
-  it('完整登录流：callback 首登建租户 + 设 session cookie + 跳 web', async () => {
-    // 1. 登录拿 state
-    const loginRes = await app.request('/api/auth/login');
+  it('完整登录流：邀请首登建租户 + 设 session cookie + 跳 web + 邀请消费归因', async () => {
+    // 0. 铸邀请；1. 带 invite 登录拿 state
+    const invite = await mintInvite();
+    const loginRes = await app.request(`/api/auth/login?invite=${invite}`);
     const state = extractState(loginRes.headers.get('location')!);
 
     // 2. 浏览器带 code+state 回回调
@@ -116,6 +123,58 @@ describe('auth 路由', () => {
     });
     expect(meRes.status).toBe(200);
     expect(await meRes.json()).toEqual({ sub: 'casdoor-user-42', tenantId: 'casdoor-user-42' });
+
+    // 6. 邀请已消费 + 归因落库
+    const inviteRow = await db.select().from(invites).get();
+    expect(inviteRow?.consumedAt).not.toBeNull();
+    expect(inviteRow?.consumedTenantId).toBe('casdoor-user-42');
+  });
+
+  it('邀请门：无邀请的新用户 → 302 need-invite 且不建租户', async () => {
+    const loginRes = await app.request('/api/auth/login');
+    const state = extractState(loginRes.headers.get('location')!);
+    const res = await app.request(`/api/auth/callback?code=mock-code&state=${state}`);
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('http://localhost:3000/need-invite');
+    const db = await getDb(dataDir);
+    expect((await db.select().from(tenants).all()).length).toBe(0);
+  });
+
+  it('邀请门：无效邀请（乱 token）→ 302 need-invite', async () => {
+    const loginRes = await app.request('/api/auth/login?invite=deadbeef');
+    const state = extractState(loginRes.headers.get('location')!);
+    const res = await app.request(`/api/auth/callback?code=mock-code&state=${state}`);
+    expect(res.headers.get('location')).toBe('http://localhost:3000/need-invite');
+  });
+
+  it('一次性：邀请被消费后他人复用 → 302 need-invite', async () => {
+    const invite = await mintInvite();
+    const loginRes = await app.request(`/api/auth/login?invite=${invite}`);
+    const state = extractState(loginRes.headers.get('location')!);
+    await app.request(`/api/auth/callback?code=mock-code&state=${state}`);
+
+    // 用户 B 复用同一条已消费邀请
+    oidc = makeMockOidc({ sub: 'casdoor-user-b', email: 'b@b.c' });
+    app = createApp({ config: makeConfig(dataDir), oidc, bus: createEventBus() });
+    const loginRes2 = await app.request(`/api/auth/login?invite=${invite}`);
+    const state2 = extractState(loginRes2.headers.get('location')!);
+    const res2 = await app.request(`/api/auth/callback?code=mock-code&state=${state2}`);
+    expect(res2.headers.get('location')).toBe('http://localhost:3000/need-invite');
+    const db = await getDb(dataDir);
+    expect((await db.select().from(tenants).all()).length).toBe(1);
+  });
+
+  it('老租户免邀请：已建租户用户无邀请二次登录正常', async () => {
+    const invite = await mintInvite();
+    const loginRes = await app.request(`/api/auth/login?invite=${invite}`);
+    const state = extractState(loginRes.headers.get('location')!);
+    await app.request(`/api/auth/callback?code=mock-code&state=${state}`);
+
+    const loginRes2 = await app.request('/api/auth/login');
+    const state2 = extractState(loginRes2.headers.get('location')!);
+    const res2 = await app.request(`/api/auth/callback?code=c2&state=${state2}`);
+    expect(res2.status).toBe(302);
+    expect(res2.headers.get('location')).toBe('http://localhost:3000');
   });
 
   it('/me 未登录 → 401', async () => {
@@ -154,7 +213,8 @@ describe('auth 路由', () => {
   });
 
   it('callback 幂等：同用户二次登录不重复建租户', async () => {
-    const loginRes = await app.request('/api/auth/login');
+    const invite = await mintInvite();
+    const loginRes = await app.request(`/api/auth/login?invite=${invite}`);
     const state1 = extractState(loginRes.headers.get('location')!);
     await app.request(`/api/auth/callback?code=c1&state=${state1}`);
 

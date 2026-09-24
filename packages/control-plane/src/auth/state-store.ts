@@ -11,28 +11,30 @@ const STATE_TTL_MS = 10 * 60 * 1000; // 10 分钟
 interface StateEntry {
   nonce: string;
   verifier: string;
+  /** 邀请 raw token（#301）：/login?invite= 携带，穿越 OIDC 往返在 callback 消费 */
+  inviteToken?: string;
   createdAt: number;
 }
 
 export class StateStore {
   private states = new Map<string, StateEntry>();
 
-  /** 登记一个 OIDC 登录 state（oidc 层生成 state/nonce/verifier） */
-  set(state: string, nonce: string, verifier: string): void {
+  /** 登记一个 OIDC 登录 state（oidc 层生成 state/nonce/verifier；inviteToken 可选携带） */
+  set(state: string, nonce: string, verifier: string, inviteToken?: string): void {
     this.sweepExpired();
-    this.states.set(state, { nonce, verifier, createdAt: Date.now() });
+    this.states.set(state, { nonce, verifier, inviteToken, createdAt: Date.now() });
   }
 
   /**
    * 校验并消费 state。有效返回其 { nonce, verifier }，否则返回 null。
    * 无论结果如何都删除（一次性，防重放）。
    */
-  consume(state: string): { nonce: string; verifier: string } | null {
+  consume(state: string): { nonce: string; verifier: string; inviteToken?: string } | null {
     const entry = this.states.get(state);
     this.states.delete(state);
     if (!entry) return null;
     if (Date.now() - entry.createdAt > STATE_TTL_MS) return null;
-    return { nonce: entry.nonce, verifier: entry.verifier };
+    return { nonce: entry.nonce, verifier: entry.verifier, inviteToken: entry.inviteToken };
   }
 
   /** 惰性清理过期条目：/login 是未认证端点，防弃置登录无限堆积内存 */
