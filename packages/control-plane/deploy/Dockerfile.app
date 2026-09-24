@@ -36,8 +36,22 @@ COPY packages/agent ./packages/agent
 # 仓库根 scripts/（pet-sheet.py：CP petgen 与 agent meme 生产依赖）
 COPY scripts ./scripts
 
-FROM oven/bun:1-slim
+# 运行时 = node:22-bookworm-slim（#175）：agent-browser 是 node CLI，运行时需要
+# node/npm；bun 从官方镜像拷入（CP/worker 仍是 bun 直跑 TS）。
+# python3：表情包工坊（image_meme）依赖。
+# agent-browser install --with-deps：下载 Chrome for Testing 并自装运行库
+# （构建期实测 doctor 全过，Chrome 落 /root/.agent-browser，运行时同为 root 可见）。
+# 体积 tradeoff（#175 已评估）：chrome + 依赖 ≈ +400MB——浏览工具/表情包是生产
+# 功能而非可选件，运行时依赖无法省略。
+FROM node:22-bookworm-slim
 WORKDIR /app
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 ca-certificates \
+ && npm install -g agent-browser \
+ && agent-browser install --with-deps \
+ && rm -rf /var/lib/apt/lists/*
+# bun（CP/worker 运行时）——官方镜像单二进制，直接拷入
+COPY --from=oven/bun:1-slim /usr/local/bin/bun /usr/local/bin/bun
 # 仓库级 node_modules（.pnpm + workspace 相对链接）整树拷贝，链接保持有效
 COPY --from=builder /repo/node_modules /app/node_modules
 COPY --from=builder /repo/packages ./packages
