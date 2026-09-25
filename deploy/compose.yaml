@@ -4,7 +4,6 @@
 #
 # 镜像 tag：${IMAGE_TAG:-sha}，"sha" 占位由流水线注入本次 commit sha；
 # 回滚 = 占位改成旧 sha 合并 main 重发，流水线检测到非占位 tag 时跳过构建。
-# ghcr.io 直连：ghcr.1ms.run 代理曾多次超时，不稳定。
 # 数据统一在 /opt/cyber-stray 下（data/、casdoor/），backup.sh / restore.sh 同根。
 name: cyber-stray
 
