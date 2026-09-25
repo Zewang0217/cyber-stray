@@ -15,12 +15,15 @@
 | `backup.sh` / `restore.sh` | 备份 / 恢复（数据路径不变，零迁移） |
 | `cyber-stray-backup.service` / `.timer` | 备份定时器（每日 03:00；#268） |
 | `backup-timer-install.sh` | 定时器幂等安装（发布流水线自动执行；#268） |
+| `casdoor/app.conf` | Casdoor 服务配置真相源（SQLite 单文件库；流水线同步到暂存位，`container-update.sh` 内容有变才覆盖 `/opt/cyber-stray/casdoor/conf/` 并重启） |
 
 > 旧 systemd 拓扑脚本（deploy.sh / *.service / setup-casdoor.sh / create-app.sh）
 > 已随容器化退役删除（ADR-0008）；切换步骤见 `docs/runbooks/container-switchover.md`。
-> 全新环境首次配置 Casdoor OIDC 应用：在 Casdoor 管理界面创建
-> （`/casdoor` 登录 admin → 应用 → 添加 cyber-stray-web，client id/secret 写入
-> `/opt/cyber-stray/.env`）。
+> 全新环境首次配置 Casdoor：`casdoor/app.conf` 随发布同步；OIDC 应用在 Casdoor
+> 管理界面创建（`/casdoor` 登录 admin → 应用 → 添加 cyber-stray-web，client
+> id/secret 写入 `/opt/cyber-stray/.env`）。宿主 `/opt/cyber-stray/casdoor/conf/`
+> 下的 `init_data.json`（首启种子，含 clientSecret）**不入库**——与 `.env` 同属
+> HITL checklist，仅在重建全新环境时手工放置。
 
 ## 拓扑
 

@@ -53,7 +53,7 @@ jobs:
         id: tag
         run: |
           set -euo pipefail
-          compose_file="packages/control-plane/deploy/compose.yaml"
+          compose_file="deploy/compose.yaml"
           default_tag="$(sed -nE 's/.*IMAGE_TAG:-([^}]+)}.*/\1/p' "$compose_file" | head -1)"
           case "$default_tag" in
             sha)
@@ -82,7 +82,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: packages/control-plane/deploy/Dockerfile.app
+          file: deploy/Dockerfile.app
           push: true
           tags: ghcr.io/zewang0217/cyber-stray-app:${{ steps.tag.outputs.tag }}
 
@@ -91,7 +91,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: packages/control-plane/deploy/Dockerfile.web
+          file: deploy/Dockerfile.web
           push: true
           tags: ghcr.io/zewang0217/cyber-stray-web:${{ steps.tag.outputs.tag }}
 
@@ -104,14 +104,21 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$PROD_SSH_PORT" "$PROD_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           scp -P "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
-            packages/control-plane/deploy/compose.yaml \
-            packages/control-plane/deploy/container-update.sh \
-            packages/control-plane/deploy/backup.sh \
-            packages/control-plane/deploy/restore.sh \
-            packages/control-plane/deploy/cyber-stray-backup.service \
-            packages/control-plane/deploy/cyber-stray-backup.timer \
-            packages/control-plane/deploy/backup-timer-install.sh \
+            deploy/compose.yaml \
+            deploy/container-update.sh \
+            deploy/backup.sh \
+            deploy/restore.sh \
+            deploy/cyber-stray-backup.service \
+            deploy/cyber-stray-backup.timer \
+            deploy/backup-timer-install.sh \
             "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/"
+          # casdoor 配置真相源（deploy/casdoor/app.conf）同步到暂存位；
+          # container-update.sh 比对内容、有变化才覆盖生效并重启 casdoor
+          ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
+            "${PROD_USER}@${PROD_HOST}" "mkdir -p /opt/cyber-stray/deploy/casdoor"
+          scp -P "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
+            deploy/casdoor/app.conf \
+            "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/casdoor/"
           # 兜底：脚本可执行位（git 在 Windows 侧记录 644 时 scp 后不可执行）
           ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
             "${PROD_USER}@${PROD_HOST}" \

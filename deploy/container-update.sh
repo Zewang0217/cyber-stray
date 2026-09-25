@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # container-update.sh — 生产机容器更新（#138 / ADR-0008）
-# 真相源：仓库 packages/control-plane/deploy/（发布流水线每次同步本脚本 +
-# compose.yaml 到 /opt/cyber-stray/deploy/ 后执行）。
+# 真相源：仓库根 deploy/（发布流水线每次同步本脚本 + compose.yaml +
+# casdoor/app.conf 到 /opt/cyber-stray/deploy/ 后执行）。
 #
 # 用法:
 #   sudo ./container-update.sh --tag <commit-sha>
 #
-# 流程: compose pull → up -d（重建）→ 健康门（编排 healthcheck + 端点）→
-#       镜像清理（仅本项目镜像，保留在用 tag）
+# 流程: compose pull → up -d（重建）→ casdoor conf 同步（内容有变才重启）→
+#       健康门（编排 healthcheck + 端点）→ 镜像清理（仅本项目镜像，保留在用 tag）
 # 失败: 保留现场（容器停在当前状态，不自动回滚），退出非零——问题在发布时
 #       暴露而非潜伏到深夜。
 # 回滚: 把 compose.yaml 的 IMAGE_TAG 占位改成旧 sha，合并 main 重发（流水线
@@ -50,6 +50,15 @@ done
 
 echo "==> [2/4] 重建容器"
 docker compose up -d --remove-orphans
+
+# casdoor app.conf 真相源在仓库（deploy/casdoor/）：内容有变才覆盖 + 重启，
+# 常规发布不打扰 IdP；重启后由下方健康门验证 OIDC discovery
+CASDOOR_CONF=/opt/cyber-stray/casdoor/conf/app.conf
+if ! cmp -s "$DEPLOY_DIR/casdoor/app.conf" "$CASDOOR_CONF"; then
+  cp "$DEPLOY_DIR/casdoor/app.conf" "$CASDOOR_CONF"
+  echo "    app.conf 有变更 → 重启 casdoor"
+  docker compose restart casdoor
+fi
 
 echo "==> [3/4] 健康门（预算 ${HEALTH_TIMEOUT}s）"
 # 编排 healthcheck：全部容器 healthy（部署完成判定的客观标准）
