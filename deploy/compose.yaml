@@ -1,6 +1,6 @@
 # cyber-stray 全栈编排（ADR-0008）：control-plane（含 agent worker 子进程）、
-# web、site、casdoor、nginx 五容器；nginx 是唯一对外入口（80/443），其余服务
-# 一律只绑 127.0.0.1。仓库内为权威版本，发布流水线同步到生产机
+# web、site、casdoor、nginx 五容器；nginx 是对外入口（当前仅 80，域名备案后加
+# 443）。仓库内为权威版本，发布流水线同步到生产机
 # /opt/cyber-stray/deploy/ 后由 container-update.sh 生效。
 #
 # 镜像 tag：${IMAGE_TAG:-sha}，"sha" 占位由流水线注入本次 commit sha；
@@ -77,8 +77,9 @@ services:
       - /opt/cyber-stray/casdoor:/casdoor
       - /opt/cyber-stray/casdoor/conf:/conf
     ports:
-      # 仅本机（健康门 curl 用）；对外只经 nginx ingress
-      - "127.0.0.1:8000:8000"
+      # 域名备案 + HTTPS 切换前暂公网：CP→casdoor 的 issuer 仍是 http://<源IP>:8000，
+      # 收口会断登录；切换后改回 127.0.0.1:8000
+      - "8000:8000"
     healthcheck:
       test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:8000/.well-known/openid-configuration" ]
       interval: 10s
