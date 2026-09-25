@@ -12,7 +12,13 @@ export const metadata: Metadata = {
   title: "登录 · STRAY-BOY",
 };
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ invite?: string }>;
+}) {
+  const { invite } = await searchParams;
+  const loginHref = invite ? `/api/auth/login?invite=${encodeURIComponent(invite)}` : "/api/auth/login";
   return (
     <div className="sb flex min-h-screen flex-col items-center justify-center bg-[var(--sky)] p-6">
       <BootFrame />
@@ -28,7 +34,7 @@ export default function LoginPage() {
         </div>
         {/* 电源键 = 登录（Casdoor 302；IdP 页由 Casdoor 呈现） */}
         <a
-          href="/api/auth/login"
+          href={loginHref}
           aria-label="按电源键开机登录"
           className="flex w-full items-center justify-center gap-3 border-2 border-black bg-[var(--panel)] px-4 py-3 shadow-[3px_3px_0_#000] hover:border-[var(--ok)]"
         >

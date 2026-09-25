@@ -21,8 +21,43 @@ export async function sendOpsAlert(
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ msg_type: 'text', content: { text } }),
+    // webhook 无响应会拖住调度循环：10s 强制超时（PR #303 review P2）
+    signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) {
     throw new Error(`告警 webhook 响应 ${res.status}`);
   }
+}
+
+// ---------- 去重外呼（#267） ----------
+
+/** 同 key 去重窗口：10 分钟内只发一条，防连败/反复失败刷屏 */
+export const OPS_ALERT_DEDUP_TTL_MS = 10 * 60 * 1000;
+
+const dedupLastSent = new Map<string, number>();
+
+/**
+ * 带去重的外呼（#267）：同 key 在窗口内只发一条。
+ * 发送成功才记窗口——发送失败不占窗口，下次触发立即重试（告警发不出去
+ * 本身就是故障，不能被去重吞掉）；连发失败由调用方 log-and-continue。
+ *
+ * @returns 本次是否真正发出（false = 窗口内被去重）
+ */
+export async function sendOpsAlertDedup(
+  webhookUrl: string,
+  key: string,
+  text: string,
+  fetchFn: AlertFetchFn = fetch,
+  now: () => number = Date.now,
+): Promise<boolean> {
+  const last = dedupLastSent.get(key);
+  if (last !== undefined && now() - last < OPS_ALERT_DEDUP_TTL_MS) return false;
+  await sendOpsAlert(webhookUrl, text, fetchFn);
+  dedupLastSent.set(key, now());
+  return true;
+}
+
+/** 重置去重窗口（测试隔离） */
+export function _resetOpsAlertDedup(): void {
+  dedupLastSent.clear();
 }

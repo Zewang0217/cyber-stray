@@ -7,6 +7,18 @@
 # 回滚: compose.yaml 的 IMAGE_TAG 占位改成旧 sha，合并 main 重发（跳过构建）。
 set -euo pipefail
 
+# 失败告警（#267）：飞书群机器人 webhook，OPS_ALERT_WEBHOOK_URL 未设则静默跳过；
+# curl 失败不改变退出码（告警是尽力而为）。
+alert() {
+  [ -n "${OPS_ALERT_WEBHOOK_URL:-}" ] || return 0
+  curl -fsS -m 10 -X POST -H 'content-type: application/json' \
+    -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"$1\"}}" \
+    "$OPS_ALERT_WEBHOOK_URL" >/dev/null 2>&1 || true
+}
+# EXIT trap（而非 ERR）：健康门 while/if 内的 exit 1 不触发 ERR trap，
+# EXIT 必到——按退出码判失败（PR #303 review P1-2）
+trap 'rc=$?; [ $rc -ne 0 ] && alert "[cyber-stray] 发布失败：container-update.sh 退出码 $rc，tag=${TAG:-未定}"; exit $rc' EXIT
+
 DEPLOY_DIR=/opt/cyber-stray/deploy
 HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-120}
 TAG=""

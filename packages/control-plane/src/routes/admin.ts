@@ -29,6 +29,7 @@ export interface AdminDeps {
     | 'adminSubs'
     | 'arkImageModel'
     | 'visionModel'
+    | 'webOrigin'
     | 'llmBudgetEnabled'
     | 'llmBudgetYuan'
   >;
@@ -154,6 +155,43 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
       : c.json(jsonError(outcome.error), outcome.status);
   });
 
+  /** GET /api/admin/invites — 邀请列表（脱敏） */
+  app.get('/invites', async (c) => {
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) {
+      return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
+    }
+    return c.json({ success: true, data: await service.listInvites() });
+  });
+
+  /** POST /api/admin/invites — 生成邀请（raw token/链接仅本次响应返回） */
+  app.post('/invites', async (c) => {
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) {
+      return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
+    }
+    let body: { label?: unknown } = {};
+    try {
+      body = (await c.req.json()) as { label?: unknown };
+    } catch {
+      // 空请求体合法（label 可省）；非 JSON 视为无 label
+    }
+    const label = typeof body.label === 'string' && body.label.trim() ? body.label.trim().slice(0, 64) : undefined;
+    return c.json({ success: true, data: await service.createInvite({ createdBy: auth.sub, label }) });
+  });
+
+  /** DELETE /api/admin/invites/:id — 吊销邀请（已消费/已吊销 → 404） */
+  app.delete('/invites/:id', async (c) => {
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) {
+      return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
+    }
+    const outcome = await service.revokeInvite(c.req.param('id'));
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
+  });
+
   /**
    * GET /api/admin/usage?from=YYYY-MM-DD&to=YYYY-MM-DD — 用量成本可视化
    *
@@ -161,6 +199,7 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
    * 水位：llmCostToday + llmBudgetYuan，null = 未启用/不限）+ recent（最近
    * 50 条明细）。费用按内置默认单价表折算，未知模型 0（不瞎估）。
    */
+
   app.get('/usage', async (c) => {
     const auth = await adminSession(c.req.raw, config);
     if ('error' in auth) {

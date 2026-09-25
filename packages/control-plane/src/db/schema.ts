@@ -53,6 +53,25 @@ export const userTenants = sqliteTable('user_tenants', {
   userTenantsPk: primaryKey({ columns: [t.userId, t.tenantId] }),
 }));
 
+/** 内测邀请（#301，#273 拍板）：一次性链接凭证，raw token 不落库（只存 sha256） */
+export const invites = sqliteTable('invites', {
+  /** 邀请 id（uuid） */
+  id: text('id').primaryKey(),
+  /** sha256(raw token)；raw 只在生成响应里出现一次 */
+  tokenHash: text('token_hash').notNull().unique(),
+  /** admin 备注（发给谁） */
+  label: text('label'),
+  /** 生成者 admin sub */
+  createdBy: text('created_by').notNull(),
+  createdAt: integer('created_at').notNull().$defaultFn(now),
+  /** 吊销时刻；非 NULL 即不可用 */
+  revokedAt: integer('revoked_at'),
+  /** 用后即焚时刻；非 NULL 即不可用 */
+  consumedAt: integer('consumed_at'),
+  /** 归因（invitedBy）：由此邀请建立的租户 id */
+  consumedTenantId: text('consumed_tenant_id'),
+});
+
 // 宠物（每租户可多只；当前单用户模式 1 租户 1 宠物）
 
 export const pets = sqliteTable('pets', {

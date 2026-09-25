@@ -19,6 +19,8 @@ import type { PlanValue } from '../plan/limits.js';
 import { localDateKey, readTenantUsage } from '../infra/usage.js';
 import { aggregateTenantUsage } from '../domain/usage-agg.js';
 import * as adminRepo from '../infra/admin-repo.js';
+import * as invitesRepo from '../infra/invites-repo.js';
+import type { InvitePublic } from '../infra/invites-repo.js';
 import * as petsRepo from '../infra/pets-repo.js';
 import {
   findTenantById,
@@ -31,7 +33,7 @@ import { costOf } from '../domain/pricing.js';
 export interface AdminServiceDeps {
   config: Pick<
     ControlPlaneConfig,
-    'dataDir' | 'adminSubs' | 'arkImageModel' | 'visionModel' | 'llmBudgetEnabled' | 'llmBudgetYuan'
+    'dataDir' | 'adminSubs' | 'arkImageModel' | 'visionModel' | 'llmBudgetEnabled' | 'llmBudgetYuan' | 'webOrigin'
   >;
 }
 
@@ -40,6 +42,27 @@ export type AdminOutcome<T> =
   | { ok: false; status: 400 | 404; error: string };
 
 export function createAdminService({ config }: AdminServiceDeps) {
+  /** 邀请列表（#301；脱敏 tokenHash） */
+  async function listInvites() {
+    return invitesRepo.listInvites(config.dataDir);
+  }
+
+  /** 生成邀请：raw token / 完整链接只在本次响应出现一次 */
+  async function createInvite(input: { createdBy: string; label?: string }) {
+    const invite = await invitesRepo.createInvite(config.dataDir, input);
+    return { ...invite, link: `${config.webOrigin}/?invite=${invite.token}` };
+  }
+
+  /** 吊销邀请（已消费/已吊销 → 404） */
+  async function revokeInvite(id: string): Promise<AdminOutcome<InvitePublic>> {
+    const ok = await invitesRepo.revokeInvite(config.dataDir, id);
+    if (!ok) return { ok: false, status: 404, error: '邀请不存在或状态不可吊销' };
+    const all = await invitesRepo.listInvites(config.dataDir);
+    const row = all.find((r) => r.id === id);
+    if (!row) return { ok: false, status: 404, error: '邀请不存在' };
+    return { ok: true, data: row };
+  }
+
   /** 全部用户（tenants 主表，含无宠物）+ 宠物摘要 + 游荡统计 */
   async function listUsers() {
     const tenantRows = await listTenants(config.dataDir);
@@ -194,6 +217,9 @@ export function createAdminService({ config }: AdminServiceDeps) {
     usageReport,
     getModelSettings,
     updateModelSettings,
+    listInvites,
+    createInvite,
+    revokeInvite,
   };
 }
 

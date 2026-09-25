@@ -21,7 +21,18 @@ KEEP=${BACKUP_KEEP:-7}
 APP_DIR=${APP_DIR:-/opt/cyber-stray}
 CASDOOR_DIR=${CASDOOR_DIR:-/opt/cyber-stray/casdoor}
 STAGING=$(mktemp -d)
-trap 'rm -rf "$STAGING"' EXIT
+
+# 失败告警（#267）：飞书群机器人 webhook，OPS_ALERT_WEBHOOK_URL 未设则静默跳过
+# （本地/演练无 webhook 不报错）；curl 失败也不改变退出码（告警是尽力而为）。
+alert() {
+  [ -n "${OPS_ALERT_WEBHOOK_URL:-}" ] || return 0
+  curl -fsS -m 10 -X POST -H 'content-type: application/json' \
+    -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"$1\"}}" \
+    "$OPS_ALERT_WEBHOOK_URL" >/dev/null 2>&1 || true
+}
+# EXIT trap（而非 ERR）：set -e 下 if/while 条件内的 exit 1 不触发 ERR trap，
+# 但 EXIT 必到——按退出码判失败（PR #303 review P1-2）
+trap 'rc=$?; rm -rf "$STAGING"; [ $rc -ne 0 ] && alert "[cyber-stray] 备份失败：backup.sh 退出码 $rc，主机 $(hostname)"; exit $rc' EXIT
 
 [ -d "$APP_DIR/data" ] || { echo "控制面数据目录不存在: $APP_DIR/data"; exit 1; }
 
