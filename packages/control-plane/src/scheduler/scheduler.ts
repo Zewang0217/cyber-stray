@@ -31,7 +31,7 @@ import type { EventBus } from '../events/bus.js';
 import { tenantDataDir } from '../infra/tenant.js';
 import { planLimits } from '../plan/limits.js';
 import { latestNotifiableSpeak } from '../push/push-gateway.js';
-import { sendOpsAlert } from './ops-alert.js';
+import { sendOpsAlert, sendOpsAlertDedup } from './ops-alert.js';
 import {
   propagate,
   isReady,
@@ -725,6 +725,19 @@ export class Scheduler {
       at: failAt,
       detail: error instanceof Error ? error.message : String(error),
     });
+    // 运维告警（#267）：同租户连败进冷却时外呼飞书，10 分钟去重防刷屏
+    if (config.alertWebhookUrl) {
+      const summary = error instanceof Error ? error.message : String(error);
+      await sendOpsAlertDedup(
+        config.alertWebhookUrl,
+        `worker-failed:${tenantId}`,
+        `[cyber-stray] worker 连败进冷却：租户 ${tenantId} 宠物 ${petId}——${summary}。` +
+          `日志：data/tenants/${tenantId}/（worker-*.log）`,
+      ).catch((alertError: unknown) => {
+        // 告警外呼失败不吞：留 log（去重窗口未占用，下轮冷却仍会重试）
+        console.error('[scheduler] worker 连败告警 webhook 发送失败：', alertError);
+      });
+    }
   }
 
   private async findPet(petId: string) {

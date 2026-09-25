@@ -14,6 +14,16 @@
 #       检测到非占位 tag 时跳过构建，只拉取部署）。
 set -euo pipefail
 
+# 失败告警（#267）：飞书群机器人 webhook，OPS_ALERT_WEBHOOK_URL 未设则静默跳过；
+# curl 失败不改变退出码（告警是尽力而为）。
+alert() {
+  [ -n "${OPS_ALERT_WEBHOOK_URL:-}" ] || return 0
+  curl -fsS -m 10 -X POST -H 'content-type: application/json' \
+    -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"$1\"}}" \
+    "$OPS_ALERT_WEBHOOK_URL" >/dev/null 2>&1 || true
+}
+trap 'alert "[cyber-stray] 发布失败：container-update.sh 非零退出（行 $LINENO），tag=${TAG:-未定}"' ERR
+
 DEPLOY_DIR=/opt/cyber-stray/deploy
 HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-120}
 TAG=""
