@@ -1,0 +1,30 @@
+{
+  "name": "@cyber-stray/site",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3002",
+    "build": "next build",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cyber-stray/shared": "workspace:*",
+    "@fontsource-variable/noto-sans-sc": "^5.3.0",
+    "@fontsource/fusion-pixel-12px-proportional-sc": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/press-start-2p": "^5.3.0",
+    "@fontsource/vt323": "^5.3.0",
+    "next": "16.2.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "typescript": "^5"
+  }
+}

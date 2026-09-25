@@ -1,15 +1,10 @@
 name: CD Deploy
 
-# #138 / ADR-0008/0009：main 每次合并 = 一次生产发布（无审批门）。
-# 构建与推送全部在 GitHub-hosted runner 完成；部署 = SSH 进生产机同步编排
-# 配置 + 拉镜像 + 起容器——产机不再当 self-hosted runner / 构建机。
-#
-# 回滚：把 compose.yaml 的 IMAGE_TAG 占位（${IMAGE_TAG:-sha}）改成旧 sha，
-# 合并 main 重发——本流水线检测到非占位 tag 时跳过镜像构建、只拉取部署。
-#
+# main 合并 = 一次生产发布（ADR-0009）：构建推送在 GitHub runner 完成，
+# 部署 = SSH 进生产机同步 deploy/ 配置 + 拉镜像 + 起容器。
+# 回滚：compose.yaml 的 IMAGE_TAG 占位改成旧 sha 合并 main 重发（跳过构建）。
 # 密钥（仓库不存值）：PROD_HOST / PROD_USER / PROD_SSH_PORT / PROD_SSH_KEY；
-# GHCR 推送用 GITHUB_TOKEN（显式 permissions 保证 packages:write）。
-# fork PR 不会触达本流水线。
+# GHCR 推送用 GITHUB_TOKEN。fork PR 不会触达本流水线。
 on:
   push:
     branches: [main]
@@ -42,18 +37,19 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: typecheck & test & lint + web construct 
+      - name: typecheck & test & lint + web/site construct
         run: |
           pnpm typecheck
           pnpm test
           pnpm lint
           pnpm -F @cyber-stray/web build
+          pnpm -F @cyber-stray/site build
 
       - name: Parse and publish the tag
         id: tag
         run: |
           set -euo pipefail
-          compose_file="packages/control-plane/deploy/compose.yaml"
+          compose_file="deploy/compose.yaml"
           default_tag="$(sed -nE 's/.*IMAGE_TAG:-([^}]+)}.*/\1/p' "$compose_file" | head -1)"
           case "$default_tag" in
             sha)
@@ -82,7 +78,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: packages/control-plane/deploy/Dockerfile.app
+          file: deploy/Dockerfile.app
           push: true
           tags: ghcr.io/zewang0217/cyber-stray-app:${{ steps.tag.outputs.tag }}
 
@@ -91,11 +87,24 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: packages/control-plane/deploy/Dockerfile.web
+          file: deploy/Dockerfile.web
           push: true
           tags: ghcr.io/zewang0217/cyber-stray-web:${{ steps.tag.outputs.tag }}
 
-      - name: Synchronize the arrangement configuration to the production machine
+      # 官网 CTA 地址构建期烘焙：仓库 variable APP_URL（伴侣端对外 https 地址）；
+      # 未配置时 Dockerfile 回落 127.0.0.1:3000（仅本机联调形态）
+      - name: Build & push site image
+        if: steps.tag.outputs.build == '1'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.site
+          push: true
+          build-args: |
+            NEXT_PUBLIC_APP_URL=${{ vars.APP_URL }}
+          tags: ghcr.io/zewang0217/cyber-stray-site:${{ steps.tag.outputs.tag }}
+
+      - name: Sync deploy config to production
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
@@ -104,39 +113,31 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$PROD_SSH_PORT" "$PROD_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           scp -P "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
-            packages/control-plane/deploy/compose.yaml \
-            packages/control-plane/deploy/container-update.sh \
-            packages/control-plane/deploy/backup.sh \
-            packages/control-plane/deploy/restore.sh \
-            packages/control-plane/deploy/cyber-stray-backup.service \
-            packages/control-plane/deploy/cyber-stray-backup.timer \
-            packages/control-plane/deploy/backup-timer-install.sh \
+            deploy/compose.yaml \
+            deploy/container-update.sh \
+            deploy/backup.sh \
+            deploy/restore.sh \
             "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/"
+          # casdoor 配置同步到暂存位；container-update.sh 比对内容，
+          # 有变化才覆盖到 /opt/cyber-stray/casdoor/conf/ 并重启。
+          # 一并同步 .env.example（键清单模板，container-update.sh 做键集校验）
+          # 与 nginx ingress 路由配置；acme-webroot 供 certbot HTTP-01 验证
+          ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
+            "${PROD_USER}@${PROD_HOST}" \
+            "mkdir -p /opt/cyber-stray/deploy/casdoor /opt/cyber-stray/deploy/nginx /opt/cyber-stray/acme-webroot"
+          scp -P "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
+            deploy/casdoor/app.conf \
+            "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/casdoor/"
+          scp -P "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
+            .env.example \
+            "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/.env.example"
+          scp -P "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
+            deploy/nginx/cyber-stray.conf \
+            "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/nginx/"
           # 兜底：脚本可执行位（git 在 Windows 侧记录 644 时 scp 后不可执行）
           ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
             "${PROD_USER}@${PROD_HOST}" \
-            "chmod +x /opt/cyber-stray/deploy/container-update.sh /opt/cyber-stray/deploy/backup.sh /opt/cyber-stray/deploy/restore.sh /opt/cyber-stray/deploy/backup-timer-install.sh"
-        env:
-          PROD_HOST: ${{ secrets.PROD_HOST }}
-          PROD_USER: ${{ secrets.PROD_USER }}
-          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
-          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
-
-      - name: Install the backup timer (#268, idempotent)
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "$PROD_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p "$PROD_SSH_PORT" "$PROD_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          # 幂等安装 systemd timer（每日 03:00 备份）。需要 sudoers 放行：
-          #   <user> ALL=(root) NOPASSWD: /opt/cyber-stray/deploy/backup-timer-install.sh
-          # 未放行时不炸发布——显式提示人工执行一次（README「备份定时」节）
-          ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
-            "${PROD_USER}@${PROD_HOST}" \
-            "sudo -n /opt/cyber-stray/deploy/backup-timer-install.sh \
-              || echo '⚠ 备份定时器安装未授权（sudoers 未放行 backup-timer-install.sh）——按 README「备份定时」节人工执行一次'"
+            "chmod +x /opt/cyber-stray/deploy/container-update.sh /opt/cyber-stray/deploy/backup.sh /opt/cyber-stray/deploy/restore.sh"
         env:
           PROD_HOST: ${{ secrets.PROD_HOST }}
           PROD_USER: ${{ secrets.PROD_USER }}

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseSpriteContract } from "@/lib/strayboy/sprite";
+import { parseSpriteContract } from "@cyber-stray/shared/sprite";
 import { StreetCorner } from "@/components/strayboy/StreetCorner";
 
 /**

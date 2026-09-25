@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import type { SpriteContract } from "@/lib/strayboy/sprite";
+import type { SpriteContract } from "@cyber-stray/shared/sprite";
 import { deriveStreetView } from "@/lib/strayboy/pet-view";
 import { useAgentState } from "@/hooks/useAgentState";
 import { usePets } from "@/hooks/usePets";

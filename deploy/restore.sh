@@ -1,38 +1,38 @@
 #!/usr/bin/env bash
-# cyber-stray 恢复（S12，#79）——从 backup.sh 产物完整还原
-#
-# 恢复 = 停机 → 解包 → 重启。控制面与 Casdoor 都是 SQLite 单文件 +
-# 目录，tar 恢复即完整还原（无状态漂移）。
+# cyber-stray 恢复：从 backup.sh 的产物完整还原（停容器 → 解包替换 → 起容器）。
+# 控制面与 Casdoor 都是 SQLite 单文件 + 目录，解包替换即完整还原。
 #
 # 用法（root）:
-#   ./restore.sh /backup/cyber-stray/cyber-stray-YYYYMMDD-HHMMSS.tar.gz
-#   ./restore.sh <tar> --no-systemd   # 演练/容器：跳过 systemctl
-#
-# 演练纪律（README §恢复演练）: 每次部署变更后跑一次"备份→破坏→恢复→
-# 校验"，确保备份真实可恢复。
+#   ./restore.sh /backup/cyber-stray/cyber-stray-<时间戳>.tar.gz
+#   ./restore.sh <tar> --no-restart    # 演练模式：不动容器（沙箱/无 docker 环境）
 set -euo pipefail
 
 TARBALL=${1:-}
-NO_SYSTEMD=${2:-}
+SKIP_RESTART=${2:-}
 APP_DIR=${APP_DIR:-/opt/cyber-stray}
 CASDOOR_DIR=${CASDOOR_DIR:-/opt/cyber-stray/casdoor}
-[ -n "$TARBALL" ] || { echo "用法: $0 <backup.tar.gz> [--no-systemd]"; exit 2; }
+COMPOSE_FILE="$APP_DIR/deploy/compose.yaml"
+[ -n "$TARBALL" ] || { echo "用法: $0 <backup.tar.gz> [--no-restart]"; exit 2; }
 [ -f "$TARBALL" ] || { echo "备份文件不存在: $TARBALL"; exit 1; }
 
-echo "==> [1/3] 停机"
-if [ "$NO_SYSTEMD" = "--no-systemd" ]; then
-  echo "    (演练模式：跳过 systemctl)"
+compose() { docker compose -f "$COMPOSE_FILE" "$@"; }
+
+echo "==> [1/3] 停容器"
+if [ "$SKIP_RESTART" = "--no-restart" ]; then
+  echo "    (演练模式：跳过容器操作)"
 else
-  systemctl stop control-plane web casdoor 2>/dev/null || true
+  [ -f "$COMPOSE_FILE" ] || { echo "缺少 $COMPOSE_FILE"; exit 1; }
+  compose stop
 fi
 
-echo "==> [2/3] 解包（先解到临时目录；替换采用"旧数据让位+新数据迁入"，
-#   mv 失败时旧数据仍在——避免 rm-then-mv 在跨文件系统 mv 失败时丢唯一副本）"
+echo "==> [2/3] 解包替换"
+# 备份布局：app/data（租户 markdown + master.key）+ db/{control,casdoor}.db
+# （SQLite 事务快照）+ casdoor/conf（可选）
 TMP=$(mktemp -d)
 tar -xzf "$TARBALL" -C "$TMP"
 
-# 新备份布局（backup.sh v2）：app/data（租户 markdown + master.key）+
-# db/{control,casdoor}.db（SQLite 事务快照）+ casdoor/conf（可选）
+# 替换采用「旧数据先 mv 让位，新数据迁入成功后再删」——跨文件系统 mv 失败时
+# 旧副本仍在，避免 rm-then-mv 丢唯一数据
 if [ -d "$TMP/app/data" ]; then
   rm -rf "$APP_DIR/data.old"
   [ -d "$APP_DIR/data" ] && mv "$APP_DIR/data" "$APP_DIR/data.old"
@@ -60,14 +60,13 @@ else
 fi
 rm -rf "$TMP"
 
-echo "==> [3/3] 重启"
-if [ "$NO_SYSTEMD" = "--no-systemd" ]; then
-  echo "    (演练模式：跳过 systemctl)"
+echo "==> [3/3] 起容器"
+if [ "$SKIP_RESTART" = "--no-restart" ]; then
+  echo "    (演练模式：跳过容器操作)"
 else
-  systemctl start casdoor 2>/dev/null || true   # Casdoor 可选组件：未装则跳过
-  systemctl start control-plane web
+  compose start
 fi
 
 echo "恢复完成。校验:"
 echo "  curl http://localhost:8787/healthz"
-echo "  systemctl status control-plane web casdoor"
+echo "  docker compose -f $COMPOSE_FILE ps"

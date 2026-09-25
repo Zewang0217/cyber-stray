@@ -1,17 +1,10 @@
 #!/usr/bin/env bash
-# container-update.sh — 生产机容器更新（#138 / ADR-0008）
-# 真相源：仓库 packages/control-plane/deploy/（发布流水线每次同步本脚本 +
-# compose.yaml 到 /opt/cyber-stray/deploy/ 后执行）。
+# 生产机容器更新：拉镜像 → 重建容器 → 同步 casdoor 配置 → 健康门 → 镜像清理。
+# 由 deploy.yml 在同步仓库 deploy/ 到 /opt/cyber-stray/deploy/ 后调用。
 #
-# 用法:
-#   sudo ./container-update.sh --tag <commit-sha>
-#
-# 流程: compose pull → up -d（重建）→ 健康门（编排 healthcheck + 端点）→
-#       镜像清理（仅本项目镜像，保留在用 tag）
-# 失败: 保留现场（容器停在当前状态，不自动回滚），退出非零——问题在发布时
-#       暴露而非潜伏到深夜。
-# 回滚: 把 compose.yaml 的 IMAGE_TAG 占位改成旧 sha，合并 main 重发（流水线
-#       检测到非占位 tag 时跳过构建，只拉取部署）。
+# 用法: sudo ./container-update.sh --tag <commit-sha>
+# 失败: 非零退出并保留现场（不自动回滚）。
+# 回滚: compose.yaml 的 IMAGE_TAG 占位改成旧 sha，合并 main 重发（跳过构建）。
 set -euo pipefail
 
 # 失败告警（#267）：飞书群机器人 webhook，OPS_ALERT_WEBHOOK_URL 未设则静默跳过；
@@ -43,15 +36,24 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 [ -n "$TAG" ] || { echo "缺少 --tag <commit-sha>" >&2; exit 2; }
-[ -f "$DEPLOY_DIR/compose.yaml" ] || { echo "缺少 $DEPLOY_DIR/compose.yaml（先同步仓库部署目录）" >&2; exit 1; }
+[ -f "$DEPLOY_DIR/compose.yaml" ] || { echo "缺少 $DEPLOY_DIR/compose.yaml（先同步仓库 deploy/ 目录）" >&2; exit 1; }
 command -v docker >/dev/null 2>&1 || { echo "缺失 docker" >&2; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "docker compose 插件缺失" >&2; exit 1; }
 
 cd "$DEPLOY_DIR"
 export IMAGE_TAG="$TAG"
 
+# .env 键集校验：.env.example（随发布同步到 /opt/cyber-stray/）列出而 .env
+# 缺失的键显式警告——关键键真缺时 CP 起不来，由健康门兜住
+if [ -f /opt/cyber-stray/.env ] && [ -f /opt/cyber-stray/.env.example ]; then
+  missing=$(comm -23 \
+    <(grep -oE '^[A-Z][A-Z0-9_]*=' /opt/cyber-stray/.env.example | tr -d '=' | sort -u) \
+    <(grep -oE '^[A-Z][A-Z0-9_]*=' /opt/cyber-stray/.env | tr -d '=' | sort -u))
+  [ -z "$missing" ] || echo "警告: .env 缺少键（对照 .env.example）: $(echo "$missing" | tr '\n' ' ')"
+fi
+
 echo "==> [1/4] 拉取镜像（IMAGE_TAG=$TAG）"
-# GHCR 偶发 manifest EOF（瞬态网络中断）；重试比整体部署回滚便宜得多
+# GHCR 偶发瞬态网络中断，重试比整场部署回滚便宜
 attempt=0
 until docker compose pull; do
   attempt=$((attempt + 1))
@@ -63,8 +65,16 @@ done
 echo "==> [2/4] 重建容器"
 docker compose up -d --remove-orphans
 
+# casdoor 配置以仓库 deploy/casdoor/app.conf 为准：内容有变才覆盖并重启，
+# 常规发布不打扰 IdP；重启后由下方健康门验证
+CASDOOR_CONF=/opt/cyber-stray/casdoor/conf/app.conf
+if ! cmp -s "$DEPLOY_DIR/casdoor/app.conf" "$CASDOOR_CONF"; then
+  cp "$DEPLOY_DIR/casdoor/app.conf" "$CASDOOR_CONF"
+  echo "    app.conf 有变更 → 重启 casdoor"
+  docker compose restart casdoor
+fi
+
 echo "==> [3/4] 健康门（预算 ${HEALTH_TIMEOUT}s）"
-# 编排 healthcheck：全部容器 healthy（部署完成判定的客观标准）
 deadline=$((SECONDS + HEALTH_TIMEOUT))
 while true; do
   if docker compose ps --format '{{.Name}}' | grep -q . \
@@ -80,12 +90,13 @@ while true; do
 done
 curl -fsS http://127.0.0.1:8787/healthz >/dev/null
 curl -fsS -o /dev/null http://127.0.0.1:3000/
+curl -fsS -o /dev/null http://127.0.0.1:3001/
 curl -fsS http://127.0.0.1:8000/.well-known/openid-configuration >/dev/null
-echo "    全部健康：控制面 healthz / web / Casdoor OIDC ✓"
+echo "    全部健康：控制面 healthz / web / site / Casdoor OIDC ✓"
 
 echo "==> [4/4] 镜像清理（仅本项目镜像；保留在用 tag）"
 docker image prune -f >/dev/null 2>&1 || true
-for repo in ghcr.io/zewang0217/cyber-stray-app ghcr.io/zewang0217/cyber-stray-web ghcr.1ms.run/zewang0217/cyber-stray-app ghcr.1ms.run/zewang0217/cyber-stray-web; do
+for repo in ghcr.io/zewang0217/cyber-stray-app ghcr.io/zewang0217/cyber-stray-web ghcr.io/zewang0217/cyber-stray-site ghcr.1ms.run/zewang0217/cyber-stray-app ghcr.1ms.run/zewang0217/cyber-stray-web ghcr.1ms.run/zewang0217/cyber-stray-site; do
   docker images "$repo" --format '{{.Repository}}:{{.Tag}}' \
     | grep -v ":$TAG$" \
     | xargs -r -n1 docker rmi -f >/dev/null 2>&1 || true
@@ -93,4 +104,3 @@ done
 
 echo "部署完成: IMAGE_TAG=$TAG"
 echo "验证: docker compose ps; curl http://127.0.0.1:8787/healthz"
-echo "备份: /opt/cyber-stray/deploy/backup.sh（数据路径不变）"

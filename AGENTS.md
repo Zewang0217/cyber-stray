@@ -8,7 +8,7 @@
 
 ## 架构
 
-pnpm monorepo（TypeScript strict）：`packages/agent`（宠物运行时，tsx）、`packages/control-plane`（CP：鉴权 / 计费 / 调度 / API）、`packages/web`（Next.js 16 只读仪表盘）、`packages/shared`（跨包契约）、`packages/slides`（Slidev）。宠物不是常驻进程：CP 调度器按「无聊 / 精力就绪」拉起短命 worker（`packages/agent/src/worker/run-one-wander.ts`），跑一小段游荡后写回退出。
+pnpm monorepo（TypeScript strict）：`packages/agent`（宠物运行时，tsx）、`packages/control-plane`（CP：鉴权 / 计费 / 调度 / API）、`packages/web`（Next.js 16 只读仪表盘）、`packages/site`（官网落地页，Next 静态导出 + nginx）、`packages/shared`（跨包契约）、`packages/slides`（Slidev）。宠物不是常驻进程：CP 调度器按「无聊 / 精力就绪」拉起短命 worker（`packages/agent/src/worker/run-one-wander.ts`），跑一小段游荡后写回退出。
 
 agent 内核（`packages/agent/src/`）= 三层 + hook：
 
@@ -55,6 +55,12 @@ agent 内核（`packages/agent/src/`）= 三层 + hook：
 - **不复刻 agent / CP 的解析规则**：字段由上游派生，web 只渲染（规则一改必然漏掉一边）。
 - 鉴权经 Casdoor（IdP）+ CP session，web 不自管密码。
 - 视觉与动效遵 `docs/design-v3/DESIGN.md`（14 色宇宙、一切直角、实色偏移阴影、两帧法则 `steps()`、像素字体不排长文）；组件 / 动效 / 依赖见同目录 `components.md`、`motion.md`、`stack.md`，`demo.html` 是动效验收基准；SSE 事件契约在 `@cyber-stray/shared/tenant-events`（CP 与 web 同源，新增事件只改 shared）。重写实施计划：`docs/spec/web-rewrite.md`。
+
+**site（官网）**
+
+- 单页营销落地页，`output: "export"` 纯静态导出，生产 nginx 伺服（`deploy/Dockerfile.site`），无服务端逻辑、无数据依赖；主题锁定「深夜霓虹」（夜城即品牌本体，无浅色模式）。
+- sprite 帧表契约与 web 同源：`@cyber-stray/shared/sprite`（读方 ≥2 已下沉，勿在包内复刻帧表换算）；`public/pet/strayboy/` 资产是从 web 复制的产物（真相源 `packages/web/scripts/sprite/build_sprite.py`，重生成后两处同步）。
+- CTA 地址 = 构建期 `NEXT_PUBLIC_APP_URL`（流水线经 `vars.APP_URL` 注入）；站内文案改动照跑 Pre-Flight（宪法禁令清单 + 无 em-dash）。
 
 **control-plane**
 

@@ -1,0 +1,114 @@
+# cyber-stray 全栈编排（ADR-0008）：control-plane（含 agent worker 子进程）、
+# web、site、casdoor、nginx 五容器；nginx 是对外入口（当前仅 80，域名备案后加
+# 443）。仓库内为权威版本，发布流水线同步到生产机
+# /opt/cyber-stray/deploy/ 后由 container-update.sh 生效。
+#
+# 镜像 tag：${IMAGE_TAG:-sha}，"sha" 占位由流水线注入本次 commit sha；
+# 回滚 = 占位改成旧 sha 合并 main 重发，流水线检测到非占位 tag 时跳过构建。
+# 数据统一在 /opt/cyber-stray 下（data/、casdoor/），backup.sh / restore.sh 同根。
+name: cyber-stray
+
+services:
+  control-plane:
+    image: ghcr.io/zewang0217/cyber-stray-app:${IMAGE_TAG:-sha}
+    container_name: cyber-stray-control-plane
+    restart: always
+    # 优雅停机预算（CP_SHUTDOWN_BUDGET_MS 默认 90s）+ 余量：等在飞游荡结束再退出
+    stop_grace_period: 100s
+    env_file:
+      - /opt/cyber-stray/.env
+    environment:
+      # 容器内数据根；bind mount 回宿主原路径（覆盖 .env 里的 CP_DATA_DIR）
+      CP_DATA_DIR: /data
+    volumes:
+      - /opt/cyber-stray/data:/data
+    ports:
+      # 健康检查/排障用；对外流量只走 web rewrites（经 nginx）
+      - "127.0.0.1:8787:8787"
+    healthcheck:
+      test: [ "CMD", "bun", "-e", "fetch('http://127.0.0.1:8787/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  web:
+    image: ghcr.io/zewang0217/cyber-stray-web:${IMAGE_TAG:-sha}
+    container_name: cyber-stray-web
+    restart: always
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    environment:
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: [ "CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>{if(r.status>=400)process.exit(1)}).catch(()=>process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  # 官网（packages/site）：纯静态 nginx，无服务端逻辑、无数据卷。
+  # 对外路由由 nginx ingress 决定（kleinbottle.top apex → site:80，site 发布后启用）。
+  site:
+    image: ghcr.io/zewang0217/cyber-stray-site:${IMAGE_TAG:-sha}
+    container_name: cyber-stray-site
+    restart: always
+    ports:
+      - "127.0.0.1:3001:80"
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  casdoor:
+    image: casbin/casdoor:3.159.0
+    container_name: cyber-stray-casdoor
+    restart: always
+    volumes:
+      # 挂目录而非单文件：SQLite 写库需在同目录建 journal；单文件挂载时 journal
+      # 落在容器根 /（root:755），uid 1000 无写权限，整库变只读。
+      # 宿主目录须 chown 1000:1000。
+      - /opt/cyber-stray/casdoor:/casdoor
+      - /opt/cyber-stray/casdoor/conf:/conf
+    ports:
+      # 域名备案 + HTTPS 切换前暂公网：CP→casdoor 的 issuer 仍是 http://<源IP>:8000，
+      # 收口会断登录；切换后改回 127.0.0.1:8000
+      - "8000:8000"
+    healthcheck:
+      test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:8000/.well-known/openid-configuration" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: cyber-stray-nginx
+    restart: always
+    depends_on:
+      web:
+        condition: service_healthy
+      casdoor:
+        condition: service_healthy
+    volumes:
+      # 路由配置随 deploy/ 同步入库管理；webroot 供 certbot HTTP-01 验证
+      - /opt/cyber-stray/deploy/nginx:/etc/nginx/conf.d:ro
+      - /opt/cyber-stray/acme-webroot:/var/www/certbot:ro
+      # 证书签出后放开（阶段二）：
+      # - /etc/letsencrypt:/etc/letsencrypt:ro
+    ports:
+      - "80:80"
+      # 证书签出后放开（阶段二）：
+      # - "443:443"
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://127.0.0.1/healthz" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s

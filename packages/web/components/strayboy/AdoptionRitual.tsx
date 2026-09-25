@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import confetti from "canvas-confetti";
 import { CATCHPHRASE_LIST_MAX, CATCHPHRASE_TEXT_MAX, listPersonalities, type Catchphrase, type PersonalityId } from "@cyber-stray/shared";
 import { PetSprite } from "@/components/strayboy/PetSprite";
-import type { SpriteContract } from "@/lib/strayboy/sprite";
+import type { SpriteContract } from "@cyber-stray/shared/sprite";
 
 /** 默认初始兴趣（与服务端 DEFAULT_ADOPTION_INTERESTS 一致；贴纸多选可改）。 */
 const SUGGESTED_INTERESTS = [

@@ -1,9 +1,12 @@
 /**
  * PetSprite 帧表契约（stray-boy.sprite.v2）的解析与播放样式生成。
+ * 消费方：web（街角播放器）与 site（官网 hero）——帧表读方 ≥2，故下沉 shared。
  *
  * 为什么独立成纯函数库：播放器是零运行时 CSS steps()（motion.md §3/§5），
- * 帧表 → keyframes 的换算是唯一逻辑，收在这里做单测；组件只渲染。
- * 资产由 scripts/sprite/build_sprite.py 确定性产出（#169 帧表 v2）。
+ * 帧表 → keyframes 的换算是唯一逻辑，收在这里做单测（web/lib/strayboy/sprite.test.ts，
+ * fixture 即 web/public 真实产物）；组件只渲染。
+ * 资产由 web/scripts/sprite/build_sprite.py 确定性产出（#169 帧表 v2）。
+ * NOTE: frameStyle 假定消费方在 /pet/strayboy/ 下伺服同一份资产（web 与 site 的 public 同路径）。
  */
 
 export interface SpriteAnimation {
