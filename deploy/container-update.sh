@@ -31,6 +31,15 @@ docker compose version >/dev/null 2>&1 || { echo "docker compose 插件缺失" >
 cd "$DEPLOY_DIR"
 export IMAGE_TAG="$TAG"
 
+# .env 键集校验：.env.example（随发布同步到 /opt/cyber-stray/）列出而 .env
+# 缺失的键显式警告——关键键真缺时 CP 起不来，由健康门兜住
+if [ -f /opt/cyber-stray/.env ] && [ -f /opt/cyber-stray/.env.example ]; then
+  missing=$(comm -23 \
+    <(grep -oE '^[A-Z][A-Z0-9_]*=' /opt/cyber-stray/.env.example | tr -d '=' | sort -u) \
+    <(grep -oE '^[A-Z][A-Z0-9_]*=' /opt/cyber-stray/.env | tr -d '=' | sort -u))
+  [ -z "$missing" ] || echo "警告: .env 缺少键（对照 .env.example）: $(echo "$missing" | tr '\n' ' ')"
+fi
+
 echo "==> [1/4] 拉取镜像（IMAGE_TAG=$TAG）"
 # GHCR 偶发瞬态网络中断，重试比整场部署回滚便宜
 attempt=0

@@ -119,12 +119,21 @@ jobs:
             deploy/restore.sh \
             "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/"
           # casdoor 配置同步到暂存位；container-update.sh 比对内容，
-          # 有变化才覆盖到 /opt/cyber-stray/casdoor/conf/ 并重启
+          # 有变化才覆盖到 /opt/cyber-stray/casdoor/conf/ 并重启。
+          # 一并同步 .env.example（键清单模板，container-update.sh 做键集校验）
+          # 与 nginx ingress 路由配置；acme-webroot 供 certbot HTTP-01 验证
           ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
-            "${PROD_USER}@${PROD_HOST}" "mkdir -p /opt/cyber-stray/deploy/casdoor"
+            "${PROD_USER}@${PROD_HOST}" \
+            "mkdir -p /opt/cyber-stray/deploy/casdoor /opt/cyber-stray/deploy/nginx /opt/cyber-stray/acme-webroot"
           scp -P "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
             deploy/casdoor/app.conf \
             "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/casdoor/"
+          scp -P "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
+            .env.example \
+            "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/.env.example"
+          scp -P "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
+            deploy/nginx/cyber-stray.conf \
+            "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/nginx/"
           # 兜底：脚本可执行位（git 在 Windows 侧记录 644 时 scp 后不可执行）
           ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
             "${PROD_USER}@${PROD_HOST}" \

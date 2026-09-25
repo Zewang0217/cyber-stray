@@ -1,5 +1,6 @@
 # cyber-stray 全栈编排（ADR-0008）：control-plane（含 agent worker 子进程）、
-# web、site、casdoor 四容器。仓库内为权威版本，发布流水线同步到生产机
+# web、site、casdoor、nginx 五容器；nginx 是唯一对外入口（80/443），其余服务
+# 一律只绑 127.0.0.1。仓库内为权威版本，发布流水线同步到生产机
 # /opt/cyber-stray/deploy/ 后由 container-update.sh 生效。
 #
 # 镜像 tag：${IMAGE_TAG:-sha}，"sha" 占位由流水线注入本次 commit sha；
@@ -51,7 +52,7 @@ services:
       start_period: 20s
 
   # 官网（packages/site）：纯静态 nginx，无服务端逻辑、无数据卷。
-  # 对外路由由宿主机 nginx 决定（独立营销域名 → 反代 127.0.0.1:3001）。
+  # 对外路由由 nginx ingress 决定（kleinbottle.top apex → site:80，site 发布后启用）。
   site:
     image: ghcr.io/zewang0217/cyber-stray-site:${IMAGE_TAG:-sha}
     container_name: cyber-stray-site
@@ -76,10 +77,37 @@ services:
       - /opt/cyber-stray/casdoor:/casdoor
       - /opt/cyber-stray/casdoor/conf:/conf
     ports:
-      - "8000:8000"
+      # 仅本机（健康门 curl 用）；对外只经 nginx ingress
+      - "127.0.0.1:8000:8000"
     healthcheck:
       test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:8000/.well-known/openid-configuration" ]
       interval: 10s
       timeout: 5s
       retries: 6
       start_period: 15s
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: cyber-stray-nginx
+    restart: always
+    depends_on:
+      web:
+        condition: service_healthy
+      casdoor:
+        condition: service_healthy
+    volumes:
+      # 路由配置随 deploy/ 同步入库管理；webroot 供 certbot HTTP-01 验证
+      - /opt/cyber-stray/deploy/nginx:/etc/nginx/conf.d:ro
+      - /opt/cyber-stray/acme-webroot:/var/www/certbot:ro
+      # 证书签出后放开（阶段二）：
+      # - /etc/letsencrypt:/etc/letsencrypt:ro
+    ports:
+      - "80:80"
+      # 证书签出后放开（阶段二）：
+      # - "443:443"
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://127.0.0.1/healthz" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
