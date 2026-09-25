@@ -1,13 +1,10 @@
 [Unit]
-Description=cyber-stray daily backup (backup.sh, #268)
-# 备份行为与异地副本凭据从独立 env 文件读（BACKUP_* / BACKUP_OFFSITE_* /
-# BACKUP_ALERT_WEBHOOK_URL）；文件不存在不报错（- 前缀），此时仅本地备份。
-# 模板见 README「备份定时」节。
+Description=cyber-stray daily backup
 
 [Service]
 Type=oneshot
 ExecStart=/opt/cyber-stray/deploy/backup.sh
+# BACKUP_* / BACKUP_OFFSITE_* / BACKUP_ALERT_WEBHOOK_URL 从独立 env 文件读取；
+# 文件不存在（- 前缀）不报错，此时仅本地备份。模板见 README
 EnvironmentFile=-/opt/cyber-stray/backup.env
-# 本地备份含 SQLite 快照与全量租户目录，掉电中断无碍（staging 树 + 原子 mv），
-# 无需超时放宽之外的特别处理
 TimeoutStartSec=30min

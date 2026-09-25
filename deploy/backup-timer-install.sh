@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# 安装/更新备份定时器（#268）——幂等，deploy.yml 每次发布都会执行
-#
-# 前置：unit 文件已由流水线 scp 到 /opt/cyber-stray/deploy/；
-# 需要 root（systemd 单元目录写权限 + enable）。
+# 安装/更新备份定时器（幂等），deploy.yml 每次发布执行。需要 root。
 set -euo pipefail
 
 DEPLOY_DIR=${DEPLOY_DIR:-/opt/cyber-stray/deploy}

@@ -1,21 +1,19 @@
 #!/usr/bin/env bash
-# cyber-stray 备份（S12，#79）——真实可恢复，非摆设
+# cyber-stray 备份：控制面 data/（租户目录 + master.key）、control.db、
+# casdoor.db + conf/ 打成单个 tar.gz 到 /backup/cyber-stray/，
+# 本地保留最近 BACKUP_KEEP 份（默认 7）。web 无本地状态，不备份。
 #
-# 覆盖三块可恢复数据：
-#   1. 控制面 data/（tenants/ 租户目录、control.db、master.key）——核心
-#   2. Casdoor 账号库（/opt/cyber-stray/casdoor/{casdoor.db, conf/}）——身份
-#   3. web 无本地状态（standalone 产物可再生），不备份
+# SQLite 用 sqlite3 .backup 做事务一致拷贝——直接 tar 运行中的库会得到
+# 与 WAL 交错的撕裂快照；未装 sqlite3 时显式警告并降级为热拷贝。
+# 落盘：临时目录组装 → 一次 tar → mv 就位，中途失败不产生半截产物。
 #
-# SQLite 一致性（StdS12 review 修复）：control.db / casdoor.db 是运行中
-# 的 SQLite——裸 tar 会抓到检查点与 WAL 交错的撕裂快照。备份前先用
-# sqlite3 .backup 做事务一致拷贝（在线安全，不需停机）；未装 sqlite3 时
-# 显式警告并降级热拷贝（不静默）。
+# 异地副本：BACKUP_OFFSITE_{ENDPOINT,BUCKET,ACCESS_KEY,SECRET_KEY} 齐备时，
+# 本地落盘后经 docker 跑 amazon/aws-cli 推送到 S3 兼容对象存储（不新增宿主机
+# 依赖），异地保留 BACKUP_OFFSITE_KEEP 份（默认 30）。未配置 = 显式跳过；
+# 配置了但推送失败 = 非零退出，并经 BACKUP_ALERT_WEBHOOK_URL（飞书 webhook）告警。
+# 凭据由 cyber-stray-backup.service 的 EnvironmentFile 注入，见 README。
 #
-# 产物：单 tar.gz（时间戳命名）；staging 树组装 → 一次 tar → mv 原子落位。
-# 保留策略：默认保留最近 7 份（BACKUP_KEEP 覆盖）。
-#
-# 用法:
-#   ./backup.sh
+# 用法: ./backup.sh
 set -euo pipefail
 
 DEST=${BACKUP_DIR:-/backup/cyber-stray}
@@ -23,7 +21,7 @@ KEEP=${BACKUP_KEEP:-7}
 APP_DIR=${APP_DIR:-/opt/cyber-stray}
 CASDOOR_DIR=${CASDOOR_DIR:-/opt/cyber-stray/casdoor}
 STAGING=$(mktemp -d)
-trap 'rm -rf "$STAGING"' EXIT   # 中途失败清理暂存
+trap 'rm -rf "$STAGING"' EXIT
 
 [ -d "$APP_DIR/data" ] || { echo "控制面数据目录不存在: $APP_DIR/data"; exit 1; }
 
@@ -32,7 +30,7 @@ STAMP=$(date +%Y%m%d-%H%M%S)
 TMP="$DEST/.cyber-stray-$STAMP.tar.gz.part"
 OUT="$DEST/cyber-stray-$STAMP.tar.gz"
 
-# 1) 事务一致 SQLite 快照 → staging/db/
+# 1) SQLite 事务一致快照 → staging/db/
 mkdir -p "$STAGING/db"
 for db in control casdoor; do
   src="$APP_DIR/data/$db.db"
@@ -47,18 +45,18 @@ for db in control casdoor; do
   fi
 done
 
-# 2) 组装 staging 树：app/data（租户 markdown + master.key，排除运行中
-#    SQLite 文件——已被快照取代）+ db/ + casdoor/conf（可选）
+# 2) 组装 staging 树：app/data（排除运行中 SQLite 文件，已由上面的快照取代）
+#    + db/ + casdoor/conf（可选）
 mkdir -p "$STAGING/app" "$STAGING/casdoor"
 cp -a "$APP_DIR/data" "$STAGING/app/data"
 rm -f "$STAGING/app/data"/*.db "$STAGING/app/data"/*.db-wal "$STAGING/app/data"/*.db-shm
 [ -d "$CASDOOR_DIR/conf" ] && cp -a "$CASDOOR_DIR/conf" "$STAGING/casdoor/conf"
 
-# 3) 一次 tar（staging 为根，路径剥 /tmp 前缀→ app/db/casdoor 相对布局）
+# 3) 打包（staging 为根 → tar 内是 app/db/casdoor 相对布局）
 tar -czf "$TMP" -C "$STAGING" app db casdoor
 mv "$TMP" "$OUT"
 
-# 保留最近 KEEP 份（按文件名排序，删最旧）
+# 保留最近 KEEP 份（按文件名时间戳排序，删最旧）
 ls -1 "$DEST"/cyber-stray-*.tar.gz 2>/dev/null | sort | head -n -"$KEEP" | while read -r old; do
   rm -f "$old"
 done
@@ -67,19 +65,12 @@ SIZE=$(du -h "$OUT" | cut -f1)
 echo "备份完成: $OUT ($SIZE)"
 echo "恢复: ./restore.sh $OUT"
 
-# ─── 异地副本（#268）：备份与生产同机，主机级故障 = 数据与唯一备份同灭 ───
-# S3 兼容对象存储经 docker 跑 pinned amazon/aws-cli（产机必有 docker，不新增
-# 宿主机依赖）。凭据走 env（可经 cyber-stray-backup.service 的
-# EnvironmentFile 注入）：BACKUP_OFFSITE_ENDPOINT / BUCKET / ACCESS_KEY /
-# SECRET_KEY。未配置 = 显式跳过（凭据属 HITL checklist，缺省不弄脏每日备份）；
-# 配置了但推送失败 = 非零退出 + webhook 告警（BACKUP_ALERT_WEBHOOK_URL，与
-# #267 告警票同一通道）。本地保留 KEEP 份不变，异地保留 BACKUP_OFFSITE_KEEP
-# 份（默认 30）。
+# 异地副本
 OFFSITE_ENDPOINT=${BACKUP_OFFSITE_ENDPOINT:-}
 OFFSITE_BUCKET=${BACKUP_OFFSITE_BUCKET:-}
 OFFSITE_ACCESS_KEY=${BACKUP_OFFSITE_ACCESS_KEY:-}
 OFFSITE_SECRET_KEY=${BACKUP_OFFSITE_SECRET_KEY:-}
-if [ -z "$OFFSITE_ENDPOINT" ] || [ -z "$OFFSITE_BUCKET" ] ||    [ -z "$OFFSITE_ACCESS_KEY" ] || [ -z "$OFFSITE_SECRET_KEY" ]; then
+if [ -z "$OFFSITE_ENDPOINT" ] || [ -z "$OFFSITE_BUCKET" ] || [ -z "$OFFSITE_ACCESS_KEY" ] || [ -z "$OFFSITE_SECRET_KEY" ]; then
   echo "异地副本未配置（BACKUP_OFFSITE_ENDPOINT/BUCKET/ACCESS_KEY/SECRET_KEY），仅保留本地"
   exit 0
 fi
@@ -104,8 +95,8 @@ offsite_fail() {
   exit 1
 }
 
-# 推送 + 异地保留策略一次进容器收口（省 N 次容器启动）：
-# cp 本次产物 → ls 列全量 → 按文件名排序删最旧，只留 OFFSITE_KEEP 份
+# 推送 + 清理过期副本在一次容器内完成（省多次容器启动）：
+# cp 本次产物 → ls 全量 → 按文件名排序删最旧，只留 OFFSITE_KEEP 份
 docker run --rm \
   -e AWS_ACCESS_KEY_ID="$OFFSITE_ACCESS_KEY" \
   -e AWS_SECRET_ACCESS_KEY="$OFFSITE_SECRET_KEY" \

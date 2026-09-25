@@ -1,8 +1,8 @@
 [Unit]
-Description=cyber-stray daily backup at 03:00 (#268)
+Description=cyber-stray daily backup at 03:00
 
 [Timer]
-# 每日 03:00；Persistent 补跑错过的窗口（机器 03:00 关机/重启后开机即补）
+# Persistent: 机器在 03:00 处于关机状态时，开机后补跑一次
 OnCalendar=*-*-* 03:00:00
 Persistent=true
 
