@@ -38,5 +38,7 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Build web
-        run: pnpm -F @cyber-stray/web build
+      - name: Build web & site
+        run: |
+          pnpm -F @cyber-stray/web build
+          pnpm -F @cyber-stray/site build

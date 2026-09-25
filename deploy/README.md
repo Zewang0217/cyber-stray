@@ -1,8 +1,9 @@
 # 部署
 
-单机容器化部署（ADR-0008）：compose 编排三个容器——control-plane（控制面 +
-agent，worker 是短命子进程）、web（Next.js standalone）、Casdoor（官方镜像 +
-SQLite）。构建在 GitHub Actions 完成，生产机只拉镜像、跑容器。
+单机容器化部署（ADR-0008）：compose 编排四个容器——control-plane（控制面 +
+agent，worker 是短命子进程）、web（Next.js standalone）、site（官网静态镜像，
+nginx 纯静态）、Casdoor（官方镜像 + SQLite）。构建在 GitHub Actions 完成，
+生产机只拉镜像、跑容器。
 
 本目录是部署配置的权威版本，发布流水线每次同步到生产机 `/opt/cyber-stray/deploy/`。
 
@@ -10,6 +11,7 @@ SQLite）。构建在 GitHub Actions 完成，生产机只拉镜像、跑容器�
 |---|---|
 | `compose.yaml` | 全栈编排（镜像 tag `${IMAGE_TAG:-sha}`） |
 | `Dockerfile.app` / `Dockerfile.web` | 应用镜像 / web 镜像 |
+| `Dockerfile.site` / `nginx.site.conf` | 官网镜像（静态导出 + nginx）/ 容器内 nginx；CTA 地址构建期 `NEXT_PUBLIC_APP_URL` 注入（流水线取仓库 variable `APP_URL`） |
 | `container-update.sh` | 生产机更新：拉镜像 → 起容器 → 同步 casdoor 配置 → 健康门 → 镜像清理 |
 | `casdoor/app.conf` | Casdoor 服务配置；`container-update.sh` 比对内容，有变化才覆盖到 `/opt/cyber-stray/casdoor/conf/` 并重启 |
 | `backup.sh` / `restore.sh` | 备份 / 恢复 |
@@ -27,7 +29,7 @@ clientSecret）仅在重建全新环境时手工放置。
 
 - `data/`：控制面（`tenants/<sub>/` 记忆 markdown、`control.db`、`master.key`、logs）
 - `casdoor/`：`conf/` + `casdoor.db`（目录属主须 1000:1000，原因见 compose 注释）
-- web 无本地状态
+- web / site 无本地状态
 
 ## 发布 / 回滚
 
@@ -75,3 +77,6 @@ sudo /opt/cyber-stray/deploy/restore.sh /backup/cyber-stray/cyber-stray-<时间�
 - Casdoor 默认 signupItems 含邮箱验证：未配 SMTP 时注册无法完成，生产配 SMTP
   或调整 signupItems。
 - `CP_ORIGIN` 构建期注入 web 镜像（默认 compose 网络内 `http://control-plane:8787`）。
+- site 对外路由：官网容器只绑 `127.0.0.1:3001`，营销域由宿主机 nginx 加 server
+  块反代（TLS 同 certbot 流程，模板见 `nginx-sslip.conf` 尾部注释）。官网 CTA
+  构建期烘焙，改 `vars.APP_URL` 后需重发一次才生效。

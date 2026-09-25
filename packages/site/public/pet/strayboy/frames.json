@@ -1,0 +1,97 @@
+{
+  "contract": "stray-boy.sprite.v2",
+  "image": "cat.png",
+  "frame": {
+    "w": 32,
+    "h": 32,
+    "groundRow": 30
+  },
+  "animations": {
+    "idle": {
+      "from": 0,
+      "frames": 4,
+      "duration": 0.8,
+      "loop": true
+    },
+    "walk": {
+      "from": 4,
+      "frames": 4,
+      "duration": 0.6,
+      "loop": true
+    },
+    "joy": {
+      "from": 8,
+      "frames": 2,
+      "duration": 0.4,
+      "loop": true
+    },
+    "eat": {
+      "from": 10,
+      "frames": 2,
+      "duration": 0.8,
+      "loop": true
+    },
+    "sleep": {
+      "from": 12,
+      "frames": 2,
+      "duration": 1.6,
+      "loop": true
+    },
+    "think": {
+      "from": 14,
+      "frames": 2,
+      "duration": 0.8,
+      "loop": true
+    },
+    "celebrate": {
+      "from": 16,
+      "frames": 2,
+      "duration": 0.4,
+      "loop": true
+    },
+    "grumpy": {
+      "from": 18,
+      "frames": 2,
+      "duration": 1.2,
+      "loop": true
+    },
+    "welcome": {
+      "from": 20,
+      "frames": 2,
+      "duration": 0.8,
+      "loop": true
+    },
+    "pat": {
+      "from": 22,
+      "frames": 2,
+      "duration": 0.4,
+      "loop": false
+    },
+    "pounce": {
+      "from": 24,
+      "frames": 2,
+      "duration": 0.4,
+      "loop": false
+    }
+  },
+  "overlays": {
+    "hungry": {
+      "image": "eyes.png",
+      "frames": 2,
+      "duration": 1.2
+    }
+  },
+  "palette": {
+    "o": "#E8A15D",
+    "s": "#B4693B",
+    "c": "#F6E6C8",
+    "k": "#212529",
+    "y": "#F7D51D",
+    "p": "#E76E55",
+    "w": "#F4F4F4"
+  },
+  "provenance": {
+    "pipeline": "A 侧字符网格画布 + 程序派生（#169 落锤；B 基混合管线资产就绪后整体替换）",
+    "script": "packages/web/scripts/sprite/build_sprite.py（确定性，可重跑）"
+  }
+}

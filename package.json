@@ -8,6 +8,7 @@
     "dev:web": "pnpm --filter @cyber-stray/web dev",
     "dev:cp": "pnpm --filter @cyber-stray/control-plane dev",
     "dev:slides": "pnpm --filter @cyber-stray/slides dev",
+    "dev:site": "pnpm --filter @cyber-stray/site dev",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
