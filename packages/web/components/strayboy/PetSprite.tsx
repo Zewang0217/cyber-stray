@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { animationCss, contractId, frameStyle, hungryStyle } from "@/lib/strayboy/sprite";
-import type { SpriteContract } from "@/lib/strayboy/sprite";
+import { animationCss, contractId, frameStyle, hungryStyle } from "@cyber-stray/shared/sprite";
+import type { SpriteContract } from "@cyber-stray/shared/sprite";
 
 /**
  * 契约级 <style> 去重：挂 document.head（每契约一次，跨组件卸载存活）。

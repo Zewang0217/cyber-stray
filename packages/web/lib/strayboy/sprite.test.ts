@@ -1,5 +1,5 @@
-import { parseSpriteContract, animationCss, frameStyle, hungryStyle } from "./sprite";
-import type { SpriteContract } from "./sprite";
+import { parseSpriteContract, animationCss, frameStyle, hungryStyle } from "@cyber-stray/shared/sprite";
+import type { SpriteContract } from "@cyber-stray/shared/sprite";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
