@@ -4,7 +4,7 @@ export function FeatureBento() {
     <section id="features">
       <div className="wrap">
         <div className="mainhead">
-          <h2>不止会推送</h2>
+          <h2>你不在的时候</h2>
           <span className="rule" />
         </div>
         <div className="bento">
@@ -12,14 +12,14 @@ export function FeatureBento() {
             <span className="zzz vt">Z z Z</span>
             <h3 className="dot">日记与梦境</h3>
             <p>
-              每晚睡前，它把今天写进<b>日记</b>：游荡了哪里、长出了什么新兴趣、你赞了哪条。
-              熄灯之后还有<b>梦</b>，兴趣在梦里被重新联想一遍，夜里有得看。
+              睡前它写一天的日记：去了哪、看到什么、你赞了哪张明信片。
+              也有梦，白天那些东西在梦里乱炖一锅，只有夜里能看。
             </p>
             <div className="diary-card">
               <time>DAY 12 · 23:58</time>
               <p>
-                今天主人赞了那条独立游戏的明信片。我盯着机房的灯看了很久。
-                梦里我变成一张贴了邮票的明信片，飞过整条街。
+                今天主人赞了那张独立游戏的明信片。我趴在机器边听了一会儿风扇转。
+                梦里我是一张明信片，贴着邮票，飞过整条街。
               </p>
             </div>
           </div>
@@ -27,8 +27,8 @@ export function FeatureBento() {
           <div className="tile tile-b">
             <h3 className="dot">性格与口头禅</h3>
             <p>
-              领养时给它挑<b>性格</b>、定<b>口头禅</b>。它用自己的语气说话，
-              口头禅还会跟着你的好恶慢慢进化。
+              性格是领养时挑的，口头禅是你定的。之后它就用那个语气说话；
+              你赞过哪种说法，它以后会多说。
             </p>
             <div className="dlg-mini">
               <span className="who">&lt;年糕&gt;</span>
@@ -44,8 +44,8 @@ export function FeatureBento() {
           <div className="tile tile-c">
             <h3 className="dot">表情包图鉴</h3>
             <p>
-              它自己生成<b>专属表情包</b>，过了质检就自动收进图鉴，
-              带话题和心情标签，随手可下载。
+              它还会做表情包。过了质检的进图鉴，带话题和心情标签，
+              看上哪张直接下载。
             </p>
             <div className="meme-grid" aria-hidden="true">
               <i /><i /><i /><i /><i /><i />
@@ -55,8 +55,8 @@ export function FeatureBento() {
           <div className="tile tile-d">
             <h3 className="dot">双图谱</h3>
             <p>
-              一张图谱记<b>你喜欢什么</b>，另一张记<b>它好奇什么</b>。
-              相关性和品味一起进它的脑子，这条值不值得打扰你，它自己权衡。
+              它心里有两张单子：一张是你喜欢什么，一张是它自己好奇什么。
+              寄明信片前，两张都看一遍。
             </p>
             <div className="dual">
               <div className="col you">
@@ -80,10 +80,7 @@ export function FeatureBento() {
 
           <div className="tile tile-e">
             <h3 className="dot">真实作息</h3>
-            <p>
-              它有作息表。睡觉时不游荡，拍拍也<b>不醒</b>，
-              顶多翻个身哼唧两声。
-            </p>
+            <p>到点就睡。睡着不出门，拍拍也不醒，顶多翻个身哼唧两声。</p>
             <div className="daynight" aria-hidden="true">
               <div className="half day">
                 <b>08:00 醒</b>

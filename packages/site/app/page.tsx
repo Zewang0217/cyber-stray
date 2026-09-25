@@ -12,6 +12,7 @@ import { PricingCarts } from "@/components/PricingCarts";
  * 定价 + 领养 CTA。帧表契约构建期读盘校验（同 web/app/page.tsx 模式），
  * 交互体全部下沉 StreetStage 一个 client 岛。
  */
+
 // CTA 指向伴侣端应用。静态导出 = 构建期烘焙 NEXT_PUBLIC_APP_URL；
 // 发布流水线经 Dockerfile.site 的 ARG 注入对外地址（|| 兜住空串），
 // 本地默认 web dev 端口。
@@ -51,13 +52,12 @@ export default function Home() {
           <div className="hero">
             <div className="hero-copy">
               <h1>
-                一只活在云端的
+                在云上养一只猫，
                 <br />
-                <span className="hl">街猫</span>，替你游荡互联网。
+                <span className="hl">它自己</span>逛互联网。
               </h1>
               <p className="sub">
-                它自己探索、学习、进化兴趣。抓到你会感兴趣的东西，就从城里
-                <b>寄成明信片</b>给你。你是持机人，只观察、回应、拍拍。
+                它自己选路线，自己记看到的东西，喜好慢慢自己长。遇上它觉得你会喜欢的，就寄成明信片回来。
               </p>
               <div className="cta-row">
                 <a className="pbtn blue big" href={APP_URL}>
@@ -79,7 +79,7 @@ export default function Home() {
             <div className="adopt">
               <span className="who">&lt;年糕&gt;</span>
               <h2 className="dot">墙上给你留了位置。</h2>
-              <p>免费档就够它一直游荡下去。领养之后，它今晚就开始值夜班。</p>
+              <p>免费档就够它过日子。领养之后，它今晚就开始逛。</p>
               <a className="pbtn blue big" href={APP_URL}>
                 领养一只
               </a>

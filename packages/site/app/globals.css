@@ -109,7 +109,6 @@ a { color: inherit; }
   margin-top: 18px; max-width: 24em;
   font-size: 15px; line-height: 1.8; color: var(--curb);
 }
-.hero .sub b { color: var(--star); font-weight: 500; }
 .hero .cta-row { margin-top: 30px; display: flex; align-items: center; gap: 16px; }
 
 /* 街区舞台（宪法 §1：屏幕 = 像素夜城，宠物永远最先动） */
@@ -256,7 +255,6 @@ a { color: inherit; }
 .mainhead .side { font-family: "VT323", monospace; font-size: 20px; color: var(--curb); }
 section { padding: clamp(40px, 7vw, 84px) 0 0; }
 .lede { max-width: 40em; color: var(--curb); font-size: 15px; line-height: 1.8; margin-bottom: 28px; }
-.lede b { color: var(--star); font-weight: 500; }
 
 /* 闭环流程：探索 → 学习 → 反思 → 进化 → 懂你 → 推送 */
 .flow { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; align-items: stretch; }
@@ -286,7 +284,6 @@ section { padding: clamp(40px, 7vw, 84px) 0 0; }
   margin-top: 22px; border: 3px dashed var(--curb); padding: 12px 16px;
   color: var(--curb); font-size: 13.5px; max-width: 46em;
 }
-.loopnote b { color: var(--star); font-weight: 500; }
 
 /* 功能 bento：7+5 / 4+4+4，格内自带视觉变化（夜空、纸面对白、昼夜分屏） */
 .bento { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
@@ -300,7 +297,6 @@ section { padding: clamp(40px, 7vw, 84px) 0 0; }
   font-size: 17px; font-weight: 400; color: var(--star); margin-bottom: 8px;
 }
 .tile p { font-size: 13.5px; line-height: 1.75; color: var(--curb); }
-.tile p b { color: var(--star); font-weight: 500; }
 .tile-a { grid-column: span 7; }
 .tile-b { grid-column: span 5; }
 .tile-c, .tile-d, .tile-e { grid-column: span 4; }
@@ -466,9 +462,7 @@ section { padding: clamp(40px, 7vw, 84px) 0 0; }
 .cart li::before { content: "■"; position: absolute; left: 0; top: 0; font-size: 10px; line-height: 2.2; color: var(--act); }
 .cart.pro li::before { color: var(--hi); }
 .cart.byok li::before { color: var(--ok); }
-.cart li b { color: var(--star); font-weight: 500; }
 .pricing-note { margin-top: 24px; color: var(--curb); font-size: 13.5px; max-width: 46em; }
-.pricing-note b { color: var(--star); font-weight: 500; }
 
 /* 领养 CTA：大对话框 */
 .adopt {

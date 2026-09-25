@@ -38,7 +38,7 @@ export function PostcardWall() {
           <span className="rule" />
           <span className="side">1 NEW</span>
         </div>
-        <p className="lede">它抓到的东西，会从城里寄成明信片回来。下面是样例，语气和它本人一致。</p>
+        <p className="lede">下面钉着它寄回来的几张。语气就是它平时说话的样子。</p>
         <div className="mails">
           {MAILs.map((m) => (
             <article className="mail" key={m.title}>
