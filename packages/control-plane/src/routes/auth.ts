@@ -69,11 +69,14 @@ export function createAuthRoutes({ config, oidc, states }: AuthDeps): Hono {
       if (!invite) {
         return c.redirect(`${config.webOrigin}/need-invite`, 302);
       }
-      tenantId = (await getOrCreateTenant(config.dataDir, user.sub, user.name)).tenantId;
-      if (!(await consumeInvite(config.dataDir, invite.id, tenantId))) {
-        // 邀请被并发消费：宁可拒绝也不放行（一次性语义硬保证）
+      // 先消费后建租户（PR #303 review P0）：tenantId = sub 建行前已知，
+      // 条件更新失败（被并发抢走）时本地无任何租户行——孤儿租户绕门在
+      // 结构上不可能；代价是消费后建租户若抛错，邀请已焚（ rare DB 错误
+      // 显式 500 上抛，不兜底）。
+      if (!(await consumeInvite(config.dataDir, invite.id, user.sub))) {
         return c.redirect(`${config.webOrigin}/need-invite`, 302);
       }
+      tenantId = (await getOrCreateTenant(config.dataDir, user.sub, user.name)).tenantId;
     }
 
     // 签发控制面 session

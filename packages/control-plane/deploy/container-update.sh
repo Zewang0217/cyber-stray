@@ -22,7 +22,9 @@ alert() {
     -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"$1\"}}" \
     "$OPS_ALERT_WEBHOOK_URL" >/dev/null 2>&1 || true
 }
-trap 'alert "[cyber-stray] 发布失败：container-update.sh 非零退出（行 $LINENO），tag=${TAG:-未定}"' ERR
+# EXIT trap（而非 ERR）：健康门 while/if 内的 exit 1 不触发 ERR trap，
+# EXIT 必到——按退出码判失败（PR #303 review P1-2）
+trap 'rc=$?; [ $rc -ne 0 ] && alert "[cyber-stray] 发布失败：container-update.sh 退出码 $rc，tag=${TAG:-未定}"; exit $rc' EXIT
 
 DEPLOY_DIR=/opt/cyber-stray/deploy
 HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-120}

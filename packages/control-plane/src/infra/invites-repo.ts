@@ -48,17 +48,17 @@ export async function createInvite(
   input: { createdBy: string; label?: string },
 ): Promise<InviteCreated> {
   const db = await getDb(dataDir);
-  const row = {
-    id: randomUUID(),
-    tokenHash: null as unknown as string,
+  const id = randomUUID();
+  const token = generateInviteToken();
+  const createdAt = Date.now();
+  await db.insert(invites).values({
+    id,
+    tokenHash: hashInviteToken(token),
     label: input.label ?? null,
     createdBy: input.createdBy,
-    createdAt: Date.now(),
-  };
-  const token = generateInviteToken();
-  row.tokenHash = hashInviteToken(token);
-  await db.insert(invites).values(row);
-  return { id: row.id, token, label: row.label, createdBy: row.createdBy, createdAt: row.createdAt };
+    createdAt,
+  });
+  return { id, token, label: input.label ?? null, createdBy: input.createdBy, createdAt };
 }
 
 /** 全量列表（管理页）；脱敏 tokenHash */

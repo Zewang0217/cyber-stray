@@ -21,6 +21,8 @@ export async function sendOpsAlert(
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ msg_type: 'text', content: { text } }),
+    // webhook 无响应会拖住调度循环：10s 强制超时（PR #303 review P2）
+    signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) {
     throw new Error(`告警 webhook 响应 ${res.status}`);

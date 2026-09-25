@@ -11,24 +11,27 @@ import { join } from 'path';
 import { getDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { pets } from '../db/schema.js';
+import { listTenants } from '../infra/tenant-access.js';
 import { collectTenantSnapshot, renderTenantMarkdown, type EvidenceReport, type TenantSnapshot } from './snapshot.js';
 
 export async function buildEvidenceReport(dataDir: string): Promise<EvidenceReport> {
   const db = await getDb(dataDir);
   await runMigrations(dataDir);
   const allPets = await db.select().from(pets);
+  // 租户全集 = tenants 表（含无宠物注册租户——空态可见，避免「沉默消失」）
+  const allTenants = await listTenants(dataDir);
 
-  // 每租户最早领养时刻 = D0（当前单宠，多宠取最早）
+  // 每租户最早领养时刻 = D0（当前单宠，多宠取最早）；无宠物 = null
   const adoptedMs = new Map<string, number>();
   for (const pet of allPets) {
     const prev = adoptedMs.get(pet.tenantId);
     if (prev === undefined || pet.createdAt < prev) adoptedMs.set(pet.tenantId, pet.createdAt);
   }
-  // 无宠物的注册租户也出快照（空态可见，避免「沉默消失」）
-  for (const pet of allPets) if (!adoptedMs.has(pet.tenantId)) adoptedMs.set(pet.tenantId, pet.createdAt);
 
   const tenants: TenantSnapshot[] = [];
-  for (const [tenantId, ms] of adoptedMs) {
+  for (const tenant of allTenants) {
+    const tenantId = tenant.id;
+    const ms = adoptedMs.get(tenantId) ?? null;
     try {
       tenants.push(await collectTenantSnapshot(dataDir, tenantId, ms));
     } catch (error) {

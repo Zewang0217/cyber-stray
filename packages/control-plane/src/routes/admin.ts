@@ -155,13 +155,6 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
       : c.json(jsonError(outcome.error), outcome.status);
   });
 
-  /**
-   * GET /api/admin/usage?from=YYYY-MM-DD&to=YYYY-MM-DD — 用量成本可视化
-   *
-   * 响应：summary（总费用/token/张数）+ perTenant（每租户聚合，附今日 LLM
-   * 水位：llmCostToday + llmBudgetYuan，null = 未启用/不限）+ recent（最近
-   * 50 条明细）。费用按内置默认单价表折算，未知模型 0（不瞎估）。
-   */
   /** GET /api/admin/invites — 邀请列表（脱敏） */
   app.get('/invites', async (c) => {
     const auth = await adminSession(c.req.raw, config);
@@ -198,6 +191,14 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
       ? c.json({ success: true, data: outcome.data })
       : c.json(jsonError(outcome.error), outcome.status);
   });
+
+  /**
+   * GET /api/admin/usage?from=YYYY-MM-DD&to=YYYY-MM-DD — 用量成本可视化
+   *
+   * 响应：summary（总费用/token/张数）+ perTenant（每租户聚合，附今日 LLM
+   * 水位：llmCostToday + llmBudgetYuan，null = 未启用/不限）+ recent（最近
+   * 50 条明细）。费用按内置默认单价表折算，未知模型 0（不瞎估）。
+   */
 
   app.get('/usage', async (c) => {
     const auth = await adminSession(c.req.raw, config);

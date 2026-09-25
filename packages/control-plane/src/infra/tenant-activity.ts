@@ -8,7 +8,7 @@
  * X1 判定消费方：metrics/x1.ts（离线）与 #299 证据快照。纯日志路线，无 migration。
  */
 
-import { appendFile, mkdir, readFile, readdir } from 'fs/promises';
+import { appendFile, mkdir, readdir } from 'fs/promises';
 import { join } from 'path';
 import { localDateKey } from './usage.js';
 import { logger } from './logger.js';
@@ -63,30 +63,16 @@ export async function readTenantActivityDays(
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; // 从未活跃 = 合法空态
     throw error;
   }
+  // 活跃日一律取文件名（本地日，写入口径 localDateKey）；文件由首条记录
+  // appendFile 时创建，「文件存在 = 该本地日有过活跃」。逐行 timestamp 是
+  // UTC 日，与 D0 的本地日口径混用会错切 X1 窗口（PR #303 review P1-1）。
   const days = new Set<string>();
   for (const file of files) {
     const fileDate = activityFileDate(file);
     if (!fileDate) continue;
     if (from && fileDate < from) continue;
     if (to && fileDate > to) continue;
-    let content: string;
-    try {
-      content = await readFile(join(dir, file), 'utf-8');
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue; // 并发轮转可能消失
-      throw error;
-    }
-    for (const line of content.split('\n')) {
-      if (!line.trim()) continue;
-      let row: ActivityEntry;
-      try {
-        row = JSON.parse(line) as ActivityEntry;
-      } catch {
-        continue; // 半行写入（崩溃残留）跳过
-      }
-      if (!row.timestamp || typeof row.tenantId !== 'string') continue;
-      days.add(row.timestamp.slice(0, 10));
-    }
+    days.add(fileDate);
   }
   return [...days].sort();
 }
