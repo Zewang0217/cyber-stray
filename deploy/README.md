@@ -15,8 +15,6 @@ nginx 纯静态）、Casdoor（官方镜像 + SQLite）。构建在 GitHub Actio
 | `container-update.sh` | 生产机更新：拉镜像 → 起容器 → 同步 casdoor 配置 → 健康门 → 镜像清理 |
 | `casdoor/app.conf` | Casdoor 服务配置；`container-update.sh` 比对内容，有变化才覆盖到 `/opt/cyber-stray/casdoor/conf/` 并重启 |
 | `backup.sh` / `restore.sh` | 备份 / 恢复 |
-| `cyber-stray-backup.service` / `.timer` | 每日 03:00 备份定时器 |
-| `backup-timer-install.sh` | 定时器幂等安装（流水线自动执行） |
 | `nginx-sslip.conf` | Nginx + sslip.io + TLS 参考模板（生产机实际 nginx 配置在主机维护） |
 
 Casdoor 的密钥类内容不入库：OIDC 应用（client id/secret）在 Casdoor 管理界面
@@ -42,26 +40,19 @@ clientSecret）仅在重建全新环境时手工放置。
 
 ## 备份 / 恢复
 
+手动执行（无自动计划任务）：
+
 ```bash
-sudo systemctl start cyber-stray-backup.service   # 手动触发一次备份
-/opt/cyber-stray/deploy/backup.sh                 # 同上；BACKUP_KEEP=14 覆盖保留份数
+sudo /opt/cyber-stray/deploy/backup.sh            # BACKUP_KEEP=14 覆盖保留份数
 sudo /opt/cyber-stray/deploy/restore.sh /backup/cyber-stray/cyber-stray-<时间戳>.tar.gz
 /opt/cyber-stray/deploy/restore.sh <tar> --no-restart   # 演练：不动容器
 ```
 
 - 产物 `/backup/cyber-stray/cyber-stray-<时间戳>.tar.gz`，本地保留 7 份。
-- 异地副本：`/opt/cyber-stray/backup.env`（root:600，service 经 EnvironmentFile
-  注入）配 `BACKUP_OFFSITE_{ENDPOINT,BUCKET,ACCESS_KEY,SECRET_KEY}` 后每次推送
-  S3 兼容对象存储，异地保留 30 份（`BACKUP_OFFSITE_KEEP`）。四项任一缺失则显式
-  跳过异地；推送失败非零退出 + 飞书 webhook 告警（`BACKUP_ALERT_WEBHOOK_URL`）。
-- 定时器：流水线经 `backup-timer-install.sh` 幂等安装，首次需生产机 sudoers 放行：
-
-  ```
-  <deploy 用户> ALL=(root) NOPASSWD: /opt/cyber-stray/deploy/backup-timer-install.sh
-  ```
-
-  验证：`systemctl list-timers cyber-stray-backup.timer`。未放行时发布不失败，
-  只打印提示——需人工执行一次。
+- 异地副本：配 `BACKUP_OFFSITE_{ENDPOINT,BUCKET,ACCESS_KEY,SECRET_KEY}` 后备份
+  会推送 S3 兼容对象存储，异地保留 30 份（`BACKUP_OFFSITE_KEEP`）；任一缺失显式
+  跳过异地，推送失败非零退出 + 飞书 webhook 告警（`BACKUP_ALERT_WEBHOOK_URL`）。
+  凭据建议放 `/opt/cyber-stray/backup.env`（root:600），运行前 source 注入。
 - 恢复流程已于 2026-08-16 在沙箱演练验证（备份 → 破坏 → 恢复 → SQLite 数据
   校验一致）。生产恢复前建议先停机演练。
 

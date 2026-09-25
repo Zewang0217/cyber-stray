@@ -11,7 +11,7 @@
 # 本地落盘后经 docker 跑 amazon/aws-cli 推送到 S3 兼容对象存储（不新增宿主机
 # 依赖），异地保留 BACKUP_OFFSITE_KEEP 份（默认 30）。未配置 = 显式跳过；
 # 配置了但推送失败 = 非零退出，并经 BACKUP_ALERT_WEBHOOK_URL（飞书 webhook）告警。
-# 凭据由 cyber-stray-backup.service 的 EnvironmentFile 注入，见 README。
+# 凭据建议放 /opt/cyber-stray/backup.env（root:600），运行前 source 注入，见 README。
 #
 # 用法: ./backup.sh
 set -euo pipefail
