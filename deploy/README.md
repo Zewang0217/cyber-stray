@@ -1,9 +1,9 @@
 # 部署
 
-单机容器化部署（ADR-0008）：compose 编排四个容器——control-plane（控制面 +
-agent，worker 是短命子进程）、web（Next.js standalone）、site（官网静态镜像，
-nginx 纯静态）、Casdoor（官方镜像 + SQLite）。构建在 GitHub Actions 完成，
-生产机只拉镜像、跑容器。
+单机容器化部署（ADR-0008 / ADR-0015）：compose 编排五个容器——control-plane
+（控制面 + agent，worker 是短命子进程）、web（Next.js standalone）、site（官网
+静态镜像）、Casdoor（官方镜像 + SQLite）、nginx（唯一对外入口）。构建在
+GitHub Actions 完成，生产机只拉镜像、跑容器。
 
 本目录是部署配置的权威版本，发布流水线每次同步到生产机 `/opt/cyber-stray/deploy/`。
 
@@ -15,7 +15,7 @@ nginx 纯静态）、Casdoor（官方镜像 + SQLite）。构建在 GitHub Actio
 | `container-update.sh` | 生产机更新：拉镜像 → 起容器 → 同步 casdoor 配置 → 健康门 → 镜像清理 |
 | `casdoor/app.conf` | Casdoor 服务配置；`container-update.sh` 比对内容，有变化才覆盖到 `/opt/cyber-stray/casdoor/conf/` 并重启 |
 | `backup.sh` / `restore.sh` | 备份 / 恢复 |
-| `nginx-sslip.conf` | Nginx + sslip.io + TLS 参考模板（生产机实际 nginx 配置在主机维护） |
+| `nginx/cyber-stray.conf` | nginx ingress 路由（阶段一 HTTP-only；域名备案后切 443，见 ADR-0015） |
 
 Casdoor 的密钥类内容不入库：OIDC 应用（client id/secret）在 Casdoor 管理界面
 创建后写入 `/opt/cyber-stray/.env`；`conf/init_data.json`（首启种子，含
@@ -28,6 +28,14 @@ clientSecret）仅在重建全新环境时手工放置。
 - `data/`：控制面（`tenants/<sub>/` 记忆 markdown、`control.db`、`master.key`、logs）
 - `casdoor/`：`conf/` + `casdoor.db`（目录属主须 1000:1000，原因见 compose 注释）
 - web / site 无本地状态
+
+## 入口与域名（ADR-0015）
+
+nginx 容器是唯一对外入口：`app.kleinbottle.top` → web、`auth.` → casdoor、
+apex → site，经 Cloudflare 橙云（SSL 模式 Full (strict)）。主机 nginx 改听
+:8081 只保留无关面板路由。**当前冻结在阶段一（HTTP + 公网 IP 直达）**：京东云
+拦截未备案域名的 :80/:443，证书签发与 issuer/origin 切换、casdoor 端口收口
+待备案通过后按 ADR-0015 冻结点清单同窗口执行。
 
 ## 发布 / 回滚
 
@@ -58,16 +66,16 @@ sudo /opt/cyber-stray/deploy/restore.sh /backup/cyber-stray/cyber-stray-<时间�
 
 ## 已知边界
 
-- PWA / Web Push 需要 HTTPS 安全上下文：生产须由 nginx 终结 TLS（443 → 回环
-  容器端口），`CASDOOR_REDIRECT_URI` / `CP_WEB_ORIGIN` 用对外 https 域名。
+- PWA / Web Push 需要 HTTPS 安全上下文：待域名备案后由 nginx ingress 终结 TLS
+  （ADR-0015 阶段二），`CASDOOR_REDIRECT_URI` / `CP_WEB_ORIGIN` 同窗口切 https 域名。
 - `CASDOOR_ISSUER` 必须是浏览器可直达的对外地址：authorize 端点由浏览器访问，
-  控制面容器内的 discovery 请求经宿主 nginx 转发，均不能用容器内网地址。
+  控制面容器内的 discovery 请求经 nginx ingress 转发，均不能用容器内网地址。
 - 单实例：调度器 / 推送网关内嵌控制面进程，多实例前需 DB 级租约。
 - SQLite 迁移单向：schema 变更必须兼容「旧代码读新 schema」，坏版本才能直接
   换 tag 回退（ADR-0009）。
 - Casdoor 默认 signupItems 含邮箱验证：未配 SMTP 时注册无法完成，生产配 SMTP
   或调整 signupItems。
 - `CP_ORIGIN` 构建期注入 web 镜像（默认 compose 网络内 `http://control-plane:8787`）。
-- site 对外路由：官网容器只绑 `127.0.0.1:3001`，营销域由宿主机 nginx 加 server
-  块反代（TLS 同 certbot 流程，模板见 `nginx-sslip.conf` 尾部注释）。官网 CTA
-  构建期烘焙，改 `vars.APP_URL` 后需重发一次才生效。
+- site 对外路由：官网容器只绑 `127.0.0.1:3001`；site 发布时把
+  `nginx/cyber-stray.conf` 的 apex 块 404 占位换成 `proxy_pass http://site`。
+  官网 CTA 构建期烘焙，改 `vars.APP_URL` 后需重发一次才生效。
