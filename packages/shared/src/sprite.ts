@@ -21,9 +21,13 @@ export interface SpriteContract {
   image: string;
   frame: { w: number; h: number; groundRow: number };
   animations: Record<string, SpriteAnimation>;
-  overlays: { hungry: { image: string; frames: number; duration: number } };
-  palette: Record<string, string>;
-  provenance: Record<string, string>;
+  /**
+   * hungry 眼睛叠加层。可选（领养生成的自定义精灵图没有内置猫的 eyes.png，
+   * 契约形状与 stray-boy.sprite.v2 同构、仅省略叠加层/色板/出处元数据）。
+   */
+  overlays?: { hungry: { image: string; frames: number; duration: number } };
+  palette?: Record<string, string>;
+  provenance?: Record<string, string>;
 }
 
 const ANIM_KEY_RE = /^[a-z0-9-]+$/i;
@@ -55,8 +59,8 @@ export function parseSpriteContract(raw: unknown): SpriteContract {
     }
     total += a.frames;
   }
-  if (!c.overlays?.hungry?.frames || !c.overlays.hungry.image
-    || !(c.overlays.hungry.duration > 0)) {
+  if (c.overlays && (!c.overlays.hungry?.frames || !c.overlays.hungry.image
+    || !(c.overlays.hungry.duration > 0))) {
     throw new Error("hungry 眼睛叠加层契约非法（frames/image/duration）");
   }
   return c;
@@ -82,12 +86,15 @@ export function animationCss(contract: SpriteContract): string {
         `to{background-position:calc(var(--sbp-step) * ${to}) 0}}`,
     );
   }
-  // 饥饿眼神：70% 闭眼（下垂）+ 30% 睁眼 peek——f1=闭、f2=睁（build_sprite.py 帧序）
-  const hungry = contract.overlays.hungry;
-  rules.push(
-    `@keyframes sbp-${id}-hungry{0%,${HUNGRY_CLOSED_PHASE - 1}%{background-position:0 0}` +
-      `${HUNGRY_CLOSED_PHASE}%,100%{background-position:calc(var(--sbp-step) * ${-(hungry.frames - 1)}) 0}}`,
-  );
+  // 饥饿眼神：70% 闭眼（下垂）+ 30% 睁眼 peek——f1=闭、f2=睁（build_sprite.py 帧序）；
+  // 自定义精灵图无叠加层 → 不生成 hungry keyframes
+  const hungry = contract.overlays?.hungry;
+  if (hungry) {
+    rules.push(
+      `@keyframes sbp-${id}-hungry{0%,${HUNGRY_CLOSED_PHASE - 1}%{background-position:0 0}` +
+        `${HUNGRY_CLOSED_PHASE}%,100%{background-position:calc(var(--sbp-step) * ${-(hungry.frames - 1)}) 0}}`,
+    );
+  }
   return rules.join("");
 }
 
@@ -96,10 +103,15 @@ export interface FrameStyleInput {
   anim: string;
   /** 显示边长（像素，32 的整数倍缩放；必须 integer 保像素纯度） */
   scale: number;
+  /**
+   * 精灵图资产根路径（尾斜杠不带）。缺省 = 内置资产 /pet/strayboy；
+   * 领养自定义精灵图传 /api/pet-assets（web 经 rewrite 代理 CP，session 鉴权）。
+   */
+  basePath?: string;
 }
 
 /** 单实例的播放样式：动画 + 首帧位置（reduced-motion 停帧即落在这里）。 */
-export function frameStyle({ contract, anim, scale }: FrameStyleInput): React.CSSProperties {
+export function frameStyle({ contract, anim, scale, basePath }: FrameStyleInput): React.CSSProperties {
   if (!Number.isInteger(scale) || scale <= 0) {
     throw new Error(`sprite 缩放须为正整数: ${String(scale)}`);
   }
@@ -115,7 +127,7 @@ export function frameStyle({ contract, anim, scale }: FrameStyleInput): React.CS
     width: w * scale,
     height: h * scale,
     "--sbp-step": `${w * scale}px`,
-    backgroundImage: `url(/pet/strayboy/${contract.image})`,
+    backgroundImage: `url(${basePath ?? "/pet/strayboy"}/${contract.image})`,
     backgroundSize: `${total * w * scale}px ${h * scale}px`,
     backgroundPosition: `calc(var(--sbp-step) * ${-a.from}) 0`,
     animation: `sbp-${id}-${anim} ${a.duration}s steps(${a.frames}) ${a.loop ? "infinite" : "forwards"}`,
@@ -126,6 +138,9 @@ export function frameStyle({ contract, anim, scale }: FrameStyleInput): React.CS
 export function hungryStyle(contract: SpriteContract, scale: number): React.CSSProperties {
   if (!Number.isInteger(scale) || scale <= 0) {
     throw new Error(`sprite 缩放须为正整数: ${String(scale)}`);
+  }
+  if (!contract.overlays) {
+    throw new Error("该契约无 hungry 叠加层（自定义精灵图不提供 eyes.png），禁渲染叠加层");
   }
   const id = contractId(contract);
   const { w, h } = contract.frame;

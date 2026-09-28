@@ -144,8 +144,50 @@ export interface PetAssetManifest {
     options?: { palette?: string; size?: string; note?: string };
     stylePreset?: PetPresetId;
   };
-  /** 概念图文件名（相对 pet-assets/） */
-  concept: string;
-  /** 状态表：每状态素材规格（自定义 IP = 单帧 frames:1 + 播放器程序微动画） */
-  states: Record<PetStateId, PetStateSpec>;
+  /** 概念图文件名（相对 pet-assets/）。领养上传参考图路径无概念图 → 可缺省 */
+  concept?: string;
+  /** 状态表：每状态素材规格。领养精灵图路径只含已生成动画的子集（v2 起可缺） */
+  states: Partial<Record<PetStateId, PetStateSpec>>;
+  /**
+   * 领养精灵图块（v2；单张 n×n 精灵图切分的横排总条，frames.json 同构——
+   * web 播放器据此直接建 SpriteContract 播放）。改造屋 quad/nine/per 路径
+   * 不产出此块（单帧静态素材，走程序微动画）。
+   */
+  sprite?: PetManifestSprite;
 }
+
+/** 领养精灵图块：单文件横排帧条 + 动画帧表（SpriteContract 的素材子集） */
+export interface PetManifestSprite {
+  /** 横排总条文件名（相对 pet-assets/；帧按 animations 次序横排） */
+  image: string;
+  frame: { w: number; h: number; groundRow: number };
+  animations: Record<string, { from: number; frames: number; duration: number; loop: boolean }>;
+}
+
+// ── 领养精灵图（单张 n×n 一致性方案）契约常量 ─────────────────────────
+
+/** 精灵图动画集：4×4 = 16 帧恰好填满（无空格——quad 路径主失败因即空位指令不顺从）。
+ * 帧序 = 行优先；时长对齐内置猫同状态动画（frames.json），街角手感一致。 */
+export const PET_SHEET_ANIMS: ReadonlyArray<{
+  state: PetStateId;
+  frames: number;
+  duration: number;
+}> = [
+  { state: 'idle', frames: 4, duration: 0.8 },
+  { state: 'walk', frames: 4, duration: 0.6 },
+  { state: 'sleep', frames: 2, duration: 1.6 },
+  { state: 'grumpy', frames: 2, duration: 1.2 },
+  { state: 'joy', frames: 2, duration: 0.4 },
+  { state: 'welcome', frames: 2, duration: 0.8 },
+];
+
+/** 精灵图网格边长 n（n×n 格） */
+export const PET_SHEET_GRID = 4;
+
+/** 切分后单帧边长 px（2K 出图 512px 格 ÷ 8 整数降采样，保像素纯净） */
+export const PET_SHEET_FRAME = 64;
+
+/** 精灵图动画 id 集（PetStateId 子集，校验 pendingStates 用） */
+export const PET_SHEET_STATE_IDS: ReadonlyArray<PetStateId> = PET_SHEET_ANIMS.map(
+  (a) => a.state,
+);
