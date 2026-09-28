@@ -40,10 +40,14 @@ export interface ControlPlaneConfig {
   arkApiKey: string;
   /** 生图模型（env CP_ARK_IMAGE_MODEL；Seedream 5.0 Lite，同步 API） */
   arkImageModel: string;
-  /** 视觉质检 API key（智谱；env ZHIPU_API_KEY） */
+  /** 视觉质检 API key（env CP_VISION_API_KEY 优先，回退 ZHIPU_API_KEY 智谱） */
   visionApiKey: string;
   /** 视觉质检模型（env CP_VISION_MODEL；GLM-4V-Flash 免费） */
   visionModel: string;
+  /** 视觉质检 OpenAI 兼容端点根（env CP_VISION_BASE_URL；空 = vision.ts 默认智谱） */
+  visionBaseUrl: string;
+  /** 视觉质检思考模式（env CP_VISION_THINKING，缺省开——ecnu-plus 关思考仅 2/8 基准） */
+  visionThinking: boolean;
   /** 宠物 IP 生成月度配额（套/自然月；env CP_PETGEN_MONTHLY_QUOTA，默认 2） */
   petGenMonthlyQuota: number;
   /** 生成任务处理器 tick 间隔 ms（0 = 关闭；#94） */
@@ -121,10 +125,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     workerMaxRetries: Number(env.CP_SCHEDULER_MAX_RETRIES ?? 2),
     arkApiKey: env.ARK_API_KEY ?? '',
     arkImageModel: env.CP_ARK_IMAGE_MODEL ?? 'doubao-seedream-5-0-260128',
-    visionApiKey: env.ZHIPU_API_KEY ?? '',
+    visionApiKey: env.CP_VISION_API_KEY ?? env.ZHIPU_API_KEY ?? '',
     // glm-4.5v：基准实测与人判一致率 6/8（flash 仅 2/8，连官方帧条都误杀）；
     // 计费模型——质检调用量受 maxQcRetries 收敛，CP_VISION_MODEL 可回退 flash
     visionModel: env.CP_VISION_MODEL ?? 'glm-4.5v',
+    visionBaseUrl: env.CP_VISION_BASE_URL ?? '',
+    visionThinking: env.CP_VISION_THINKING !== 'false',
     petGenMonthlyQuota: Number(env.CP_PETGEN_MONTHLY_QUOTA ?? 2),
     petGenIntervalMs: Number(env.CP_PETGEN_INTERVAL_MS ?? 5_000),
     shutdownBudgetMs: Number(env.CP_SHUTDOWN_BUDGET_MS ?? 90_000),

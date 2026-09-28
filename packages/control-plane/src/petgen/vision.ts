@@ -19,6 +19,14 @@ export interface VisionOptions {
   model: string;
   /** OpenAI 兼容端点根（不含 /chat/completions；默认智谱） */
   baseUrl?: string;
+  /**
+   * 思考模式（ECNU / 智谱同款 thinking 参数）。基准实测：ecnu-plus 关思考
+   * 2/8（官方帧条都误杀 + 放行坏 walk），开思考 6/8 且两轮全拦坏 walk——
+   * 视觉判定必须开思考才达到产线水位。
+   */
+  thinking?: boolean;
+  /** 采样温度（质检要判定稳定，产线配 0） */
+  temperature?: number;
   fetchFn?: typeof fetch;
 }
 
@@ -70,7 +78,7 @@ export function createVisionQc(apiKey: string, opts: VisionOptions): VisionQc {
   return {
     async inspect(req: VisionQcRequest) {
       if (!apiKey) {
-        throw new Error('缺少视觉质检 API key（环境变量 ZHIPU_API_KEY）');
+        throw new Error('缺少视觉质检 API key（env CP_VISION_API_KEY / ZHIPU_API_KEY）');
       }
       const [refDataUrl, stateDataUrl] = await Promise.all([
         imageToDataUrl(req.referencePath),
@@ -84,6 +92,10 @@ export function createVisionQc(apiKey: string, opts: VisionOptions): VisionQc {
         },
         body: JSON.stringify({
           model: opts.model,
+          ...(opts.thinking
+            ? { thinking: { type: 'enabled' }, reasoning_effort: 'medium' }
+            : {}),
+          ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
           messages: [
             {
               role: 'user',
@@ -97,7 +109,8 @@ export function createVisionQc(apiKey: string, opts: VisionOptions): VisionQc {
             },
           ],
         }),
-        signal: AbortSignal.timeout(60_000),
+        // 思考模式出 reasoning_content 再出正文，60s 会掐断有效调用
+        signal: AbortSignal.timeout(90_000),
       });
       if (!res.ok) {
         throw new Error(`质检调用失败: HTTP ${res.status} ${await res.text()}`);

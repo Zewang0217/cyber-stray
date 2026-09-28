@@ -95,7 +95,13 @@ const petGenProcessor = new PetGenProcessor({
     model: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).imageModel,
     size: '2K', // Seedream 5.0 无 1K 档，最小 2K（2048×2048）
   }),
-  visionQc: createVisionQc(config.visionApiKey, { model: config.visionModel }),
+  visionQc: createVisionQc(config.visionApiKey, {
+    model: config.visionModel,
+    // 空 = vision.ts 默认端点（智谱）；配 CP_VISION_BASE_URL 切任意 OpenAI 兼容端点
+    baseUrl: config.visionBaseUrl || undefined,
+    thinking: config.visionThinking,
+    temperature: 0, // 质检判定要稳定
+  }),
   splitter: createSplitter(),
   structureQc: createStructureQc(),
   // #129：petgen 生图/质检用量记录（no-throw）

@@ -9,7 +9,10 @@
  *   e2e-sleep(-raw/-4x)           真机产物，人判合格 → 应 PASS
  *
  * 用法：cd packages/control-plane && bun run scripts/try-vision-bench.ts
- * 环境：ZHIPU_API_KEY（智谱系模型）；ARK 走 baseUrl 时另配。
+ *   [--models glm-4.5v,ecnu-plus] [--base-url https://...] [--api-key-env CP_VISION_API_KEY]
+ * 默认智谱端点 + ZHIPU_API_KEY；ECNU 例：
+ *   bun run scripts/try-vision-bench.ts --models ecnu-plus \
+ *     --base-url https://chat.ecnu.edu.cn/open/api/v1 --api-key-env CP_VISION_API_KEY
  */
 
 import { readFileSync } from 'node:fs';
@@ -20,8 +23,18 @@ import { parseQcJson } from '../src/petgen/vision.js';
 import type { PetSpec } from '../src/petgen/types.js';
 
 const ZHIPU = 'https://open.bigmodel.cn/api/paas/v4';
-const apiKey = process.env.ZHIPU_API_KEY;
-if (!apiKey) throw new Error('缺 ZHIPU_API_KEY');
+
+function argOf(flag: string): string | undefined {
+  const i = process.argv.indexOf(flag);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
+const baseUrl = argOf('--base-url') ?? ZHIPU;
+const models = (argOf('--models') ?? 'glm-4v-flash,glm-4v-plus-0111,glm-4.5v').split(',');
+const keyEnv = argOf('--api-key-env') ?? 'ZHIPU_API_KEY';
+const thinking = process.argv.includes('--thinking');
+const temperature = argOf('--temperature');
+const apiKey = process.env[keyEnv];
+if (!apiKey) throw new Error(`缺 ${keyEnv}`);
 
 const dir = join(fileURLToPath(new URL('../../..', import.meta.url)), 'scratch', 'vision-bench');
 const spec: PetSpec = {
@@ -29,11 +42,7 @@ const spec: PetSpec = {
   stylePreset: 'pixel',
 };
 
-const MODELS = [
-  'glm-4v-flash', // 现役（免费轻量）
-  'glm-4v-plus-0111', // 智谱旗舰视觉
-  'glm-4.5v', // 智谱新一代视觉推理
-];
+const MODELS = models;
 
 interface Case {
   name: string;
@@ -63,6 +72,8 @@ function dataUrl(p: string): string {
 async function judge(model: string, c: Case): Promise<string> {
   const body = {
     model,
+    ...(thinking ? { thinking: { type: 'enabled' }, reasoning_effort: 'medium' } : {}),
+    ...(temperature !== undefined ? { temperature: Number(temperature) } : {}),
     messages: [
       {
         role: 'user',
@@ -74,7 +85,7 @@ async function judge(model: string, c: Case): Promise<string> {
       },
     ],
   };
-  const res = await fetch(`${ZHIPU}/chat/completions`, {
+  const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
