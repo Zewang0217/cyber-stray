@@ -69,6 +69,38 @@ def run(args: list[str], out: Path) -> dict:
     return json.loads((out / "meta.json").read_text())
 
 
+def synth_sheet_grid(n: int, empty_idx: int | None = None) -> Path:
+    """n×n sheet 网格:每格一个居中色块(绿底);empty_idx 格留纯绿(模拟空格)。
+    色块颜色随格序号变化,用于校验 sprite.png 的帧排布次序。"""
+    cell = 512
+    img = Image.new("RGB", (cell * n, cell * n), (0, 255, 0))
+    px = img.load()
+    # 固定非绿色板(避免合成色误中 chroma_key_green 的绿幕判定)
+    colors = [(255, 0, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 128, 255),
+              (255, 128, 0), (128, 0, 255), (255, 64, 64), (64, 64, 255), (192, 64, 192)]
+    for i in range(n * n):
+        if i == empty_idx:
+            continue
+        r, c = divmod(i, n)
+        col = colors[i % len(colors)]
+        for y in range(128, 400):
+            for x in range(128, 400):
+                px[c * cell + x, r * cell + y] = col
+    p = Path(tempfile.mkdtemp()) / f"sheet-{n}x{n}.png"
+    img.save(p)
+    return p
+
+
+def run_sheet(args: list[str], out: Path) -> dict:
+    """sheet 模式 runner:返回 --report 输出的 {"sheet": ...} JSON。"""
+    r = subprocess.run([sys.executable, str(SCRIPT), *args, "--out", str(out), "--report"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, f"exit {r.returncode}: {r.stderr}"
+    lines = [l for l in r.stdout.strip().splitlines() if l.startswith("{")]
+    assert lines, f"report 缺 JSON 行: {r.stdout}"
+    return json.loads(lines[-1])
+
+
 def main() -> None:
     # 1. strip 模式兼容
     out = Path(tempfile.mkdtemp())
@@ -120,6 +152,60 @@ def main() -> None:
     meta = run([str(p), "--grid", "--cells", "--cols", "2", "--states", "idle", "walk", "joy", "--out", str(out)], out)
     assert len(meta) == 3, f"纯绿 2x2 期望 3 状态,实际 {len(meta)}"
     print("PASS cells 2x2(纯绿背景,无白线)")
+
+    # 5. sheet 4×4 全动作全帧:16 格全填满
+    out = Path(tempfile.mkdtemp())
+    anims = "idle:4,walk:4,sleep:2,grumpy:2,joy:2,welcome:2"
+    grid = synth_sheet_grid(4)
+    report = run_sheet([str(grid), "--sheet", "4", "--anims", anims, "--frame", "64"], out)
+    assert report["sheet"]["emptyCells"] == 0, f"期望 0 空格: {report}"
+    for name, frames in (("idle", 4), ("walk", 4), ("sleep", 2), ("grumpy", 2), ("joy", 2), ("welcome", 2)):
+        im = Image.open(out / f"{name}.png")
+        assert im.size == (64 * frames, 64), f"{name} 尺寸 {im.size}"
+        alpha = np.array(im)[..., 3]
+        assert (alpha > 0).mean() > 0.02, f"{name} 内容缺失"
+    sprite = Image.open(out / "sprite.png")
+    assert sprite.size == (64 * 16, 64), f"sprite.png 尺寸 {sprite.size}"
+    # 帧排布:总条首帧 = 网格(0,0) 格的色块,第 5 帧 = 网格(0,4)→(1,0) 即 walk 首帧
+    assert np.array(sprite)[32, 32][3] > 0, "总条首帧应为 idle-f1"
+    sheet_meta = json.loads((out / "sheet-meta.json").read_text())
+    assert sheet_meta["grid"] == "4x4" and sheet_meta["frame"] == 64
+    assert len(sheet_meta["anims"]["idle"]["ratios"]) == 4
+    print("PASS sheet 4×4(16 帧全填满 + sprite.png 总条)")
+
+    # 6. sheet 空格记录:第 5 格(行优先 walk-f1)留纯绿 → emptyCells=1 且该帧全透明
+    out = Path(tempfile.mkdtemp())
+    grid = synth_sheet_grid(4, empty_idx=4)
+    report = run_sheet([str(grid), "--sheet", "4", "--anims", anims, "--frame", "64"], out)
+    assert report["sheet"]["emptyCells"] == 1, f"期望 1 空格: {report}"
+    walk = np.array(Image.open(out / "walk.png"))
+    assert (walk[:, :64, 3] > 0).sum() == 0, "walk-f1(空格)应为全透明"
+    assert (walk[:, 64:, 3] > 0).mean() > 0.02, "walk-f2~f4 应有内容"
+    print("PASS sheet 空格记录(空格不判死,交处理器按 meta 重试)")
+
+    # 7. sheet 入参校验:帧数总和 != n×n 应退出非零
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), str(grid), "--sheet", "4",
+         "--anims", "idle:4,walk:4", "--frame", "64", "--out", str(Path(tempfile.mkdtemp()))],
+        capture_output=True, text=True)
+    assert r.returncode != 0, "帧数总和不匹配应退出非零"
+    print("PASS sheet 入参校验(帧数总和不符即报错)")
+
+    # 8. strip 降级:1x4 行条(单动画重生成,rows=1 cols=4)
+    strip_img = Path(tempfile.mkdtemp()) / "strip-1x4.png"
+    im = Image.new("RGB", (512 * 4, 512), (0, 255, 0))
+    px = im.load()
+    for i in range(4):
+        for y in range(128, 400):
+            for x in range(128 + i * 512, 400 + i * 512):
+                px[x, y] = (255, 0, 0)
+    im.save(strip_img)
+    out = Path(tempfile.mkdtemp())
+    report = run_sheet([str(strip_img), "--sheet", "1x4", "--anims", "idle:4", "--frame", "64"], out)
+    assert report["sheet"]["emptyCells"] == 0
+    assert Image.open(out / "idle.png").size == (64 * 4, 64)
+    assert Image.open(out / "sprite.png").size == (64 * 4, 64)
+    print("PASS sheet 1x4(strip 降级行条)")
 
     print("\nALL TESTS PASSED")
 
