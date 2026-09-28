@@ -29,7 +29,7 @@ describe("stray-boy.sprite.v2 契约", () => {
     expect(contract.animations.sleep).toEqual({ from: 12, frames: 2, duration: 1.6, loop: true });
     expect(contract.animations.pat).toEqual({ from: 22, frames: 2, duration: 0.4, loop: false });
     expect(contract.animations.pounce).toEqual({ from: 24, frames: 2, duration: 0.4, loop: false });
-    expect(contract.overlays.hungry).toEqual({ image: "eyes.png", frames: 2, duration: 1.2 });
+    expect(contract.overlays?.hungry).toEqual({ image: "eyes.png", frames: 2, duration: 1.2 });
   });
 
   it("坏契约显式抛错（禁兜底）", () => {
@@ -98,5 +98,47 @@ describe("播放换算", () => {
     expect(style.backgroundImage).toContain("eyes.png");
     expect(style.backgroundSize).toBe(`${2 * 32 * 2}px 64px`);
     expect(style.animation).toContain("1.2s steps(2)");
+  });
+});
+
+describe("自定义精灵图契约（领养 sprite 管线；无叠加层/色板元数据）", () => {
+  // 与 CP finalizeSheet 写出的形状同构（16 帧 64px，sprite.png 总条）
+  function customContract(): SpriteContract {
+    return parseSpriteContract({
+      contract: "stray-boy.sprite.v2",
+      image: "sprite.png",
+      frame: { w: 64, h: 64, groundRow: 63 },
+      animations: {
+        idle: { from: 0, frames: 4, duration: 0.8, loop: true },
+        walk: { from: 4, frames: 4, duration: 0.6, loop: true },
+        joy: { from: 8, frames: 2, duration: 0.4, loop: true },
+      },
+    });
+  }
+
+  it("无 overlays/无 palette/provenance 也合法（可选字段向后兼容）", () => {
+    const c = customContract();
+    expect(c.overlays).toBeUndefined();
+    expect(c.animations.idle).toEqual({ from: 0, frames: 4, duration: 0.8, loop: true });
+  });
+
+  it("animationCss 不产出 hungry keyframes（无叠加层）", () => {
+    expect(animationCss(customContract())).not.toContain("hungry");
+  });
+
+  it("frameStyle basePath 指向自定义素材根", () => {
+    const style = frameStyle({ contract: customContract(), anim: "idle", scale: 3, basePath: "/api/pet-assets" });
+    expect(style.backgroundImage).toBe("url(/api/pet-assets/sprite.png)");
+    expect(style.width).toBe(192);
+    expect(style.backgroundSize).toBe(`${10 * 64 * 3}px 192px`);
+  });
+
+  it("frameStyle 缺省 basePath 仍指内置资产（site/既有消费方不受影响）", () => {
+    const style = frameStyle({ contract: loadContract(), anim: "idle", scale: 3 });
+    expect(style.backgroundImage).toBe("url(/pet/strayboy/cat.png)");
+  });
+
+  it("hungryStyle 对无叠加层契约抛错（禁渲染不存在的 eyes 层）", () => {
+    expect(() => hungryStyle(customContract(), 2)).toThrow(/无 hungry 叠加层/);
   });
 });

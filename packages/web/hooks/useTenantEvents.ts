@@ -16,6 +16,8 @@ const REFRESH_EVENT_TYPES = new Set<TenantEvent["type"]>([
   "diary_generated",
   "budget_exhausted",
   "budget_resumed",
+  // 领养精灵图就绪：街角重拉 manifest 热换形象
+  "pet_assets_ready",
 ]);
 
 interface UseTenantEventsReturn {
