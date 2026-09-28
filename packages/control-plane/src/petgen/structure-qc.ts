@@ -61,10 +61,17 @@ export function createStructureQc(opts: StructureQcOptions = {}): StructureQc {
   const spawnFn = opts.spawnFn ?? realSpawn;
 
   return {
-    async inspect(statesDir, states) {
+    async inspect(statesDir, states, opts) {
+      const frame = opts?.frame ?? 256;
+      const frames = opts?.frames ?? {};
+      // 帧数 >1 的状态以 name:frames 形式传给脚本（横排帧条按 frames×frame 宽校验）
+      const tokens = states.map((s) => {
+        const n = frames[s];
+        return n && n > 1 ? `${s}:${n}` : s;
+      });
       const { exitCode, stdout, stderr } = await spawnFn(
         pythonCmd,
-        [QC_STRUCTURE_PY, statesDir, ...states],
+        [QC_STRUCTURE_PY, statesDir, ...tokens, '--frame', String(frame)],
         { timeoutMs },
       );
       // 脚本已把单个失败态输出为 ok:false 的 JSON；非 JSON 输出 / 崩溃 → 显式抛

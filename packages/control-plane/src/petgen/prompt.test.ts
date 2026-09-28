@@ -7,7 +7,15 @@
 
 import { describe, it, expect } from 'vitest';
 import { PET_STYLE_PRESETS, type PetStateId } from '@cyber-stray/shared/pet';
-import { buildConceptPrompt, buildGridPrompt, buildQcPrompt } from './prompt.js';
+import {
+  buildAnimQcPrompt,
+  buildConceptPrompt,
+  buildGridPrompt,
+  buildQcPrompt,
+  buildSheetPrompt,
+  buildStripPrompt,
+  sheetRowOf,
+} from './prompt.js';
 import type { PetSpec } from './types.js';
 
 const spec: PetSpec = {
@@ -66,5 +74,41 @@ describe('buildQcPrompt', () => {
     expect(prompt).toContain('"pass"');
     expect(prompt).toContain('文字、水印');
     expect(prompt).toContain('畸形');
+  });
+});
+
+describe('buildSheetPrompt / buildStripPrompt / buildAnimQcPrompt（领养精灵图）', () => {
+  it('sheet prompt：网格规格 + 逐行动作帧描述 + 布局纪律', () => {
+    const rows = [
+      sheetRowOf('idle', 4),
+      sheetRowOf('walk', 4),
+      sheetRowOf('sleep', 2),
+    ];
+    const prompt = buildSheetPrompt(spec, PET_STYLE_PRESETS['pixel'], rows, 4);
+    expect(prompt).toContain('4x4');
+    expect(prompt).toContain('一只戴红色围巾的橘猫');
+    expect(prompt).toContain('待机呼吸连续4帧');
+    expect(prompt).toContain('游荡连续4帧');
+    expect(prompt).toContain('休息连续2帧');
+    expect(prompt).toContain('脚底都贴在同一水平线');
+    expect(prompt).toContain('#00FF00');
+  });
+
+  it('sheetRowOf：未知状态抛错（禁兜底）', () => {
+    expect(() => sheetRowOf('不存在' as PetStateId, 2)).toThrow(/未知宠物状态/);
+  });
+
+  it('strip prompt：1 行 N 列连续帧（降级策略）', () => {
+    const prompt = buildStripPrompt(spec, PET_STYLE_PRESETS['pixel'], '开心', 2, '第1帧跳起,第2帧落地');
+    expect(prompt).toContain('1 行 2 列');
+    expect(prompt).toContain('开心');
+    expect(prompt).toContain('第1帧跳起');
+  });
+
+  it('动画帧条质检 prompt：含帧间一致性判定', () => {
+    const prompt = buildAnimQcPrompt('walk', 4, spec);
+    expect(prompt).toContain('4 帧');
+    expect(prompt).toContain('帧与帧之间角色外观不一致');
+    expect(prompt).toContain('"pass"');
   });
 });

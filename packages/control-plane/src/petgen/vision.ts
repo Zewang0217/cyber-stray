@@ -11,7 +11,7 @@
 import { readFile } from 'fs/promises';
 import { extname } from 'path';
 import type { VisionQc, VisionQcRequest } from './types.js';
-import { buildQcPrompt } from './prompt.js';
+import { buildAnimQcPrompt, buildQcPrompt } from './prompt.js';
 
 export const DEFAULT_VISION_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4';
 
@@ -90,7 +90,9 @@ export function createVisionQc(apiKey: string, opts: VisionOptions): VisionQc {
               content: [
                 { type: 'image_url', image_url: { url: refDataUrl } },
                 { type: 'image_url', image_url: { url: stateDataUrl } },
-                { type: 'text', text: buildQcPrompt(req.state, req.spec) },
+                { type: 'text', text: (req.frames ?? 1) >= 2
+                  ? buildAnimQcPrompt(req.state, req.frames ?? 1, req.spec)
+                  : buildQcPrompt(req.state, req.spec) },
               ],
             },
           ],

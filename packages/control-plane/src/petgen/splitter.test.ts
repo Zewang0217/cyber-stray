@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createSplitter, type SpawnLike } from './splitter.js';
@@ -89,6 +89,96 @@ describe('createSplitter.splitGrid', () => {
     await expect(
       splitter.splitGrid(join(tmp, 'g.png'), ['idle', 'walk', 'joy'], { cols: 2, outDir: tmp }),
     ).rejects.toThrow(/缺状态文件: joy/);
+  });
+});
+
+describe('createSplitter.splitSheet（领养精灵图）', () => {
+  let tmp: string;
+  let seenArgs: string[][];
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'cp-petgen-sheet-'));
+    seenArgs = [];
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function fakeSpawn(stdout: string, exitCode = 0, touch = false): SpawnLike {
+    return (async (_cmd, args, _opts) => {
+      seenArgs.push(args);
+      if (touch) {
+        const outDir = args[args.indexOf('--out') + 1]!;
+        mkdirSync(outDir, { recursive: true });
+        writeFileSync(join(outDir, 'sprite.png'), 'fake-png');
+      }
+      return { exitCode, stdout, stderr: '' };
+    }) as SpawnLike;
+  }
+
+  const REPORT = JSON.stringify({
+    sheet: {
+      grid: '4x4',
+      frame: 64,
+      emptyCells: 0,
+      anims: {
+        idle: { frames: 4, ratios: [0.3, 0.3, 0.3, 0.3] },
+        walk: { frames: 4, ratios: [0.3, 0.3, 0.3, 0.3] },
+      },
+    },
+  });
+
+  const ANIMS = [
+    { state: 'idle' as const, frames: 4 },
+    { state: 'walk' as const, frames: 4 },
+  ];
+
+  it('构造 --sheet 4 --anims state:frames 参数并解析报告', async () => {
+    const splitter = createSplitter({ spawnFn: fakeSpawn(REPORT, 0, true) });
+    const outDir = join(tmp, 'states');
+    const result = await splitter.splitSheet(join(tmp, 'sheet.png'), {
+      rows: 4, cols: 4, anims: ANIMS, frame: 64, outDir,
+    });
+    const args = seenArgs[0]!;
+    expect(args).toContain('--sheet');
+    expect(args).toContain('4');
+    expect(args).toContain('--anims');
+    expect(args).toContain('idle:4,walk:4');
+    expect(args).toContain('--frame');
+    expect(args).toContain('64');
+    expect(result.emptyCells).toBe(0);
+    expect(result.frames).toEqual({ idle: 4, walk: 4 });
+    expect(result.files['idle']).toBe(join(outDir, 'idle.png'));
+  });
+
+  it('strip 降级：rows != cols 时 --sheet 传 RxC', async () => {
+    const splitter = createSplitter({ spawnFn: fakeSpawn(REPORT, 0, true) });
+    await splitter.splitSheet(join(tmp, 'strip.png'), {
+      rows: 1, cols: 4, anims: ANIMS, frame: 64, outDir: join(tmp, 'states'),
+    });
+    expect(seenArgs[0]).toContain('1x4');
+  });
+
+  it('报告缺动画 → 抛错（禁兜底）', async () => {
+    const bad = JSON.stringify({
+      sheet: { grid: '4x4', frame: 64, emptyCells: 0, anims: { idle: { frames: 4, ratios: [] } } },
+    });
+    const splitter = createSplitter({ spawnFn: fakeSpawn(bad) });
+    await expect(
+      splitter.splitSheet(join(tmp, 'sheet.png'), {
+        rows: 4, cols: 4, anims: ANIMS, frame: 64, outDir: join(tmp, 'states'),
+      }),
+    ).rejects.toThrow(/缺动画/);
+  });
+
+  it('sprite.png 未落盘 → 抛错（总条是播放器消费物）', async () => {
+    const splitter = createSplitter({ spawnFn: fakeSpawn(REPORT) });
+    await expect(
+      splitter.splitSheet(join(tmp, 'sheet.png'), {
+        rows: 4, cols: 4, anims: ANIMS, frame: 64, outDir: join(tmp, 'states'),
+      }),
+    ).rejects.toThrow(/ENOENT/);
   });
 });
 

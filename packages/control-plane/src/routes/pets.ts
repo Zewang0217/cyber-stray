@@ -34,6 +34,8 @@ import { findUserTenantRelation } from '../infra/tenant-access.js';
 import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { createPetsService, type AdoptInput } from '../services/pets-service.js';
+import { createPetGenService, type PetGenService } from '../services/petgen-service.js';
+import type { PetSpec } from '../petgen/types.js';
 
 export interface PetsDeps {
   config: Pick<
@@ -42,10 +44,45 @@ export interface PetsDeps {
     | 'sessionSecret'
     | 'llmBudgetEnabled'
     | 'llmBudgetYuan'
+    | 'petGenMonthlyQuota'
   >;
 }
 
 const jsonError = (message: string) => ({ success: false, error: message });
+
+/** 领养参考图限制（类型白名单 + 8MB 上限；更严的图片合法性由压平步骤校验） */
+const ADOPT_REFERENCE_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const ADOPT_REFERENCE_MAX_BYTES = 8 * 1024 * 1024;
+
+/**
+ * 领养属性 → 精灵图 spec（确定性模板；风格锁 pixel——街角是像素宇宙，
+ * 用户参考图经 img2img 转绘为像素精灵）。
+ */
+function buildAdoptSheetSpec(input: AdoptInput): PetSpec {
+  const personality = getPersonality(input.personality);
+  return {
+    specText:
+      `主人领养的宠物「${input.name}」,性格${personality.name}(${personality.description}),` +
+      `对${input.interests.join('、')}感兴趣`,
+    stylePreset: 'pixel',
+  };
+}
+
+/** 领养精灵图任务 best-effort 提交：配额耗尽/提交失败只记日志，不影响领养结果 */
+async function submitAdoptSheetTaskQuietly(
+  service: PetGenService,
+  tenantId: string,
+  input: AdoptInput,
+): Promise<void> {
+  try {
+    const outcome = await service.submitAdoptSheetTask(tenantId, buildAdoptSheetSpec(input));
+    if (!outcome.ok) {
+      console.warn(`[pets] 领养精灵图配额耗尽，跳过生成（租户 ${tenantId}）`);
+    }
+  } catch (error) {
+    console.error(`[pets] 领养精灵图任务提交失败（租户 ${tenantId}）：`, error);
+  }
+}
 
 /** 鉴权 + 租户校验：401 / 403 / { tenantId }（与 feedback.ts 同规矩） */
 async function scopedTenantId(
@@ -116,6 +153,7 @@ function parseAdoptBody(body: AdoptBody): AdoptInput | { invalid: string } {
 
 export function createPetsRoutes({ config }: PetsDeps): Hono {
   const service = createPetsService({ config });
+  const petGenService = createPetGenService({ config });
   const app = new Hono();
 
   /** GET /api/pets — 当前租户宠物列表（含 budgetPaused 初始态） */
@@ -147,6 +185,12 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
     }
 
     const outcome = await service.adopt(scoped.tenantId, parsed);
+    if (outcome.ok) {
+      // 领养精灵图（领养不阻塞）：内部 try/catch 吞失败只记日志；await 只覆盖
+      // 建行（毫秒级 DB 写），真正的生图在 petgen 异步队列推进，素材就绪后经
+      // pet_assets_ready 事件热替换形象
+      await submitAdoptSheetTaskQuietly(petGenService, scoped.tenantId, parsed);
+    }
     return outcome.ok
       ? c.json({ success: true, data: outcome.data }, 201)
       : c.json(
@@ -157,6 +201,44 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
           },
           outcome.status,
         );
+  });
+
+  /** POST /api/pets/adopt/reference — 上传形象参考图（图生图角色锚点，可选） */
+  app.post('/pets/adopt/reference', async (c) => {
+    const scoped = await scopedTenantId(c.req.raw, config);
+    if ('error' in scoped) {
+      return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
+    }
+    let file: File;
+    try {
+      const form = await c.req.formData();
+      const entry = form.get('file');
+      if (!(entry instanceof File)) {
+        return c.json(jsonError('缺少 file 字段（multipart/form-data）'), 400);
+      }
+      file = entry;
+    } catch {
+      return c.json(jsonError('请求体须为 multipart/form-data'), 400);
+    }
+    if (!ADOPT_REFERENCE_MIME.has(file.type)) {
+      return c.json(jsonError('仅支持 PNG/JPEG/WebP 图片'), 400);
+    }
+    if (file.size > ADOPT_REFERENCE_MAX_BYTES) {
+      return c.json(jsonError('图片须 ≤ 8MB'), 400);
+    }
+    try {
+      await petGenService.saveAdoptReference(
+        scoped.tenantId,
+        Buffer.from(await file.arrayBuffer()),
+      );
+    } catch (error) {
+      // 压平失败 = 图片不可解析/脚本异常——显式报错让用户换图，不静默吞
+      return c.json(
+        jsonError(`参考图处理失败：${error instanceof Error ? error.message : String(error)}`),
+        400,
+      );
+    }
+    return c.json({ success: true, data: { uploaded: true } });
   });
 
   /** PUT /api/pets/sleep-schedule — 设置作息（本地小时；跨午夜合法） */

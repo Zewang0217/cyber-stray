@@ -18,7 +18,7 @@ import { join } from 'path';
 import { Hono } from 'hono';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { pets, tenants } from '../db/schema.js';
+import { petGenTasks, pets, tenants } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { getOrCreateTenant, tenantDataDir } from '../infra/tenant.js';
 import { signSession, SESSION_COOKIE } from '../auth/session.js';
@@ -44,6 +44,7 @@ describe('pets 路由（领养）', () => {
       sessionSecret: SECRET,
       llmBudgetEnabled: true,
       llmBudgetYuan: { free: 0.5, pro: 2, byok: 2 },
+      petGenMonthlyQuota: 2,
     } as Parameters<
       typeof createPetsRoutes
     >[0]['config'];
@@ -255,6 +256,48 @@ describe('pets 路由（领养）', () => {
       }),
     );
     expect(emptyInterest.status).toBe(400);
+  });
+
+  it('adopt 自动建领养精灵图任务：strategy=sheet + pixel 预设 + spec 拼领养属性', async () => {
+    await app.request(
+      await authed('http://x/api/pets/adopt', {
+        method: 'POST',
+        body: JSON.stringify({ name: '阿橘', interests: ['小鱼干'], personality: 'playful' }),
+      }),
+    );
+    const db = await getDb(dataDir);
+    const rows = await db.select().from(petGenTasks).all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.strategy).toBe('sheet');
+    expect(rows[0]?.stylePreset).toBe('pixel');
+    expect(rows[0]?.specText).toContain('阿橘');
+    expect(rows[0]?.specText).toContain('小鱼干');
+  });
+
+  it('上传参考图：未登录 401；非 multipart 400；mime 白名单外 400', async () => {
+    expect(
+      (await app.request('/api/pets/adopt/reference', { method: 'POST' })).status,
+    ).toBe(401);
+    // 缺 file 字段（JSON content-type 会走 formData 解析失败或缺字段）
+    const noFile = await app.request(
+      await authed('http://x/api/pets/adopt/reference', { method: 'POST' }),
+    );
+    expect(noFile.status).toBe(400);
+    // mime 不在白名单（校验先于落盘，不触真实压平脚本）。
+    // 注意不可复用 authed()——它强设 JSON content-type 会毁掉 multipart 边界
+    const token = await signSession({ sub: 'alice', tenantId: 'alice' }, SECRET);
+    const form = new FormData();
+    form.set('file', new File(['x'], 'a.gif', { type: 'image/gif' }));
+    const badMime = await app.request(
+      new Request('http://x/api/pets/adopt/reference', {
+        method: 'POST',
+        body: form,
+        headers: { cookie: `${SESSION_COOKIE}=${token}` },
+      }),
+    );
+    expect(badMime.status).toBe(400);
+    const badBody = (await badMime.json()) as { error: string };
+    expect(badBody.error).toContain('PNG/JPEG/WebP');
   });
 
   it('租户隔离：alice adopt 后 bob 列表仍空', async () => {
@@ -492,6 +535,7 @@ describe('adopt 口头禅（#114 切片 2）', () => {
       sessionSecret: SECRET,
       llmBudgetEnabled: true,
       llmBudgetYuan: { free: 0.5, pro: 2, byok: 2 },
+      petGenMonthlyQuota: 2,
     } as Parameters<
       typeof createPetsRoutes
     >[0]['config'];

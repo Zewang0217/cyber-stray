@@ -88,6 +88,8 @@ scheduler.start(config.schedulerIntervalMs);
 const petGenProcessor = new PetGenProcessor({
   dataDir: config.dataDir,
   db: await getDb(config.dataDir),
+  // pet_assets_ready 事件（领养精灵图就绪 → web 拉 manifest 换形象）
+  bus,
   imageGen: createImageGenerator(config.arkApiKey, {
     // #131：每次 generate 读配置缓存（admin 改面板 → 下次生图即生效，无重启）
     model: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).imageModel,

@@ -15,6 +15,35 @@ const GREEN_SCREEN = '纯绿色背景(#00FF00)作为绿幕,角色完整可见,�
 /** 通用禁止项（图文分离 + 防水印） */
 const NEGATIVES = '不要文字,不要水印,不要签名,不要边框,不要其他物体,单一角色';
 
+/**
+ * 精灵图逐帧姿态提示（PET_SHEET_ANIMS 全集；确定性模板的一部分）。
+ * 每格内容锁死到词面——「连续 N 帧自由发挥」是格间漂移主因。
+ */
+const SHEET_FRAME_HINTS: Record<PetStateId, string> = {
+  idle: '第1帧正常坐姿,第2帧身体微微鼓起(吸气),第3帧回到正常坐姿,第4帧身体微微压低(呼气)',
+  walk: '侧面朝左行走的走路循环:第1帧迈出左前腿,第2帧四腿收拢中间过渡,第3帧迈出右后腿,第4帧回到中间过渡',
+  sleep: '第1帧闭眼趴下头贴地,第2帧头微微点动一下',
+  grumpy: '第1帧把头别向一边不理人,第2帧斜眼瞪回来',
+  joy: '第1帧原地小跳起(四脚离地),第2帧落地眼睛弯成月牙',
+  welcome: '第1帧举起右前爪打招呼,第2帧放下爪子',
+  celebrate: '第1帧跳起双爪上举,第2帧落地开心张望',
+  eat: '第1帧低头咬一口,第2帧抬头咀嚼',
+  think: '第1帧歪头凝视,第2帧头回正',
+};
+
+/** sheet prompt 行描述组装（processor 调用；行序即 PET_SHEET_ANIMS 声明序） */
+export function sheetRowOf(state: PetStateId, frames: number): {
+  label: string;
+  frames: number;
+  hint: string;
+} {
+  const spec = PET_STATES[state];
+  if (!spec) {
+    throw new Error(`未知宠物状态: ${String(state)}（注册表 PET_STATES 中不存在）`);
+  }
+  return { label: spec.label, frames, hint: SHEET_FRAME_HINTS[state] };
+}
+
 /** 可选选项拼进 prompt（存在才追加） */
 function optionsFragment(spec: PetSpec): string {
   const { options } = spec;
@@ -41,8 +70,7 @@ export function buildConceptPrompt(spec: PetSpec, preset: PetStylePreset): strin
 /** 网格布局（spike 结论：四宫格主路径 / 九宫格备选 / 逐状态回退） */
 export type GridLayout = '2x2' | '3x3' | '1x1';
 
-/**
- * 网格图 prompt：同角色多状态单图（ADR-0001 单图多状态 + 静态帧）。
+/** 网格图 prompt：同角色多状态单图（ADR-0001 单图多状态 + 静态帧）。
  * 2x2：3 状态 + 右下角留空 1 格（纯绿）；3x3：9 状态各占一格；1x1：单状态单图。
  */
 export function buildGridPrompt(
@@ -62,6 +90,72 @@ export function buildGridPrompt(
     `同一个角色(${spec.specText})的${names}${states.length > 1 ? '共' : ''}${states.length}个动作状态,` +
     `画风保持一致:${preset.promptFragment}。${layoutHint},状态名顺序:${names}。` +
     `每个格子角色完整不出格,${GREEN_SCREEN}。${NEGATIVES}。`
+  );
+}
+
+// ── 领养精灵图（sheet/strip）──
+// 一致性方案：单张图承载全部动作全部帧，角色一致靠「同一次生成」而非参考图串联。
+// 帧姿态逐格显式描述——模型对「连续动画帧」的自由发挥是格间漂移主因，锁死每格内容。
+
+/** 精灵图布局约束（sheet/strip 共用；确定性等分切分的约定前提） */
+const SHEET_LAYOUT_RULES =
+  '严格按网格排布,格子大小完全一致,网格线用细白线,每个格子角色大小一致、全身完整不出格,' +
+  '所有格子的脚底都贴在同一水平线上,行优先排列';
+
+/**
+ * 精灵图整张 prompt：单张 n×n 承载全部动作全部帧（领养路径主策略）。
+ * 行=动画、行内=帧序；当前 4×4 布局 16 帧恰好填满（shared PET_SHEET_ANIMS），无空格——
+ * 空位指令不顺从是 quad 路径的主失败因，全填满直接消除该失败模式。
+ */
+export function buildSheetPrompt(
+  spec: PetSpec,
+  preset: PetStylePreset,
+  rows: ReadonlyArray<{ label: string; frames: number; hint: string }>,
+  grid: number,
+): string {
+  const rowDesc = rows
+    .map((r, i) => `第${i + 1}行(${r.label}连续${r.frames}帧):${r.hint}`)
+    .join(';');
+  return (
+    `同一个角色(${spec.specText})的像素游戏精灵图(sprite sheet),一张 ${grid}x${grid} 网格图。` +
+    `${rowDesc}。${SHEET_LAYOUT_RULES}。画风保持一致:${preset.promptFragment}。` +
+    `${GREEN_SCREEN}。${NEGATIVES}。`
+  );
+}
+
+/**
+ * 精灵图单动画横排 prompt（strip 降级策略：某动画重生成,1×n 一行连续帧）。
+ * 行内一致性仍在单图内保证——这是 sheet 失败后仍优于逐状态的原因。
+ */
+export function buildStripPrompt(
+  spec: PetSpec,
+  preset: PetStylePreset,
+  label: string,
+  frames: number,
+  hint: string,
+): string {
+  return (
+    `同一个角色(${spec.specText})的像素游戏动画帧条,一张 1 行 ${frames} 列的横排网格图,` +
+    `从左到右是${label}的连续${frames}帧:${hint}。${SHEET_LAYOUT_RULES}。` +
+    `画风保持一致:${preset.promptFragment}。${GREEN_SCREEN}。${NEGATIVES}。`
+  );
+}
+
+/**
+ * 精灵图动画帧条语义质检 prompt（frames≥2：加帧间角色/动作连贯性判定,
+ * 一致性方案的核心防线——单帧质检抓不住格间漂移）。
+ */
+export function buildAnimQcPrompt(state: PetStateId, frames: number, spec: PetSpec): string {
+  return (
+    `这张图是从左到右横排的 ${frames} 帧动画帧条,应展示宠物状态的"${PET_STATES[state].label}"(${state})` +
+    `的连续动作。角色描述:${spec.specText}。请严格按以下 JSON 格式回答(只输出 JSON):` +
+    `{"pass": true/false, "issues": ["问题1", ...]}` +
+    `。pass=false 当且仅当:1)动作/姿态明显不是该状态;` +
+    `2)帧与帧之间角色外观不一致(颜色/体型/服装细节跳变)或角色缺失;` +
+    `3)画面含文字、水印、签名或明显边框;` +
+    `4)角色畸形(缺肢/断裂/模糊成一团);` +
+    `5)角色与描述差异过大(物种/颜色/体型完全不同)。` +
+    `若全部符合则 pass=true,issues 为空数组。`
   );
 }
 
