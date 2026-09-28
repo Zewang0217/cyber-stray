@@ -6,7 +6,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { PET_STYLE_PRESETS, type PetStateId } from '@cyber-stray/shared/pet';
+import {
+  PET_SHEET_ANIMS,
+  PET_STYLE_PRESETS,
+  type PetStateId,
+} from '@cyber-stray/shared/pet';
 import {
   buildAnimQcPrompt,
   buildConceptPrompt,
@@ -78,24 +82,31 @@ describe('buildQcPrompt', () => {
 });
 
 describe('buildSheetPrompt / buildStripPrompt / buildAnimQcPrompt（领养精灵图）', () => {
-  it('sheet prompt：网格规格 + 逐行动作帧描述 + 布局纪律', () => {
-    const rows = [
-      sheetRowOf('idle', 4),
-      sheetRowOf('walk', 4),
-      sheetRowOf('sleep', 2),
-    ];
-    const prompt = buildSheetPrompt(spec, PET_STYLE_PRESETS['pixel'], rows, 4);
+  it('sheet prompt：网格规格 + 动画按帧数打包进 4 行 + 布局纪律', () => {
+    const prompt = buildSheetPrompt(spec, PET_STYLE_PRESETS['pixel'], PET_SHEET_ANIMS, 4);
     expect(prompt).toContain('4x4');
     expect(prompt).toContain('一只戴红色围巾的橘猫');
-    expect(prompt).toContain('待机呼吸连续4帧');
-    expect(prompt).toContain('游荡连续4帧');
-    expect(prompt).toContain('休息连续2帧');
+    expect(prompt).toContain('恰好4行每行4格');
+    // 第 1/2 行 = 单动画整行（idle/walk 各 4 帧）
+    expect(prompt).toContain('第1行共4格,从左到右:待机呼吸(idle)连续帧:');
+    expect(prompt).toContain('第2行共4格,从左到右:游荡(walk)连续帧:');
+    // 第 3/4 行 = 两动画拼行（帧数打包，行数必须等于网格行数——错位 bug 回归锚）
+    expect(prompt).toContain('第3行共4格,从左到右:休息(sleep)连续帧:'); 
+    expect(prompt).toContain('不爽(grumpy)连续帧:');
+    expect(prompt).toContain('第4行共4格,从左到右:开心(joy)连续帧:');
+    expect(prompt).toContain('打招呼(welcome)连续帧:');
     expect(prompt).toContain('脚底都贴在同一水平线');
     expect(prompt).toContain('#00FF00');
   });
 
+  it('sheet prompt：帧数总和 != n×n 抛错（防 prompt 与网格不符）', () => {
+    expect(() =>
+      buildSheetPrompt(spec, PET_STYLE_PRESETS['pixel'], [{ state: 'idle', frames: 4 }], 4),
+    ).toThrow(/帧数总和/);
+  });
+
   it('sheetRowOf：未知状态抛错（禁兜底）', () => {
-    expect(() => sheetRowOf('不存在' as PetStateId, 2)).toThrow(/未知宠物状态/);
+    expect(() => sheetRowOf('不存在' as PetStateId)).toThrow(/未知宠物状态/);
   });
 
   it('strip prompt：1 行 N 列连续帧（降级策略）', () => {

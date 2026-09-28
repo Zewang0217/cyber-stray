@@ -349,12 +349,7 @@ export class PetGenProcessor {
     await mkdir(join(taskDir, 'grids'), { recursive: true });
     await this.deps.imageGen.generate({
       kind: 'sheet',
-      prompt: buildSheetPrompt(
-        spec,
-        preset,
-        PET_SHEET_ANIMS.map((a) => sheetRowOf(a.state, a.frames)),
-        PET_SHEET_GRID,
-      ),
+      prompt: buildSheetPrompt(spec, preset, PET_SHEET_ANIMS, PET_SHEET_GRID),
       outPath: gridPath,
       reference,
     });
@@ -394,7 +389,7 @@ export class PetGenProcessor {
           preset,
           PET_STATES[anim].label,
           declared.frames,
-          sheetRowOf(anim, declared.frames).hint,
+          sheetRowOf(anim).hint,
         ),
         outPath: stripPath,
         reference,

@@ -235,6 +235,10 @@ def split_sheet(
     if img.width % cols != 0 or img.height % rows != 0:
         raise SystemExit(f"图像尺寸 {img.width}x{img.height} 不能被 {cols}x{rows} 整除")
     cw, ch = img.width // cols, img.height // rows
+    # 格线内缩:prompt 要求的细白格线未必精确落在等分线上,残留会进帧
+    # (绿幕只抠绿不抠白)。向内收 3% 把格线留在切分线外;角色按约定不出格,
+    # 且 normalize 还会做内容裁剪,内缩不伤主体。
+    inset_x, inset_y = max(1, cw * 3 // 100), max(1, ch * 3 // 100)
     arr = np.array(img.convert("RGB"))
     total_frames = sum(f for _, f in anims)
     if total_frames != rows * cols:
@@ -249,7 +253,8 @@ def split_sheet(
         for _ in range(count):
             idx = len(cells)
             ry, rx = divmod(idx, cols)
-            cell = arr[ry * ch:(ry + 1) * ch, rx * cw:(rx + 1) * cw]
+            cell = arr[ry * ch + inset_y:(ry + 1) * ch - inset_y,
+                       rx * cw + inset_x:(rx + 1) * cw - inset_x]
             fg = chroma_key_green(cell)
             ratio = float(fg.mean())
             ratios.append(round(ratio, 4))

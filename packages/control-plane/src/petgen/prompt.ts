@@ -31,17 +31,13 @@ const SHEET_FRAME_HINTS: Record<PetStateId, string> = {
   think: '第1帧歪头凝视,第2帧头回正',
 };
 
-/** sheet prompt 行描述组装（processor 调用；行序即 PET_SHEET_ANIMS 声明序） */
-export function sheetRowOf(state: PetStateId, frames: number): {
-  label: string;
-  frames: number;
-  hint: string;
-} {
+/** sheet prompt 行描述取用（processor/strip 调用；逐帧姿态提示表） */
+export function sheetRowOf(state: PetStateId): { label: string; hint: string } {
   const spec = PET_STATES[state];
   if (!spec) {
     throw new Error(`未知宠物状态: ${String(state)}（注册表 PET_STATES 中不存在）`);
   }
-  return { label: spec.label, frames, hint: SHEET_FRAME_HINTS[state] };
+  return { label: spec.label, hint: SHEET_FRAME_HINTS[state] };
 }
 
 /** 可选选项拼进 prompt（存在才追加） */
@@ -104,22 +100,52 @@ const SHEET_LAYOUT_RULES =
 
 /**
  * 精灵图整张 prompt：单张 n×n 承载全部动作全部帧（领养路径主策略）。
- * 行=动画、行内=帧序；当前 4×4 布局 16 帧恰好填满（shared PET_SHEET_ANIMS），无空格——
- * 空位指令不顺从是 quad 路径的主失败因，全填满直接消除该失败模式。
+ * 动画按帧数打包进网格行（每行累计帧数 ≤ n，行内从左到右排）——当前
+ * 4×4 集打包为 idle 行 / walk 行 / [sleep|grumpy] 行 / [joy|welcome] 行，
+ * 16 帧恰好填满无空格（空位指令不顺从是 quad 路径主失败因，全填满直接
+ * 消除该失败模式）。描述的行数必须与网格一致——否则模型画 6 行、切分按
+ * 4 行等分，第 3 行起全部错位（真机验证抓过的 bug）。
  */
 export function buildSheetPrompt(
   spec: PetSpec,
   preset: PetStylePreset,
-  rows: ReadonlyArray<{ label: string; frames: number; hint: string }>,
+  anims: ReadonlyArray<{ state: PetStateId; frames: number }>,
   grid: number,
 ): string {
+  const total = anims.reduce((sum, a) => sum + a.frames, 0);
+  if (total !== grid * grid) {
+    throw new Error(
+      `精灵图动画集帧数总和 ${total} != ${grid}x${grid}=${grid * grid}（PET_SHEET_ANIMS 与网格不符）`,
+    );
+  }
+  const rows: PetStateId[][] = [];
+  let current: PetStateId[] = [];
+  let currentFrames = 0;
+  for (const a of anims) {
+    if (currentFrames + a.frames > grid) {
+      rows.push(current);
+      current = [];
+      currentFrames = 0;
+    }
+    current.push(a.state);
+    currentFrames += a.frames;
+  }
+  if (current.length > 0) rows.push(current);
+  if (rows.length > grid) {
+    throw new Error(`精灵图动画集需 ${rows.length} 行，超过 ${grid}×${grid} 网格行数`);
+  }
   const rowDesc = rows
-    .map((r, i) => `第${i + 1}行(${r.label}连续${r.frames}帧):${r.hint}`)
+    .map((row, i) => {
+      const parts = row.map(
+        (s) => `${PET_STATES[s].label}(${s})连续帧:${sheetRowOf(s).hint}`,
+      );
+      return `第${i + 1}行共${grid}格,从左到右:${parts.join(';')}`;
+    })
     .join(';');
   return (
-    `同一个角色(${spec.specText})的像素游戏精灵图(sprite sheet),一张 ${grid}x${grid} 网格图。` +
-    `${rowDesc}。${SHEET_LAYOUT_RULES}。画风保持一致:${preset.promptFragment}。` +
-    `${GREEN_SCREEN}。${NEGATIVES}。`
+    `同一个角色(${spec.specText})的像素游戏精灵图(sprite sheet),一张 ${grid}x${grid} 网格图,` +
+    `恰好${grid}行每行${grid}格,${grid * grid} 格全部填满。${rowDesc}。${SHEET_LAYOUT_RULES}。` +
+    `画风保持一致:${preset.promptFragment}。${GREEN_SCREEN}。${NEGATIVES}。`
   );
 }
 
