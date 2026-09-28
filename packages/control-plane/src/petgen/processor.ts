@@ -509,6 +509,10 @@ export class PetGenProcessor {
           statePath: join(statesDir, `${state}.png`),
           state,
           spec,
+        }).catch((error: unknown) => {
+          // 视觉调用的基础设施/格式错误 ≠ 内容不合格：并入 QC 重试机制
+          // （错误信息留在 issues 可见），不使单次调用异常直接杀死任务
+          return { pass: false, issues: [`视觉质检异常：${messageOf(error)}`] };
         });
         // #129：视觉质检成功记用量（no-throw）
         this.deps.usage?.recordVision(task.tenantId);
@@ -562,6 +566,9 @@ export class PetGenProcessor {
           state: anim,
           spec,
           frames: frames[anim],
+        }).catch((error: unknown) => {
+          // 同经典路径：视觉调用异常并入重试机制，错误信息留在 issues 可见
+          return { pass: false, issues: [`视觉质检异常：${messageOf(error)}`] };
         });
         this.deps.usage?.recordVision(task.tenantId);
       }

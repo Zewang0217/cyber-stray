@@ -305,7 +305,7 @@ def parse_sheet_spec(raw: str) -> tuple[int, int]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("inputs", nargs="+")
+    ap.add_argument("inputs", nargs="*", help="输入图；各模式自行断言数量（--join 不吃输入）")
     ap.add_argument("--out", default="public/pet")
     ap.add_argument("--grid", action="store_true", help="单张网格图(行=状态)")
     ap.add_argument("--cells", action="store_true", help="cells 模式:每格 = 1 状态 1 帧(需 --grid)")
