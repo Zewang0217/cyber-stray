@@ -148,6 +148,12 @@ describe('PetGenProcessor（#94 状态机）', () => {
         joinCalls.push(anims.map((a) => a.state));
         writeFileSync(join(outDir, 'sprite.png'), SPRITE_PNG);
       },
+      upscaleForQc: async (srcPath, outDir) => {
+        const stem = srcPath.split('/').pop()!.replace('.png', '');
+        const dst = join(outDir, `${stem}.qc.png`);
+        writeFileSync(dst, PNG);
+        return dst;
+      },
       normalizeConcept: async (_src, outPath) => {
         writeFileSync(outPath, PNG);
         return outPath;

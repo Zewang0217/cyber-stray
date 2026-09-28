@@ -553,6 +553,9 @@ export class PetGenProcessor {
       } catch {
         referencePath = join(taskDir, 'reference.jpg');
       }
+      // 送审放大：64px 帧条直接送审，视觉模型会漏检/误判（基准实测 ×4 后与人眼一致）
+      const qcDir = join(taskDir, 'qc-upscale');
+      await mkdir(qcDir, { recursive: true });
       const semantic: Record<PetStateId, StateQcResult> = {} as Record<PetStateId, StateQcResult>;
       for (const anim of anims) {
         const s = structural[anim];
@@ -560,9 +563,15 @@ export class PetGenProcessor {
           semantic[anim] = { pass: false, issues: [`结构质检：${s.issues.join('；')}`] };
           continue;
         }
+        const upscaleFactor = Math.max(1, Math.round(256 / PET_SHEET_FRAME));
+        const statePath = await this.deps.splitter.upscaleForQc(
+          join(statesDir, `${anim}.png`),
+          qcDir,
+          upscaleFactor,
+        );
         semantic[anim] = await this.deps.visionQc.inspect({
           referencePath,
-          statePath: join(statesDir, `${anim}.png`),
+          statePath,
           state: anim,
           spec,
           frames: frames[anim],

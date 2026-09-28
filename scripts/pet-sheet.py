@@ -320,6 +320,8 @@ def main() -> None:
                     help="总条重建:把 out 目录已有 <anim>.png 按 --anims 次序拼接为 sprite.png(strip 逐动画重生成后调用)")
     ap.add_argument("--frame", type=int, default=512, help="single/flatten 的画布边长(默认 512)")
     ap.add_argument("--quality", type=int, default=80, help="flatten JPEG 质量(默认 80)")
+    ap.add_argument("--upscale", type=int, default=0, metavar="N",
+                    help="视觉质检送审放大:NEAREST ×N(单图模式;64px 帧条 ×4 后视觉模型判定才可靠)")
     ap.add_argument("--report", action="store_true", help="cells 模式末尾输出一行机器可读 JSON(cells/emptyCells/states)")
     args = ap.parse_args()
 
@@ -328,7 +330,14 @@ def main() -> None:
     meta: dict[str, dict[str, int]] = {}
     report: dict[str, object] = {}
 
-    if args.join:
+    if args.upscale:
+        assert len(args.inputs) == 1 and not any([args.grid, args.single, args.flatten, args.sheet, args.join])
+        img = Image.open(args.inputs[0])
+        big = img.resize((img.width * args.upscale, img.height * args.upscale), Image.NEAREST)
+        name = Path(args.inputs[0]).stem
+        big.save(out_dir / f"{name}.qc.png")
+        print(f"{name}: upscale ×{args.upscale} → {big.width}x{big.height}")
+    elif args.join:
         assert len(args.inputs) == 0, "--join 不吃输入图(只拼 out 目录已有帧条)"
         if not args.anims:
             raise SystemExit("--join 必须给 --anims(全动画次序)")

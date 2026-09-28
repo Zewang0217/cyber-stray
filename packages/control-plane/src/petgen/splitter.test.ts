@@ -230,6 +230,41 @@ describe('createSplitter.joinSprite（strip 降级后总条重建）', () => {
   });
 });
 
+describe('createSplitter.upscaleForQc（送审放大）', () => {
+  let tmp: string;
+  let seenArgs: string[][];
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'cp-petgen-up-'));
+    seenArgs = [];
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('构造 --upscale 4 参数并返回 <stem>.qc.png 路径', async () => {
+    const spawnFn = (async (_cmd, args, _opts) => {
+      seenArgs.push(args as string[]);
+      const outDir = (args as string[])[args.indexOf('--out') as number + 1]!;
+      mkdirSync(outDir, { recursive: true });
+      writeFileSync(join(outDir, 'idle.qc.png'), 'fake-png');
+      return { exitCode: 0, stdout: 'idle: upscale ×4', stderr: '' };
+    }) as SpawnLike;
+    const splitter = createSplitter({ spawnFn });
+    const out = await splitter.upscaleForQc(join(tmp, 'idle.png'), join(tmp, 'qc'), 4);
+    expect(out).toBe(join(tmp, 'qc', 'idle.qc.png'));
+    expect(seenArgs[0]).toContain('--upscale');
+    expect(seenArgs[0]).toContain('4');
+  });
+
+  it('产物缺失 → 抛错（禁兜底）', async () => {
+    const spawnFn = (async () => ({ exitCode: 0, stdout: 'ok', stderr: '' })) as SpawnLike;
+    const splitter = createSplitter({ spawnFn });
+    await expect(splitter.upscaleForQc(join(tmp, 'idle.png'), join(tmp, 'qc'), 4)).rejects.toThrow(/ENOENT/);
+  });
+});
+
 describe('createSplitter 概念归一 / 参考图压平', () => {
   let tmp: string;
   let seenArgs: string[][];

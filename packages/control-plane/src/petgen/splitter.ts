@@ -247,6 +247,18 @@ export function createSplitter(opts: SplitterOptions = {}): Splitter {
       await access(join(outDir, 'sprite.png'));
     },
 
+    async upscaleForQc(srcPath, outDir, factor) {
+      await runScript(
+        spawnFn,
+        pythonCmd,
+        [PET_SHEET_PY, srcPath, '--upscale', String(factor), '--out', outDir],
+        timeoutMs,
+      );
+      const produced = join(outDir, `${basename(srcPath, extname(srcPath))}.qc.png`);
+      await access(produced);
+      return produced;
+    },
+
     async normalizeConcept(srcPath, outPath, frame) {
       const outDir = dirname(outPath);
       await runScript(

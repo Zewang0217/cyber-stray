@@ -132,6 +132,11 @@ export interface Splitter {
     anims: ReadonlyArray<{ state: PetStateId; frames: number }>,
     frame: number,
   ): Promise<void>;
+  /**
+   * 送审放大：NEAREST ×N 输出 <stem>.qc.png 到 outDir（返回完整路径）。
+   * 基准测试实证：64px 帧条直接送审视觉模型会漏检/误判，×4 后判定与人眼一致。
+   */
+  upscaleForQc(srcPath: string, outDir: string, factor: number): Promise<string>;
   /** 概念图归一：抠绿幕 → 透明底整身 PNG（角色锚点） */
   normalizeConcept(srcPath: string, outPath: string, frame: number): Promise<string>;
   /** 参考图压平：透明 PNG → 白底 JPEG（Seedream image 字段 data URL 输入） */

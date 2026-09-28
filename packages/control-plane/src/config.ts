@@ -122,7 +122,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     arkApiKey: env.ARK_API_KEY ?? '',
     arkImageModel: env.CP_ARK_IMAGE_MODEL ?? 'doubao-seedream-5-0-260128',
     visionApiKey: env.ZHIPU_API_KEY ?? '',
-    visionModel: env.CP_VISION_MODEL ?? 'glm-4v-flash',
+    // glm-4.5v：基准实测与人判一致率 6/8（flash 仅 2/8，连官方帧条都误杀）；
+    // 计费模型——质检调用量受 maxQcRetries 收敛，CP_VISION_MODEL 可回退 flash
+    visionModel: env.CP_VISION_MODEL ?? 'glm-4.5v',
     petGenMonthlyQuota: Number(env.CP_PETGEN_MONTHLY_QUOTA ?? 2),
     petGenIntervalMs: Number(env.CP_PETGEN_INTERVAL_MS ?? 5_000),
     shutdownBudgetMs: Number(env.CP_SHUTDOWN_BUDGET_MS ?? 90_000),
