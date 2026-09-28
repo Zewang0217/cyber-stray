@@ -70,6 +70,8 @@ describe('PetGenProcessor（#94 状态机）', () => {
   let conceptFails = false;
   /** sheet 切分漏格数（>0 = 布局不顺从 → 策略失败/降级 strip） */
   let sheetEmptyCells: number;
+  /** 非 null 时 fake splitSheet 写 sheet-meta.json（displayScale 决议测试用） */
+  let sheetMetaContentHeights: number[] | null = null;
   /** joinSprite 调用记录（每次收到的动画次序） */
   let joinCalls: PetStateId[][];
   let publishMock: ReturnType<typeof vi.fn<(tenantId: string, event: { type: string }) => void>>;
@@ -137,6 +139,13 @@ describe('PetGenProcessor（#94 状态机）', () => {
           files[a.state] = join(opts.outDir, `${a.state}.png`);
           frames[a.state] = a.frames;
           ratios[a.state] = [];
+        }
+        // 真实脚本同构：sheet-meta.json 带内容高测量（displayScale 决议源）
+        if (sheetMetaContentHeights !== null) {
+          writeFileSync(
+            join(opts.outDir, 'sheet-meta.json'),
+            JSON.stringify({ anims: { idle: { contentHeights: sheetMetaContentHeights } } }),
+          );
         }
         // 与真实脚本同形：splitSheet 写本次动画的总条（strip 行条 = 单动画窄条）
         if (opts.rows === opts.cols) {
@@ -507,6 +516,31 @@ describe('PetGenProcessor（#94 状态机）', () => {
     expect(joinCalls).toHaveLength(1);
     expect(joinCalls[0]).toEqual(['idle', 'walk', 'sleep', 'grumpy', 'joy', 'welcome', 'think']);
     expect(existsSync(join(dataDir, 'tenants', 'alice', 'pet-assets', 'sprite.png'))).toBe(true);
+  });
+
+  it('精灵图内容高测量：sheet-meta 有 idle 内容高 → manifest 决议 displayScale', async () => {
+    // 第 10 轮实测：内容高 52px → round(84/52)=2 → 街上 104px（内置猫 84px 基准带）
+    sheetMetaContentHeights = [52, 52, 52, 52];
+    const task = await insertTask({ strategy: 'sheet', stylePreset: 'pixel' });
+    const done = await tickUntil(task.id, ['done']);
+    expect(done.status).toBe('done');
+    const manifest = JSON.parse(
+      readFileSync(join(dataDir, 'tenants', 'alice', 'pet-assets', 'manifest.json'), 'utf-8'),
+    ) as { sprite: { contentHeight?: number; displayScale?: number } };
+    expect(manifest.sprite.contentHeight).toBe(52);
+    expect(manifest.sprite.displayScale).toBe(2);
+    sheetMetaContentHeights = null;
+  });
+
+  it('精灵图无 meta（旧脚本产物）→ manifest 不带展示缩放字段（web 回退 3）', async () => {
+    const task = await insertTask({ strategy: 'sheet', stylePreset: 'pixel' });
+    const done = await tickUntil(task.id, ['done']);
+    expect(done.status).toBe('done');
+    const manifest = JSON.parse(
+      readFileSync(join(dataDir, 'tenants', 'alice', 'pet-assets', 'manifest.json'), 'utf-8'),
+    ) as { sprite: { contentHeight?: number; displayScale?: number } };
+    expect(manifest.sprite.contentHeight).toBeUndefined();
+    expect(manifest.sprite.displayScale).toBeUndefined();
   });
 
   it('精灵图 + 上传参考图：跳过概念图，语义锚点用上传参考图', async () => {

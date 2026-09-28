@@ -270,7 +270,13 @@ def split_sheet(
         for i, f in enumerate(frames):
             strip.paste(f, (i * frame, 0))
         strip.save(out_dir / f"{name}.png")
-        report_anims[name] = {"frames": count, "ratios": ratios}
+        # 内容高度（alpha 非零 bbox）：街角展示缩放的测量源——帧尺寸固定 64px
+        # 而角色实际占格因种子/物种而异，CP 据此决议整数 displayScale
+        content_heights = []
+        for f in frames:
+            bb = f.getchannel("A").getbbox()
+            content_heights.append((bb[3] - bb[1]) if bb else 0)
+        report_anims[name] = {"frames": count, "ratios": ratios, "contentHeights": content_heights}
 
     # 总条 sprite.png：动画按 --anims 次序横排（frames.json 同构布局）
     sprite = Image.new("RGBA", (frame * total_frames, frame), (0, 0, 0, 0))

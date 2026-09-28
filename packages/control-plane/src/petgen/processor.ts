@@ -53,6 +53,13 @@ import {
 /** 改造屋经典路径的策略阶梯（既有 quad→nine→per，spike 结论） */
 const STRATEGY_ORDER = CLASSIC_STRATEGY_LADDER;
 
+/**
+ * 街角展示基准（px）：内置猫 idle 内容高 28px × 3 倍。自定义精灵帧画布 64px、
+ * 内容高随种子浮动（第 10 轮实测 52px），按此基准决议 displayScale 让每只
+ * 宠物在街角的视觉高度落在基准带内、同时保留自然体型差。
+ */
+const PET_STREET_BASELINE_PX = 84;
+
 /** 四宫格批次：9 状态 → 3 张 2x2（每张 3 状态 + 空格） */
 const QUAD_BATCHES: readonly (readonly PetStateId[])[] = [
   ['idle', 'walk', 'joy'],
@@ -713,6 +720,14 @@ export class PetGenProcessor {
         `sprite.png 宽 ${width}px != 期望 ${cursor * PET_SHEET_FRAME}px（总条与动画帧表不符）`,
       );
     }
+    // 街角展示缩放：内置猫基准 84px（idle 内容高 28px × 3）。帧画布固定 64px，
+    // 角色占格因种子/物种而异（第 10 轮实测 52px，直接 ×3 比内置猫高近一倍）——
+    // 按实测内容高落回基准带；整数倍率是 steps() 帧步进的像素对齐硬约束。
+    // 夹在 [2,3]：每只宠物保留自然体型差，但既不过度缩小也不过度放大。
+    const contentHeight = await this.measureIdleContentHeight(statesDir);
+    const displayScale = contentHeight
+      ? Math.min(3, Math.max(2, Math.round(PET_STREET_BASELINE_PX / contentHeight)))
+      : undefined;
     return {
       version: 2,
       generatedAt: new Date(now).toISOString(),
@@ -723,8 +738,20 @@ export class PetGenProcessor {
         image: 'sprite.png',
         frame: { w: PET_SHEET_FRAME, h: PET_SHEET_FRAME, groundRow: PET_SHEET_FRAME - 1 },
         animations,
+        ...(contentHeight !== undefined ? { contentHeight, displayScale } : {}),
       },
     };
+  }
+
+  /** sheet-meta.json 里 idle 各帧内容高取最大（切分脚本测量）；无 meta → undefined（字段可选） */
+  private async measureIdleContentHeight(statesDir: string): Promise<number | undefined> {
+    const metaPath = join(statesDir, 'sheet-meta.json');
+    if (!(await access(metaPath).then(() => true, () => false))) return undefined;
+    const meta = JSON.parse(await readFile(metaPath, 'utf8')) as {
+      anims?: Record<string, { contentHeights?: number[] }>;
+    };
+    const heights = (meta.anims?.idle?.contentHeights ?? []).filter((h) => h > 0);
+    return heights.length > 0 ? Math.max(...heights) : undefined;
   }
 
   /** pet_assets_ready 事件（web 拉 manifest 换形象）；无宠物行/未注入 bus → 不发 */

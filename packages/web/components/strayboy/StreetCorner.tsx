@@ -161,6 +161,9 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
   );
   const petContract = customContract ?? contract;
   const petBasePath = customContract ? CUSTOM_SPRITE_BASE_PATH : undefined;
+  // 展示倍率：管线按实测内容高决议（每只宠物体型各异，基准 84px 落带内）；
+  // 旧 manifest / 内置猫无此字段 → 3（内置猫 32px 帧 × 3 = 84px 基准本尊）
+  const petScale = manifest?.sprite?.displayScale ?? 3;
   // 毛色滤镜只属于内置猫——自定义形象不被 hue-rotate 改色
   const petCoat = customContract ? ("orange" as const) : coat;
   // /footprint 重定向 ?drawer=log → 自动开 LOG 存档抽屉
@@ -390,7 +393,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
       >
         {!view.away && (
           <button type="button" aria-label={`拍拍${pet.name}`} className="relative cursor-pointer" onClick={pat}>
-            <PetSprite contract={petContract} anim={playAnim} scale={3} basePath={petBasePath} hungry={view.hungry && (anim === "idle" || view.napping)} coat={petCoat} />
+            <PetSprite contract={petContract} anim={playAnim} scale={petScale} basePath={petBasePath} hungry={view.hungry && (anim === "idle" || view.napping)} coat={petCoat} />
             {/* 打盹角标（#218）：非睡眠期的精力低打盹，复用 sleep 帧 + zZ 与 #91 睡眠期区分 */}
             {view.napping && anim === "sleep" && (
               <span aria-hidden className="sb-blink absolute -top-2 right-0 font-vt323 text-[13px] leading-none text-[var(--curb)]">
@@ -416,7 +419,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
       {attract && (
         <div className="fixed inset-0 z-[75] flex flex-col items-center justify-center gap-6 bg-[var(--sky)]" onClick={() => setAttract(false)}>
           <p className="font-ps2p text-sm text-[var(--neon)] sb-blink">STREET MODE</p>
-          <PetSprite contract={petContract} anim={streetAnimFor("walk")} scale={3} basePath={petBasePath} coat={petCoat} />
+          <PetSprite contract={petContract} anim={streetAnimFor("walk")} scale={petScale} basePath={petBasePath} coat={petCoat} />
           <p className="text-[12px] text-[var(--curb)]">点按任意处回到掌机</p>
         </div>
       )}

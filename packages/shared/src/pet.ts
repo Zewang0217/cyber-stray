@@ -162,6 +162,16 @@ export interface PetManifestSprite {
   image: string;
   frame: { w: number; h: number; groundRow: number };
   animations: Record<string, { from: number; frames: number; duration: number; loop: boolean }>;
+  /**
+   * 实测 idle 内容高（帧内 alpha 非零最大高度，px）。帧画布固定 64px 而角色
+   * 占格因种子/物种而异——街角缩放按此决议，避免「每只宠物一样大」或巨型化。
+   */
+  contentHeight?: number;
+  /**
+   * 街角展示整数倍率（steps() 帧步进要整数 px，非整数会破像素对齐）：
+   * 管线 clamp(round(基准 84px / contentHeight), 2, 3)；缺省 3 = 旧 manifest 兼容。
+   */
+  displayScale?: number;
 }
 
 // ── 领养精灵图（单张 n×n 一致性方案）契约常量 ─────────────────────────
