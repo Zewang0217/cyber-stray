@@ -18,7 +18,6 @@ const REQUIRED_ANIMS: ReadonlyArray<string> = PET_SHEET_STATE_IDS;
  * 拍拍/庆祝/扑跳 → joy 的跳动，思考/进食 → idle 的静态微动） */
 const ANIM_FALLBACK: Record<string, string> = {
   pat: "joy",
-  think: "idle",
   celebrate: "joy",
   eat: "idle",
   pounce: "joy",

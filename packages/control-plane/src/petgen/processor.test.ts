@@ -467,7 +467,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
 
     const assetsDir = join(dataDir, 'tenants', 'alice', 'pet-assets');
     expect(existsSync(join(assetsDir, 'sprite.png'))).toBe(true);
-    for (const s of ['idle', 'walk', 'sleep', 'grumpy', 'joy', 'welcome']) {
+    for (const s of ['idle', 'walk', 'sleep', 'grumpy', 'joy', 'welcome', 'think']) {
       expect(existsSync(join(assetsDir, `${s}.png`)), `${s}.png 缺失`).toBe(true);
     }
     const manifest = JSON.parse(readFileSync(join(assetsDir, 'manifest.json'), 'utf-8')) as {
@@ -484,8 +484,8 @@ describe('PetGenProcessor（#94 状态机）', () => {
     expect(manifest.sprite.frame).toEqual({ w: 64, h: 64, groundRow: 63 });
     expect(manifest.sprite.animations.idle).toEqual({ from: 0, frames: 4, duration: 0.8, loop: true });
     expect(manifest.sprite.animations.walk?.from).toBe(4);
-    expect(manifest.sprite.animations.welcome?.from).toBe(14);
-    expect(Object.keys(manifest.states)).toHaveLength(6);
+    expect(manifest.sprite.animations.think?.from).toBe(14);
+    expect(Object.keys(manifest.states)).toHaveLength(7);
     expect(publishMock).toHaveBeenCalledWith('alice', expect.objectContaining({
       type: 'pet_assets_ready',
       petId: 'pet-1',
@@ -505,7 +505,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
     const stripCalls = generateMock.mock.calls.filter(([r]) => r.kind === 'sheet');
     expect(stripCalls.length).toBeGreaterThanOrEqual(6);
     expect(joinCalls).toHaveLength(1);
-    expect(joinCalls[0]).toEqual(['idle', 'walk', 'sleep', 'grumpy', 'joy', 'welcome']);
+    expect(joinCalls[0]).toEqual(['idle', 'walk', 'sleep', 'grumpy', 'joy', 'welcome', 'think']);
     expect(existsSync(join(dataDir, 'tenants', 'alice', 'pet-assets', 'sprite.png'))).toBe(true);
   });
 

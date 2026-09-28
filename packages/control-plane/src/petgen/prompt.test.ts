@@ -87,14 +87,14 @@ describe('buildSheetPrompt / buildStripPrompt / buildAnimQcPrompt（领养精灵
     expect(prompt).toContain('4x4');
     expect(prompt).toContain('一只戴红色围巾的橘猫');
     expect(prompt).toContain('恰好4行每行4格');
-    // 第 1/2 行 = 单动画整行（idle/walk 各 4 帧）
+    // 第 1 行 = idle 整行；第 2-4 行 = 两动画拼行（帧数打包，行数必须等于网格行数——错位 bug 回归锚）
     expect(prompt).toContain('第1行共4格,从左到右:待机呼吸(idle)连续帧:');
     expect(prompt).toContain('第2行共4格,从左到右:游荡(walk)连续帧:');
-    // 第 3/4 行 = 两动画拼行（帧数打包，行数必须等于网格行数——错位 bug 回归锚）
-    expect(prompt).toContain('第3行共4格,从左到右:休息(sleep)连续帧:'); 
-    expect(prompt).toContain('不爽(grumpy)连续帧:');
-    expect(prompt).toContain('第4行共4格,从左到右:开心(joy)连续帧:');
-    expect(prompt).toContain('打招呼(welcome)连续帧:');
+    expect(prompt).toContain('休息(sleep)连续帧:');
+    expect(prompt).toContain('第3行共4格,从左到右:不爽(grumpy)连续帧:');
+    expect(prompt).toContain('开心(joy)连续帧:');
+    expect(prompt).toContain('第4行共4格,从左到右:打招呼(welcome)连续帧:');
+    expect(prompt).toContain('思考(think)连续帧:');
     expect(prompt).toContain('脚底都贴在同一水平线');
     expect(prompt).toContain('#00FF00');
   });

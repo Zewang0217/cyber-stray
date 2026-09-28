@@ -174,11 +174,14 @@ export const PET_SHEET_ANIMS: ReadonlyArray<{
   duration: number;
 }> = [
   { state: 'idle', frames: 4, duration: 0.8 },
-  { state: 'walk', frames: 4, duration: 0.6 },
+  // walk 2 帧：真机 8 轮实证 Seedream 画不稳 1×4 行走循环（首帧走后三帧坐），
+  // 两帧法则下 2 帧走路循环模型可稳定产出；think 补位（街角待机小剧场真实消费）
+  { state: 'walk', frames: 2, duration: 0.6 },
   { state: 'sleep', frames: 2, duration: 1.6 },
   { state: 'grumpy', frames: 2, duration: 1.2 },
   { state: 'joy', frames: 2, duration: 0.4 },
   { state: 'welcome', frames: 2, duration: 0.8 },
+  { state: 'think', frames: 2, duration: 0.8 },
 ];
 
 /** 精灵图网格边长 n（n×n 格） */

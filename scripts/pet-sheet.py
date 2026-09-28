@@ -239,7 +239,7 @@ def split_sheet(
     # 格线内缩:prompt 要求的细白格线未必精确落在等分线上,残留会进帧
     # (绿幕只抠绿不抠白)。向内收 3% 把格线留在切分线外;角色按约定不出格,
     # 且 normalize 还会做内容裁剪,内缩不伤主体。
-    inset_x, inset_y = max(1, cw * 3 // 100), max(1, ch * 3 // 100)
+    inset_x, inset_y = max(1, cw * 5 // 100), max(1, ch * 5 // 100)
     arr = np.array(img.convert("RGB"))
     total_frames = sum(f for _, f in anims)
     if total_frames != rows * cols:

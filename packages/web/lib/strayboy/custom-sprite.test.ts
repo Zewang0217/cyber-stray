@@ -18,11 +18,12 @@ function manifestWith(overrides: Partial<PetAssetManifest["sprite"]> = {}): PetA
       frame: { w: 64, h: 64, groundRow: 63 },
       animations: {
         idle: { from: 0, frames: 4, duration: 0.8, loop: true },
-        walk: { from: 4, frames: 4, duration: 0.6, loop: true },
-        sleep: { from: 8, frames: 2, duration: 1.6, loop: true },
-        grumpy: { from: 10, frames: 2, duration: 1.2, loop: true },
-        joy: { from: 12, frames: 2, duration: 0.4, loop: true },
-        welcome: { from: 14, frames: 2, duration: 0.8, loop: true },
+        walk: { from: 4, frames: 2, duration: 0.6, loop: true },
+        sleep: { from: 6, frames: 2, duration: 1.6, loop: true },
+        grumpy: { from: 8, frames: 2, duration: 1.2, loop: true },
+        joy: { from: 10, frames: 2, duration: 0.4, loop: true },
+        welcome: { from: 12, frames: 2, duration: 0.8, loop: true },
+        think: { from: 14, frames: 2, duration: 0.8, loop: true },
       },
       ...overrides,
     },
@@ -67,17 +68,16 @@ describe("spriteContractFromManifest", () => {
   });
 });
 
-describe("streetAnimFor（4×4 集不含的街角演出动画映射降级）", () => {
-  it("pat/think/celebrate/eat/pounce 映射到最接近的已生成动画", () => {
+describe("streetAnimFor（精灵图集不含的街角演出动画映射降级）", () => {
+  it("pat/celebrate/eat/pounce 映射到最接近的已生成动画", () => {
     expect(streetAnimFor("pat")).toBe("joy");
-    expect(streetAnimFor("think")).toBe("idle");
     expect(streetAnimFor("celebrate")).toBe("joy");
     expect(streetAnimFor("eat")).toBe("idle");
     expect(streetAnimFor("pounce")).toBe("joy");
   });
 
-  it("已生成动画原样透传", () => {
-    for (const a of ["idle", "walk", "sleep", "grumpy", "joy", "welcome"]) {
+  it("已生成动画（含 think 真实化后）原样透传", () => {
+    for (const a of ["idle", "walk", "sleep", "grumpy", "joy", "welcome", "think"]) {
       expect(streetAnimFor(a)).toBe(a);
     }
   });

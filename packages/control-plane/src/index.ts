@@ -105,7 +105,9 @@ const petGenProcessor = new PetGenProcessor({
   }),
   config: {
     maxBatchRetries: 2,
-    maxQcRetries: 2,
+    // 真机数据：每轮 QC 挂的动画随机（生成随机性），只重生成失败动画 + 多轮
+    // 预算才能凑齐全过；每轮成本 = 挂掉动画数 × (1 生图 + 1 视觉调用)，有界
+    maxQcRetries: 4,
     conceptFrame: 512,
     referenceFrame: 384,
     gridSize: '1024*1024',
