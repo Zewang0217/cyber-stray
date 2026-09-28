@@ -114,30 +114,27 @@ function parseSheetReport(
 ): { emptyCells: number; anims: Record<string, { frames: number; ratios: number[] }> } {
   const lines = stdout.split('\n').map((l) => l.trim()).filter(Boolean);
   for (let i = lines.length - 1; i >= 0; i--) {
+    let parsed: {
+      sheet?: { emptyCells?: number; anims?: Record<string, { frames?: number; ratios?: number[] }> };
+    };
     try {
-      const parsed = JSON.parse(lines[i] ?? '') as {
-        sheet?: { emptyCells?: number; anims?: Record<string, { frames?: number; ratios?: number[] }> };
-      };
-      const sheet = parsed.sheet;
-      if (
-        sheet &&
-        typeof sheet.emptyCells === 'number' &&
-        typeof sheet.anims === 'object' &&
-        sheet.anims !== null
-      ) {
-        const anims: Record<string, { frames: number; ratios: number[] }> = {};
-        for (const [name, info] of Object.entries(sheet.anims)) {
-          if (typeof info.frames !== 'number' || !Array.isArray(info.ratios)) {
-            throw new Error(`sheet meta 缺 ${name} 的 frames/ratios`);
-          }
-          anims[name] = { frames: info.frames, ratios: info.ratios };
-        }
-        return { emptyCells: sheet.emptyCells, anims };
-      }
-    } catch (error) {
-      // 形状不符继续往前找；显式抛错（缺字段）直接上抛
-      if (error instanceof Error && error.message.includes('缺')) throw error;
+      parsed = JSON.parse(lines[i] ?? '') as typeof parsed;
+    } catch {
+      continue; // 非 JSON 行继续往前找（"done →" 行之前是 JSON 行）
     }
+    const sheet = parsed.sheet;
+    if (!sheet || typeof sheet.emptyCells !== 'number' || typeof sheet.anims !== 'object' || sheet.anims === null) {
+      continue;
+    }
+    // 形状校验在 try 外：坏 meta 是硬错误，不再吞掉继续找行
+    const anims: Record<string, { frames: number; ratios: number[] }> = {};
+    for (const [name, info] of Object.entries(sheet.anims)) {
+      if (typeof info.frames !== 'number' || !Array.isArray(info.ratios)) {
+        throw new Error(`sheet meta 缺 ${name} 的 frames/ratios`);
+      }
+      anims[name] = { frames: info.frames, ratios: info.ratios };
+    }
+    return { emptyCells: sheet.emptyCells, anims };
   }
   throw new Error(`pet-sheet.py --sheet --report 无 JSON 输出：${stdout.trim().slice(-300)}`);
 }
@@ -229,6 +226,25 @@ export function createSplitter(opts: SplitterOptions = {}): Splitter {
       // sprite.png 总条（播放器直接消费；缺文件 = 脚本异常，禁兜底）
       await access(join(outDir, 'sprite.png'));
       return { files, frames, emptyCells: report.emptyCells, ratios };
+    },
+
+    async joinSprite(outDir, anims, frame) {
+      await runScript(
+        spawnFn,
+        pythonCmd,
+        [
+          PET_SHEET_PY,
+          '--join',
+          '--anims',
+          anims.map((a) => `${a.state}:${a.frames}`).join(','),
+          '--frame',
+          String(frame),
+          '--out',
+          outDir,
+        ],
+        timeoutMs,
+      );
+      await access(join(outDir, 'sprite.png'));
     },
 
     async normalizeConcept(srcPath, outPath, frame) {

@@ -146,12 +146,15 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
   const lastActivityRef = useRef(0);
   const prevLevel = useRef<number | null>(null);
   const { onPat, reset } = usePatStreak();
+  // pet_assets_ready 信号棘轮（只升不降）：lastEvent 会被任意后续事件覆盖，
+  // 直接透传会让 refreshToken 从事件时刻跳回 0 触发无意义重拉
+  const [assetsReadyAt, setAssetsReadyAt] = useState(0);
+  useEffect(() => {
+    if (lastEvent?.type === "pet_assets_ready") setAssetsReadyAt(lastEvent.at);
+  }, [lastEvent]);
   // 领养自定义精灵图：manifest 就绪（或 pet_assets_ready 事件）即热换形象，
-  // 缺素材/素材版本缺动画 → 回退内置猫
-  const { manifest } = usePetManifest({
-    enabled: !demo,
-    refreshToken: lastEvent?.type === "pet_assets_ready" ? lastEvent.at : 0,
-  });
+  // 缺素材/素材版本不受支持 → 回退内置猫
+  const { manifest } = usePetManifest({ enabled: !demo, refreshToken: assetsReadyAt });
   const customContract = useMemo(
     () => (manifest ? spriteContractFromManifest(manifest) : null),
     [manifest],
@@ -413,7 +416,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
       {attract && (
         <div className="fixed inset-0 z-[75] flex flex-col items-center justify-center gap-6 bg-[var(--sky)]" onClick={() => setAttract(false)}>
           <p className="font-ps2p text-sm text-[var(--neon)] sb-blink">STREET MODE</p>
-          <PetSprite contract={petContract} anim={customContract ? streetAnimFor("walk") : "walk"} scale={3} basePath={petBasePath} coat={petCoat} />
+          <PetSprite contract={petContract} anim={streetAnimFor("walk")} scale={3} basePath={petBasePath} coat={petCoat} />
           <p className="text-[12px] text-[var(--curb)]">点按任意处回到掌机</p>
         </div>
       )}

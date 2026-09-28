@@ -46,6 +46,17 @@ describe("spriteContractFromManifest", () => {
     expect(spriteContractFromManifest(m)).toBeNull();
   });
 
+  it("帧表畸形（from 不连续）→ null 回退而非抛错（与缺动画同失败域，不炸街角）", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const m = manifestWith();
+    (m.sprite as { animations: Record<string, unknown> }).animations.walk = {
+      from: 99, frames: 4, duration: 0.6, loop: true,
+    };
+    expect(spriteContractFromManifest(m)).toBeNull();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("畸形"), expect.anything());
+    warn.mockRestore();
+  });
+
   it("缺必需动画（素材版本不符）→ null 且 warn，不播半套", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const m = manifestWith();

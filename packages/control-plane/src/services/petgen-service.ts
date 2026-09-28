@@ -15,6 +15,7 @@ import {
   type PetPresetId,
   type PetStateId,
 } from '@cyber-stray/shared/pet';
+import { getPersonality, type PersonalityId } from '@cyber-stray/shared';
 import type { PetGenQuota, PetGenTaskView, StateQcResult } from '@cyber-stray/shared/petgen';
 import type { ControlPlaneConfig } from '../config.js';
 import type { ControlDb } from '../db/client.js';
@@ -38,6 +39,27 @@ export type PetGenOutcome<T> =
 
 /** 领养参考图压平边长（与管线 referenceFrame 同水位；白底 JPEG 供 Seedream img2img） */
 const ADOPT_REFERENCE_FRAME = 384;
+
+/** 领养精灵图的已校验入参（领养路由的 AdoptInput 原语子集，避免跨 service 类型耦合） */
+export interface AdoptSheetInput {
+  name: string;
+  interests: string[];
+  personality: string;
+}
+
+/**
+ * 领养属性 → 精灵图 spec（确定性模板；风格锁 pixel——街角是像素宇宙，
+ * 用户参考图经 img2img 转绘为像素精灵）。
+ */
+export function buildAdoptSheetSpec(input: AdoptSheetInput): PetSpec {
+  const personality = getPersonality(input.personality as PersonalityId);
+  return {
+    specText:
+      `主人领养的宠物「${input.name}」,性格${personality.name}(${personality.description}),` +
+      `对${input.interests.join('、')}感兴趣`,
+    stylePreset: 'pixel',
+  };
+}
 
 /** 任务 → API 视图（去掉内部列，附概念图/素材 URL） */
 function toTaskView(task: PetGenTask): PetGenTaskView {
@@ -273,10 +295,27 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     return { bytes, contentType: file.endsWith('.json') ? 'application/json' : 'image/png' };
   }
 
+  /**
+   * 领养 side effect：best-effort 建精灵图任务。领养不阻塞策略在此收口——
+   * 配额耗尽/提交失败只记日志，调用方（路由）await 一次毫秒级 DB 写，
+   * 真正的生图在 petgen 异步队列推进。
+   */
+  async function adoptSheetSideEffect(tenantId: string, input: AdoptSheetInput): Promise<void> {
+    try {
+      const outcome = await submitAdoptSheetTask(tenantId, buildAdoptSheetSpec(input));
+      if (!outcome.ok) {
+        console.warn(`[pets] 领养精灵图配额耗尽，跳过生成（租户 ${tenantId}）`);
+      }
+    } catch (error) {
+      console.error(`[pets] 领养精灵图任务提交失败（租户 ${tenantId}）：`, error);
+    }
+  }
+
   return {
     submitTask,
     submitAdoptSheetTask,
     saveAdoptReference,
+    adoptSheetSideEffect,
     ensureProPlan,
     listTasks,
     getTask,

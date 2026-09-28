@@ -22,8 +22,8 @@
  *   pet_assets_ready 事件（web 拉 manifest 换形象）。
  */
 
-import { access, copyFile, mkdir, rename, writeFile } from 'fs/promises';
-import { basename, join } from 'path';
+import { access, copyFile, mkdir, readFile, rename, writeFile } from 'fs/promises';
+import { join } from 'path';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import {
   DEFAULT_PET_PRESET,
@@ -233,24 +233,30 @@ export class PetGenProcessor {
     await this.advanceConceptForClassic(task, taskDir);
   }
 
+  /** 概念图生成公共体（spec → 出图 → 归一 → concept.png）；失败抛错由调用方定论 */
+  private async generateConcept(task: PetGenTask, taskDir: string): Promise<void> {
+    const spec = this.specFromTask(task);
+    const preset = PET_STYLE_PRESETS[spec.stylePreset ?? DEFAULT_PET_PRESET];
+    const rawPath = join(taskDir, 'concept-raw.png');
+    await this.deps.imageGen.generate({
+      kind: 'concept',
+      prompt: buildConceptPrompt(spec, preset),
+      outPath: rawPath,
+    });
+    // #129：生图成功记用量（no-throw）
+    this.deps.usage?.recordImage(task.tenantId);
+    await this.deps.splitter.normalizeConcept(
+      rawPath,
+      join(taskDir, 'concept.png'),
+      this.deps.config.conceptFrame,
+    );
+  }
+
   /** 精灵图路径概念图（无上传时）：出图即锁角色，自动确认直落 generating_states */
   private async advanceConceptForSheet(task: PetGenTask, taskDir: string): Promise<void> {
     await this.patch(task.id, { status: 'concept_generating', updatedAt: this.now() });
     try {
-      const spec = this.specFromTask(task);
-      const preset = PET_STYLE_PRESETS[spec.stylePreset ?? DEFAULT_PET_PRESET];
-      const rawPath = join(taskDir, 'concept-raw.png');
-      await this.deps.imageGen.generate({
-        kind: 'concept',
-        prompt: buildConceptPrompt(spec, preset),
-        outPath: rawPath,
-      });
-      this.deps.usage?.recordImage(task.tenantId);
-      await this.deps.splitter.normalizeConcept(
-        rawPath,
-        join(taskDir, 'concept.png'),
-        this.deps.config.conceptFrame,
-      );
+      await this.generateConcept(task, taskDir);
       await this.patch(task.id, {
         status: 'generating_states',
         conceptAttempts: task.conceptAttempts + 1,
@@ -264,23 +270,9 @@ export class PetGenProcessor {
   private async advanceConceptForClassic(task: PetGenTask, taskDir: string): Promise<void> {
     await this.patch(task.id, { status: 'concept_generating', updatedAt: this.now() });
     try {
-      const spec = this.specFromTask(task);
-      const preset = PET_STYLE_PRESETS[spec.stylePreset ?? DEFAULT_PET_PRESET];
-      const rawPath = join(taskDir, 'concept-raw.png');
-      await this.deps.imageGen.generate({
-        kind: 'concept',
-        prompt: buildConceptPrompt(spec, preset),
-        outPath: rawPath,
-      });
-      // #129：生图成功记用量（no-throw）
-      this.deps.usage?.recordImage(task.tenantId);
-      const conceptPath = await this.deps.splitter.normalizeConcept(
-        rawPath,
-        join(taskDir, 'concept.png'),
-        this.deps.config.conceptFrame,
-      );
+      await this.generateConcept(task, taskDir);
       // conceptPath 存相对租户目录的路径（route 拼回绝对路径服务图片）
-      const relative = `pet-assets/tasks/${task.id}/${basename(conceptPath)}`;
+      const relative = `pet-assets/tasks/${task.id}/concept.png`;
       await this.patch(task.id, {
         status: 'awaiting_confirmation',
         conceptPath: relative,
@@ -406,6 +398,9 @@ export class PetGenProcessor {
         throw new Error(`strip 重生成 ${anim} 漏格（布局不顺从）`);
       }
     }
+    // splitSheet 每次只写本次动画的总条，逐动画调用互相覆盖——
+    // 全部重生成完毕后按全动画次序重建 sprite.png（漏建 = 播放器帧表错位）
+    await this.deps.splitter.joinSprite(statesDir, PET_SHEET_ANIMS, PET_SHEET_FRAME);
   }
 
   private async runClassicStrategy(
@@ -693,6 +688,15 @@ export class PetGenProcessor {
       cursor += a.frames;
     }
     await copyFile(join(statesDir, 'sprite.png'), join(assetsDir, 'sprite.png'));
+    // 总条宽度断言（PNG IHDR 大端 width）：防「strip 重生成后总条被单动画覆盖」
+    // 这类静默截断流入消费端——manifest 声明 16 帧而文件只有 2 帧 = 播放错位
+    const ihdr = await readFile(join(assetsDir, 'sprite.png')).then((b) => b.subarray(0, 24));
+    const width = ihdr.readUInt32BE(16);
+    if (width !== cursor * PET_SHEET_FRAME) {
+      throw new Error(
+        `sprite.png 宽 ${width}px != 期望 ${cursor * PET_SHEET_FRAME}px（总条与动画帧表不符）`,
+      );
+    }
     return {
       version: 2,
       generatedAt: new Date(now).toISOString(),

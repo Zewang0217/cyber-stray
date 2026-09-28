@@ -191,3 +191,13 @@ export const PET_SHEET_FRAME = 64;
 export const PET_SHEET_STATE_IDS: ReadonlyArray<PetStateId> = PET_SHEET_ANIMS.map(
   (a) => a.state,
 );
+
+/** 领养参考图 mime 白名单（web 预校验与 CP 路由校验同源，禁镜像） */
+export const ADOPT_REFERENCE_MIME: ReadonlyArray<string> = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+];
+
+/** 领养参考图大小上限（字节；web 预校验与 CP 路由校验同源） */
+export const ADOPT_REFERENCE_MAX_BYTES = 8 * 1024 * 1024;

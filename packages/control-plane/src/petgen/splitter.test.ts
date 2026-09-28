@@ -182,6 +182,54 @@ describe('createSplitter.splitSheet（领养精灵图）', () => {
   });
 });
 
+describe('createSplitter.joinSprite（strip 降级后总条重建）', () => {
+  let tmp: string;
+  let seenArgs: string[][];
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'cp-petgen-join-'));
+    seenArgs = [];
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function fakeSpawn(exitCode = 0, touch = true): SpawnLike {
+    return (async (_cmd, args, _opts) => {
+      seenArgs.push(args);
+      if (touch) {
+        const outDir = args[args.indexOf('--out') + 1]!;
+        mkdirSync(outDir, { recursive: true });
+        writeFileSync(join(outDir, 'sprite.png'), 'fake-png');
+      }
+      return { exitCode, stdout: 'join: ok', stderr: '' };
+    }) as SpawnLike;
+  }
+
+  const ANIMS = [
+    { state: 'idle' as const, frames: 4 },
+    { state: 'walk' as const, frames: 4 },
+  ];
+
+  it('构造 --join --anims 全动画次序参数', async () => {
+    const outDir = join(tmp, 'states');
+    const splitter = createSplitter({ spawnFn: fakeSpawn() });
+    await splitter.joinSprite(outDir, ANIMS, 64);
+    const args = seenArgs[0]!;
+    expect(args).toContain('--join');
+    expect(args).toContain('idle:4,walk:4');
+    expect(args).toContain('--frame');
+    expect(args).toContain('64');
+    expect(args).toContain('--out');
+  });
+
+  it('join 后 sprite.png 不存在 → 抛错（总条是播放器消费物）', async () => {
+    const splitter = createSplitter({ spawnFn: fakeSpawn(0, false) });
+    await expect(splitter.joinSprite(join(tmp, 'states'), ANIMS, 64)).rejects.toThrow(/ENOENT/);
+  });
+});
+
 describe('createSplitter 概念归一 / 参考图压平', () => {
   let tmp: string;
   let seenArgs: string[][];

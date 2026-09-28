@@ -8,13 +8,11 @@
  * 拥有者），这里只读装配、不重新定义帧序。
  */
 import { parseSpriteContract, type SpriteContract } from "@cyber-stray/shared/sprite";
-import type { PetAssetManifest } from "@cyber-stray/shared/pet";
+import { PET_SHEET_STATE_IDS, type PetAssetManifest } from "@cyber-stray/shared/pet";
 
-/** 自定义精灵图必须齐备的动画（街角基线 idle/walk/sleep/grumpy + 拍拍 joy + 入场 welcome）；
+/** 自定义精灵图必须齐备的动画（= shared 精灵图动画集，非本地镜像；
  * 缺任何一个 = 资产版本不受支持 → 回退内置猫（与 manifest 404 同语义） */
-const REQUIRED_ANIMS: ReadonlyArray<string> = [
-  "idle", "walk", "sleep", "grumpy", "joy", "welcome",
-];
+const REQUIRED_ANIMS: ReadonlyArray<string> = PET_SHEET_STATE_IDS;
 
 /** 街角演出动画 → 精灵图动画（4×4 集不含的动画映射到最接近的已生成动画：
  * 拍拍/庆祝/扑跳 → joy 的跳动，思考/进食 → idle 的静态微动） */
@@ -35,9 +33,10 @@ export function streetAnimFor(anim: string): string {
 export const CUSTOM_SPRITE_BASE_PATH = "/api/pet-assets";
 
 /**
- * manifest.sprite → SpriteContract；无 sprite 块或必需动画缺失 → null
- * （调用方回退内置猫）。契约形状与 stray-boy.sprite.v2 同构（横排帧条 +
- * steps() 帧表），仅无 hungry 叠加层/色板元数据。
+ * manifest.sprite → SpriteContract；无 sprite 块或资产不受支持（缺必需动画 /
+ * 帧表畸形）→ null（调用方回退内置猫）。契约形状与 stray-boy.sprite.v2 同构
+ * （横排帧条 + steps() 帧表），仅无 hungry 叠加层/色板元数据。
+ * 帧表畸形与缺动画同属「资产版本不受支持」的失败域——回退而非炸街角。
  */
 export function spriteContractFromManifest(
   manifest: PetAssetManifest,
@@ -50,10 +49,15 @@ export function spriteContractFromManifest(
     console.warn(`[custom-sprite] 素材缺动画 ${missing.join(",")}，回退内置猫`);
     return null;
   }
-  return parseSpriteContract({
-    contract: "stray-boy.sprite.v2",
-    image: sprite.image,
-    frame: sprite.frame,
-    animations: sprite.animations,
-  });
+  try {
+    return parseSpriteContract({
+      contract: "stray-boy.sprite.v2",
+      image: sprite.image,
+      frame: sprite.frame,
+      animations: sprite.animations,
+    });
+  } catch (error) {
+    console.warn("[custom-sprite] 素材帧表畸形，回退内置猫：", error);
+    return null;
+  }
 }

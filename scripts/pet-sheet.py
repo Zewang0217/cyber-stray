@@ -83,7 +83,8 @@ def bands(proj: np.ndarray, min_len: int) -> list[tuple[int, int]]:
     return out
 
 
-def normalize(rgba: np.ndarray, frame: int = FRAME, content: float = CONTENT) -> Image.Image:
+def normalize(rgba: np.ndarray, frame: int = FRAME, content: float = CONTENT,
+              resample: int = Image.Resampling.LANCZOS) -> Image.Image:
     """内容占比归一 + 底中对齐到 frame 方格。"""
     alpha = rgba[..., 3] > 0
     ys, xs = np.where(alpha)
@@ -94,7 +95,7 @@ def normalize(rgba: np.ndarray, frame: int = FRAME, content: float = CONTENT) ->
     h, w = crop.shape[:2]
     scale = min(frame / w, (frame * content) / h)
     img = Image.fromarray(crop, "RGBA").resize(
-        (max(1, round(w * scale)), max(1, round(h * scale))), Image.BOX
+        (max(1, round(w * scale)), max(1, round(h * scale))), resample
     )
     canvas = Image.new("RGBA", (frame, frame), (0, 0, 0, 0))
     canvas.paste(img, ((frame - img.width) // 2, frame - img.height), img)
@@ -263,7 +264,7 @@ def split_sheet(
                 frames.append(Image.new("RGBA", (frame, frame), (0, 0, 0, 0)))
             else:
                 rgba = np.dstack([cell, (fg.astype(np.uint8)) * 255])
-                frames.append(quantize_sprite(normalize(rgba, frame)))
+                frames.append(quantize_sprite(normalize(rgba, frame, resample=Image.Resampling.BOX)))
             cells.append(cell)
         strip = Image.new("RGBA", (frame * count, frame), (0, 0, 0, 0))
         for i, f in enumerate(frames):
@@ -315,6 +316,8 @@ def main() -> None:
     ap.add_argument("--sheet", default="", metavar="N|RxC",
                     help="领养精灵图:确定性等分切分(格边界是约定非检测)。N=N×N 方阵,RxC=行条;配 --anims 定格义")
     ap.add_argument("--anims", default=None, help="sheet 模式动画定义 name:frames 逗号序(行优先),总和须 = n×n")
+    ap.add_argument("--join", action="store_true",
+                    help="总条重建:把 out 目录已有 <anim>.png 按 --anims 次序拼接为 sprite.png(strip 逐动画重生成后调用)")
     ap.add_argument("--frame", type=int, default=512, help="single/flatten 的画布边长(默认 512)")
     ap.add_argument("--quality", type=int, default=80, help="flatten JPEG 质量(默认 80)")
     ap.add_argument("--report", action="store_true", help="cells 模式末尾输出一行机器可读 JSON(cells/emptyCells/states)")
@@ -325,7 +328,23 @@ def main() -> None:
     meta: dict[str, dict[str, int]] = {}
     report: dict[str, object] = {}
 
-    if args.single:
+    if args.join:
+        assert len(args.inputs) == 0, "--join 不吃输入图(只拼 out 目录已有帧条)"
+        if not args.anims:
+            raise SystemExit("--join 必须给 --anims(全动画次序)")
+        anims = parse_anim_spec(args.anims)
+        missing = [n for n, _ in anims if not (out_dir / f"{n}.png").is_file()]
+        if missing:
+            raise SystemExit(f"--join 缺帧条: {', '.join(missing)}(先逐动画切分)")
+        total = sum(c for _, c in anims)
+        sprite = Image.new("RGBA", (args.frame * total, args.frame), (0, 0, 0, 0))
+        cursor = 0
+        for name, count in anims:
+            sprite.paste(Image.open(out_dir / f"{name}.png"), (cursor * args.frame, 0))
+            cursor += count
+        sprite.save(out_dir / "sprite.png")
+        print(f"join: sprite.png {total} frames @ {args.frame}px")
+    elif args.single:
         assert len(args.inputs) == 1 and not args.grid
         img = Image.open(args.inputs[0]).convert("RGB")
         arr = np.array(img)

@@ -123,6 +123,15 @@ export interface Splitter {
       outDir: string;
     },
   ): Promise<SheetSplitResult>;
+  /**
+   * 总条重建：strip 逐动画重生成后，把 outDir 已有帧条按全动画次序重新拼接
+   * 为 sprite.png（splitSheet 每次只写本次动画的总条，逐动画调用会互相覆盖）。
+   */
+  joinSprite(
+    outDir: string,
+    anims: ReadonlyArray<{ state: PetStateId; frames: number }>,
+    frame: number,
+  ): Promise<void>;
   /** 概念图归一：抠绿幕 → 透明底整身 PNG（角色锚点） */
   normalizeConcept(srcPath: string, outPath: string, frame: number): Promise<string>;
   /** 参考图压平：透明 PNG → 白底 JPEG（Seedream image 字段 data URL 输入） */
@@ -141,8 +150,6 @@ export interface PetGenProcessorConfig {
   referenceFrame: number;
   /** 网格生图尺寸（Seedream size 参数） */
   gridSize: string;
-  /** 领养精灵图生图尺寸（Seedream 2K；4×4 格每格 512px） */
-  sheetSize?: string;
 }
 
 /** 事件发布（结构最小面，与 EventBus.publish 同形；缺省 = 不发布，测试友好） */

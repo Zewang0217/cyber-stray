@@ -40,6 +40,12 @@ const PNG = Buffer.from(
   'base64',
 );
 
+/** 1024×64 透明 PNG（16 帧 × 64px 总条的真实 IHDR；finalize 宽度断言用） */
+const SPRITE_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAABAAAAABACAYAAACECgX8AAABFUlEQVR42u3BMQEAAADCoPVPbQlPoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAvgYAfAABiPi+ewAAAABJRU5ErkJggg==',
+  'base64',
+);
+
 const ALL_STATES: PetStateId[] = [
   'idle', 'walk', 'joy', 'eat', 'sleep', 'think', 'celebrate', 'grumpy', 'welcome',
 ];
@@ -64,6 +70,8 @@ describe('PetGenProcessor（#94 状态机）', () => {
   let conceptFails = false;
   /** sheet 切分漏格数（>0 = 布局不顺从 → 策略失败/降级 strip） */
   let sheetEmptyCells: number;
+  /** joinSprite 调用记录（每次收到的动画次序） */
+  let joinCalls: PetStateId[][];
   let publishMock: ReturnType<typeof vi.fn<(tenantId: string, event: { type: string }) => void>>;
   let clock = Date.now();
 
@@ -81,6 +89,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
     noncomplianceStrategies = new Set();
     conceptFails = false;
     sheetEmptyCells = 0;
+    joinCalls = [];
     publishMock = vi.fn();
     clock = new Date(2026, 7, 10).getTime();
 
@@ -129,8 +138,15 @@ describe('PetGenProcessor（#94 状态机）', () => {
           frames[a.state] = a.frames;
           ratios[a.state] = [];
         }
-        writeFileSync(join(opts.outDir, 'sprite.png'), PNG);
+        // 与真实脚本同形：splitSheet 写本次动画的总条（strip 行条 = 单动画窄条）
+        if (opts.rows === opts.cols) {
+          writeFileSync(join(opts.outDir, 'sprite.png'), SPRITE_PNG);
+        }
         return { files, frames, emptyCells, ratios };
+      },
+      joinSprite: async (outDir, anims) => {
+        joinCalls.push(anims.map((a) => a.state));
+        writeFileSync(join(outDir, 'sprite.png'), SPRITE_PNG);
       },
       normalizeConcept: async (_src, outPath) => {
         writeFileSync(outPath, PNG);
@@ -202,7 +218,8 @@ describe('PetGenProcessor（#94 状态机）', () => {
       const task = await getTask(id);
       if (task && statuses.includes(task.status)) return task;
     }
-    throw new Error(`tickUntil 超限；最后状态: ${(await getTask(id))?.status}`);
+    const last = await getTask(id);
+    throw new Error(`tickUntil 超限；最后状态: ${last?.status}，error: ${last?.error}`);
   }
 
   /** 连续 tick 直到任务策略变为目标值（批次失败升级用） */
@@ -478,9 +495,11 @@ describe('PetGenProcessor（#94 状态机）', () => {
     sheetEmptyCells = 0;
     const done = await tickUntil(task.id, ['done']);
     expect(done.status).toBe('done');
-    // strip：6 动画各一行 1×N 行条
+    // strip：6 动画各一行 1×N 行条；完毕后总条按全动画次序重建（防单动画覆盖）
     const stripCalls = generateMock.mock.calls.filter(([r]) => r.kind === 'sheet');
     expect(stripCalls.length).toBeGreaterThanOrEqual(6);
+    expect(joinCalls).toHaveLength(1);
+    expect(joinCalls[0]).toEqual(['idle', 'walk', 'sleep', 'grumpy', 'joy', 'welcome']);
     expect(existsSync(join(dataDir, 'tenants', 'alice', 'pet-assets', 'sprite.png'))).toBe(true);
   });
 

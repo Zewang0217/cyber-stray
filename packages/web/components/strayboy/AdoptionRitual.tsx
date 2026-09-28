@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import confetti from "canvas-confetti";
 import { CATCHPHRASE_LIST_MAX, CATCHPHRASE_TEXT_MAX, listPersonalities, type Catchphrase, type PersonalityId } from "@cyber-stray/shared";
+import { ADOPT_REFERENCE_MIME, ADOPT_REFERENCE_MAX_BYTES } from "@cyber-stray/shared/pet";
 import { PetSprite } from "@/components/strayboy/PetSprite";
 import type { SpriteContract } from "@cyber-stray/shared/sprite";
 
@@ -13,9 +14,9 @@ const SUGGESTED_INTERESTS = [
 ];
 /** "换一批"上限（含首次共 4 次请求；ADR 0005 限流防成本滥用）。 */
 const MAX_BATCH = 3;
-/** 参考图客户端预校验（与服务端同规矩，快失败省一次上传）。 */
-const REFERENCE_MIME = ["image/png", "image/jpeg", "image/webp"];
-const REFERENCE_MAX_BYTES = 8 * 1024 * 1024;
+/** 参考图客户端预校验（mime/上限与 CP 路由同源 shared，快失败省一次上传）。 */
+const REFERENCE_MIME = ADOPT_REFERENCE_MIME;
+const REFERENCE_MAX_BYTES = ADOPT_REFERENCE_MAX_BYTES;
 
 /**
  * 上传形象参考图（POST /api/pets/adopt/reference，multipart；CP 压白底 JPEG
