@@ -116,10 +116,12 @@ describe('buildSheetPrompt / buildStripPrompt / buildAnimQcPrompt（领养精灵
     expect(prompt).toContain('第1帧跳起');
   });
 
-  it('动画帧条质检 prompt：含帧间一致性判定', () => {
+  it('动画帧条质检 prompt：锚定参考图 + 帧间只抓身份跳变', () => {
     const prompt = buildAnimQcPrompt('walk', 4, spec);
     expect(prompt).toContain('4 帧');
-    expect(prompt).toContain('帧与帧之间角色外观不一致');
+    expect(prompt).toContain('第一张图是该角色的参考图');
+    expect(prompt).toContain('帧间角色的物种/主配色/体型发生明显跳变');
+    expect(prompt).toContain('姿态、大小、朝向的差异是动画的正常表现');
     expect(prompt).toContain('"pass"');
   });
 });
