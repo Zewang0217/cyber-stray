@@ -118,6 +118,15 @@ export function buildSheetPrompt(
       `精灵图动画集帧数总和 ${total} != ${grid}x${grid}=${grid * grid}（PET_SHEET_ANIMS 与网格不符）`,
     );
   }
+  // 单动画帧数也不得超过网格边长：总和凑巧对齐但单动画装不进一行时，
+  // 会产出「第 1 行共 N 格：M 帧」的自相矛盾 prompt，切分必然错位
+  for (const a of anims) {
+    if (a.frames > grid) {
+      throw new Error(
+        `动画 ${a.state} 帧数 ${a.frames} > 网格边长 ${grid}（单行装不下，行打包失真）`,
+      );
+    }
+  }
   const rows: PetStateId[][] = [];
   let current: PetStateId[] = [];
   let currentFrames = 0;

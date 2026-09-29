@@ -88,7 +88,7 @@ export interface StructureQc {
 
 /** splitSheet 产出（pet-sheet.py --sheet 的 meta 报告） */
 export interface SheetSplitResult {
-  /** 每动画帧条路径 + 帧数（帧数以切分实报为准，manifest 据此构造） */
+  /** 每动画帧条路径 + 帧数（frames 为切分实报；manifest 帧表以 PET_SHEET_ANIMS 声明值为准） */
   files: Record<string, string>;
   frames: Record<string, number>;
   /** 空格数（>0 = 模型漏格 → 策略失败信号） */

@@ -67,8 +67,10 @@ const QUAD_BATCHES: readonly (readonly PetStateId[])[] = [
   ['celebrate', 'grumpy', 'welcome'],
 ];
 
-/** 在飞状态（tick 只推进这些；awaiting/done/failed 是停驻态） */
-const IN_FLIGHT: readonly PetGenTask['status'][] = [
+/** 在飞状态（tick 只推进这些；awaiting/done/failed 是停驻态）。
+ * 提交侧（petgen-service）用同一份集合拒绝同租户并发任务——nextDueTask
+ * 只推进「租户恰 1 个在飞」的任务，放行并发提交会永久互卡 */
+export const IN_FLIGHT: readonly PetGenTask['status'][] = [
   'spec_submitted',
   'concept_generating',
   'generating_states',
@@ -516,13 +518,18 @@ export class PetGenProcessor {
           statePath: join(statesDir, `${state}.png`),
           state,
           spec,
-        }).catch((error: unknown) => {
-          // 视觉调用的基础设施/格式错误 ≠ 内容不合格：并入 QC 重试机制
-          // （错误信息留在 issues 可见），不使单次调用异常直接杀死任务
-          return { pass: false, issues: [`视觉质检异常：${messageOf(error)}`] };
-        });
-        // #129：视觉质检成功记用量（no-throw）
-        this.deps.usage?.recordVision(task.tenantId);
+        }).then(
+          // #129：视觉质检成功才记用量——调用异常并入 QC 重试机制但不计费
+          (r) => {
+            this.deps.usage?.recordVision(task.tenantId);
+            return r;
+          },
+          (error: unknown) => {
+            // 视觉调用的基础设施/格式错误 ≠ 内容不合格：并入 QC 重试机制
+            // （错误信息留在 issues 可见），不使单次调用异常直接杀死任务
+            return { pass: false, issues: [`视觉质检异常：${messageOf(error)}`] };
+          },
+        );
       }
       const failed = PET_STATE_IDS.filter(
         (s) => !structural[s].pass || !semantic[s].pass,
@@ -582,11 +589,16 @@ export class PetGenProcessor {
           state: anim,
           spec,
           frames: frames[anim],
-        }).catch((error: unknown) => {
-          // 同经典路径：视觉调用异常并入重试机制，错误信息留在 issues 可见
-          return { pass: false, issues: [`视觉质检异常：${messageOf(error)}`] };
-        });
-        this.deps.usage?.recordVision(task.tenantId);
+        }).then(
+          // 同经典路径：成功才记用量，调用异常并入重试机制（issues 可见）
+          (r) => {
+            this.deps.usage?.recordVision(task.tenantId);
+            return r;
+          },
+          (error: unknown) => {
+            return { pass: false, issues: [`视觉质检异常：${messageOf(error)}`] };
+          },
+        );
       }
       const failed = anims.filter((s) => !structural[s].pass || !semantic[s].pass);
       await this.patch(task.id, { qcResult: JSON.stringify(semantic), updatedAt: now });
@@ -743,29 +755,46 @@ export class PetGenProcessor {
     };
   }
 
-  /** sheet-meta.json 里 idle 各帧内容高取最大（切分脚本测量）；无 meta → undefined（字段可选） */
+  /** sheet-meta.json 里 idle 各帧内容高取最大（切分脚本测量）；旧版脚本无 idle 条目 → undefined */
   private async measureIdleContentHeight(statesDir: string): Promise<number | undefined> {
     const metaPath = join(statesDir, 'sheet-meta.json');
     if (!(await access(metaPath).then(() => true, () => false))) return undefined;
-    const meta = JSON.parse(await readFile(metaPath, 'utf8')) as {
-      anims?: Record<string, { contentHeights?: number[] }>;
-    };
-    const heights = (meta.anims?.idle?.contentHeights ?? []).filter((h) => h > 0);
+    // 形状守卫：脚手架产物也按契约验——坏形状是脚本/处理器版本漂移，宁可响炸
+    // 也不静默吞成「无测量」（禁兜底；与 parseSheetReport 同款手动校验）
+    const parsed: unknown = JSON.parse(await readFile(metaPath, 'utf8'));
+    if (typeof parsed !== 'object' || parsed === null || !('anims' in parsed)) {
+      throw new Error('sheet-meta.json 缺 anims 字段（pet-sheet.py 版本漂移）');
+    }
+    const anims = (parsed as { anims: Record<string, unknown> }).anims;
+    const idle = (anims as Record<string, { contentHeights?: unknown }>).idle;
+    if (!idle) return undefined; // 旧版脚本无测量，字段可选
+    if (!Array.isArray(idle.contentHeights)) {
+      throw new Error('sheet-meta.json idle.contentHeights 非数组（pet-sheet.py 版本漂移）');
+    }
+    const heights = (idle.contentHeights as unknown[]).filter(
+      (h): h is number => typeof h === 'number' && h > 0,
+    );
     return heights.length > 0 ? Math.max(...heights) : undefined;
   }
 
-  /** pet_assets_ready 事件（web 拉 manifest 换形象）；无宠物行/未注入 bus → 不发 */
+  /** pet_assets_ready 事件（web 拉 manifest 换形象）；无宠物行/未注入 bus → 不发。
+   * 通知失败不回滚任务：素材已交付、web 另有刷新拉取兜底，DB 抖动不该把
+   * 已 done 的任务改判 failed（事件是锦上添花，不是交付链一环） */
   private async publishAssetsReady(task: PetGenTask): Promise<void> {
     if (!this.deps.bus) return;
-    const pet = await findPetByTenant(this.deps.db, task.tenantId);
-    if (!pet) return;
-    this.deps.bus.publish(task.tenantId, {
-      type: 'pet_assets_ready',
-      tenantId: task.tenantId,
-      petId: pet.id,
-      at: this.now(),
-      detail: `task ${task.id}`,
-    });
+    try {
+      const pet = await findPetByTenant(this.deps.db, task.tenantId);
+      if (!pet) return;
+      this.deps.bus.publish(task.tenantId, {
+        type: 'pet_assets_ready',
+        tenantId: task.tenantId,
+        petId: pet.id,
+        at: this.now(),
+        detail: `task ${task.id}`,
+      });
+    } catch (error) {
+      console.error(`[petgen] pet_assets_ready 事件发送失败（task ${task.id}）：`, error);
+    }
   }
 }
 

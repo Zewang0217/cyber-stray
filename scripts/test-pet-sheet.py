@@ -207,6 +207,20 @@ def main() -> None:
     assert Image.open(out / "sprite.png").size == (64 * 4, 64)
     print("PASS sheet 1x4(strip 降级行条)")
 
+    # 9. meta 按动画键合并累积:strip 逐动画重生成不抹此前动画的测量
+    # (CP finalize 据 idle.contentHeights 决议展示缩放,覆盖写 = 招牌特性静默失效)
+    out = Path(tempfile.mkdtemp())
+    run_sheet([str(grid), "--sheet", "4", "--anims", anims, "--frame", "64"], out)
+    assert "idle" in json.loads((out / "sheet-meta.json").read_text())["anims"]
+    run_sheet(
+        [str(strip_img), "--sheet", "1x4", "--anims", "walk:4", "--frame", "64", "--out", str(out)],
+        out,
+    )
+    meta = json.loads((out / "sheet-meta.json").read_text())["anims"]
+    assert "idle" in meta, f"strip 重生成后 idle 测量被抹掉: {list(meta)}"
+    assert "walk" in meta and meta["walk"]["contentHeights"], f"walk 条目未刷新: {list(meta)}"
+    print("PASS sheet meta 合并(strip 重生成不抹既有动画测量)")
+
     print("\nALL TESTS PASSED")
 
 

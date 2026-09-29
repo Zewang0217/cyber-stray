@@ -105,6 +105,17 @@ describe('buildSheetPrompt / buildStripPrompt / buildAnimQcPrompt（领养精灵
     ).toThrow(/帧数总和/);
   });
 
+  it('sheet prompt：单动画帧数 > 网格边长抛错（总和凑巧对齐也拒绝）', () => {
+    // 4+4+4+4=16 恰好等于 4×4，但 idle 单行装不下 5 帧——行打包自相矛盾
+    const anims = [
+      { state: 'idle' as const, frames: 5 },
+      { state: 'walk' as const, frames: 4 },
+      { state: 'sleep' as const, frames: 4 },
+      { state: 'joy' as const, frames: 3 },
+    ];
+    expect(() => buildSheetPrompt(spec, PET_STYLE_PRESETS['pixel'], anims, 4)).toThrow(/装不下/);
+  });
+
   it('sheetRowOf：未知状态抛错（禁兜底）', () => {
     expect(() => sheetRowOf('不存在' as PetStateId)).toThrow(/未知宠物状态/);
   });

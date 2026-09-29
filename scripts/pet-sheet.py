@@ -293,7 +293,17 @@ def split_sheet(
         "emptyCells": empty_cells,
         "anims": report_anims,
     }
-    (out_dir / "sheet-meta.json").write_text(json.dumps(meta, ensure_ascii=False))
+    # anims 按动画键合并累积：strip 阶梯逐动画重生成会多次调用本函数，覆盖写
+    # 会把此前动画（如 idle）的内容高测量抹掉——CP finalize 据此决议展示缩放。
+    # 损坏的旧 meta 视为不存在（派生产物，本次调用重起一个新 anims 集）
+    meta_path = out_dir / "sheet-meta.json"
+    if meta_path.exists():
+        try:
+            prev_anims = json.loads(meta_path.read_text()).get("anims", {})
+            meta["anims"] = {**prev_anims, **report_anims}
+        except (json.JSONDecodeError, OSError):
+            print("  [warn] 既有 sheet-meta.json 损坏，忽略合并", file=sys.stderr)
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False))
     return meta
 
 

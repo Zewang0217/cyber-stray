@@ -140,12 +140,18 @@ describe('PetGenProcessor（#94 状态机）', () => {
           frames[a.state] = a.frames;
           ratios[a.state] = [];
         }
-        // 真实脚本同构：sheet-meta.json 带内容高测量（displayScale 决议源）
+        // 真实脚本同构：meta 只写本次动画 + 与既有文件按动画键合并
+        // （strip 逐动画重生成不抹掉此前动画的测量——P1 修复的镜像）
+        const metaPath = join(opts.outDir, 'sheet-meta.json');
+        let anims: Record<string, { contentHeights: number[] }> = {};
+        try {
+          anims = JSON.parse(readFileSync(metaPath, 'utf-8')).anims ?? {};
+        } catch { /* 无既有 meta */ }
         if (sheetMetaContentHeights !== null) {
-          writeFileSync(
-            join(opts.outDir, 'sheet-meta.json'),
-            JSON.stringify({ anims: { idle: { contentHeights: sheetMetaContentHeights } } }),
-          );
+          for (const a of opts.anims) {
+            anims[a.state] = { contentHeights: sheetMetaContentHeights };
+          }
+          writeFileSync(metaPath, JSON.stringify({ anims }));
         }
         // 与真实脚本同形：splitSheet 写本次动画的总条（strip 行条 = 单动画窄条）
         if (opts.rows === opts.cols) {
@@ -501,8 +507,9 @@ describe('PetGenProcessor（#94 状态机）', () => {
     }));
   });
 
-  it('精灵图漏格：重试后降级 strip 逐动画重生成 → done', async () => {
+  it('精灵图漏格：重试后降级 strip 逐动画重生成 → done（displayScale 经 meta 合并存活）', async () => {
     sheetEmptyCells = 16; // sheet 全漏格（布局不顺从）
+    sheetMetaContentHeights = [52, 52, 52, 52]; // 降级路径的测量来源
     const task = await insertTask({ strategy: 'sheet', stylePreset: 'pixel' });
     await tickUntil(task.id, ['generating_states']);
     const downgraded = await tickUntilStrategy(task.id, ['strip']);
@@ -516,6 +523,13 @@ describe('PetGenProcessor（#94 状态机）', () => {
     expect(joinCalls).toHaveLength(1);
     expect(joinCalls[0]).toEqual(['idle', 'walk', 'sleep', 'grumpy', 'joy', 'welcome', 'think']);
     expect(existsSync(join(dataDir, 'tenants', 'alice', 'pet-assets', 'sprite.png'))).toBe(true);
+    // strip 逐动画重生成不抹 idle 测量：displayScale 照常决议（回归锚：
+    // 真实脚本按动画键合并 meta，覆盖写会让招牌特性在降级路径静默失效）
+    const manifest = JSON.parse(
+      readFileSync(join(dataDir, 'tenants', 'alice', 'pet-assets', 'manifest.json'), 'utf-8'),
+    ) as { sprite: { displayScale?: number } };
+    expect(manifest.sprite.displayScale).toBe(2);
+    sheetMetaContentHeights = null;
   });
 
   it('精灵图内容高测量：sheet-meta 有 idle 内容高 → manifest 决议 displayScale', async () => {
