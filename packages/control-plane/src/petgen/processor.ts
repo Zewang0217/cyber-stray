@@ -90,6 +90,8 @@ function taskDirOf(dataDir: string, tenantId: string, taskId: string): string {
 export class PetGenProcessor {
   private busy = false;
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** 已告警过的互卡租户（同租户 ≥2 在飞 = 队列永久互卡，只报一次防刷屏） */
+  private alertedStuck = new Set<string>();
 
   constructor(private readonly deps: PetGenProcessorDeps) {}
 
@@ -141,6 +143,17 @@ export class PetGenProcessor {
     const counts = new Map<string, number>();
     for (const t of inflight) {
       counts.set(t.tenantId, (counts.get(t.tenantId) ?? 0) + 1);
+    }
+    // 互卡检测（提交侧已串行化，此为历史脏数据的发现通道）：同租户 ≥2 在飞
+    // 时谁都不可推进且提交侧 409——除手工改库外无自愈路径，必须响亮报错
+    for (const [tenantId, count] of counts) {
+      if (count >= 2 && !this.alertedStuck.has(tenantId)) {
+        this.alertedStuck.add(tenantId);
+        console.error(
+          `[petgen] 租户 ${tenantId} 有 ${count} 个在飞任务（互卡，队列停摆）——` +
+            '请人工核查 pet_gen_tasks 并清理多余在飞行',
+        );
+      }
     }
     return inflight.find((t) => (counts.get(t.tenantId) ?? 0) === 1);
   }
