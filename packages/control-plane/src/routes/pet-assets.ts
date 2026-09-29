@@ -22,6 +22,7 @@ import { Hono } from 'hono';
 import { extname, join, resolve, sep } from 'path';
 import type { ControlPlaneConfig } from '../config.js';
 import { findUserTenantRelation } from '../infra/tenant-access.js';
+import { noteTenantActivity } from '../infra/tenant-activity.js';
 import { readTenantAsset } from '../infra/tenant-data-reader.js';
 import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 import { tenantDataDir } from '../infra/tenant.js';
@@ -49,6 +50,8 @@ async function scopedAssetTenant(
   // 路径拼接前校验（与 tenant-secrets 的 fs 边界同规矩：防注入）
   if (!TENANT_ID_RE.test(session.tenantId)) return { error: 404 };
 
+  // X1「回访」埋点（与 requireTenant 同款；404 语义路由不走共享中间件）
+  noteTenantActivity(config.dataDir, session.tenantId);
   return { tenantId: session.tenantId };
 }
 
