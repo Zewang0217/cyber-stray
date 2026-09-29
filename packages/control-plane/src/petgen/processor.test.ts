@@ -358,7 +358,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
 
     inspectRejects = true; // 供应商故障（端点 503）
     await processor.tick();
-    let stuck = await getTask(task.id);
+    const stuck = await getTask(task.id);
     expect(stuck?.status).toBe('qc'); // 不打回 generating_states、不消耗 qcRetries
     expect(stuck?.qcRetries).toBe(0);
     expect(generateMock.mock.calls.length).toBe(genCallsAtQc); // 没有白烧生图

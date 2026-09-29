@@ -244,10 +244,11 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     expect(b?.llmTokens).toBe(0);
     expect(b?.cost).toBe(0);
 
-    // #265 水位：主 fixture 未启用预算 → 上限 null；明细行是 2026-08-25 的历史
-    // 数据、今日文件读不到当日行 → 今日 LLM 成本 0
+    // #265 水位：主 fixture 未启用预算 → 上限 null；行落在今日文件（本地日
+    // 分区）即计入今日——即使行内 timestamp 是历史时间（usage 文件即天分区，
+    // 不再按行内 UTC 日期二次筛，见 infra/usage.ts）→ 今日 LLM 成本 6 元
     expect(a?.llmBudgetYuan).toBeNull();
-    expect(a?.llmCostToday).toBe(0);
+    expect(a?.llmCostToday).toBe(6);
 
     // 明细降序 + 含 cost
     expect(recent).toHaveLength(3);

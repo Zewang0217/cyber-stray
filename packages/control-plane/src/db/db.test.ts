@@ -164,9 +164,9 @@ describe('drizzle meta 一致性（journal ↔ snapshot ↔ schema）', () => {
     const snaps = loadSnapshots();
     const idxs = [...snaps.keys()].sort((a, b) => a - b);
     for (let i = 1; i < idxs.length; i++) {
-      expect(snaps.get(idxs[i])!.prevId, `snapshot ${idxs[i]} 的 prevId`).toBe(
-        snaps.get(idxs[i - 1])!.id,
-      );
+      const cur = snaps.get(idxs[i]!)!;
+      const prev = snaps.get(idxs[i - 1]!)!;
+      expect(cur.prevId, `snapshot ${idxs[i]} 的 prevId`).toBe(prev.id);
     }
   });
 
@@ -187,7 +187,9 @@ describe('drizzle meta 一致性（journal ↔ snapshot ↔ schema）', () => {
       resolve(dirname(fileURLToPath(import.meta.url)), 'schema.ts'),
       'utf-8',
     );
-    const schemaTables = [...schemaSrc.matchAll(/sqliteTable\('([a-z_]+)'/g)].map((m) => m[1]);
+    const schemaTables = [...schemaSrc.matchAll(/sqliteTable\('([a-z_]+)'/g)]
+      .map((m) => m[1])
+      .filter((name): name is string => typeof name === 'string');
     expect(new Set(schemaTables).size).toBe(schemaTables.length); // 无重复定义
     expect(sorted(Object.keys(latest.tables))).toEqual(sorted(schemaTables));
   });
