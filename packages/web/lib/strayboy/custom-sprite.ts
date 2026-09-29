@@ -60,3 +60,14 @@ export function spriteContractFromManifest(
     return null;
   }
 }
+
+/**
+ * manifest.sprite.displayScale → 街角展示倍率。畸形值（非整数/越界）一律回退 3
+ * （内置猫基准）：frameStyle 对非正整数直接 throw 且街角无错误边界，放行会炸
+ * 整页；调用方须在 customContract 非空（素材已验证可播）时才使用本值——
+ * 回退内置猫时恒用 3，避免「内置猫套自定义缩放」的错配。
+ */
+export function displayScaleFromManifest(manifest: PetAssetManifest): number {
+  const s = manifest.sprite?.displayScale;
+  return typeof s === "number" && Number.isInteger(s) && s >= 1 && s <= 3 ? s : 3;
+}

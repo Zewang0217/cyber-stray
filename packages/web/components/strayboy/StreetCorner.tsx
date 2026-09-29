@@ -6,6 +6,7 @@ import type { SpriteContract } from "@cyber-stray/shared/sprite";
 import { deriveStreetView } from "@/lib/strayboy/pet-view";
 import {
   CUSTOM_SPRITE_BASE_PATH,
+  displayScaleFromManifest,
   spriteContractFromManifest,
   streetAnimFor,
 } from "@/lib/strayboy/custom-sprite";
@@ -150,7 +151,9 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
   // 直接透传会让 refreshToken 从事件时刻跳回 0 触发无意义重拉
   const [assetsReadyAt, setAssetsReadyAt] = useState(0);
   useEffect(() => {
-    if (lastEvent?.type === "pet_assets_ready") setAssetsReadyAt(lastEvent.at);
+    if (lastEvent?.type === "pet_assets_ready") {
+      setAssetsReadyAt((prev) => Math.max(prev, lastEvent.at));
+    }
   }, [lastEvent]);
   // 领养自定义精灵图：manifest 就绪（或 pet_assets_ready 事件）即热换形象，
   // 缺素材/素材版本不受支持 → 回退内置猫
@@ -162,8 +165,9 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
   const petContract = customContract ?? contract;
   const petBasePath = customContract ? CUSTOM_SPRITE_BASE_PATH : undefined;
   // 展示倍率：管线按实测内容高决议（每只宠物体型各异，基准 84px 落带内）；
-  // 旧 manifest / 内置猫无此字段 → 3（内置猫 32px 帧 × 3 = 84px 基准本尊）
-  const petScale = manifest?.sprite?.displayScale ?? 3;
+  // 只在自定义契约生效（素材已验证可播）时读 manifest——回退内置猫恒 3
+  // （内置猫 32px 帧 × 3 = 84px 基准本尊），畸形值由 displayScaleFromManifest 兜回 3
+  const petScale = customContract && manifest ? displayScaleFromManifest(manifest) : 3;
   // 毛色滤镜只属于内置猫——自定义形象不被 hue-rotate 改色
   const petCoat = customContract ? ("orange" as const) : coat;
   // /footprint 重定向 ?drawer=log → 自动开 LOG 存档抽屉

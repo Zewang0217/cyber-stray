@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { spriteContractFromManifest, streetAnimFor } from "./custom-sprite";
+import {
+  displayScaleFromManifest,
+  spriteContractFromManifest,
+  streetAnimFor,
+} from "./custom-sprite";
 import type { PetAssetManifest } from "@cyber-stray/shared/pet";
 
 /**
@@ -65,6 +69,27 @@ describe("spriteContractFromManifest", () => {
     expect(spriteContractFromManifest(m)).toBeNull();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("welcome"));
     warn.mockRestore();
+  });
+});
+
+describe("displayScaleFromManifest（街角展示倍率，畸形回退 3 防炸街角）", () => {
+  it("管线合法产出（2/3）原样透传", () => {
+    expect(displayScaleFromManifest(manifestWith({ displayScale: 2 }))).toBe(2);
+    expect(displayScaleFromManifest(manifestWith({ displayScale: 3 }))).toBe(3);
+  });
+
+  it("旧 manifest 无字段 → 3", () => {
+    const m = manifestWith();
+    delete (m.sprite as { displayScale?: number }).displayScale;
+    expect(displayScaleFromManifest(m)).toBe(3);
+  });
+
+  it("畸形值（0/负数/非整数/非数字/越界）一律 3——frameStyle 对非正整数 throw 且街角无错误边界", () => {
+    for (const bad of [0, -2, 2.5, "3", null]) {
+      const m = manifestWith({ displayScale: bad as unknown as number });
+      expect(displayScaleFromManifest(m)).toBe(3);
+    }
+    expect(displayScaleFromManifest(manifestWith({ displayScale: 9 }))).toBe(3);
   });
 });
 
