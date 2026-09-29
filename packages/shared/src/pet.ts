@@ -144,8 +144,73 @@ export interface PetAssetManifest {
     options?: { palette?: string; size?: string; note?: string };
     stylePreset?: PetPresetId;
   };
-  /** 概念图文件名（相对 pet-assets/） */
-  concept: string;
-  /** 状态表：每状态素材规格（自定义 IP = 单帧 frames:1 + 播放器程序微动画） */
-  states: Record<PetStateId, PetStateSpec>;
+  /** 概念图文件名（相对 pet-assets/）。领养上传参考图路径无概念图 → 可缺省 */
+  concept?: string;
+  /** 状态表：每状态素材规格。领养精灵图路径只含已生成动画的子集（v2 起可缺） */
+  states: Partial<Record<PetStateId, PetStateSpec>>;
+  /**
+   * 领养精灵图块（v2；单张 n×n 精灵图切分的横排总条，frames.json 同构——
+   * web 播放器据此直接建 SpriteContract 播放）。改造屋 quad/nine/per 路径
+   * 不产出此块（单帧静态素材，走程序微动画）。
+   */
+  sprite?: PetManifestSprite;
 }
+
+/** 领养精灵图块：单文件横排帧条 + 动画帧表（SpriteContract 的素材子集） */
+export interface PetManifestSprite {
+  /** 横排总条文件名（相对 pet-assets/；帧按 animations 次序横排） */
+  image: string;
+  frame: { w: number; h: number; groundRow: number };
+  animations: Record<string, { from: number; frames: number; duration: number; loop: boolean }>;
+  /**
+   * 实测 idle 内容高（帧内 alpha 非零最大高度，px）。帧画布固定 64px 而角色
+   * 占格因种子/物种而异——街角缩放按此决议，避免「每只宠物一样大」或巨型化。
+   */
+  contentHeight?: number;
+  /**
+   * 街角展示整数倍率（steps() 帧步进要整数 px，非整数会破像素对齐）：
+   * 管线 clamp(round(基准 84px / contentHeight), 2, 3)；缺省 3 = 旧 manifest 兼容。
+   */
+  displayScale?: number;
+}
+
+// ── 领养精灵图（单张 n×n 一致性方案）契约常量 ─────────────────────────
+
+/** 精灵图动画集：4×4 = 16 帧恰好填满（无空格——quad 路径主失败因即空位指令不顺从）。
+ * 帧序 = 行优先；时长对齐内置猫同状态动画（frames.json），街角手感一致。 */
+export const PET_SHEET_ANIMS: ReadonlyArray<{
+  state: PetStateId;
+  frames: number;
+  duration: number;
+}> = [
+  { state: 'idle', frames: 4, duration: 0.8 },
+  // walk 2 帧：真机 8 轮实证 Seedream 画不稳 1×4 行走循环（首帧走后三帧坐），
+  // 两帧法则下 2 帧走路循环模型可稳定产出；think 补位（街角待机小剧场真实消费）
+  { state: 'walk', frames: 2, duration: 0.6 },
+  { state: 'sleep', frames: 2, duration: 1.6 },
+  { state: 'grumpy', frames: 2, duration: 1.2 },
+  { state: 'joy', frames: 2, duration: 0.4 },
+  { state: 'welcome', frames: 2, duration: 0.8 },
+  { state: 'think', frames: 2, duration: 0.8 },
+];
+
+/** 精灵图网格边长 n（n×n 格） */
+export const PET_SHEET_GRID = 4;
+
+/** 切分后单帧边长 px（2K 出图 512px 格 ÷ 8 整数降采样，保像素纯净） */
+export const PET_SHEET_FRAME = 64;
+
+/** 精灵图动画 id 集（PetStateId 子集，校验 pendingStates 用） */
+export const PET_SHEET_STATE_IDS: ReadonlyArray<PetStateId> = PET_SHEET_ANIMS.map(
+  (a) => a.state,
+);
+
+/** 领养参考图 mime 白名单（web 预校验与 CP 路由校验同源，禁镜像） */
+export const ADOPT_REFERENCE_MIME: ReadonlyArray<string> = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+];
+
+/** 领养参考图大小上限（字节；web 预校验与 CP 路由校验同源） */
+export const ADOPT_REFERENCE_MAX_BYTES = 8 * 1024 * 1024;

@@ -6,8 +6,20 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { PET_STYLE_PRESETS, type PetStateId } from '@cyber-stray/shared/pet';
-import { buildConceptPrompt, buildGridPrompt, buildQcPrompt } from './prompt.js';
+import {
+  PET_SHEET_ANIMS,
+  PET_STYLE_PRESETS,
+  type PetStateId,
+} from '@cyber-stray/shared/pet';
+import {
+  buildAnimQcPrompt,
+  buildConceptPrompt,
+  buildGridPrompt,
+  buildQcPrompt,
+  buildSheetPrompt,
+  buildStripPrompt,
+  sheetRowOf,
+} from './prompt.js';
 import type { PetSpec } from './types.js';
 
 const spec: PetSpec = {
@@ -66,5 +78,61 @@ describe('buildQcPrompt', () => {
     expect(prompt).toContain('"pass"');
     expect(prompt).toContain('文字、水印');
     expect(prompt).toContain('畸形');
+  });
+});
+
+describe('buildSheetPrompt / buildStripPrompt / buildAnimQcPrompt（领养精灵图）', () => {
+  it('sheet prompt：网格规格 + 动画按帧数打包进 4 行 + 布局纪律', () => {
+    const prompt = buildSheetPrompt(spec, PET_STYLE_PRESETS['pixel'], PET_SHEET_ANIMS, 4);
+    expect(prompt).toContain('4x4');
+    expect(prompt).toContain('一只戴红色围巾的橘猫');
+    expect(prompt).toContain('恰好4行每行4格');
+    // 第 1 行 = idle 整行；第 2-4 行 = 两动画拼行（帧数打包，行数必须等于网格行数——错位 bug 回归锚）
+    expect(prompt).toContain('第1行共4格,从左到右:待机呼吸(idle)连续帧:');
+    expect(prompt).toContain('第2行共4格,从左到右:游荡(walk)连续帧:');
+    expect(prompt).toContain('休息(sleep)连续帧:');
+    expect(prompt).toContain('第3行共4格,从左到右:不爽(grumpy)连续帧:');
+    expect(prompt).toContain('开心(joy)连续帧:');
+    expect(prompt).toContain('第4行共4格,从左到右:打招呼(welcome)连续帧:');
+    expect(prompt).toContain('思考(think)连续帧:');
+    expect(prompt).toContain('脚底都贴在同一水平线');
+    expect(prompt).toContain('#00FF00');
+  });
+
+  it('sheet prompt：帧数总和 != n×n 抛错（防 prompt 与网格不符）', () => {
+    expect(() =>
+      buildSheetPrompt(spec, PET_STYLE_PRESETS['pixel'], [{ state: 'idle', frames: 4 }], 4),
+    ).toThrow(/帧数总和/);
+  });
+
+  it('sheet prompt：单动画帧数 > 网格边长抛错（总和凑巧对齐也拒绝）', () => {
+    // 4+4+4+4=16 恰好等于 4×4，但 idle 单行装不下 5 帧——行打包自相矛盾
+    const anims = [
+      { state: 'idle' as const, frames: 5 },
+      { state: 'walk' as const, frames: 4 },
+      { state: 'sleep' as const, frames: 4 },
+      { state: 'joy' as const, frames: 3 },
+    ];
+    expect(() => buildSheetPrompt(spec, PET_STYLE_PRESETS['pixel'], anims, 4)).toThrow(/装不下/);
+  });
+
+  it('sheetRowOf：未知状态抛错（禁兜底）', () => {
+    expect(() => sheetRowOf('不存在' as PetStateId)).toThrow(/未知宠物状态/);
+  });
+
+  it('strip prompt：1 行 N 列连续帧（降级策略）', () => {
+    const prompt = buildStripPrompt(spec, PET_STYLE_PRESETS['pixel'], '开心', 2, '第1帧跳起,第2帧落地');
+    expect(prompt).toContain('1 行 2 列');
+    expect(prompt).toContain('开心');
+    expect(prompt).toContain('第1帧跳起');
+  });
+
+  it('动画帧条质检 prompt：锚定参考图 + 帧间只抓身份跳变', () => {
+    const prompt = buildAnimQcPrompt('walk', 4, spec);
+    expect(prompt).toContain('4 帧');
+    expect(prompt).toContain('第一张图是该角色的参考图');
+    expect(prompt).toContain('帧间角色的物种/主配色/体型发生明显跳变');
+    expect(prompt).toContain('姿态、大小、朝向的差异是动画的正常表现');
+    expect(prompt).toContain('"pass"');
   });
 });

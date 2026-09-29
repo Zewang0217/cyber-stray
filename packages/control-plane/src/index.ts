@@ -88,12 +88,20 @@ scheduler.start(config.schedulerIntervalMs);
 const petGenProcessor = new PetGenProcessor({
   dataDir: config.dataDir,
   db: await getDb(config.dataDir),
+  // pet_assets_ready 事件（领养精灵图就绪 → web 拉 manifest 换形象）
+  bus,
   imageGen: createImageGenerator(config.arkApiKey, {
     // #131：每次 generate 读配置缓存（admin 改面板 → 下次生图即生效，无重启）
     model: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).imageModel,
     size: '2K', // Seedream 5.0 无 1K 档，最小 2K（2048×2048）
   }),
-  visionQc: createVisionQc(config.visionApiKey, { model: config.visionModel }),
+  visionQc: createVisionQc(config.visionApiKey, {
+    model: config.visionModel,
+    // 空 = vision.ts 默认端点（智谱）；配 CP_VISION_BASE_URL 切任意 OpenAI 兼容端点
+    baseUrl: config.visionBaseUrl || undefined,
+    thinking: config.visionThinking,
+    temperature: 0, // 质检判定要稳定
+  }),
   splitter: createSplitter(),
   structureQc: createStructureQc(),
   // #129：petgen 生图/质检用量记录（no-throw）
@@ -103,7 +111,9 @@ const petGenProcessor = new PetGenProcessor({
   }),
   config: {
     maxBatchRetries: 2,
-    maxQcRetries: 2,
+    // 真机数据：每轮 QC 挂的动画随机（生成随机性），只重生成失败动画 + 多轮
+    // 预算才能凑齐全过；每轮成本 = 挂掉动画数 × (1 生图 + 1 视觉调用)，有界
+    maxQcRetries: 4,
     conceptFrame: 512,
     referenceFrame: 384,
     gridSize: '1024*1024',

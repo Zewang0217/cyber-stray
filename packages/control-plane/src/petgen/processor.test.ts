@@ -12,14 +12,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { eq } from 'drizzle-orm';
 import { getDb, _resetDb, type ControlDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { getOrCreateTenant } from '../infra/tenant.js';
-import { petGenTasks, tenants, type PetGenTask } from '../db/schema.js';
+import { petGenTasks, pets, tenants, type PetGenTask } from '../db/schema.js';
 import { PetGenProcessor } from './processor.js';
 import { petGenQuota } from './quota.js';
 import type { PetStateId } from '@cyber-stray/shared/pet';
@@ -37,6 +37,12 @@ import type {
 
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+/** 1024×64 透明 PNG（16 帧 × 64px 总条的真实 IHDR；finalize 宽度断言用） */
+const SPRITE_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAABAAAAABACAYAAACECgX8AAABFUlEQVR42u3BMQEAAADCoPVPbQlPoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAvgYAfAABiPi+ewAAAABJRU5ErkJggg==',
   'base64',
 );
 
@@ -62,6 +68,13 @@ describe('PetGenProcessor（#94 状态机）', () => {
   /** 空格不顺从策略集（emptyCells=0 → 触发升级） */
   let noncomplianceStrategies: Set<string>;
   let conceptFails = false;
+  /** sheet 切分漏格数（>0 = 布局不顺从 → 策略失败/降级 strip） */
+  let sheetEmptyCells: number;
+  /** 非 null 时 fake splitSheet 写 sheet-meta.json（displayScale 决议测试用） */
+  let sheetMetaContentHeights: number[] | null = null;
+  /** joinSprite 调用记录（每次收到的动画次序） */
+  let joinCalls: PetStateId[][];
+  let publishMock: ReturnType<typeof vi.fn<(tenantId: string, event: { type: string }) => void>>;
   let clock = Date.now();
 
   beforeEach(async () => {
@@ -77,6 +90,9 @@ describe('PetGenProcessor（#94 状态机）', () => {
     splitFailStrategies = new Set();
     noncomplianceStrategies = new Set();
     conceptFails = false;
+    sheetEmptyCells = 0;
+    joinCalls = [];
+    publishMock = vi.fn();
     clock = new Date(2026, 7, 10).getTime();
 
     generateMock = vi.fn(async ({ kind, outPath }) => {
@@ -112,6 +128,47 @@ describe('PetGenProcessor（#94 状态机）', () => {
           emptyCells: 1,
         };
       },
+      splitSheet: async (_gridPath, opts) => {
+        const files: Record<string, string> = {};
+        const frames: Record<string, number> = {};
+        const ratios: Record<string, number[]> = {};
+        // strip 降级（rows=1）恒成功；sheet 漏格由 sheetEmptyCells 驱动
+        const emptyCells = opts.rows === 1 ? 0 : sheetEmptyCells;
+        for (const a of opts.anims) {
+          writeFileSync(join(opts.outDir, `${a.state}.png`), PNG);
+          files[a.state] = join(opts.outDir, `${a.state}.png`);
+          frames[a.state] = a.frames;
+          ratios[a.state] = [];
+        }
+        // 真实脚本同构：meta 只写本次动画 + 与既有文件按动画键合并
+        // （strip 逐动画重生成不抹掉此前动画的测量——P1 修复的镜像）
+        const metaPath = join(opts.outDir, 'sheet-meta.json');
+        let anims: Record<string, { contentHeights: number[] }> = {};
+        try {
+          anims = JSON.parse(readFileSync(metaPath, 'utf-8')).anims ?? {};
+        } catch { /* 无既有 meta */ }
+        if (sheetMetaContentHeights !== null) {
+          for (const a of opts.anims) {
+            anims[a.state] = { contentHeights: sheetMetaContentHeights };
+          }
+          writeFileSync(metaPath, JSON.stringify({ anims }));
+        }
+        // 与真实脚本同形：splitSheet 写本次动画的总条（strip 行条 = 单动画窄条）
+        if (opts.rows === opts.cols) {
+          writeFileSync(join(opts.outDir, 'sprite.png'), SPRITE_PNG);
+        }
+        return { files, frames, emptyCells, ratios };
+      },
+      joinSprite: async (outDir, anims) => {
+        joinCalls.push(anims.map((a) => a.state));
+        writeFileSync(join(outDir, 'sprite.png'), SPRITE_PNG);
+      },
+      upscaleForQc: async (srcPath, outDir) => {
+        const stem = srcPath.split('/').pop()!.replace('.png', '');
+        const dst = join(outDir, `${stem}.qc.png`);
+        writeFileSync(dst, PNG);
+        return dst;
+      },
       normalizeConcept: async (_src, outPath) => {
         writeFileSync(outPath, PNG);
         return outPath;
@@ -136,6 +193,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
         gridSize: '1024*1024',
       },
       now: () => clock,
+      bus: { publish: publishMock },
     };
     processor = new PetGenProcessor(deps);
   });
@@ -181,7 +239,8 @@ describe('PetGenProcessor（#94 状态机）', () => {
       const task = await getTask(id);
       if (task && statuses.includes(task.status)) return task;
     }
-    throw new Error(`tickUntil 超限；最后状态: ${(await getTask(id))?.status}`);
+    const last = await getTask(id);
+    throw new Error(`tickUntil 超限；最后状态: ${last?.status}，error: ${last?.error}`);
   }
 
   /** 连续 tick 直到任务策略变为目标值（批次失败升级用） */
@@ -388,5 +447,133 @@ describe('PetGenProcessor（#94 状态机）', () => {
     const conceptCalls = generateMock.mock.calls.filter(([r]) => r.kind === 'concept');
     expect(conceptCalls).toHaveLength(2);
     expect(conceptCalls[1]?.[0].prompt).toContain('蓝色小狗');
+  });
+
+  // ─── 领养精灵图（sheet/strip 阶梯）───
+
+  it('精灵图：自动确认跳过 awaiting_confirmation，单张 4x4 生成 → done 带 sprite 块 + 事件', async () => {
+    // 宠物行存在 → done 后发 pet_assets_ready
+    await db.insert(pets).values({
+      id: 'pet-1',
+      tenantId: 'alice',
+      name: '阿橘',
+      status: 'active',
+      boredom: 75,
+      energy: 80,
+      mood: 'curious',
+      temper: 20,
+      personality: 'curious',
+      catchphrases: '[]',
+      createdAt: clock,
+      updatedAt: clock,
+    }).run();
+    const task = await insertTask({ strategy: 'sheet', stylePreset: 'pixel' });
+    const generating = await tickUntil(task.id, ['generating_states']);
+    expect(generating.status).toBe('generating_states'); // 自动确认：不停驻等待
+    const conceptCalls = generateMock.mock.calls.filter(([r]) => r.kind === 'concept');
+    expect(conceptCalls).toHaveLength(1); // 无上传参考图 → 出概念图锚角色
+
+    const done = await tickUntil(task.id, ['done']);
+    const sheetCalls = generateMock.mock.calls.filter(([r]) => r.kind === 'sheet');
+    expect(sheetCalls).toHaveLength(1);
+    expect(sheetCalls[0]?.[0].prompt).toContain('4x4');
+    expect(sheetCalls[0]?.[0].prompt).toContain('待机呼吸');
+    expect(sheetCalls[0]?.[0].reference).toContain('reference.jpg');
+
+    const assetsDir = join(dataDir, 'tenants', 'alice', 'pet-assets');
+    expect(existsSync(join(assetsDir, 'sprite.png'))).toBe(true);
+    for (const s of ['idle', 'walk', 'sleep', 'grumpy', 'joy', 'welcome', 'think']) {
+      expect(existsSync(join(assetsDir, `${s}.png`)), `${s}.png 缺失`).toBe(true);
+    }
+    const manifest = JSON.parse(readFileSync(join(assetsDir, 'manifest.json'), 'utf-8')) as {
+      version: number;
+      sprite: {
+        image: string;
+        frame: { w: number; h: number; groundRow: number };
+        animations: Record<string, { from: number; frames: number; duration: number; loop: boolean }>;
+      };
+      states: Record<string, { file: string; frames: number }>;
+    };
+    expect(manifest.version).toBe(2);
+    expect(manifest.sprite.image).toBe('sprite.png');
+    expect(manifest.sprite.frame).toEqual({ w: 64, h: 64, groundRow: 63 });
+    expect(manifest.sprite.animations.idle).toEqual({ from: 0, frames: 4, duration: 0.8, loop: true });
+    expect(manifest.sprite.animations.walk?.from).toBe(4);
+    expect(manifest.sprite.animations.think?.from).toBe(14);
+    expect(Object.keys(manifest.states)).toHaveLength(7);
+    expect(publishMock).toHaveBeenCalledWith('alice', expect.objectContaining({
+      type: 'pet_assets_ready',
+      petId: 'pet-1',
+    }));
+  });
+
+  it('精灵图漏格：重试后降级 strip 逐动画重生成 → done（displayScale 经 meta 合并存活）', async () => {
+    sheetEmptyCells = 16; // sheet 全漏格（布局不顺从）
+    sheetMetaContentHeights = [52, 52, 52, 52]; // 降级路径的测量来源
+    const task = await insertTask({ strategy: 'sheet', stylePreset: 'pixel' });
+    await tickUntil(task.id, ['generating_states']);
+    const downgraded = await tickUntilStrategy(task.id, ['strip']);
+    expect(downgraded.strategy).toBe('strip'); // sheet→strip 阶梯降级（不落 per）
+    sheetEmptyCells = 0;
+    const done = await tickUntil(task.id, ['done']);
+    expect(done.status).toBe('done');
+    // strip：6 动画各一行 1×N 行条；完毕后总条按全动画次序重建（防单动画覆盖）
+    const stripCalls = generateMock.mock.calls.filter(([r]) => r.kind === 'sheet');
+    expect(stripCalls.length).toBeGreaterThanOrEqual(6);
+    expect(joinCalls).toHaveLength(1);
+    expect(joinCalls[0]).toEqual(['idle', 'walk', 'sleep', 'grumpy', 'joy', 'welcome', 'think']);
+    expect(existsSync(join(dataDir, 'tenants', 'alice', 'pet-assets', 'sprite.png'))).toBe(true);
+    // strip 逐动画重生成不抹 idle 测量：displayScale 照常决议（回归锚：
+    // 真实脚本按动画键合并 meta，覆盖写会让招牌特性在降级路径静默失效）
+    const manifest = JSON.parse(
+      readFileSync(join(dataDir, 'tenants', 'alice', 'pet-assets', 'manifest.json'), 'utf-8'),
+    ) as { sprite: { displayScale?: number } };
+    expect(manifest.sprite.displayScale).toBe(2);
+    sheetMetaContentHeights = null;
+  });
+
+  it('精灵图内容高测量：sheet-meta 有 idle 内容高 → manifest 决议 displayScale', async () => {
+    // 第 10 轮实测：内容高 52px → round(84/52)=2 → 街上 104px（内置猫 84px 基准带）
+    sheetMetaContentHeights = [52, 52, 52, 52];
+    const task = await insertTask({ strategy: 'sheet', stylePreset: 'pixel' });
+    const done = await tickUntil(task.id, ['done']);
+    expect(done.status).toBe('done');
+    const manifest = JSON.parse(
+      readFileSync(join(dataDir, 'tenants', 'alice', 'pet-assets', 'manifest.json'), 'utf-8'),
+    ) as { sprite: { contentHeight?: number; displayScale?: number } };
+    expect(manifest.sprite.contentHeight).toBe(52);
+    expect(manifest.sprite.displayScale).toBe(2);
+    sheetMetaContentHeights = null;
+  });
+
+  it('精灵图无 meta（旧脚本产物）→ manifest 不带展示缩放字段（web 回退 3）', async () => {
+    const task = await insertTask({ strategy: 'sheet', stylePreset: 'pixel' });
+    const done = await tickUntil(task.id, ['done']);
+    expect(done.status).toBe('done');
+    const manifest = JSON.parse(
+      readFileSync(join(dataDir, 'tenants', 'alice', 'pet-assets', 'manifest.json'), 'utf-8'),
+    ) as { sprite: { contentHeight?: number; displayScale?: number } };
+    expect(manifest.sprite.contentHeight).toBeUndefined();
+    expect(manifest.sprite.displayScale).toBeUndefined();
+  });
+
+  it('精灵图 + 上传参考图：跳过概念图，语义锚点用上传参考图', async () => {
+    const adoptRef = join(dataDir, 'tenants', 'alice', 'pet-assets', 'adopt-reference.jpg');
+    mkdirSync(dirname(adoptRef), { recursive: true });
+    writeFileSync(adoptRef, PNG);
+    const task = await insertTask({ strategy: 'sheet', stylePreset: 'pixel' });
+    const generating = await tickUntil(task.id, ['generating_states']);
+    expect(generating.status).toBe('generating_states');
+    expect(generateMock.mock.calls.filter(([r]) => r.kind === 'concept')).toHaveLength(0);
+    const done = await tickUntil(task.id, ['done']);
+    expect(done.status).toBe('done');
+    // 语义质检锚点 = 上传参考图（reference.jpg），非 concept.png
+    const visionCall = inspectMock.mock.calls[0]?.[0];
+    expect(visionCall?.referencePath).toContain('reference.jpg');
+    // 无 concept.png → manifest 不带 concept 字段
+    const manifest = JSON.parse(
+      readFileSync(join(dataDir, 'tenants', 'alice', 'pet-assets', 'manifest.json'), 'utf-8'),
+    ) as { concept?: string };
+    expect(manifest.concept).toBeUndefined();
   });
 });

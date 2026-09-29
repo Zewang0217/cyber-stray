@@ -104,6 +104,39 @@ describe('createVisionQc', () => {
     expect(seenUrl).toBe('https://example.com/v1/chat/completions');
   });
 
+  it('thinking/temperature 透传请求体（ECNU ecnu-plus 产线配置）', async () => {
+    let seenBody = '';
+    const fetchFn = fakeFetch(
+      [{ status: 200, body: { choices: [{ message: { content: '{"pass": true, "issues": []}' } }] } }],
+      (_url, init) => {
+        seenBody = String(init.body);
+      },
+    );
+    const qc = createVisionQc(API_KEY, {
+      model: 'ecnu-plus',
+      baseUrl: 'https://chat.ecnu.edu.cn/open/api/v1',
+      thinking: true,
+      temperature: 0,
+      fetchFn,
+    });
+    await qc.inspect({
+      referencePath: join(tmp, 'concept.png'),
+      statePath: join(tmp, 'idle.png'),
+      state: 'idle',
+      spec: { specText: '一只猫' },
+    });
+    const body = JSON.parse(seenBody) as {
+      model: string;
+      thinking?: { type: string };
+      reasoning_effort?: string;
+      temperature?: number;
+    };
+    expect(body.model).toBe('ecnu-plus');
+    expect(body.thinking).toEqual({ type: 'enabled' });
+    expect(body.reasoning_effort).toBe('medium');
+    expect(body.temperature).toBe(0);
+  });
+
   it('质检响应非 JSON → 抛错（禁兜底）', async () => {
     const fetchFn = fakeFetch([{ status: 200, body: { choices: [{ message: { content: '我看不清' } }] } }]);
     const qc = createVisionQc(API_KEY, { model: 'glm-4v-flash', fetchFn });

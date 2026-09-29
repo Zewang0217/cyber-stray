@@ -20,7 +20,9 @@ export interface TenantEvent {
     /** 当日用量读取失败，fail-closed 停派（detail = 错误信息） */
     | 'budget_check_failed'
     /** 领养超 24h 且首推仍未送达任何设备（进程内去重；detail = 说明） */
-    | 'first_push_overdue';
+    | 'first_push_overdue'
+    /** 领养精灵图素材就绪（petgen sheet 任务 finalize；web 据此拉 manifest 换形象） */
+    | 'pet_assets_ready';
   tenantId: string;
   petId: string;
   /** 事件时刻（unix ms） */

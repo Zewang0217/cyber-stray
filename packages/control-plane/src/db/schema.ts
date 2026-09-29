@@ -209,8 +209,9 @@ export const petGenTasks = sqliteTable('pet_gen_tasks', {
   stylePreset: text('style_preset'),
   /** 概念图路径（相对租户数据目录；awaiting_confirmation 起存在） */
   conceptPath: text('concept_path'),
-  /** 当前生成策略（quad/nine/per；生成失败的批次按策略阶梯回退） */
-  strategy: text('strategy', { enum: ['quad', 'nine', 'per'] })
+  /** 当前生成策略（sheet/strip=领养精灵图；quad/nine/per=改造屋；失败沿各自阶梯回退）。
+   * SQLite 层就是 TEXT（enum 仅 TS 类型约束），扩枚举值无需迁移。 */
+  strategy: text('strategy', { enum: ['sheet', 'strip', 'quad', 'nine', 'per'] })
     .notNull()
     .default('quad'),
   /** 当前策略连续批次失败计数（≥ maxBatchRetries 且非末级 → 升级策略） */

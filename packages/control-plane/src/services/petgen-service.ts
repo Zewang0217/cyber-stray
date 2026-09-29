@@ -8,23 +8,28 @@
  */
 
 import { randomUUID } from 'crypto';
-import { readFile } from 'fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import {
   DEFAULT_PET_PRESET,
   type PetPresetId,
   type PetStateId,
 } from '@cyber-stray/shared/pet';
+import { getPersonality, type PersonalityId } from '@cyber-stray/shared';
 import type { PetGenQuota, PetGenTaskView, StateQcResult } from '@cyber-stray/shared/petgen';
 import type { ControlPlaneConfig } from '../config.js';
 import type { ControlDb } from '../db/client.js';
 import { getDb } from '../db/client.js';
 import type { PetGenTask } from '../db/schema.js';
+import { petGenTasks } from '../db/schema.js';
+import { and, eq, inArray } from 'drizzle-orm';
+import { IN_FLIGHT } from '../petgen/processor.js';
 import * as petgenRepo from '../infra/petgen-repo.js';
 import { readTenantAsset } from '../infra/tenant-data-reader.js';
 import { findTenantPlan } from '../infra/tenant-access.js';
 import { nextMonthStart, petGenQuota } from '../petgen/quota.js';
 import type { PetSpec, PetGenTaskStatus } from '../petgen/types.js';
+import { createSplitter } from '../petgen/splitter.js';
 import { tenantDataDir } from '../infra/tenant.js';
 
 export interface PetGenServiceDeps {
@@ -34,6 +39,30 @@ export interface PetGenServiceDeps {
 export type PetGenOutcome<T> =
   | { ok: true; data: T }
   | { ok: false; status: 403 | 404 | 409 | 429; error: string; data?: unknown };
+
+/** 领养参考图压平边长（与管线 referenceFrame 同水位；白底 JPEG 供 Seedream img2img） */
+const ADOPT_REFERENCE_FRAME = 384;
+
+/** 领养精灵图的已校验入参（领养路由的 AdoptInput 原语子集，避免跨 service 类型耦合） */
+export interface AdoptSheetInput {
+  name: string;
+  interests: string[];
+  personality: string;
+}
+
+/**
+ * 领养属性 → 精灵图 spec（确定性模板；风格锁 pixel——街角是像素宇宙，
+ * 用户参考图经 img2img 转绘为像素精灵）。
+ */
+export function buildAdoptSheetSpec(input: AdoptSheetInput): PetSpec {
+  const personality = getPersonality(input.personality as PersonalityId);
+  return {
+    specText:
+      `主人领养的宠物「${input.name}」,性格${personality.name}(${personality.description}),` +
+      `对${input.interests.join('、')}感兴趣`,
+    stylePreset: 'pixel',
+  };
+}
 
 /** 任务 → API 视图（去掉内部列，附概念图/素材 URL） */
 function toTaskView(task: PetGenTask): PetGenTaskView {
@@ -70,6 +99,16 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     return null;
   }
 
+  /** 租户是否有在飞生成任务（并发提交拒绝用——在飞集合与推进器同源 IN_FLIGHT） */
+  async function hasInFlightTask(db: ControlDb, tenantId: string): Promise<boolean> {
+    const rows = await db
+      .select({ id: petGenTasks.id })
+      .from(petGenTasks)
+      .where(and(eq(petGenTasks.tenantId, tenantId), inArray(petGenTasks.status, IN_FLIGHT)))
+      .limit(1);
+    return rows.length > 0;
+  }
+
   /** 提交 spec（Pro/BYOK 专属 + 配额拦截；失败任务不占配额——只统计 done） */
   async function submitTask(
     tenantId: string,
@@ -78,6 +117,11 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     const db = await getDb(config.dataDir);
     if (!(await planAllowed(db, tenantId))) {
       return { ok: false, status: 403, error: '宠物 IP 定制是 Pro/BYOK 专属功能' };
+    }
+    // 同租户并发拒绝：nextDueTask 只推进「租户恰 1 个在飞」的任务，放行
+    // 第二个在飞任务会与既有任务（含领养自动建的 sheet 任务）永久互卡
+    if (await hasInFlightTask(db, tenantId)) {
+      return { ok: false, status: 409, error: '已有生成任务进行中，完成后再提交' };
     }
     const quota = await petGenQuota(db, tenantId, config.petGenMonthlyQuota);
     if (quota.remaining <= 0) {
@@ -109,6 +153,65 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     };
     await petgenRepo.insertTask(db, task);
     return { ok: true, data: toTaskView(task) };
+  }
+
+  /**
+   * 领养精灵图任务（sheet 策略；首测放开套餐门——领养是全员首跑体验，
+   * 但仍占同一份月度配额：配额耗尽 = 不建任务，领养以内置猫上岗）。
+   * 调用方（领养路由）best-effort 提交，失败不阻塞领养。
+   */
+  async function submitAdoptSheetTask(
+    tenantId: string,
+    spec: PetSpec,
+  ): Promise<{ ok: true; taskId: string } | { ok: false; reason: 'quota' | 'busy' }> {
+    const db = await getDb(config.dataDir);
+    // 并发拒绝（同 submitTask）：改造屋任务在飞时领养不叠任务，防互卡
+    if (await hasInFlightTask(db, tenantId)) return { ok: false, reason: 'busy' };
+    const quota = await petGenQuota(db, tenantId, config.petGenMonthlyQuota);
+    if (quota.remaining <= 0) return { ok: false, reason: 'quota' };
+    const task: PetGenTask = {
+      id: randomUUID(),
+      tenantId,
+      status: 'spec_submitted',
+      specText: spec.specText,
+      options: spec.options ? JSON.stringify(spec.options) : null,
+      stylePreset: spec.stylePreset ?? 'pixel',
+      conceptPath: null,
+      strategy: 'sheet',
+      batchRetries: 0,
+      qcRetries: 0,
+      qcResult: null,
+      pendingStates: null,
+      conceptAttempts: 0,
+      error: null,
+      completedAt: null,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await petgenRepo.insertTask(db, task);
+    return { ok: true, taskId: task.id };
+  }
+
+  /**
+   * 领养参考图落盘：原始字节 → pet-sheet.py 压白底 JPEG（顺带校验可解析性，
+   * 坏图在 upload 时显式失败而非管线中途爆）。canonical 固定名
+   * adopt-reference.jpg（覆盖语义：重新上传即替换），处理器按此名取用。
+   */
+  async function saveAdoptReference(tenantId: string, bytes: Buffer): Promise<void> {
+    const assetsDir = join(tenantDataDir(config.dataDir, tenantId), 'pet-assets');
+    await mkdir(assetsDir, { recursive: true });
+    const rawPath = join(assetsDir, 'adopt-reference-raw');
+    await writeFile(rawPath, bytes);
+    try {
+      await createSplitter().flattenReference(
+        rawPath,
+        join(assetsDir, 'adopt-reference.jpg'),
+        ADOPT_REFERENCE_FRAME,
+      );
+    } finally {
+      // 中间产物清理；清理失败不影响主流程（无扩展名 → 素材白名单不会外泄此文件）
+      await rm(rawPath, { force: true }).catch(() => { });
+    }
   }
 
   async function listTasks(tenantId: string) {
@@ -144,6 +247,10 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     const db = await getDb(config.dataDir);
     const task = await petgenRepo.findTaskByIdAndTenant(db, id, tenantId);
     if (!task) return { ok: false, status: 404, error: '任务不存在' };
+    if (task.strategy === 'sheet' || task.strategy === 'strip') {
+      // 领养精灵图任务不在改造屋 UI 出现，误触 restart 会把策略打回 quad 破坏素材形状
+      return { ok: false, status: 409, error: '领养精灵图任务不支持改 spec 重来' };
+    }
     if (task.status !== 'awaiting_confirmation' && task.status !== 'failed') {
       return {
         ok: false,
@@ -208,8 +315,28 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     return { bytes, contentType: file.endsWith('.json') ? 'application/json' : 'image/png' };
   }
 
+  /**
+   * 领养 side effect：best-effort 建精灵图任务。领养不阻塞策略在此收口——
+   * 配额耗尽/提交失败只记日志，调用方（路由）await 一次毫秒级 DB 写，
+   * 真正的生图在 petgen 异步队列推进。
+   */
+  async function adoptSheetSideEffect(tenantId: string, input: AdoptSheetInput): Promise<void> {
+    try {
+      const outcome = await submitAdoptSheetTask(tenantId, buildAdoptSheetSpec(input));
+      if (!outcome.ok) {
+        const why = outcome.reason === 'busy' ? '已有生成任务在飞' : '配额耗尽';
+        console.warn(`[pets] 领养精灵图跳过生成：${why}（租户 ${tenantId}）`);
+      }
+    } catch (error) {
+      console.error(`[pets] 领养精灵图任务提交失败（租户 ${tenantId}）：`, error);
+    }
+  }
+
   return {
     submitTask,
+    submitAdoptSheetTask,
+    saveAdoptReference,
+    adoptSheetSideEffect,
     ensureProPlan,
     listTasks,
     getTask,

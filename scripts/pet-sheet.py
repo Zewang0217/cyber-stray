@@ -1,0 +1,462 @@
+#!/usr/bin/env python3
+"""宠物精灵图切分管线(whale-girl 式:AI 生图 → 规范帧条)
+
+用法:
+  # 每状态一张单行 3 帧横排图(参考图锁定角色后逐状态生成)
+  python3 scripts/pet-sheet.py idle.png walk.png joy.png --out public/pet
+
+  # 单张 3x3 网格(行=状态: idle,walk,joy; 列=帧)——strip 模式
+  python3 scripts/pet-sheet.py sheet-raw.png --grid --out public/pet
+
+  # 单张 3x3 网格,9 状态各占 1 格(cells 模式,每状态 1 帧静态)
+  python3 scripts/pet-sheet.py sheet-raw.png --grid --cells \
+      --states idle walk joy eat sleep think celebrate grumpy welcome --out public/pet
+
+  # 单张 2x2 网格,3 状态 + 空 1 格(cells 模式;空格自动跳过)
+  python3 scripts/pet-sheet.py sheet-raw.png --grid --cells --cols 2 \
+      --states idle walk joy --out public/pet
+
+  # 领养精灵图:单张 4x4 全动作全帧,确定性等分切分(格边界是约定非检测)
+  # 输出 <anim>.png 帧条 + sprite.png 总条 + sheet-meta.json(--frame 控制帧边长)
+  python3 scripts/pet-sheet.py sheet-raw.png --sheet 4 \
+      --anims idle:4,walk:4,sleep:2,grumpy:2,joy:2,welcome:2 --frame 64 --out <task_dir>
+
+  # 概念图归一(#94):抠绿幕 → 透明底整身归一(角色锚点,默认 512)
+  python3 scripts/pet-sheet.py concept-raw.png --single --out <task_dir>
+
+  # 参考图输入(#94):透明 PNG → 白底 JPEG(供 qwen-image img2img base64)
+  python3 scripts/pet-sheet.py concept.png --flatten --frame 384 --out <task_dir>
+
+- 绿底色度抠图(G 主导且高亮 → alpha 0)
+- 行带检测(y 投影)→ 行内列簇检测(x 投影,连通域);cells 模式每格 1 状态
+- 逐帧裁切 → 内容占比 82% 归一化 → 底中对齐 → 256x256 帧
+- 每状态横排输出 <state>.png(strip 模式 N 帧;cells 模式 1 帧)
+"""
+
+import argparse
+import json
+import math
+import sys
+from pathlib import Path
+
+import numpy as np
+from PIL import Image
+
+FRAME = 256
+CONTENT = 0.82
+GRID_STATES = ["idle", "walk", "joy"]
+
+
+def chroma_key_green(arr: np.ndarray) -> np.ndarray:
+    """绿幕抠图:G 明显高于 R/B 且足够亮 → 前景取反。
+
+    仅绿幕。cells 模式另用 detection_mask() 找格线(含白线),但提取
+    帧时用纯绿幕,避免吃掉角色身上的白色(肚子/高光)。
+    """
+    r, g, b = arr[..., 0].astype(int), arr[..., 1].astype(int), arr[..., 2].astype(int)
+    green_bg = (g > 100) & (g - r > 40) & (g - b > 40)
+    return ~green_bg
+
+
+def detection_mask(arr: np.ndarray) -> np.ndarray:
+    """网格检测用背景掩码:绿幕 ∪ 近白格线(qwen-image 常用白线分隔)。"""
+    r, g, b = arr[..., 0].astype(int), arr[..., 1].astype(int), arr[..., 2].astype(int)
+    green_bg = (g > 100) & (g - r > 40) & (g - b > 40)
+    white_bg = (r > 235) & (g > 235) & (b > 235)
+    return ~(green_bg | white_bg)
+
+
+def bands(proj: np.ndarray, min_len: int) -> list[tuple[int, int]]:
+    """1D 投影切连续带。"""
+    on = proj > 0
+    out: list[tuple[int, int]] = []
+    start = None
+    for i, v in enumerate(on):
+        if v and start is None:
+            start = i
+        elif not v and start is not None:
+            if i - start >= min_len:
+                out.append((start, i))
+            start = None
+    if start is not None and len(on) - start >= min_len:
+        out.append((start, len(on)))
+    return out
+
+
+def normalize(rgba: np.ndarray, frame: int = FRAME, content: float = CONTENT,
+              resample: int = Image.Resampling.LANCZOS) -> Image.Image:
+    """内容占比归一 + 底中对齐到 frame 方格。"""
+    alpha = rgba[..., 3] > 0
+    ys, xs = np.where(alpha)
+    if len(ys) == 0:
+        return Image.new("RGBA", (frame, frame), (0, 0, 0, 0))
+    x0, x1, y0, y1 = xs.min(), xs.max() + 1, ys.min(), ys.max() + 1
+    crop = rgba[y0:y1, x0:x1]
+    h, w = crop.shape[:2]
+    scale = min(frame / w, (frame * content) / h)
+    img = Image.fromarray(crop, "RGBA").resize(
+        (max(1, round(w * scale)), max(1, round(h * scale))), resample
+    )
+    canvas = Image.new("RGBA", (frame, frame), (0, 0, 0, 0))
+    canvas.paste(img, ((frame - img.width) // 2, frame - img.height), img)
+    return canvas
+
+
+def quantize_sprite(img: Image.Image, colors: int = 64) -> Image.Image:
+    """色板量化（像素风收拢）：色数压到 ≤colors，边缘色带归并——
+    512px 格 ÷8 降采样后残留的过渡色被吸附，64px 帧保持像素纯净。"""
+    return img.quantize(colors=colors, method=Image.Quantize.FASTOCTREE).convert("RGBA")
+
+
+def normalize_single(rgba: np.ndarray, frame: int) -> Image.Image:
+    """概念图归一(#94):抠绿幕 → 内容裁剪 → 整体缩放(留边距,整身可见) → 居中透明画布。
+
+    概念图是用户确认后的角色锚点(ADR-0001),要保留完整形象(含头身比例),
+    所以不同于 normalize() 的 82% 高度紧裁——整身缩进 frame 画布,底部留 3% 边距。
+    """
+    alpha = rgba[..., 3] > 0
+    ys, xs = np.where(alpha)
+    if len(ys) == 0:
+        return Image.new("RGBA", (frame, frame), (0, 0, 0, 0))
+    x0, x1, y0, y1 = xs.min(), xs.max() + 1, ys.min(), ys.max() + 1
+    crop = rgba[y0:y1, x0:x1]
+    h, w = crop.shape[:2]
+    scale = min((frame * 0.92) / w, (frame * 0.92) / h)
+    img = Image.fromarray(crop, "RGBA").resize(
+        (max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS
+    )
+    canvas = Image.new("RGBA", (frame, frame), (0, 0, 0, 0))
+    canvas.paste(
+        img,
+        ((frame - img.width) // 2, frame - img.height - round(frame * 0.03)),
+        img,
+    )
+    return canvas
+
+
+def flatten_white(img: Image.Image, frame: int) -> Image.Image:
+    """透明 PNG → 白底图(#94 参考图输入)。
+
+    spike 结论:参考图须透明底/白底(黑底参考图未锁住角色);qwen-image 的
+    input.image 是 base64(≤61440 字符),透明 PNG 转白底 JPEG 压缩后可用。
+    输入透明底概念图,输出白底 RGB(贴到白底,由调用方存 JPEG)。
+    """
+    rgba = img.convert("RGBA")
+    if rgba.width != frame or rgba.height != frame:
+        rgba = rgba.resize((frame, frame), Image.LANCZOS)
+    white = Image.new("RGB", rgba.size, (255, 255, 255))
+    white.paste(rgba, mask=rgba.split()[3])
+    return white
+
+
+def split_frames(arr: np.ndarray, fg: np.ndarray) -> list[np.ndarray]:
+    """行内按列簇切帧;不足 3 簇时均分兜底。返回 RGBA(alpha=前景)。"""
+    cols = bands(fg.sum(axis=0), min_len=arr.shape[1] // 12)
+    if len(cols) < 2:
+        step = arr.shape[1] // 3
+        cols = [(i * step, (i + 1) * step) for i in range(3)]
+    out = []
+    for cx0, cx1 in cols[:3]:
+        rgb = arr[:, cx0:cx1]
+        a = (fg[:, cx0:cx1].astype(np.uint8)) * 255
+        out.append(np.dstack([rgb, a]))
+    return out
+
+
+def split_cells(det_fg: np.ndarray, nrows: int, ncols: int) -> list[tuple[int, int, int, int] | None]:
+    """cells 模式:按行列把网格切成 nrows×ncols 格,返回 [(y0,y1,x0,x1)] 行优先。
+
+    - det_fg 是 detection_mask 的前景(绿幕 ∪ 白线之外的像素),只用于找格线
+    - 行带检测失败(检测数 != nrows)→ 均分兜底并打 warning
+    - 列簇检测失败(簇数 != ncols)→ 均分兜底并打 warning
+    - 格内前景占比过低(<2%)→ 判为空格,返回 None(供调用方跳过)
+    """
+    h, w = det_fg.shape[:2]
+    row_bands = bands(det_fg.sum(axis=1), min_len=h // (nrows * 4))
+    if len(row_bands) != nrows:
+        print(f"  [warn] row 检测 {len(row_bands)} != {nrows},均分兜底", file=sys.stderr)
+        step = h // nrows
+        row_bands = [(i * step, (i + 1) * step) for i in range(nrows)]
+    cells: list[tuple[int, int, int, int] | None] = []
+    for ry0, ry1 in row_bands[:nrows]:
+        row_fg = det_fg[ry0:ry1]
+        col_bands = bands(row_fg.sum(axis=0), min_len=w // (ncols * 4))
+        if len(col_bands) != ncols:
+            print(f"  [warn] col 检测 {len(col_bands)} != {ncols},均分兜底", file=sys.stderr)
+            step = w // ncols
+            col_bands = [(i * step, (i + 1) * step) for i in range(ncols)]
+        for cx0, cx1 in col_bands[:ncols]:
+            cell_fg = row_fg[:, cx0:cx1]
+            if cell_fg.mean() < 0.02:
+                cells.append(None)
+            else:
+                cells.append((ry0, ry1, cx0, cx1))
+    return cells
+
+
+def emit(frames: list[np.ndarray], out_dir: Path, name: str) -> int:
+    strips = [normalize(f) for f in frames]
+    strip = Image.new("RGBA", (FRAME * len(strips), FRAME), (0, 0, 0, 0))
+    for i, s in enumerate(strips):
+        strip.paste(s, (i * FRAME, 0))
+    strip.save(out_dir / f"{name}.png")
+    return len(strips)
+
+
+# ── sheet 模式（领养精灵图:单张 n×n 确定性等分切分）──────────────────
+
+
+def parse_anim_spec(spec: str) -> list[tuple[str, int]]:
+    """--anims 解析: "idle:4,walk:4,sleep:2" → [(name, frames)]；形状非法即退出。"""
+    anims: list[tuple[str, int]] = []
+    for part in spec.split(","):
+        name, sep, frames = part.partition(":")
+        if not sep or not name or not frames.isdigit() or int(frames) < 1:
+            raise SystemExit(f"--anims 形状非法（须 name:frames 逗号分隔）: {part}")
+        anims.append((name, int(frames)))
+    return anims
+
+
+def split_sheet(
+    img: Image.Image,
+    rows: int,
+    cols: int,
+    anims: list[tuple[str, int]],
+    frame: int,
+    out_dir: Path,
+) -> dict:
+    """R×C 等分切分 → 每动画横排帧条 <anim>.png + 总条 sprite.png + sheet-meta.json。
+
+    与 cells 模式的本质差异：格边界是约定（w/cols、h/rows 等分），不做投影检测——
+    网格布局由 prompt 锁死，切分只负责忠实裁切；格内绿幕抠图/内容归一沿用既有管线。
+    任一格为空不在此处判死（exit 0 + meta 记录），由调用方（CP 处理器）按
+    meta 判定重试/降级——重试策略是业务决策，不是脚本职责。
+    strip 降级（单动画 1 行 N 列）即 rows=1、cols=N 的特例。
+    """
+    if img.width % cols != 0 or img.height % rows != 0:
+        raise SystemExit(f"图像尺寸 {img.width}x{img.height} 不能被 {cols}x{rows} 整除")
+    cw, ch = img.width // cols, img.height // rows
+    # 格线内缩:prompt 要求的细白格线未必精确落在等分线上,残留会进帧
+    # (绿幕只抠绿不抠白)。向内收 3% 把格线留在切分线外;角色按约定不出格,
+    # 且 normalize 还会做内容裁剪,内缩不伤主体。
+    inset_x, inset_y = max(1, cw * 5 // 100), max(1, ch * 5 // 100)
+    arr = np.array(img.convert("RGB"))
+    total_frames = sum(f for _, f in anims)
+    if total_frames != rows * cols:
+        raise SystemExit(f"--anims 帧数总和 {total_frames} != {rows}x{cols}={rows * cols}")
+
+    cells: list[np.ndarray] = []
+    report_anims: dict[str, dict] = {}
+    empty_cells = 0
+    for name, count in anims:
+        frames: list[Image.Image] = []
+        ratios: list[float] = []
+        for _ in range(count):
+            idx = len(cells)
+            ry, rx = divmod(idx, cols)
+            cell = arr[ry * ch + inset_y:(ry + 1) * ch - inset_y,
+                       rx * cw + inset_x:(rx + 1) * cw - inset_x]
+            fg = chroma_key_green(cell)
+            ratio = float(fg.mean())
+            ratios.append(round(ratio, 4))
+            if ratio < 0.02:
+                empty_cells += 1
+                frames.append(Image.new("RGBA", (frame, frame), (0, 0, 0, 0)))
+            else:
+                rgba = np.dstack([cell, (fg.astype(np.uint8)) * 255])
+                frames.append(quantize_sprite(normalize(rgba, frame, resample=Image.Resampling.BOX)))
+            cells.append(cell)
+        strip = Image.new("RGBA", (frame * count, frame), (0, 0, 0, 0))
+        for i, f in enumerate(frames):
+            strip.paste(f, (i * frame, 0))
+        strip.save(out_dir / f"{name}.png")
+        # 内容高度（alpha 非零 bbox）：街角展示缩放的测量源——帧尺寸固定 64px
+        # 而角色实际占格因种子/物种而异，CP 据此决议整数 displayScale
+        content_heights = []
+        for f in frames:
+            bb = f.getchannel("A").getbbox()
+            content_heights.append((bb[3] - bb[1]) if bb else 0)
+        report_anims[name] = {"frames": count, "ratios": ratios, "contentHeights": content_heights}
+
+    # 总条 sprite.png：动画按 --anims 次序横排（frames.json 同构布局）
+    sprite = Image.new("RGBA", (frame * total_frames, frame), (0, 0, 0, 0))
+    cursor = 0
+    for name, count in anims:
+        anim_strip = Image.open(out_dir / f"{name}.png")
+        sprite.paste(anim_strip, (cursor * frame, 0))
+        cursor += count
+    sprite.save(out_dir / "sprite.png")
+
+    meta = {
+        "grid": f"{rows}x{cols}",
+        "frame": frame,
+        "emptyCells": empty_cells,
+        "anims": report_anims,
+    }
+    # anims 按动画键合并累积：strip 阶梯逐动画重生成会多次调用本函数，覆盖写
+    # 会把此前动画（如 idle）的内容高测量抹掉——CP finalize 据此决议展示缩放。
+    # 损坏的旧 meta 视为不存在（派生产物，本次调用重起一个新 anims 集）
+    meta_path = out_dir / "sheet-meta.json"
+    if meta_path.exists():
+        try:
+            prev_anims = json.loads(meta_path.read_text()).get("anims", {})
+            meta["anims"] = {**prev_anims, **report_anims}
+        except (json.JSONDecodeError, OSError):
+            print("  [warn] 既有 sheet-meta.json 损坏，忽略合并", file=sys.stderr)
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False))
+    return meta
+
+
+def parse_sheet_spec(raw: str) -> tuple[int, int]:
+    """--sheet 解析: "4" → 4×4 方阵;"1x4" → 1 行 4 列(strip 降级)。非法即退出。"""
+    r, sep, c = raw.partition("x")
+    if sep:
+        if not (r.isdigit() and c.isdigit() and int(r) > 0 and int(c) > 0):
+            raise SystemExit(f"--sheet 形状非法(须 N 或 RxN): {raw}")
+        return int(r), int(c)
+    if not r.isdigit() or int(r) < 1:
+        raise SystemExit(f"--sheet 形状非法(须 N 或 RxN): {raw}")
+    return int(r), int(r)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("inputs", nargs="*", help="输入图；各模式自行断言数量（--join 不吃输入）")
+    ap.add_argument("--out", default="public/pet")
+    ap.add_argument("--grid", action="store_true", help="单张网格图(行=状态)")
+    ap.add_argument("--cells", action="store_true", help="cells 模式:每格 = 1 状态 1 帧(需 --grid)")
+    ap.add_argument("--cols", type=int, default=3, help="网格列数(strip 模式列=帧;cells 模式列=状态格)")
+    ap.add_argument("--states", nargs="+", default=None, help="网格行/格对应的状态名(默认 idle,walk,joy)")
+    ap.add_argument("--single", action="store_true", help="单图概念图模式:抠绿幕 → 透明底归一(角色锚点,默认 512)")
+    ap.add_argument("--flatten", action="store_true", help="透明 PNG → 白底 JPEG(参考图输入;配 --frame 控制尺寸)")
+    ap.add_argument("--sheet", default="", metavar="N|RxC",
+                    help="领养精灵图:确定性等分切分(格边界是约定非检测)。N=N×N 方阵,RxC=行条;配 --anims 定格义")
+    ap.add_argument("--anims", default=None, help="sheet 模式动画定义 name:frames 逗号序(行优先),总和须 = n×n")
+    ap.add_argument("--join", action="store_true",
+                    help="总条重建:把 out 目录已有 <anim>.png 按 --anims 次序拼接为 sprite.png(strip 逐动画重生成后调用)")
+    ap.add_argument("--frame", type=int, default=512, help="single/flatten 的画布边长(默认 512)")
+    ap.add_argument("--quality", type=int, default=80, help="flatten JPEG 质量(默认 80)")
+    ap.add_argument("--upscale", type=int, default=0, metavar="N",
+                    help="视觉质检送审放大:NEAREST ×N(单图模式;64px 帧条 ×4 后视觉模型判定才可靠)")
+    ap.add_argument("--report", action="store_true", help="cells 模式末尾输出一行机器可读 JSON(cells/emptyCells/states)")
+    args = ap.parse_args()
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    meta: dict[str, dict[str, int]] = {}
+    report: dict[str, object] = {}
+
+    if args.upscale:
+        assert len(args.inputs) == 1 and not any([args.grid, args.single, args.flatten, args.sheet, args.join])
+        img = Image.open(args.inputs[0])
+        big = img.resize((img.width * args.upscale, img.height * args.upscale), Image.NEAREST)
+        name = Path(args.inputs[0]).stem
+        big.save(out_dir / f"{name}.qc.png")
+        print(f"{name}: upscale ×{args.upscale} → {big.width}x{big.height}")
+    elif args.join:
+        assert len(args.inputs) == 0, "--join 不吃输入图(只拼 out 目录已有帧条)"
+        if not args.anims:
+            raise SystemExit("--join 必须给 --anims(全动画次序)")
+        anims = parse_anim_spec(args.anims)
+        missing = [n for n, _ in anims if not (out_dir / f"{n}.png").is_file()]
+        if missing:
+            raise SystemExit(f"--join 缺帧条: {', '.join(missing)}(先逐动画切分)")
+        total = sum(c for _, c in anims)
+        sprite = Image.new("RGBA", (args.frame * total, args.frame), (0, 0, 0, 0))
+        cursor = 0
+        for name, count in anims:
+            sprite.paste(Image.open(out_dir / f"{name}.png"), (cursor * args.frame, 0))
+            cursor += count
+        sprite.save(out_dir / "sprite.png")
+        print(f"join: sprite.png {total} frames @ {args.frame}px")
+    elif args.single:
+        assert len(args.inputs) == 1 and not args.grid
+        img = Image.open(args.inputs[0]).convert("RGB")
+        arr = np.array(img)
+        fg = chroma_key_green(arr)
+        rgba = np.dstack([arr, (fg.astype(np.uint8)) * 255])
+        canvas = normalize_single(rgba, args.frame)
+        name = Path(args.inputs[0]).stem
+        canvas.save(out_dir / f"{name}.png")
+        print(f"{name}: single {args.frame}x{args.frame} transparent")
+    elif args.sheet:
+        assert len(args.inputs) == 1 and not args.grid, "sheet 模式收单张网格图"
+        if not args.anims:
+            raise SystemExit("sheet 模式必须给 --anims（如 idle:4,walk:4,...）")
+        img = Image.open(args.inputs[0])
+        rows, cols = parse_sheet_spec(args.sheet)
+        sheet_meta = split_sheet(img, rows, cols, parse_anim_spec(args.anims), args.frame, out_dir)
+        for name, info in sheet_meta["anims"].items():
+            print(f"{name}: {info['frames']} frames @ {args.frame}px")
+            meta[name] = {"frames": info["frames"], "frame": args.frame}
+        print(f"sheet: {sheet_meta['emptyCells']} empty cells")
+        report = {"sheet": sheet_meta}
+    elif args.flatten:
+        assert len(args.inputs) == 1 and not args.grid
+        img = Image.open(args.inputs[0])
+        white = flatten_white(img, args.frame)
+        name = Path(args.inputs[0]).stem
+        white.save(out_dir / f"{name}.jpg", quality=args.quality)
+        print(f"{name}: flatten → {args.frame}x{args.frame} white JPEG")
+    elif args.grid:
+        assert len(args.inputs) == 1
+        states = args.states or GRID_STATES
+        img = Image.open(args.inputs[0]).convert("RGB")
+        arr = np.array(img)
+        fg = chroma_key_green(arr)
+        if args.cells:
+            ncols = args.cols
+            nrows = math.ceil(len(states) / ncols)
+            det_fg = detection_mask(arr)
+            cells = split_cells(det_fg, nrows, ncols)
+            if args.report:
+                report = {
+                    "cells": len(cells),
+                    "emptyCells": sum(1 for c in cells if c is None),
+                    "states": {},
+                }
+            for state, cell in zip(states, cells, strict=False):
+                if cell is None:
+                    print(f"{state}: 空格跳过")
+                    if args.report:
+                        report["states"][state] = "empty"
+                    continue
+                ry0, ry1, cx0, cx1 = cell
+                rgb = arr[ry0:ry1, cx0:cx1]
+                a = (fg[ry0:ry1, cx0:cx1].astype(np.uint8)) * 255
+                n = emit([np.dstack([rgb, a])], out_dir, state)
+                meta[state] = {"frames": n, "frame": FRAME}
+                print(f"{state}: {n} frame")
+                if args.report:
+                    report["states"][state] = "ok"
+        else:
+            assert len(states) == 3, "strip 网格模式需恰好 3 个状态名(3 行);9 状态用 --cells"
+            rows = bands(fg.sum(axis=1), min_len=img.height // 8)
+            if len(rows) != 3:
+                print(f"  [warn] row 检测 {len(rows)} != 3,均分兜底", file=sys.stderr)
+                step = img.height // 3
+                rows = [(i * step, (i + 1) * step) for i in range(3)]
+            for state, (ry0, ry1) in zip(states, rows, strict=True):
+                row = arr[ry0:ry1]
+                row_fg = fg[ry0:ry1]
+                n = emit(split_frames(row, row_fg), out_dir, state)
+                meta[state] = {"frames": n, "frame": FRAME}
+                print(f"{state}: {n} frames")
+    else:
+        for path in args.inputs:
+            img = Image.open(path).convert("RGB")
+            arr = np.array(img)
+            fg = chroma_key_green(arr)
+            name = Path(path).stem
+            n = emit(split_frames(arr, fg), out_dir, name)
+            meta[name] = {"frames": n, "frame": FRAME}
+            print(f"{name}: {n} frames")
+
+    if args.report:
+        print(json.dumps(report, ensure_ascii=False))
+    (out_dir / "meta.json").write_text(json.dumps(meta))
+    print("done →", out_dir)
+
+
+if __name__ == "__main__":
+    main()
