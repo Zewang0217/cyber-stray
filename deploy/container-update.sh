@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 生产机容器更新：拉镜像 → 重建容器 → 同步 casdoor 配置 → 健康门 → 镜像清理。
+# 生产机容器更新：拉镜像 → 重建容器 → 同步 casdoor/nginx 配置 → 健康门 → 镜像清理。
 # 由 deploy.yml 在同步仓库 deploy/ 到 /opt/cyber-stray/deploy/ 后调用。
 #
 # 用法: sudo ./container-update.sh --tag <commit-sha>
@@ -72,6 +72,22 @@ if ! cmp -s "$DEPLOY_DIR/casdoor/app.conf" "$CASDOOR_CONF"; then
   cp "$DEPLOY_DIR/casdoor/app.conf" "$CASDOOR_CONF"
   echo "    app.conf 有变更 → 重启 casdoor"
   docker compose restart casdoor
+fi
+
+# nginx 路由配置（deploy/nginx → bind mount 只读挂载）：文件内容随发布
+# scp 同步，但 nginx 只在 reload 时重读配置——不处理就「流水线改了路由、
+# 线上不生效」。与 casdoor 同款「有变才动」，用内容戳判定 + 先 nginx -t
+# 校验再平滑 reload（不断连接；坏配置在校验步就失败，不进健康门）
+NGINX_CONF=$DEPLOY_DIR/nginx/cyber-stray.conf
+NGINX_STAMP=/opt/cyber-stray/.nginx-conf.sha256
+if [ -f "$NGINX_CONF" ]; then
+  nginx_sha=$(sha256sum "$NGINX_CONF" | cut -d' ' -f1)
+  if [ ! -f "$NGINX_STAMP" ] || [ "$(cat "$NGINX_STAMP" 2>/dev/null || true)" != "$nginx_sha" ]; then
+    docker compose exec -T nginx nginx -t
+    docker compose exec -T nginx nginx -s reload
+    echo "$nginx_sha" > "$NGINX_STAMP"
+    echo "    cyber-stray.conf 有变更 → nginx 校验通过并平滑 reload"
+  fi
 fi
 
 echo "==> [3/4] 健康门（预算 ${HEALTH_TIMEOUT}s）"
