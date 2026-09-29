@@ -61,6 +61,26 @@ describe('createPetUsageRecorder', () => {
         .split('\n'),
     ).toHaveLength(1);
   });
+
+  it('模型名 getter 调用时求值——admin 热切换模型后 usage 行记新名', async () => {
+    let current = 'doubao-seedream-5-0-260128';
+    const recorder = createPetUsageRecorder(dataDir, {
+      imageModel: () => current,
+      visionModel: 'glm-4.5v',
+    });
+    recorder.recordImage('sub-1');
+    current = 'doubao-seedream-4-0'; // 热切换
+    recorder.recordImage('sub-1');
+    await new Promise((r) => setTimeout(r, 100));
+
+    const file = join(dataDir, 'tenants', 'sub-1', 'usage', `usage-${localDateKey()}.jsonl`);
+    const models = readFileSync(file, 'utf-8')
+      .trim()
+      .split('\n')
+      .map((l) => (JSON.parse(l) as Record<string, unknown>).model);
+    expect(models).toContain('doubao-seedream-5-0-260128');
+    expect(models).toContain('doubao-seedream-4-0');
+  });
 });
 
 describe('readTenantUsage（日期归属 = 文件名，行内 UTC timestamp 不再筛）', () => {

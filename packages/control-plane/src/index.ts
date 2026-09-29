@@ -96,7 +96,8 @@ const petGenProcessor = new PetGenProcessor({
     size: '2K', // Seedream 5.0 无 1K 档，最小 2K（2048×2048）
   }),
   visionQc: createVisionQc(config.visionApiKey, {
-    model: config.visionModel,
+    // #131：与生图同款热更新——每次质检读配置缓存，usage 记录同源不漂移
+    model: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).visionModel,
     // 空 = vision.ts 默认端点（智谱）；配 CP_VISION_BASE_URL 切任意 OpenAI 兼容端点
     baseUrl: config.visionBaseUrl || undefined,
     thinking: config.visionThinking,
@@ -104,10 +105,10 @@ const petGenProcessor = new PetGenProcessor({
   }),
   splitter: createSplitter(),
   structureQc: createStructureQc(),
-  // #129：petgen 生图/质检用量记录（no-throw）
+  // #129：petgen 生图/质检用量记录（no-throw；模型名与实际调用同源热更新）
   usage: createPetUsageRecorder(config.dataDir, {
-    imageModel: config.arkImageModel,
-    visionModel: config.visionModel,
+    imageModel: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).imageModel,
+    visionModel: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).visionModel,
   }),
   config: {
     maxBatchRetries: 2,
