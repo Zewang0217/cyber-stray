@@ -65,9 +65,14 @@ export function usageFileDate(file: string): string | null {
 }
 
 /**
- * 读租户 usage 行（时间范围 [from, to] 日期字符串；缺省全部；行内 timestamp 再筛）。
+ * 读租户 usage 行（时间范围 [from, to] 日期字符串，本地日期键；缺省全部）。
  * 目录不存在 = 合法空态（租户未产生用量）返回 []；半行写入（崩溃残留）跳过；
  * 其余读失败抛错——调用方（预算闸）不得把「读不到」当「没花钱」。
+ *
+ * 日期归属以文件名为准（写入口径 localDateKey，文件即天分区）：行内
+ * timestamp 是 UTC，东八区 00:00-08:00 的行 UTC 日期还是前一天——若按行内
+ * UTC 日期再筛会两边都算不到（本地日文件里被 from/to 排除，前一日的文件
+ * 里又没有它），故不做行级日期过滤。
  */
 export async function readTenantUsage(
   dataDir: string,
@@ -105,9 +110,6 @@ export async function readTenantUsage(
         continue; // 半行写入（崩溃残留）跳过，不拖垮聚合
       }
       if (!row.timestamp || typeof row.kind !== 'string') continue;
-      const day = row.timestamp.slice(0, 10);
-      if (from && day < from) continue;
-      if (to && day > to) continue;
       rows.push(row);
     }
   }
