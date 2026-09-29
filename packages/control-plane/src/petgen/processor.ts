@@ -92,6 +92,8 @@ export class PetGenProcessor {
   private timer: ReturnType<typeof setInterval> | null = null;
   /** 已告警过的互卡租户（同租户 ≥2 在飞 = 队列永久互卡，只报一次防刷屏） */
   private alertedStuck = new Set<string>();
+  /** 视觉质检连续 infra 异常轮数（taskId → 次数；干净轮/失败即清） */
+  private qcInfraFails = new Map<string, number>();
 
   constructor(private readonly deps: PetGenProcessorDeps) {}
 
@@ -170,6 +172,7 @@ export class PetGenProcessor {
   }
 
   private async fail(task: PetGenTask, message: string): Promise<void> {
+    this.qcInfraFails.delete(task.id);
     await this.patch(task.id, { status: 'failed', error: message, updatedAt: this.now() });
   }
 
@@ -507,6 +510,24 @@ export class PetGenProcessor {
 
   // ─── 质检阶段（两层：结构脚本 + 语义豆包视觉） ───────────────────────
 
+  /**
+   * 视觉质检 infra 异常收尾：保持 qc 态、下 tick 整轮重试——不消耗
+   * qcRetries、不触发生图重生成（infra 故障与图无关，重生成只会白烧生图
+   * 费）；连续超限才整体失败，且带真实异常文案（不误导用户「调整 spec」）。
+   * 计数在内存：进程重启归零可接受（连续故障语义不变）。
+   */
+  private async handleQcInfraError(task: PetGenTask, error: unknown): Promise<void> {
+    const fails = (this.qcInfraFails.get(task.id) ?? 0) + 1;
+    if (fails >= this.deps.config.maxQcInfraRetries) {
+      await this.fail(task, `视觉质检连续异常（${messageOf(error)}）——质检服务暂不可用，请稍后重试`);
+      return;
+    }
+    this.qcInfraFails.set(task.id, fails);
+    console.warn(
+      `[petgen] 视觉质检异常（task ${task.id}，第 ${fails}/${this.deps.config.maxQcInfraRetries} 轮，保持 qc 态重试）：${messageOf(error)}`,
+    );
+  }
+
   private async advanceQc(task: PetGenTask): Promise<void> {
     const now = this.now();
     const taskDir = this.taskDir(task);
@@ -519,6 +540,7 @@ export class PetGenProcessor {
     try {
       const structural = await this.deps.structureQc.inspect(statesDir, [...PET_STATE_IDS]);
       const semantic: Record<PetStateId, StateQcResult> = {} as Record<PetStateId, StateQcResult>;
+      let infraError: unknown = null;
       for (const state of PET_STATE_IDS) {
         const s = structural[state];
         if (!s.pass) {
@@ -526,24 +548,28 @@ export class PetGenProcessor {
           semantic[state] = { pass: false, issues: [`结构质检：${s.issues.join('；')}`] };
           continue;
         }
-        semantic[state] = await this.deps.visionQc.inspect({
-          referencePath: join(taskDir, 'concept.png'),
-          statePath: join(statesDir, `${state}.png`),
-          state,
-          spec,
-        }).then(
-          // #129：视觉质检成功才记用量——调用异常并入 QC 重试机制但不计费
-          (r) => {
-            this.deps.usage?.recordVision(task.tenantId);
-            return r;
-          },
-          (error: unknown) => {
-            // 视觉调用的基础设施/格式错误 ≠ 内容不合格：并入 QC 重试机制
-            // （错误信息留在 issues 可见），不使单次调用异常直接杀死任务
-            return { pass: false, issues: [`视觉质检异常：${messageOf(error)}`] };
-          },
-        );
+        try {
+          const r = await this.deps.visionQc.inspect({
+            referencePath: join(taskDir, 'concept.png'),
+            statePath: join(statesDir, `${state}.png`),
+            state,
+            spec,
+          });
+          // #129：视觉质检成功才记用量；infra 异常并入独立重试机制（不重生成）
+          this.deps.usage?.recordVision(task.tenantId);
+          semantic[state] = r;
+        } catch (error) {
+          // 基础设施/格式错误 ≠ 内容不合格：本轮作废（旧实现转成 pass:false
+          // 会触发重新生图 + 误导性文案，供应商故障期间每轮白烧全套生图）
+          infraError = error;
+          break; // 供应商级故障时后续调用大概率同挂，剩余调用留到下轮
+        }
       }
+      if (infraError !== null) {
+        await this.handleQcInfraError(task, infraError);
+        return;
+      }
+      this.qcInfraFails.delete(task.id);
       const failed = PET_STATE_IDS.filter(
         (s) => !structural[s].pass || !semantic[s].pass,
       );
@@ -584,6 +610,7 @@ export class PetGenProcessor {
       const qcDir = join(taskDir, 'qc-upscale');
       await mkdir(qcDir, { recursive: true });
       const semantic: Record<PetStateId, StateQcResult> = {} as Record<PetStateId, StateQcResult>;
+      let infraError: unknown = null;
       for (const anim of anims) {
         const s = structural[anim];
         if (!s.pass) {
@@ -596,23 +623,27 @@ export class PetGenProcessor {
           qcDir,
           upscaleFactor,
         );
-        semantic[anim] = await this.deps.visionQc.inspect({
-          referencePath,
-          statePath,
-          state: anim,
-          spec,
-          frames: frames[anim],
-        }).then(
-          // 同经典路径：成功才记用量，调用异常并入重试机制（issues 可见）
-          (r) => {
-            this.deps.usage?.recordVision(task.tenantId);
-            return r;
-          },
-          (error: unknown) => {
-            return { pass: false, issues: [`视觉质检异常：${messageOf(error)}`] };
-          },
-        );
+        try {
+          const r = await this.deps.visionQc.inspect({
+            referencePath,
+            statePath,
+            state: anim,
+            spec,
+            frames: frames[anim],
+          });
+          // 同经典路径：成功才记用量；infra 异常走独立重试（不重生成）
+          this.deps.usage?.recordVision(task.tenantId);
+          semantic[anim] = r;
+        } catch (error) {
+          infraError = error;
+          break; // 供应商级故障时后续调用大概率同挂，剩余调用留到下轮
+        }
       }
+      if (infraError !== null) {
+        await this.handleQcInfraError(task, infraError);
+        return;
+      }
+      this.qcInfraFails.delete(task.id);
       const failed = anims.filter((s) => !structural[s].pass || !semantic[s].pass);
       await this.patch(task.id, { qcResult: JSON.stringify(semantic), updatedAt: now });
       if (failed.length === 0) {

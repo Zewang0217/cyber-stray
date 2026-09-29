@@ -149,6 +149,12 @@ export interface PetGenProcessorConfig {
   maxBatchRetries: number;
   /** QC 重试轮数上限（超限仍有失败状态 → 整体失败，改 spec 重来） */
   maxQcRetries: number;
+  /**
+   * 视觉质检「基础设施异常」（API 断连/key 失效/输出坏格式）连续轮数上限。
+   * 与内容不合格分开计：infra 异常不消耗 qcRetries、不触发生图重生成，
+   * 只重试质检调用本身；超限整体失败并带真实异常文案。
+   */
+  maxQcInfraRetries: number;
   /** 概念图归一边长（默认 512） */
   conceptFrame: number;
   /** 参考图压平边长（白底 JPEG 参考输入；默认 384） */

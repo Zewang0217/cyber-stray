@@ -115,6 +115,9 @@ const petGenProcessor = new PetGenProcessor({
     // 真机数据：每轮 QC 挂的动画随机（生成随机性），只重生成失败动画 + 多轮
     // 预算才能凑齐全过；每轮成本 = 挂掉动画数 × (1 生图 + 1 视觉调用)，有界
     maxQcRetries: 4,
+    // 视觉质检 infra 异常（断连/key 失效/坏格式）只重试质检本身、不重生成图；
+    // 供应商故障恢复通常在分钟级，5 轮（默认 5s tick）后放弃并显式失败
+    maxQcInfraRetries: 5,
     conceptFrame: 512,
     referenceFrame: 384,
     gridSize: '1024*1024',
