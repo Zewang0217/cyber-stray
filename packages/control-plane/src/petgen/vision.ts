@@ -22,9 +22,10 @@ export interface VisionOptions {
   /** OpenAI 兼容端点根（不含 /chat/completions；默认智谱） */
   baseUrl?: string;
   /**
-   * 思考模式（ECNU / 智谱同款 thinking 参数）。基准实测：ecnu-plus 关思考
-   * 2/8（官方帧条都误杀 + 放行坏 walk），开思考 6/8 且两轮全拦坏 walk——
-   * 视觉判定必须开思考才达到产线水位。
+   * 思考模式（ECNU / 智谱同款 thinking 参数）。基准口径单一真相（8 用例
+   * 送审图与人判一致率，scripts/try-vision-bench.ts 可复测）：glm-4.5v
+   * 6/8、glm-4v-flash 2/8；ecnu-plus 开思考 6/8（两轮全拦坏 walk）、关
+   * 思考 2/8（官方帧条都误杀）——视觉判定必须开思考才达到产线水位。
    */
   thinking?: boolean;
   /** 采样温度（质检要判定稳定，产线配 0） */

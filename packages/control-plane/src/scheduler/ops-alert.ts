@@ -29,7 +29,7 @@ export async function sendOpsAlert(
   }
 }
 
-// ---------- 去重外呼（#267） ----------
+// 去重外呼（#267）
 
 /** 同 key 去重窗口：10 分钟内只发一条，防连败/反复失败刷屏 */
 export const OPS_ALERT_DEDUP_TTL_MS = 10 * 60 * 1000;

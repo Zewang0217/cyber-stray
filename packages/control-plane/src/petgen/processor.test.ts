@@ -494,7 +494,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
     expect(conceptCalls[1]?.[0].prompt).toContain('蓝色小狗');
   });
 
-  // ─── 领养精灵图（sheet/strip 阶梯）───
+  // 领养精灵图（sheet/strip 阶梯）
 
   it('精灵图：自动确认跳过 awaiting_confirmation，单张 4x4 生成 → done 带 sprite 块 + 事件', async () => {
     // 宠物行存在 → done 后发 pet_assets_ready
