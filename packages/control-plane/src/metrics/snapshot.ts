@@ -74,7 +74,7 @@ export interface EvidenceReport {
   tenants: TenantSnapshot[];
 }
 
-// ---------- 读数（每路一个，抛错由 gatherer 捕获为租户级 error） ----------
+// 读数（每路一个，抛错由 gatherer 捕获为租户级 error）
 
 /** 读反馈分型计数；ENOENT = 合法空态；坏结构抛错（禁兜底） */
 export async function readTenantFeedback(tenantDir: string): Promise<FeedbackBreakdown> {
@@ -171,7 +171,7 @@ function emptyTrajectory(): InterestTrajectory {
   return { snapshots: 0, first: null, last: null };
 }
 
-// ---------- 聚合与渲染 ----------
+// 聚合与渲染
 
 /** 单租户快照收集（IO 编排；单路失败 = 租户级 error，不拖垮整报） */
 export async function collectTenantSnapshot(

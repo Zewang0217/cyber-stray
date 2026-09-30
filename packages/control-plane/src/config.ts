@@ -126,8 +126,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     arkApiKey: env.ARK_API_KEY ?? '',
     arkImageModel: env.CP_ARK_IMAGE_MODEL ?? 'doubao-seedream-5-0-260128',
     visionApiKey: env.CP_VISION_API_KEY ?? env.ZHIPU_API_KEY ?? '',
-    // glm-4.5v：基准实测与人判一致率 6/8（flash 仅 2/8，连官方帧条都误杀）；
-    // 计费模型——质检调用量受 maxQcRetries 收敛，CP_VISION_MODEL 可回退 flash
+    // 缺省智谱 glm-4.5v（计费，质检调用量受 maxQcRetries 收敛）；配
+    // CP_VISION_BASE_URL/API_KEY 可切 ECNU 等 OpenAI 兼容端点。基准口径
+    // 单一真相见 petgen/vision.ts（8 用例：glm-4.5v 6/8，flash 2/8，
+    // ecnu-plus 开思考 6/8、关思考 2/8）
     visionModel: env.CP_VISION_MODEL ?? 'glm-4.5v',
     visionBaseUrl: env.CP_VISION_BASE_URL ?? '',
     visionThinking: env.CP_VISION_THINKING !== 'false',

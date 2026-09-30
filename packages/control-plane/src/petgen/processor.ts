@@ -231,7 +231,7 @@ export class PetGenProcessor {
     }
   }
 
-  // ─── 概念图阶段 ──────────────────────────────────────────────────────
+  // 概念图阶段
 
   /** 领养上传参考图（saveAdoptReference 落定；无上传 = 文件不存在） */
   private adoptReferencePath(tenantId: string): string {
@@ -309,7 +309,7 @@ export class PetGenProcessor {
     }
   }
 
-  // ─── 多状态生成阶段（策略阶梯） ─────────────────────────────────────
+  // 多状态生成阶段（策略阶梯）
 
   /** 待生成状态的批次分组（quad 按四宫格批次；nine 整张 3x3；per 单状态） */
   private batchesFor(strategy: GenStrategy, pending: PetStateId[]): PetStateId[][] {
@@ -508,7 +508,7 @@ export class PetGenProcessor {
     }
   }
 
-  // ─── 质检阶段（两层：结构脚本 + 语义豆包视觉） ───────────────────────
+  // 质检阶段（两层：结构脚本 + 语义豆包视觉）
 
   /**
    * 视觉质检 infra 异常收尾：保持 qc 态、下 tick 整轮重试——不消耗
@@ -691,7 +691,7 @@ export class PetGenProcessor {
     });
   }
 
-  // ─── 交付：素材落租户 pet-assets 目录 ───────────────────────────────
+  // 交付：素材落租户 pet-assets 目录
 
   private async finalize(task: PetGenTask): Promise<void> {
     const now = this.now();
