@@ -203,7 +203,7 @@ def emit(frames: list[np.ndarray], out_dir: Path, name: str) -> int:
     return len(strips)
 
 
-# ── sheet 模式（领养精灵图:单张 n×n 确定性等分切分）──────────────────
+# sheet 模式（领养精灵图:单张 n×n 确定性等分切分）
 
 
 def parse_anim_spec(spec: str) -> list[tuple[str, int]]:
