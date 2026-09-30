@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { rmDataDir } from '../test/rm-data-dir.js';
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -47,9 +48,9 @@ describe('push 路由（Web Push 订阅管理）', () => {
     app.route('/api/push', createPushRoutes({ config }));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   async function authed(

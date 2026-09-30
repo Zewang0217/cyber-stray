@@ -10,7 +10,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs';
+import { rmDataDir } from '../test/rm-data-dir.js';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
@@ -36,8 +37,8 @@ describe('dream 路由（#93 梦境）', () => {
     app.route('/api/dream', createDreamRoutes({ config: { dataDir, sessionSecret: SECRET } }));
   });
 
-  afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+  afterEach(async () => {
+    await rmDataDir(dataDir);
   });
 
   async function authed(

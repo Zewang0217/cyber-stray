@@ -11,7 +11,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { rmDataDir } from '../test/rm-data-dir.js';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
@@ -59,9 +60,9 @@ describe('pet-assets 路由（#95）', () => {
     );
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   async function authed(
@@ -166,9 +167,9 @@ describe('pet-assets 经 createApp 全链路挂载（app.ts 装配）', () => {
     app = createApp(deps);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   it('全链路：未登录 401；登录后本租户 manifest 200 + 素材 PNG 服务', async () => {

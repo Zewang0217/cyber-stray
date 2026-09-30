@@ -8,6 +8,7 @@
  * - 断开清理：客户端取消（cancel）后退订，后续 publish 不炸
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { rmDataDir } from '../test/rm-data-dir.js';
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -68,9 +69,9 @@ describe('events 路由（SSE）', () => {
     app.route('/api', createEventsRoutes({ config, bus }));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   async function authedRequest(claims = { sub: 'alice', tenantId: 'alice' }): Promise<Request> {
