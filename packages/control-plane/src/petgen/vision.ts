@@ -16,7 +16,9 @@ import { buildAnimQcPrompt, buildQcPrompt } from './prompt.js';
 export const DEFAULT_VISION_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4';
 
 export interface VisionOptions {
-  model: string;
+  /** 质检模型（支持 getter：与 ark 同款热更新——admin 改面板后下次质检即生效，
+   *  与 usage 记录的模型名保持同源不漂移） */
+  model: string | (() => string);
   /** OpenAI 兼容端点根（不含 /chat/completions；默认智谱） */
   baseUrl?: string;
   /**
@@ -84,6 +86,7 @@ export function createVisionQc(apiKey: string, opts: VisionOptions): VisionQc {
         imageToDataUrl(req.referencePath),
         imageToDataUrl(req.statePath),
       ]);
+      const model = typeof opts.model === 'function' ? opts.model() : opts.model;
       const res = await fetchFn(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -91,7 +94,7 @@ export function createVisionQc(apiKey: string, opts: VisionOptions): VisionQc {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: opts.model,
+          model,
           ...(opts.thinking
             ? { thinking: { type: 'enabled' }, reasoning_effort: 'medium' }
             : {}),

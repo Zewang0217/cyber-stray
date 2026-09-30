@@ -11,6 +11,7 @@
 import { appendFile, mkdir, readdir } from 'fs/promises';
 import { join } from 'path';
 import { localDateKey } from './usage.js';
+import { tenantDataDir } from './tenant.js';
 import { logger } from './logger.js';
 
 export type ActivityKind = 'session';
@@ -37,6 +38,18 @@ export async function recordTenantActivity(
   } catch (error) {
     logger.warn('记录租户活跃失败（不影响主流程）', { error });
   }
+}
+
+/**
+ * 按数据根目录记一条活跃（fire-and-forget；no-throw）。
+ *
+ * 鉴权成功路径统一入口：requireTenant 中间件与 data/pets/feedback/
+ * evolution/pet-assets 等手动鉴权路由共用——漏挂任何一组会让 X1「回访」
+ * 系统性漏计（如 SSE 断连时仪表盘走 /api/state 5s 轮询，该路径不落
+ * 活跃则回访恒为零）。
+ */
+export function noteTenantActivity(dataDir: string, tenantId: string): void {
+  void recordTenantActivity(tenantDataDir(dataDir, tenantId), tenantId);
 }
 
 /** activity 文件名日期（activity-YYYY-MM-DD.jsonl → 'YYYY-MM-DD'）；非法名 = null */

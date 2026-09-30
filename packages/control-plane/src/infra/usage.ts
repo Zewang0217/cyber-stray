@@ -50,12 +50,18 @@ export async function recordUsage(
   }
 }
 
-/** petgen 用量记录器（模型名闭包绑定；processor 调用时只需租户 id） */
+/** petgen 用量记录器（模型名支持 getter：与 ark 的热更新配置同款——admin
+ * 面板改模型后，下一张图/质检记的就是新模型名，usage 行不漂移） */
 export interface PetUsageRecorder {
   /** 生图成功（概念图或网格批次）后调用 */
   recordImage(tenantId: string): void;
   /** 视觉质检成功后调用 */
   recordVision(tenantId: string): void;
+}
+
+/** 模型名求值：静态字符串或调用时求值的 getter（与 ark.ts model 同形态） */
+function resolveModel(model: string | (() => string)): string {
+  return typeof model === 'function' ? model() : model;
 }
 
 /** usage 文件名日期（usage-YYYY-MM-DD.jsonl → 'YYYY-MM-DD'）；非法名 = null */
@@ -65,9 +71,14 @@ export function usageFileDate(file: string): string | null {
 }
 
 /**
- * 读租户 usage 行（时间范围 [from, to] 日期字符串；缺省全部；行内 timestamp 再筛）。
+ * 读租户 usage 行（时间范围 [from, to] 日期字符串，本地日期键；缺省全部）。
  * 目录不存在 = 合法空态（租户未产生用量）返回 []；半行写入（崩溃残留）跳过；
  * 其余读失败抛错——调用方（预算闸）不得把「读不到」当「没花钱」。
+ *
+ * 日期归属以文件名为准（写入口径 localDateKey，文件即天分区）：行内
+ * timestamp 是 UTC，东八区 00:00-08:00 的行 UTC 日期还是前一天——若按行内
+ * UTC 日期再筛会两边都算不到（本地日文件里被 from/to 排除，前一日的文件
+ * 里又没有它），故不做行级日期过滤。
  */
 export async function readTenantUsage(
   dataDir: string,
@@ -105,9 +116,6 @@ export async function readTenantUsage(
         continue; // 半行写入（崩溃残留）跳过，不拖垮聚合
       }
       if (!row.timestamp || typeof row.kind !== 'string') continue;
-      const day = row.timestamp.slice(0, 10);
-      if (from && day < from) continue;
-      if (to && day > to) continue;
       rows.push(row);
     }
   }
@@ -117,14 +125,14 @@ export async function readTenantUsage(
 /** 创建 petgen 用量记录器（dataDir 为 CP 全局数据目录，含 tenants/<sub>） */
 export function createPetUsageRecorder(
   dataDir: string,
-  models: { imageModel: string; visionModel: string },
+  models: { imageModel: string | (() => string); visionModel: string | (() => string) },
 ): PetUsageRecorder {
   return {
     recordImage(tenantId: string) {
       void recordUsage(tenantDataDir(dataDir, tenantId), {
         tenantId,
         kind: 'image',
-        model: models.imageModel,
+        model: resolveModel(models.imageModel),
         images: 1,
       });
     },
@@ -132,7 +140,7 @@ export function createPetUsageRecorder(
       void recordUsage(tenantDataDir(dataDir, tenantId), {
         tenantId,
         kind: 'vision_qc',
-        model: models.visionModel,
+        model: resolveModel(models.visionModel),
         images: 1,
       });
     },

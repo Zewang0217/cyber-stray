@@ -6,9 +6,10 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync, readFileSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import { eq } from 'drizzle-orm';
 import { getDb, _resetDb } from './client.js';
 import { runMigrations } from './migrate.js';
@@ -139,3 +140,61 @@ describe('控制面数据模型', () => {
     expect(secret?.keyId).toBe('dek-1');
   });
 });
+
+describe('drizzle meta 一致性（journal ↔ snapshot ↔ schema）', () => {
+  // 0016/0017 手写迁移曾无快照：下次 drizzle-kit generate 会以 0015 为基线
+  // 重新生成 DROP/CREATE 已应用过的表，在已迁移库上启动即崩（PR #306 评审）。
+  const metaDir = resolve(
+    dirname(fileURLToPath(import.meta.url)), '../../drizzle/meta',
+  );
+
+  interface Snapshot { id: string; prevId: string; tables: Record<string, unknown> }
+
+  function loadSnapshots(): Map<number, Snapshot> {
+    const snaps = new Map<number, Snapshot>();
+    for (const file of readdirSync(metaDir)) {
+      const m = /^(\d{4})_snapshot\.json$/.exec(file);
+      if (!m) continue;
+      snaps.set(Number(m[1]), JSON.parse(readFileSync(join(metaDir, file), 'utf-8')) as Snapshot);
+    }
+    return snaps;
+  }
+
+  it('现存快照按 idx 相邻链接（snap[i].prevId == snap[i-1].id；历史缺口允许跳号）', () => {
+    const snaps = loadSnapshots();
+    const idxs = [...snaps.keys()].sort((a, b) => a - b);
+    for (let i = 1; i < idxs.length; i++) {
+      const cur = snaps.get(idxs[i]!)!;
+      const prev = snaps.get(idxs[i - 1]!)!;
+      expect(cur.prevId, `snapshot ${idxs[i]} 的 prevId`).toBe(prev.id);
+    }
+  });
+
+  it('journal 尾部不落后于快照尾部（手写迁移补快照的绊线）', () => {
+    const snaps = loadSnapshots();
+    const journal = JSON.parse(
+      readFileSync(join(metaDir, '_journal.json'), 'utf-8'),
+    ) as { entries: Array<{ idx: number }> };
+    const journalTail = Math.max(...journal.entries.map((e) => e.idx));
+    const snapshotTail = Math.max(...snaps.keys());
+    expect(snapshotTail).toBeGreaterThanOrEqual(journalTail);
+  });
+
+  it('最新快照表集 == schema.ts 表集（下次 generate 的 diff 基线是当前 schema）', () => {
+    const snaps = loadSnapshots();
+    const latest = snaps.get(Math.max(...snaps.keys()))!;
+    const schemaSrc = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), 'schema.ts'),
+      'utf-8',
+    );
+    const schemaTables = [...schemaSrc.matchAll(/sqliteTable\('([a-z_]+)'/g)]
+      .map((m) => m[1])
+      .filter((name): name is string => typeof name === 'string');
+    expect(new Set(schemaTables).size).toBe(schemaTables.length); // 无重复定义
+    expect(sorted(Object.keys(latest.tables))).toEqual(sorted(schemaTables));
+  });
+});
+
+function sorted(xs: string[]): string[] {
+  return [...xs].sort();
+}

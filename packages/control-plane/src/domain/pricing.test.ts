@@ -54,6 +54,17 @@ describe('costOf', () => {
     expect(costOf(row)).toBe(0);
   });
 
+  it('默认质检模型 glm-4.5v 按次计价（¥0.02/次，不再落 ¥0 低估成本）', () => {
+    const row = {
+      timestamp: '2026-08-25T00:00:00Z',
+      tenantId: 't',
+      kind: 'vision_qc' as const,
+      model: 'glm-4.5v',
+      images: 7,
+    };
+    expect(costOf(row)).toBeCloseTo(0.14, 6);
+  });
+
   it('未知模型 → 0（不瞎估）', () => {
     const row = {
       timestamp: '2026-08-25T00:00:00Z',

@@ -21,6 +21,19 @@ Casdoor 的密钥类内容不入库：OIDC 应用（client id/secret）在 Casdo
 创建后写入 `/opt/cyber-stray/.env`；`conf/init_data.json`（首启种子，含
 clientSecret）仅在重建全新环境时手工放置。
 
+## 运维告警 webhook
+
+三个告警变量、三条注入路径，全部未配置 = 对应告警静默关闭（只留租户 SSE
+事件 / 本地日志）：
+
+| 变量 | 告警内容 | 注入方式 |
+|---|---|---|
+| `CP_OPS_ALERT_WEBHOOK_URL` | worker 连败 / 日预算耗尽 / 首推超时（CP 进程内） | compose env_file（`/opt/cyber-stray/.env`） |
+| `OPS_ALERT_WEBHOOK_URL` | 发布失败（container-update.sh）/ 备份失败（backup.sh 兜底） | 脚本运行环境（CI SSH / systemd timer），sudo env_reset 会清掉——须 sudoers `env_keep` 或运行前显式注入 |
+| `BACKUP_ALERT_WEBHOOK_URL` | 备份整体失败（backup.sh 专用） | `backup.env`（root:600，运行前 source） |
+
+变量名清单以根 `.env.example` 为准（`container-update.sh` 按它做键集校验）。
+
 ## 数据布局
 
 单根 `/opt/cyber-stray`（备份脚本同根覆盖）：
