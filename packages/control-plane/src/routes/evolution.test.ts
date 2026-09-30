@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'fs';
+import { rmDataDir } from '../test/rm-data-dir.js';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
@@ -29,9 +30,9 @@ describe('evolution 路由（进化可视化 + 回滚）', () => {
     app.route('/api/evolution', createEvolutionRoutes({ config: { dataDir, sessionSecret: SECRET } }));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   async function authed(

@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { rmDataDir } from '../test/rm-data-dir.js';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync, readFileSync, statSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -59,9 +60,9 @@ describe('data 路由（租户数据 + 鉴权）', () => {
     app.route('/api', createDataRoutes({ config }));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   /** 签 session 并构造带 cookie 的请求 */

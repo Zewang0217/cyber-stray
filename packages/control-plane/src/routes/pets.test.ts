@@ -12,7 +12,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
+import { rmDataDir } from '../test/rm-data-dir.js';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
@@ -51,9 +52,9 @@ describe('pets 路由（领养）', () => {
     app.route('/api', createPetsRoutes({ config }));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   async function authed(
@@ -542,9 +543,9 @@ describe('adopt 口头禅（#114 切片 2）', () => {
     app.route('/api', createPetsRoutes({ config }));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   async function authed(url: string, init: RequestInit = {}): Promise<Request> {
