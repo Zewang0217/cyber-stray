@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { rmDataDir } from '../test/rm-data-dir.js';
+import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
@@ -34,9 +35,9 @@ describe('plan 路由（S11 套餐管理）', () => {
     app.route('/api/plan', createPlanRoutes({ config }));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   async function authed(

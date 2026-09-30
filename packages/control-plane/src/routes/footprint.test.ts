@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs';
+import { rmDataDir } from '../test/rm-data-dir.js';
+import { mkdtempSync, writeFileSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
@@ -25,9 +26,9 @@ describe('footprint 路由（游荡足迹——每次 loop 每一步骤）', () 
     app.route('/api/footprint', createFootprintRoutes({ config: { dataDir, sessionSecret: SECRET } }));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   async function authed(

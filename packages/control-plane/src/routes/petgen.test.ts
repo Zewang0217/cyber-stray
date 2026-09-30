@@ -12,7 +12,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { rmDataDir } from '../test/rm-data-dir.js';
+import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
@@ -45,9 +46,9 @@ describe('petgen 路由（#94）', () => {
     app.route('/api/petgen', createPetGenRoutes({ config }));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   async function authed(
