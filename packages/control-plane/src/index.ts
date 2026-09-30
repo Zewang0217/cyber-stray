@@ -96,7 +96,8 @@ const petGenProcessor = new PetGenProcessor({
     size: '2K', // Seedream 5.0 无 1K 档，最小 2K（2048×2048）
   }),
   visionQc: createVisionQc(config.visionApiKey, {
-    model: config.visionModel,
+    // #131：与生图同款热更新——每次质检读配置缓存，usage 记录同源不漂移
+    model: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).visionModel,
     // 空 = vision.ts 默认端点（智谱）；配 CP_VISION_BASE_URL 切任意 OpenAI 兼容端点
     baseUrl: config.visionBaseUrl || undefined,
     thinking: config.visionThinking,
@@ -104,16 +105,19 @@ const petGenProcessor = new PetGenProcessor({
   }),
   splitter: createSplitter(),
   structureQc: createStructureQc(),
-  // #129：petgen 生图/质检用量记录（no-throw）
+  // #129：petgen 生图/质检用量记录（no-throw；模型名与实际调用同源热更新）
   usage: createPetUsageRecorder(config.dataDir, {
-    imageModel: config.arkImageModel,
-    visionModel: config.visionModel,
+    imageModel: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).imageModel,
+    visionModel: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).visionModel,
   }),
   config: {
     maxBatchRetries: 2,
     // 真机数据：每轮 QC 挂的动画随机（生成随机性），只重生成失败动画 + 多轮
     // 预算才能凑齐全过；每轮成本 = 挂掉动画数 × (1 生图 + 1 视觉调用)，有界
     maxQcRetries: 4,
+    // 视觉质检 infra 异常（断连/key 失效/坏格式）只重试质检本身、不重生成图；
+    // 供应商故障恢复通常在分钟级，5 轮（默认 5s tick）后放弃并显式失败
+    maxQcInfraRetries: 5,
     conceptFrame: 512,
     referenceFrame: 384,
     gridSize: '1024*1024',

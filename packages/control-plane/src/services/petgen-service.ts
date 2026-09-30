@@ -40,6 +40,28 @@ export type PetGenOutcome<T> =
   | { ok: true; data: T }
   | { ok: false; status: 403 | 404 | 409 | 429; error: string; data?: unknown };
 
+/**
+ * 同租户任务提交串行化（进程内）：hasInFlightTask（SELECT）与 insertTask
+ * （INSERT）之间有多个 await，两个并发提交（领养自动建任务 × 改造屋手动
+ * 提交、双击提交）可同时通过在飞检查后各自插入——nextDueTask 只推进
+ * 「租户恰 1 个在飞」的任务，届时两个任务永久互卡且无取消端点，只能手工
+ * 改库恢复。CP 当前单实例，进程内串行即可闭合该窗口；未来多实例横向扩展
+ * 需升级为 DB 层部分唯一索引（tenant_id WHERE status IN 在飞集）。
+ */
+const submitQueues = new Map<string, Promise<unknown>>();
+
+/** 串行执行同租户的提交（check-then-insert 原子化）；前序失败不阻断本任务 */
+function serializedSubmit<T>(tenantId: string, submit: () => Promise<T>): Promise<T> {
+  const prev = submitQueues.get(tenantId) ?? Promise.resolve();
+  const run = prev.then(submit);
+  const settled = run.catch(() => undefined);
+  submitQueues.set(tenantId, settled);
+  void settled.then(() => {
+    if (submitQueues.get(tenantId) === settled) submitQueues.delete(tenantId);
+  });
+  return run;
+}
+
 /** 领养参考图压平边长（与管线 referenceFrame 同水位；白底 JPEG 供 Seedream img2img） */
 const ADOPT_REFERENCE_FRAME = 384;
 
@@ -118,41 +140,42 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     if (!(await planAllowed(db, tenantId))) {
       return { ok: false, status: 403, error: '宠物 IP 定制是 Pro/BYOK 专属功能' };
     }
-    // 同租户并发拒绝：nextDueTask 只推进「租户恰 1 个在飞」的任务，放行
-    // 第二个在飞任务会与既有任务（含领养自动建的 sheet 任务）永久互卡
-    if (await hasInFlightTask(db, tenantId)) {
-      return { ok: false, status: 409, error: '已有生成任务进行中，完成后再提交' };
-    }
-    const quota = await petGenQuota(db, tenantId, config.petGenMonthlyQuota);
-    if (quota.remaining <= 0) {
-      return {
-        ok: false,
-        status: 429,
-        error: `本月配额已用完（${quota.limit} 套/月），下月 ${new Date(nextMonthStart(Date.now())).toISOString().slice(0, 7)} 重置`,
-        data: { ...quota, resetAt: new Date(nextMonthStart(Date.now())).toISOString().slice(0, 7) },
+    // 在飞检查 + 插入必须串行（见 serializedSubmit 注释：并发双插入 = 队列互卡）
+    return serializedSubmit(tenantId, async () => {
+      if (await hasInFlightTask(db, tenantId)) {
+        return { ok: false, status: 409, error: '已有生成任务进行中，完成后再提交' };
+      }
+      const quota = await petGenQuota(db, tenantId, config.petGenMonthlyQuota);
+      if (quota.remaining <= 0) {
+        return {
+          ok: false,
+          status: 429,
+          error: `本月配额已用完（${quota.limit} 套/月），下月 ${new Date(nextMonthStart(Date.now())).toISOString().slice(0, 7)} 重置`,
+          data: { ...quota, resetAt: new Date(nextMonthStart(Date.now())).toISOString().slice(0, 7) },
+        };
+      }
+      const task: PetGenTask = {
+        id: randomUUID(),
+        tenantId,
+        status: 'spec_submitted',
+        specText: spec.specText,
+        options: spec.options ? JSON.stringify(spec.options) : null,
+        stylePreset: spec.stylePreset ?? null,
+        conceptPath: null,
+        strategy: 'quad',
+        batchRetries: 0,
+        qcRetries: 0,
+        qcResult: null,
+        pendingStates: null,
+        conceptAttempts: 0,
+        error: null,
+        completedAt: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
       };
-    }
-    const task: PetGenTask = {
-      id: randomUUID(),
-      tenantId,
-      status: 'spec_submitted',
-      specText: spec.specText,
-      options: spec.options ? JSON.stringify(spec.options) : null,
-      stylePreset: spec.stylePreset ?? null,
-      conceptPath: null,
-      strategy: 'quad',
-      batchRetries: 0,
-      qcRetries: 0,
-      qcResult: null,
-      pendingStates: null,
-      conceptAttempts: 0,
-      error: null,
-      completedAt: null,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    await petgenRepo.insertTask(db, task);
-    return { ok: true, data: toTaskView(task) };
+      await petgenRepo.insertTask(db, task);
+      return { ok: true, data: toTaskView(task) };
+    });
   }
 
   /**
@@ -165,31 +188,33 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     spec: PetSpec,
   ): Promise<{ ok: true; taskId: string } | { ok: false; reason: 'quota' | 'busy' }> {
     const db = await getDb(config.dataDir);
-    // 并发拒绝（同 submitTask）：改造屋任务在飞时领养不叠任务，防互卡
-    if (await hasInFlightTask(db, tenantId)) return { ok: false, reason: 'busy' };
-    const quota = await petGenQuota(db, tenantId, config.petGenMonthlyQuota);
-    if (quota.remaining <= 0) return { ok: false, reason: 'quota' };
-    const task: PetGenTask = {
-      id: randomUUID(),
-      tenantId,
-      status: 'spec_submitted',
-      specText: spec.specText,
-      options: spec.options ? JSON.stringify(spec.options) : null,
-      stylePreset: spec.stylePreset ?? 'pixel',
-      conceptPath: null,
-      strategy: 'sheet',
-      batchRetries: 0,
-      qcRetries: 0,
-      qcResult: null,
-      pendingStates: null,
-      conceptAttempts: 0,
-      error: null,
-      completedAt: null,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    await petgenRepo.insertTask(db, task);
-    return { ok: true, taskId: task.id };
+    // 并发拒绝 + 插入串行化（同 submitTask）：改造屋任务在飞时领养不叠任务，防互卡
+    return serializedSubmit(tenantId, async () => {
+      if (await hasInFlightTask(db, tenantId)) return { ok: false, reason: 'busy' };
+      const quota = await petGenQuota(db, tenantId, config.petGenMonthlyQuota);
+      if (quota.remaining <= 0) return { ok: false, reason: 'quota' };
+      const task: PetGenTask = {
+        id: randomUUID(),
+        tenantId,
+        status: 'spec_submitted',
+        specText: spec.specText,
+        options: spec.options ? JSON.stringify(spec.options) : null,
+        stylePreset: spec.stylePreset ?? 'pixel',
+        conceptPath: null,
+        strategy: 'sheet',
+        batchRetries: 0,
+        qcRetries: 0,
+        qcResult: null,
+        pendingStates: null,
+        conceptAttempts: 0,
+        error: null,
+        completedAt: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      await petgenRepo.insertTask(db, task);
+      return { ok: true, taskId: task.id };
+    });
   }
 
   /**

@@ -26,6 +26,10 @@ export const DEFAULT_PRICES: Record<string, ModelPrice> = {
   'doubao-seedream-5-0-260128': { perImage: 0.4 },
   // 智谱 GLM-4V-Flash：免费
   'glm-4v-flash': { perImage: 0 },
+  // 智谱 GLM-4.5V（默认质检模型，2025-08 上线价：输入 ¥2/M、输出 ¥6/M tokens）：
+  // vision_qc 按次计（images=1/次），单次 ≈ 输入 1K + 输出 2K（思考模式
+  // reasoning）≈ ¥0.014，取保守上界 ¥0.02/次——宁可高估不低估护栏成本
+  'glm-4.5v': { perImage: 0.02 },
 };
 
 export interface UsageRow {

@@ -63,6 +63,8 @@ describe('PetGenProcessor（#94 状态机）', () => {
   let processor: PetGenProcessor;
   /** 视觉质检失败状态集（清空 = 该状态下一轮通过） */
   let qcFailures: Set<PetStateId>;
+  /** 视觉质检 infra 异常开关（inspect 直接 reject，模拟端点断连/key 失效） */
+  let inspectRejects: boolean;
   /** 切分抛错策略集（在该策略下抛错 → 触发升级） */
   let splitFailStrategies: Set<string>;
   /** 空格不顺从策略集（emptyCells=0 → 触发升级） */
@@ -87,6 +89,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
     await db.update(tenants).set({ plan: 'pro' }).where(eq(tenants.id, 'alice')).run();
     await db.update(tenants).set({ plan: 'byok' }).where(eq(tenants.id, 'bob')).run();
     qcFailures = new Set();
+    inspectRejects = false;
     splitFailStrategies = new Set();
     noncomplianceStrategies = new Set();
     conceptFails = false;
@@ -105,6 +108,9 @@ describe('PetGenProcessor（#94 状态机）', () => {
     imageGen = { generate: generateMock };
 
     inspectMock = vi.fn(async ({ state }) => {
+      if (inspectRejects) {
+        throw new Error('质检端点 503');
+      }
       if (qcFailures.has(state)) {
         return { pass: false, issues: ['状态未区分(与 idle 相关 <0.25)'] };
       }
@@ -188,6 +194,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
       config: {
         maxBatchRetries: 2,
         maxQcRetries: 2,
+        maxQcInfraRetries: 2,
         conceptFrame: 512,
         referenceFrame: 384,
         gridSize: '1024*1024',
@@ -340,6 +347,44 @@ describe('PetGenProcessor（#94 状态机）', () => {
     expect(failed.qcRetries).toBe(2);
     const quota = await petGenQuota(db, 'alice', 2, clock);
     expect(quota.used).toBe(0);
+  });
+
+  it('视觉质检 infra 异常：保持 qc 态只重试质检，恢复后完成（不重生成图）', async () => {
+    const task = await insertTask();
+    await tickUntil(task.id, ['awaiting_confirmation']);
+    await confirm(task.id);
+    await tickUntil(task.id, ['qc']);
+    const genCallsAtQc = generateMock.mock.calls.length;
+
+    inspectRejects = true; // 供应商故障（端点 503）
+    await processor.tick();
+    const stuck = await getTask(task.id);
+    expect(stuck?.status).toBe('qc'); // 不打回 generating_states、不消耗 qcRetries
+    expect(stuck?.qcRetries).toBe(0);
+    expect(generateMock.mock.calls.length).toBe(genCallsAtQc); // 没有白烧生图
+
+    inspectRejects = false; // 故障恢复
+    const done = await tickUntil(task.id, ['done']);
+    expect(done.status).toBe('done');
+    expect(generateMock.mock.calls.length).toBe(genCallsAtQc); // 恢复后直接过检交付
+  });
+
+  it('视觉质检 infra 异常连续超限 → failed 带真实异常文案（非「调整 spec」）', async () => {
+    const task = await insertTask();
+    await tickUntil(task.id, ['awaiting_confirmation']);
+    await confirm(task.id);
+    await tickUntil(task.id, ['qc']);
+    const genCallsAtQc = generateMock.mock.calls.length;
+
+    inspectRejects = true;
+    await processor.tick(); // 第 1 轮 infra 重试
+    await processor.tick(); // 第 2 轮 = maxQcInfraRetries → failed
+    const failed = await getTask(task.id);
+    expect(failed?.status).toBe('failed');
+    expect(failed?.error).toContain('视觉质检连续异常');
+    expect(failed?.error).toContain('质检端点 503');
+    expect(failed?.error).not.toContain('调整 spec');
+    expect(generateMock.mock.calls.length).toBe(genCallsAtQc); // 全程零重生成
   });
 
   it('批次失败（切分抛错）：quad 失败 → 升级 nine 仍失败 → 升级 per 成功', async () => {
