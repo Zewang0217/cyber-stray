@@ -46,6 +46,7 @@ export interface PetsDeps {
     | 'llmBudgetEnabled'
     | 'llmBudgetYuan'
     | 'petGenMonthlyQuota'
+    | 'adoptLlmModel'
   >;
 }
 
