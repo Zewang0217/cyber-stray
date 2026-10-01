@@ -25,7 +25,7 @@ import { localDateKey } from '../infra/usage.js';
 import { tenantDataDir } from '../infra/tenant.js';
 
 export interface PetsServiceDeps {
-  config: Pick<ControlPlaneConfig, 'dataDir' | 'llmBudgetEnabled' | 'llmBudgetYuan'>;
+  config: Pick<ControlPlaneConfig, 'dataDir' | 'llmBudgetEnabled' | 'llmBudgetYuan' | 'adoptLlmModel'>;
 }
 
 /** adopt 用例的已校验入参（请求体校验在接口层完成） */
@@ -188,7 +188,7 @@ export function createPetsService({ config }: PetsServiceDeps) {
     let apiKey = process.env.DEEPSEEK_API_KEY ?? '';
     const store = await openTenantSecrets(config.dataDir, tenantId);
     apiKey = (await store.get('deepseek_api_key')) ?? apiKey;
-    return generateCandidates(input, apiKey);
+    return generateCandidates(input, apiKey, { model: config.adoptLlmModel });
   }
 
   return {

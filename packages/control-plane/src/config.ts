@@ -1,5 +1,7 @@
 import { fileURLToPath } from 'url';
 
+import { resolveVisionBaseUrl } from './petgen/vision.js';
+
 /**
  * 控制面配置 — 来自环境变量；secrets 密文不落明文。
  * master key：env CP_MASTER_KEY（64 hex）优先，dev 无 env 时自动生成
@@ -42,12 +44,14 @@ export interface ControlPlaneConfig {
   arkImageModel: string;
   /** 视觉质检 API key（env CP_VISION_API_KEY 优先，回退 ZHIPU_API_KEY 智谱） */
   visionApiKey: string;
-  /** 视觉质检模型（env CP_VISION_MODEL；GLM-4V-Flash 免费） */
+  /** 视觉质检模型（env CP_VISION_MODEL；缺省 ecnu-plus——ECNU 网关开思考基准 6/8，与 glm-4.5v 持平） */
   visionModel: string;
-  /** 视觉质检 OpenAI 兼容端点根（env CP_VISION_BASE_URL；空 = vision.ts 默认智谱） */
+  /** 视觉质检 OpenAI 兼容端点根（env CP_VISION_BASE_URL；缺省随模型——ecnu 系走 ECNU 网关，其余智谱） */
   visionBaseUrl: string;
   /** 视觉质检思考模式（env CP_VISION_THINKING，缺省开——ecnu-plus 关思考仅 2/8 基准） */
   visionThinking: boolean;
+  /** 领养候选 LLM 模型（起名/口头禅 3 候选；env CP_ADOPT_LLM_MODEL——DeepSeek 端点内切换） */
+  adoptLlmModel: string;
   /** 宠物 IP 生成月度配额（套/自然月；env CP_PETGEN_MONTHLY_QUOTA，默认 2） */
   petGenMonthlyQuota: number;
   /** 生成任务处理器 tick 间隔 ms（0 = 关闭；#94） */
@@ -78,6 +82,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
   const llmBudgetFreeYuan = Number(env.CP_LLM_BUDGET_FREE_YUAN ?? 0.5);
   const llmBudgetProYuan = Number(env.CP_LLM_BUDGET_PRO_YUAN ?? 2);
   const llmBudgetByokYuan = Number(env.CP_LLM_BUDGET_BYOK_YUAN ?? 2);
+  // 视觉质检缺省 ecnu-plus（ECNU 校内网关，开思考基准 6/8 与智谱 glm-4.5v
+  // 持平——口径单一真相见 petgen/vision.ts）；端点缺省随模型走，防模型/
+  // 端点错配打 404
+  const visionModel = env.CP_VISION_MODEL ?? 'ecnu-plus';
   const numeric: Array<[keyof ControlPlaneConfig, number]> = [
     ['schedulerIntervalMs', Number(env.CP_SCHEDULER_INTERVAL_MS ?? 60_000)],
     ['schedulerMaxConcurrent', Number(env.CP_SCHEDULER_MAX_CONCURRENT ?? 4)],
@@ -126,13 +134,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     arkApiKey: env.ARK_API_KEY ?? '',
     arkImageModel: env.CP_ARK_IMAGE_MODEL ?? 'doubao-seedream-5-0-260128',
     visionApiKey: env.CP_VISION_API_KEY ?? env.ZHIPU_API_KEY ?? '',
-    // 缺省智谱 glm-4.5v（计费，质检调用量受 maxQcRetries 收敛）；配
-    // CP_VISION_BASE_URL/API_KEY 可切 ECNU 等 OpenAI 兼容端点。基准口径
-    // 单一真相见 petgen/vision.ts（8 用例：glm-4.5v 6/8，flash 2/8，
-    // ecnu-plus 开思考 6/8、关思考 2/8）
-    visionModel: env.CP_VISION_MODEL ?? 'glm-4.5v',
-    visionBaseUrl: env.CP_VISION_BASE_URL ?? '',
+    visionModel,
+    visionBaseUrl: env.CP_VISION_BASE_URL ?? resolveVisionBaseUrl(visionModel),
     visionThinking: env.CP_VISION_THINKING !== 'false',
+    adoptLlmModel: env.CP_ADOPT_LLM_MODEL ?? 'deepseek-chat',
     petGenMonthlyQuota: Number(env.CP_PETGEN_MONTHLY_QUOTA ?? 2),
     petGenIntervalMs: Number(env.CP_PETGEN_INTERVAL_MS ?? 5_000),
     shutdownBudgetMs: Number(env.CP_SHUTDOWN_BUDGET_MS ?? 90_000),
