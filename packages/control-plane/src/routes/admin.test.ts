@@ -6,11 +6,11 @@ import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { getOrCreateTenant, tenantDataDir } from '../tenant.js';
-import { signSession, SESSION_COOKIE } from '../session.js';
+import { getOrCreateTenant, tenantDataDir } from '../infra/tenant.js';
+import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { admins, pets, tenants } from '../db/schema.js';
 import { createAdminRoutes } from './admin.js';
-import { refreshModelConfig } from '../app-config.js';
+import { refreshModelConfig } from '../infra/app-config.js';
 
 const SECRET = 'x'.repeat(40);
 
@@ -173,6 +173,7 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     // app2：env 白名单为空（生产形态），admin-1 先入表才能操作
     const emptyEnvConfig = {
       dataDir, sessionSecret: SECRET, adminSubs: [],
+      webOrigin: 'http://localhost:3000',
       arkImageModel: 'default-img',
       visionModel: 'default-vl',
       llmBudgetEnabled: true,
@@ -243,10 +244,11 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     expect(b?.llmTokens).toBe(0);
     expect(b?.cost).toBe(0);
 
-    // #265 水位：主 fixture 未启用预算 → 上限 null；明细行是 2026-08-25 的历史
-    // 数据、今日文件读不到当日行 → 今日 LLM 成本 0
+    // #265 水位：主 fixture 未启用预算 → 上限 null；行落在今日文件（本地日
+    // 分区）即计入今日——即使行内 timestamp 是历史时间（usage 文件即天分区，
+    // 不再按行内 UTC 日期二次筛，见 infra/usage.ts）→ 今日 LLM 成本 6 元
     expect(a?.llmBudgetYuan).toBeNull();
-    expect(a?.llmCostToday).toBe(0);
+    expect(a?.llmCostToday).toBe(6);
 
     // 明细降序 + 含 cost
     expect(recent).toHaveLength(3);

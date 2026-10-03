@@ -1,3 +1,4 @@
+import type { SpeakType } from '@cyber-stray/shared/push';
 import { appendFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { consola } from '../../logger.js';
@@ -10,8 +11,8 @@ import type { Mood } from '../../types.js';
 
 const logger = consola.withTag('speak');
 
-/** speak 工具内容类型。与 memory/push-gate.ts 的 SpeakType 同步保持。 */
-export type SpeakType = 'share' | 'nonsense' | 'article';
+/** speak 内容类型契约在 shared/push（push-gate、CP、web 同源） */
+export type { SpeakType };
 
 /** speak 工具入参 */
 export interface SpeakInput {
@@ -22,12 +23,17 @@ export interface SpeakInput {
 /** speak 工具返回值 */
 export interface SpeakResult {
   success: boolean;
-  pushed: boolean;     // 是否已推送到飞书/Telegram
-  /** Phase 5: 是否被推送门控拦截 */
+  /**
+   * 是否经 agent 直连渠道（飞书/Telegram）投递。租户（SaaS）模式下直连渠道
+   * 不配置，恒为 false 属**预期**——主人侧的真实送达由控制面 push-gateway 的
+   * Web Push 负责（#77 默认通道；语义澄清 #178）。不要用它判断「主人是否收到」。
+   */
+  pushed: boolean;
+  /** 是否被推送门控拦截 */
   gated?: boolean;
-  /** Phase 5: 门控评分 */
+  /** 门控评分 */
   gateScore?: number;
-  /** Phase 5: 门控理由 */
+  /** 门控理由 */
   gateReasons?: string[];
   timestamp: string;
   messageId?: string; // 飞书消息 ID（用于关联反馈）
@@ -229,9 +235,11 @@ export async function speak(
     }
   }
 
-  // 没有配置任何推送渠道时，只记录日志
+  // 没有配置任何直连渠道：内容照常落 speaks 历史，pushed=false 属预期——
+  // 租户模式的送达由 CP push-gateway 读 speaks 历史经 Web Push 完成（#178），
+  // 这里不是故障分支，不要告警
   if (!cfg.feishu?.pushMode && !cfg.feishuWebhook && (!cfg.telegramBotToken || !cfg.telegramChatId)) {
-    logger.info('无推送渠道配置，内容仅记录日志', { content });
+    logger.info('无直连渠道配置，内容落历史（送达由 CP Web Push 网关负责）', { content });
   }
 
   // #114 反馈归因：内容包含扫描命中的口头禅（LLM 自由发挥，文本包含即

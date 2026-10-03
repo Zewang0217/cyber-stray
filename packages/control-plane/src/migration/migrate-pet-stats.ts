@@ -19,7 +19,7 @@ import { isPetMood, type PetMood } from '@cyber-stray/shared/pet-stats';
 import { getDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { pets } from '../db/schema.js';
-import { tenantDataDir } from '../tenant.js';
+import { tenantDataDir } from '../infra/tenant.js';
 
 export type PetStatsMigrationStatus =
   | 'migrated'

@@ -12,15 +12,16 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { rmDataDir } from '../test/rm-data-dir.js';
+import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { getOrCreateTenant } from '../tenant.js';
-import { signSession, SESSION_COOKIE } from '../session.js';
+import { getOrCreateTenant } from '../infra/tenant.js';
+import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { petGenTasks, tenants } from '../db/schema.js';
 import { createPetGenRoutes } from './petgen.js';
 
@@ -45,9 +46,9 @@ describe('petgen 路由（#94）', () => {
     app.route('/api/petgen', createPetGenRoutes({ config }));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   async function authed(
@@ -107,6 +108,36 @@ describe('petgen 路由（#94）', () => {
     const quotaBody = (await quota.json()) as { data: { used: number; remaining: number; available: boolean; resetAt: string } };
     expect(quotaBody.data).toMatchObject({ used: 0, remaining: 2, available: true });
     expect(quotaBody.data.resetAt).toMatch(/^\d{4}-\d{2}$/);
+  });
+
+  it('并发拒绝：租户已有在飞任务 → 提交 409（防 nextDueTask 永久互卡）', async () => {
+    await setPlan('alice', 'pro');
+    const db = await getDb(dataDir);
+    await db.insert(petGenTasks).values({
+      id: 't-inflight',
+      tenantId: 'alice',
+      status: 'generating_states', // 在飞（IN_FLIGHT 集合内）
+      specText: '领养自动建的 sheet 任务',
+      options: null,
+      stylePreset: 'pixel',
+      conceptPath: null,
+      strategy: 'sheet',
+      batchRetries: 0,
+      qcRetries: 0,
+      qcResult: null,
+      pendingStates: null,
+      conceptAttempts: 0,
+      error: null,
+      completedAt: null,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    const res = await app.request(
+      await authed('http://x/api/petgen/tasks', { method: 'POST', body: JSON.stringify(SPEC) }),
+    );
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain('已有生成任务');
   });
 
   it('参数校验：缺 specText / 超长 / 非法预设 / 非法选项 → 400', async () => {

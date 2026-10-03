@@ -15,9 +15,10 @@ import { Hono } from 'hono';
 import type { ControlPlaneConfig } from '../config.js';
 import type { CliSpawn } from '../infra/agent-cli-client.js';
 import { findUserTenantRelation } from '../infra/tenant-access.js';
+import { noteTenantActivity } from '../infra/tenant-activity.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { createFeedbackService } from '../services/feedback-service.js';
-import { resolveTenantFromRequest } from '../request-tenant.js';
+import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 
 /** topic 最大长度（字符） */
 const TOPIC_MAX_CHARS = 50;
@@ -42,6 +43,8 @@ async function scopedTenantId(
   if (!relation) return { error: 403 };
   if (!TENANT_ID_RE.test(session.tenantId)) return { error: 403 };
 
+  // X1「回访」埋点（与 requireTenant 同款；本路由组不走共享中间件）
+  noteTenantActivity(config.dataDir, session.tenantId);
   return { tenantId: session.tenantId };
 }
 

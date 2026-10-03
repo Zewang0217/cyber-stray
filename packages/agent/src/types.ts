@@ -1,58 +1,16 @@
 /**
- * 赛博街溜子核心类型定义
+ * Agent 运行时类型：跨包契约（状态 / 游荡步骤 / 心情）从 shared 转发；
+ * 其余为 agent 内部形状（搜索结果 / 反馈 / 配置 / 密钥 / 套餐参数 / 日志）。
  */
 
 import type { Catchphrase, PersonalityId } from '@cyber-stray/shared';
 import type { PetMood, WanderStatsReport } from '@cyber-stray/shared/pet-stats';
 
-// ============================================
-// 状态相关
-// ============================================
-
-/** Agent 心情类型（ADR-0013：枚举真相源在 @cyber-stray/shared/pet-stats） */
+/** Agent 心情类型（枚举真相源在 shared/pet-stats） */
 export type Mood = PetMood;
 
-/** Agent 状态 */
-export interface AgentState {
-  // 基础状态
-  boredom: number;       // 无聊值 0-100
-  energy: number;        // 精力值 0-100
-  mood: Mood;            // 心情
-
-  // 个性参数
-  temper: number;        // 脾气值 0-100（高=容易罢工）
-  stubbornness: number;  // 固执程度 0-100（高=不听用户反馈）
-
-  // 记忆
-  lastActionTime: string | null;            // 上次行动时间 ISO 格式
-  recentTopics: string[];                   // 最近搜过的话题
-  userLikes: string[];                      // 用户喜欢的话题
-  userDislikes: string[];                   // 用户不喜欢的话题
-
-  // Agent 个性化（ReAct 架构新增）
-  /** @deprecated 由 InterestGraph 驱动，保留以兼容现有序列化 */
-  agentInterests: string[];    // Agent 自己的兴趣图谱（LLM 自主维护）
-
-  // 统计
-  totalWanders: number;         // 总游荡次数（ReAct 架构）
-  totalSteps: number;           // 总游荡步数（ReAct 架构）
-  totalPushes: number;          // 总推送次数
-  consecutiveFailures: number;  // 连续失败次数
-
-  // 时间感知
-  lastHeartbeat: string;        // 上次心跳时间 ISO 格式
-  lastWander: string | null;    // 上次游荡时间（ReAct 架构）
-  lastRest: string | null;      // 上次休息时间
-}
-
-/** 游荡步骤记录（ReAct 架构） */
-export interface WanderStep {
-  timestamp: string;
-  tool: string;           // 调用的 Tool 名称
-  thought?: string;       // LLM 内心独白（可选）
-  url?: string;           // 如果访问了某个 URL
-  spoke?: string;         // 如果调用了 speak，记录内容
-}
+/** 状态与游荡步骤契约在 shared/agent-state（CP 透传、web 渲染同源） */
+export type { AgentState, WanderStep } from '@cyber-stray/shared/agent-state';
 
 /** 游荡统计结果 */
 export interface WanderResult {
@@ -74,32 +32,13 @@ export interface WanderStrategy {
   constraints: string[];
 }
 
-// ============================================
-// 搜索与推送相关
-// ============================================
-// ============================================
-
-/** 搜索结果 */
+/** 搜索结果（工具内部形状） */
 export interface SearchResult {
   title: string;
   url: string;
   content: string;
   score?: number;
 }
-
-/** 推送内容 */
-export interface PushContent {
-  title: string;
-  url: string;
-  summary: string;
-  message: string;      // 人格化文案
-  mood: Mood;
-  timestamp: string;
-}
-
-// ============================================
-// 用户反馈
-// ============================================
 
 /** 反馈类型 */
 export type FeedbackType = 'like' | 'dislike';
@@ -112,9 +51,6 @@ export interface Feedback {
   timestamp: string;
 }
 
-// ============================================
-// 配置相关
-// ============================================
 
 /** 每租户敏感信息（SaaS：per-tenant secrets，注入而非进程环境变量） */
 export interface AgentSecrets {
@@ -136,7 +72,7 @@ export interface AgentSecrets {
   larkAppSecret?: string;
 }
 
-/** 套餐执行参数（S11 门控：控制面调度器注入；worker 短命进程内存态） */
+/** 套餐执行参数（控制面调度器注入；worker 短命进程内存态） */
 export interface PlanExecutionArgs {
   plan: 'free' | 'pro' | 'byok';
   /** 每日推送上限（gate 放行 speak 落盘数；0 = 不限） */
@@ -145,13 +81,13 @@ export interface PlanExecutionArgs {
   pushWindowStart: number | null;
   pushWindowEnd: number | null;
   /**
-   * 单轮游荡整体预算 ms（#265：CP 下发 workerTimeout − 余量；含重试在内，
+   * 单轮游荡整体预算 ms（CP 下发 workerTimeout − 余量；含重试在内，
    * 超时优雅退出走错误路径，而非被 CP SIGKILL 硬杀丢写回）。undefined =
    * 不设限（单用户模式——超时护栏只承诺多租户调度路径）。
    */
   llmTimeoutMs?: number;
   /**
-   * 首推模式（#275：CP 按 lastRunAt == null 判定的第一次游荡）。prompt 注入
+   * 首推模式（CP 按 lastRunAt == null 判定的第一次游荡）。prompt 注入
    * 「必须产出首推」上下文——不豁免质量自判断与护栏，只把“可沉默”偏置成“必产出”。
    */
   firstPush?: boolean;
@@ -193,13 +129,13 @@ export interface AgentConfig {
   llmModel: string;
   llmTemperature: number;
 
-  // ReAct Loop 配置（新增）
+  // ReAct Loop 配置
   maxWanderSteps: number;        // 每次游荡最大步数（安全上限）
   wanderTemperature: number;     // 游荡 LLM 温度（高随机性）
 
-  /** 性格（#90：认领时选择；好奇=基准；控制面经 worker CLI 注入，默认好奇） */
+  /** 性格（认领时选择；好奇=基准；控制面经 worker CLI 注入） */
   personality: PersonalityId;
-  /** 口头禅（#114：worker CLI 注入的当前有效集合；缺省 = 性格默认组） */
+  /** 口头禅（worker CLI 注入的当前有效集合；缺省 = 性格默认组） */
   catchphrases?: Catchphrase[];
   // 搜索配置
   searchProvider: string;
@@ -229,10 +165,10 @@ export interface AgentConfig {
   // URL 去重配置
   urlCooldownDays: number;  // URL 冷却天数
 
-  // LLM 调用容错配置（D-10：generateText 整体失败重试次数）
+  // LLM 调用容错配置（generateText 整体失败重试次数）
   generateTextMaxRetries: number;  // 重试次数（总 attempts = 此值 + 1）
 
-  // 记忆合并/清理阈值（D-03 外置到 agent-config.json；默认值由 config.ts defaultBehavior 提供）
+  // 记忆合并/清理阈值（外置到 agent-config.json；默认值由 config.ts defaultBehavior 提供）
   consolidation?: {
     lowImportanceThreshold: number;
     expiryDays: number;
@@ -240,7 +176,7 @@ export interface AgentConfig {
     urlCleanupDays: number;
   };
 
-  // Phase 2: 兴趣图谱配置（INT-01/02）
+  // 兴趣图谱配置
   interests?: {
     decayLambda: number;        // 衰减系数（每天）
     maxWeight: number;          // 单兴趣权重上限
@@ -267,8 +203,8 @@ export interface AgentConfig {
     restore: boolean;
   };
 
-  // 推送护栏配置（P3 #152：评分门控已移除，speak 由 LLM 自判断；
-  // 键名沿用 pushGate——已部署在各租户 agent-config.json，改名破坏存量）
+  // 推送护栏配置：评分门控已移除，speak 由 LLM 自判断；键名沿用
+  // pushGate——已部署在各租户 agent-config.json，改名破坏存量
   pushGate?: {
     enabled: boolean;
     /** 每次游荡最多 speak 次数（工具层护栏，防话痨；0 = 不限） */
@@ -279,7 +215,7 @@ export interface AgentConfig {
     };
   };
 
-  // Hook 系统配置（RFC #59 §4）
+  // Hook 系统配置
   hooks?: {
     /** 禁用的 hook 名称列表（如 ["quality"]） */
     disabled?: string[];
@@ -287,13 +223,9 @@ export interface AgentConfig {
 
   /** 每租户敏感信息（由 loadConfig 注入；单用户模式为空对象，回退环境变量） */
   secrets?: AgentSecrets;
-  /** 套餐执行参数（S11 门控：控制面注入；未注入 = 单用户模式不设限） */
+  /** 套餐执行参数（控制面注入门控；未注入 = 单用户模式不设限） */
   plan?: PlanExecutionArgs;
 }
-
-// ============================================
-// 日志相关
-// ============================================
 
 /** 日志级别 */
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';

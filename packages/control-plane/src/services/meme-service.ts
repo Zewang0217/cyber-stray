@@ -12,7 +12,7 @@ import { join } from 'path';
 import type { ControlPlaneConfig } from '../config.js';
 import { MEME_ASSETS_DIR, loadManifest, memeAssetsDir } from '../meme/storage.js';
 import { readTenantFile } from '../infra/tenant-data-reader.js';
-import { tenantDataDir } from '../tenant.js';
+import { tenantDataDir } from '../infra/tenant.js';
 
 export interface MemeServiceDeps {
   config: Pick<ControlPlaneConfig, 'dataDir'>;

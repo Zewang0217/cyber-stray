@@ -2,9 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import type { SpriteContract } from "@/lib/strayboy/sprite";
+import type { SpriteContract } from "@cyber-stray/shared/sprite";
 import { deriveStreetView } from "@/lib/strayboy/pet-view";
+import {
+  CUSTOM_SPRITE_BASE_PATH,
+  displayScaleFromManifest,
+  spriteContractFromManifest,
+  streetAnimFor,
+} from "@/lib/strayboy/custom-sprite";
 import { useAgentState } from "@/hooks/useAgentState";
+import { usePetManifest } from "@/hooks/usePetManifest";
 import { usePets } from "@/hooks/usePets";
 import { useTenantEvents } from "@/hooks/useTenantEvents";
 import { GRUMPY_MS, usePatStreak } from "@/hooks/usePatStreak";
@@ -23,7 +30,7 @@ import { AdoptionRitual } from "@/components/strayboy/AdoptionRitual";
 import { PushNudgeBanner } from "@/components/strayboy/PushNudgeBanner";
 import { useWebPush, type PushState } from "@/hooks/useWebPush";
 import { DEMO_PET, DEMO_STATE, demoEventStream } from "@/lib/strayboy/demo";
-import type { AgentState } from "@/lib/types";
+import type { AgentStateSnapshot } from "@cyber-stray/shared/agent-state";
 import type { PetRecord } from "@/lib/strayboy/pet-view";
 
 /** 「让它去溜达」需 POST /api/walk（spec Decision 8，动 CP 侧须持机人同意）——落地前按钮不上。 */
@@ -107,7 +114,7 @@ interface MainProps {
   demo: boolean;
   /** PetRecord（Pet 为其超集）：budgetPaused 走可选字段（#265），demo 夹具不感知 */
   pet: PetRecord;
-  state: AgentState | null;
+  state: AgentStateSnapshot | null;
   connected: boolean;
   lastEvent: ReturnType<typeof useTenantEvents>["lastEvent"];
   /** #275 通知补开横幅（undefined = 不显示，demo 用） */
@@ -140,6 +147,29 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
   const lastActivityRef = useRef(0);
   const prevLevel = useRef<number | null>(null);
   const { onPat, reset } = usePatStreak();
+  // pet_assets_ready 信号棘轮（只升不降）：lastEvent 会被任意后续事件覆盖，
+  // 直接透传会让 refreshToken 从事件时刻跳回 0 触发无意义重拉
+  const [assetsReadyAt, setAssetsReadyAt] = useState(0);
+  useEffect(() => {
+    if (lastEvent?.type === "pet_assets_ready") {
+      setAssetsReadyAt((prev) => Math.max(prev, lastEvent.at));
+    }
+  }, [lastEvent]);
+  // 领养自定义精灵图：manifest 就绪（或 pet_assets_ready 事件）即热换形象，
+  // 缺素材/素材版本不受支持 → 回退内置猫
+  const { manifest } = usePetManifest({ enabled: !demo, refreshToken: assetsReadyAt });
+  const customContract = useMemo(
+    () => (manifest ? spriteContractFromManifest(manifest) : null),
+    [manifest],
+  );
+  const petContract = customContract ?? contract;
+  const petBasePath = customContract ? CUSTOM_SPRITE_BASE_PATH : undefined;
+  // 展示倍率：管线按实测内容高决议（每只宠物体型各异，基准 84px 落带内）；
+  // 只在自定义契约生效（素材已验证可播）时读 manifest——回退内置猫恒 3
+  // （内置猫 32px 帧 × 3 = 84px 基准本尊），畸形值由 displayScaleFromManifest 兜回 3
+  const petScale = customContract && manifest ? displayScaleFromManifest(manifest) : 3;
+  // 毛色滤镜只属于内置猫——自定义形象不被 hue-rotate 改色
+  const petCoat = customContract ? ("orange" as const) : coat;
   // /footprint 重定向 ?drawer=log → 自动开 LOG 存档抽屉
   const openDrawerViaRoute = useSearchParams().get("drawer") === "log";
   useEffect(() => {
@@ -330,6 +360,8 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
     ? "grumpy"
     : overrideAnim && onStreet ? overrideAnim
     : theaterAnim ?? view.anim;
+  // 自定义精灵图的播放动画：4×4 集不含 pat/think 等 → 映射到最接近的已生成动画
+  const playAnim = customContract ? streetAnimFor(anim) : anim;
 
   // #218 随机 joy 闪烁：低频（约 2 分钟一次四成概率）、仅合成后站街 idle——
   // 打盹/无聊 grumpy 不被 joy 打断（评审 MEDIUM-1）；updater 内不带副作用（LOW-1）。
@@ -365,7 +397,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
       >
         {!view.away && (
           <button type="button" aria-label={`拍拍${pet.name}`} className="relative cursor-pointer" onClick={pat}>
-            <PetSprite contract={contract} anim={anim} scale={3} hungry={view.hungry && (anim === "idle" || view.napping)} coat={coat} />
+            <PetSprite contract={petContract} anim={playAnim} scale={petScale} basePath={petBasePath} hungry={view.hungry && (anim === "idle" || view.napping)} coat={petCoat} />
             {/* 打盹角标（#218）：非睡眠期的精力低打盹，复用 sleep 帧 + zZ 与 #91 睡眠期区分 */}
             {view.napping && anim === "sleep" && (
               <span aria-hidden className="sb-blink absolute -top-2 right-0 font-vt323 text-[13px] leading-none text-[var(--curb)]">
@@ -391,7 +423,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
       {attract && (
         <div className="fixed inset-0 z-[75] flex flex-col items-center justify-center gap-6 bg-[var(--sky)]" onClick={() => setAttract(false)}>
           <p className="font-ps2p text-sm text-[var(--neon)] sb-blink">STREET MODE</p>
-          <PetSprite contract={contract} anim="walk" scale={3} coat={coat} />
+          <PetSprite contract={petContract} anim={streetAnimFor("walk")} scale={petScale} basePath={petBasePath} coat={petCoat} />
           <p className="text-[12px] text-[var(--curb)]">点按任意处回到掌机</p>
         </div>
       )}

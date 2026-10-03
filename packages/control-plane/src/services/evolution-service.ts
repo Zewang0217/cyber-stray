@@ -16,7 +16,7 @@ import {
 } from '../infra/evolution-store.js';
 import * as petsRepo from '../infra/pets-repo.js';
 import { readTenantWanderStats } from '../infra/tenant-data-reader.js';
-import { tenantDataDir } from '../tenant.js';
+import { tenantDataDir } from '../infra/tenant.js';
 
 export interface EvolutionServiceDeps {
   config: Pick<ControlPlaneConfig, 'dataDir'>;

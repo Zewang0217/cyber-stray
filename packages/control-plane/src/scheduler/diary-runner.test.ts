@@ -12,7 +12,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { getOrCreateTenant } from '../tenant.js';
+import { getOrCreateTenant } from '../infra/tenant.js';
 import { createDiaryRunner, type DiarySpawnLike, type DiaryJob } from './diary-runner.js';
 
 describe('diary runner（#92）', () => {

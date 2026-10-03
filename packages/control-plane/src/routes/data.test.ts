@@ -11,14 +11,15 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'fs';
+import { rmDataDir } from '../test/rm-data-dir.js';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync, readFileSync, statSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { getOrCreateTenant } from '../tenant.js';
-import { signSession, SESSION_COOKIE } from '../session.js';
+import { getOrCreateTenant } from '../infra/tenant.js';
+import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { createDataRoutes } from './data.js';
 
 const SECRET = 'x'.repeat(40);
@@ -59,9 +60,9 @@ describe('data 路由（租户数据 + 鉴权）', () => {
     app.route('/api', createDataRoutes({ config }));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   /** 签 session 并构造带 cookie 的请求 */
@@ -226,23 +227,40 @@ describe('data 路由（租户数据 + 鉴权）', () => {
   });
 
 
-  it('只读：请求全程不写租户数据目录', async () => {
+  it('只读：请求全程不写租户数据目录（activity 度量日志除外）', async () => {
     const snapshot = dirSnapshot(join(dataDir, 'tenants'));
     for (const path of ['/api/state', '/api/interests', '/api/history', '/api/interests/history']) {
       await app.request(await authedAsync(`http://x${path}`));
     }
     expect(dirSnapshot(join(dataDir, 'tenants'))).toEqual(snapshot);
   });
+
+  it('X1 回访埋点：鉴权成功落一行活跃（SSE 断连时仪表盘走本路由组轮询）', async () => {
+    await app.request(await authedAsync('http://x/api/state'));
+    const activityDir = join(dataDir, 'tenants', 'alice', 'activity');
+    // 埋点是 fire-and-forget，轮询等落盘
+    let lines = '';
+    for (let i = 0; i < 50 && !lines; i++) {
+      const files = readdirSync(activityDir);
+      const f = files.find((n) => /^activity-\d{4}-\d{2}-\d{2}\.jsonl$/.test(n));
+      if (f) lines = readFileSync(join(activityDir, f), 'utf-8');
+      else await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(lines).toContain('"tenantId":"alice"');
+  });
 });
 
-/** 目录快照：路径 → [mtimeMs, size]（检测任何写入） */
+/** 目录快照：路径 → [mtimeMs, size]（检测任何写入；activity/ 是 X1 度量日志
+ *  ——CP 侧观测写入而非 agent 数据，不计入只读契约） */
 function dirSnapshot(root: string): Map<string, [number, number]> {
   const snap = new Map<string, [number, number]>();
   const walk = (dir: string) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const p = join(dir, entry.name);
-      if (entry.isDirectory()) walk(p);
-      else {
+      if (entry.isDirectory()) {
+        if (entry.name === 'activity') continue;
+        walk(p);
+      } else {
         const s = statSync(p);
         snap.set(p, [s.mtimeMs, s.size]);
       }

@@ -1,21 +1,21 @@
 /**
- * pet-sheet.py 封装（#94）：网格切分 / 概念图归一 / 参考图压平
+ * pet-sheet.py 封装：网格切分 / 概念图归一 / 参考图压平。
  *
- * 脚本复用 packages/web/scripts/pet-sheet.py（spike #89 产物，含 cells 模式），
- * 路径经 import.meta.url 仓库内锚定——不依赖 cwd。spawn 可注入（测试 fake）。
+ * 脚本在仓库根 scripts/（CP petgen 与 agent meme 参考图共用），路径经
+ * import.meta.url 仓库内锚定——不依赖 cwd。spawn 可注入（测试 fake）。
  * 脚本退出码非 0 / 输出缺文件 → 显式抛错（禁兜底）。
  */
 
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import { rename } from 'fs/promises';
+import { access, rename } from 'fs/promises';
 import { join, dirname, basename, extname } from 'path';
 import type { PetStateId } from '@cyber-stray/shared/pet';
 import type { Splitter } from './types.js';
 
 /** pet-sheet.py 绝对路径（仓库内锚定，与 worker-runner AGENT_CLI 同款） */
 const PET_SHEET_PY = fileURLToPath(
-  new URL('../../../web/scripts/pet-sheet.py', import.meta.url),
+  new URL('../../../../scripts/pet-sheet.py', import.meta.url),
 );
 
 /** 注入式 spawn（测试 fake；真实实现见 realSpawn） */
@@ -108,6 +108,37 @@ function parseReport(
   throw new Error(`pet-sheet.py --report 无 JSON 输出：${stdout.trim().slice(-300)}`);
 }
 
+/** 解析 --sheet --report 输出的 {"sheet": ...} JSON 行（末尾最后一个含 sheet 键的对象） */
+function parseSheetReport(
+  stdout: string,
+): { emptyCells: number; anims: Record<string, { frames: number; ratios: number[] }> } {
+  const lines = stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let parsed: {
+      sheet?: { emptyCells?: number; anims?: Record<string, { frames?: number; ratios?: number[] }> };
+    };
+    try {
+      parsed = JSON.parse(lines[i] ?? '') as typeof parsed;
+    } catch {
+      continue; // 非 JSON 行继续往前找（"done →" 行之前是 JSON 行）
+    }
+    const sheet = parsed.sheet;
+    if (!sheet || typeof sheet.emptyCells !== 'number' || typeof sheet.anims !== 'object' || sheet.anims === null) {
+      continue;
+    }
+    // 形状校验在 try 外：坏 meta 是硬错误，不再吞掉继续找行
+    const anims: Record<string, { frames: number; ratios: number[] }> = {};
+    for (const [name, info] of Object.entries(sheet.anims)) {
+      if (typeof info.frames !== 'number' || !Array.isArray(info.ratios)) {
+        throw new Error(`sheet meta 缺 ${name} 的 frames/ratios`);
+      }
+      anims[name] = { frames: info.frames, ratios: info.ratios };
+    }
+    return { emptyCells: sheet.emptyCells, anims };
+  }
+  throw new Error(`pet-sheet.py --sheet --report 无 JSON 输出：${stdout.trim().slice(-300)}`);
+}
+
 /** 创建切分/归一封装（真实实现；测试传 spawnFn 注入 fake） */
 export function createSplitter(opts: SplitterOptions = {}): Splitter {
   const pythonCmd = opts.pythonCmd ?? 'python3';
@@ -150,6 +181,82 @@ export function createSplitter(opts: SplitterOptions = {}): Splitter {
         throw new Error(`切分缺状态文件: ${missing.join(', ')}（输出: ${stdout.trim().slice(-300)}）`);
       }
       return { files, emptyCells: report.emptyCells };
+    },
+
+    async splitSheet(gridPath, { rows, cols, anims, frame, outDir }) {
+      const stdout = await runScript(
+        spawnFn,
+        pythonCmd,
+        [
+          PET_SHEET_PY,
+          gridPath,
+          '--sheet',
+          rows === cols ? String(rows) : `${rows}x${cols}`,
+          '--anims',
+          anims.map((a) => `${a.state}:${a.frames}`).join(','),
+          '--frame',
+          String(frame),
+          '--out',
+          outDir,
+          '--report',
+        ],
+        timeoutMs,
+      );
+      const report = parseSheetReport(stdout);
+      const files: Record<string, string> = {};
+      const frames: Record<string, number> = {};
+      const missing: string[] = [];
+      for (const { state } of anims) {
+        const info = report.anims[state];
+        if (!info) {
+          missing.push(state);
+          continue;
+        }
+        files[state] = join(outDir, `${state}.png`);
+        // 帧数以脚本实报为准（strip 降级重试后各动画帧数可能不同，manifest 据实构造）
+        frames[state] = info.frames;
+      }
+      if (missing.length > 0) {
+        throw new Error(`sheet 切分缺动画: ${missing.join(', ')}（输出: ${stdout.trim().slice(-300)}）`);
+      }
+      const ratios: Record<string, number[]> = {};
+      for (const { state } of anims) {
+        ratios[state] = report.anims[state]?.ratios ?? [];
+      }
+      // sprite.png 总条（播放器直接消费；缺文件 = 脚本异常，禁兜底）
+      await access(join(outDir, 'sprite.png'));
+      return { files, frames, emptyCells: report.emptyCells, ratios };
+    },
+
+    async joinSprite(outDir, anims, frame) {
+      await runScript(
+        spawnFn,
+        pythonCmd,
+        [
+          PET_SHEET_PY,
+          '--join',
+          '--anims',
+          anims.map((a) => `${a.state}:${a.frames}`).join(','),
+          '--frame',
+          String(frame),
+          '--out',
+          outDir,
+        ],
+        timeoutMs,
+      );
+      await access(join(outDir, 'sprite.png'));
+    },
+
+    async upscaleForQc(srcPath, outDir, factor) {
+      await runScript(
+        spawnFn,
+        pythonCmd,
+        [PET_SHEET_PY, srcPath, '--upscale', String(factor), '--out', outDir],
+        timeoutMs,
+      );
+      const produced = join(outDir, `${basename(srcPath, extname(srcPath))}.qc.png`);
+      await access(produced);
+      return produced;
     },
 
     async normalizeConcept(srcPath, outPath, frame) {

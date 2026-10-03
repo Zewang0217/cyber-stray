@@ -8,6 +8,7 @@
  */
 
 import { shannonEntropy } from '@cyber-stray/shared/interest-graph';
+import type { SpeakHistoryItem } from '@cyber-stray/shared/push';
 import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
 import * as petsRepo from '../infra/pets-repo.js';
@@ -32,7 +33,7 @@ export interface DataServiceDeps {
 export type DataOutcome<T> = { ok: true; data: T } | { ok: false; status: 500; error: string };
 
 export interface HistoryPage {
-  page: Array<Record<string, unknown>>;
+  page: SpeakHistoryItem[];
   pagination: { total: number; offset: number; limit: number; hasMore: boolean };
 }
 
@@ -102,7 +103,7 @@ export function createDataService({ config }: DataServiceDeps) {
     limit: number,
     offset: number,
   ): Promise<DataOutcome<HistoryPage>> {
-    let items: Array<Record<string, unknown>>;
+    let items: SpeakHistoryItem[];
     try {
       items = await readPushHistoryItems(config.dataDir, tenantId);
     } catch (error) {
@@ -114,8 +115,7 @@ export function createDataService({ config }: DataServiceDeps) {
       };
     }
     items.sort(
-      (a, b) =>
-        new Date(String(b.timestamp)).getTime() - new Date(String(a.timestamp)).getTime(),
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
     const total = items.length;
     return {

@@ -28,10 +28,10 @@ import { eq } from 'drizzle-orm';
 import type { ControlDb } from '../db/client.js';
 import { pets, pushSubscriptions, tenants } from '../db/schema.js';
 import type { EventBus } from '../events/bus.js';
-import { tenantDataDir } from '../tenant.js';
+import { tenantDataDir } from '../infra/tenant.js';
 import { planLimits } from '../plan/limits.js';
 import { latestNotifiableSpeak } from '../push/push-gateway.js';
-import { sendOpsAlert } from './ops-alert.js';
+import { sendOpsAlert, sendOpsAlertDedup } from './ops-alert.js';
 import {
   propagate,
   isReady,
@@ -42,11 +42,11 @@ import {
 import type { PetStats, WanderStatsReport } from '@cyber-stray/shared/pet-stats';
 import type { PersonalityId } from '@cyber-stray/shared';
 import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
-import { isSleeping } from './sleep.js';
+import { isSleeping } from '@cyber-stray/shared/sleep';
 import { DIARY_FALLBACK_HOUR, shouldGenerateDiary } from './diary-schedule.js';
 import type { DiaryRunner } from './diary-runner.js';
 import { planBudgetYuan, todayLlmCostYuan, type LlmBudgetConfig } from './budget.js';
-import { localDateKey } from '../usage.js';
+import { localDateKey } from '../infra/usage.js';
 
 export { MINUTE_MS } from './propagate.js';
 
@@ -57,7 +57,7 @@ export { MINUTE_MS } from './propagate.js';
  */
 const LLM_TIMEOUT_MARGIN_MS = 30_000;
 
-// ─── #275 首推保证（决议 #270） ──────────────────────────────────────────
+// 首推保证
 
 /** 首推期 = 领养后 24h：期内 worker 失败走短退避，不进常规冷却 */
 export const FIRST_PUSH_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -725,6 +725,19 @@ export class Scheduler {
       at: failAt,
       detail: error instanceof Error ? error.message : String(error),
     });
+    // 运维告警（#267）：同租户连败进冷却时外呼飞书，10 分钟去重防刷屏
+    if (config.alertWebhookUrl) {
+      const summary = error instanceof Error ? error.message : String(error);
+      await sendOpsAlertDedup(
+        config.alertWebhookUrl,
+        `worker-failed:${tenantId}`,
+        `[cyber-stray] worker 连败进冷却：租户 ${tenantId} 宠物 ${petId}——${summary}。` +
+          `日志：data/tenants/${tenantId}/（worker-*.log）`,
+      ).catch((alertError: unknown) => {
+        // 告警外呼失败不吞：留 log（去重窗口未占用，下轮冷却仍会重试）
+        console.error('[scheduler] worker 连败告警 webhook 发送失败：', alertError);
+      });
+    }
   }
 
   private async findPet(petId: string) {

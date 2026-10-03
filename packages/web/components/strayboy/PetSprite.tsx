@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect } from "react";
-import { animationCss, contractId, frameStyle, hungryStyle } from "@/lib/strayboy/sprite";
-import type { SpriteContract } from "@/lib/strayboy/sprite";
+import { animationCss, contractId, frameStyle, hungryStyle } from "@cyber-stray/shared/sprite";
+import type { SpriteContract } from "@cyber-stray/shared/sprite";
 
 /**
  * 契约级 <style> 去重：挂 document.head（每契约一次，跨组件卸载存活）。
- * 不能内联渲染——内联 style 随组件卸载被移除，而本 Set 阻止重注入，
+ * 不能内联渲染——内联 style 随组件卸载被移除，而本 Map 阻止重注入，
  * 任何 tab 往返/游荡回归后猫会冻成雕像（PR #236 评审 C-B1）。
+ * Map 值 = 已注入的 css：同 id 契约内容变化（领养精灵图重生成换帧表）
+ * 时原地改写，避免陈旧 keyframes。
  */
-const injected = new Set<string>();
+const injected = new Map<string, string>();
 
 /**
  * PetSprite 播放器（motion.md §3 契约）：spritesheet + frames.json + 纯 CSS steps()，
@@ -24,26 +26,35 @@ export function PetSprite({
   scale = 3,
   hungry = false,
   coat = "orange",
+  basePath,
   className,
 }: {
   contract: SpriteContract;
   anim: string;
   scale?: number;
   hungry?: boolean;
-  /** 毛色皮肤滤镜（delight B12，DESIGN.md §7 图鉴皮肤） */
+  /** 毛色皮肤滤镜（delight B12，docs/design-v3/DESIGN.md §7 图鉴皮肤） */
   coat?: "orange" | "black" | "calico";
+  /** 精灵图资产根（缺省内置 /pet/strayboy；领养自定义传 /api/pet-assets） */
+  basePath?: string;
   className?: string;
 }) {
   const coatFilterCss = coat === "black" ? "brightness(0.25) saturate(0.3)"
     : coat === "calico" ? "hue-rotate(-40deg) saturate(1.2)" : "none";
   const id = contractId(contract);
   useEffect(() => {
-    if (injected.has(id)) return;
-    const style = document.createElement("style");
-    style.dataset.sbpContract = id;
-    style.innerHTML = animationCss(contract);
-    document.head.appendChild(style);
-    injected.add(id);
+    const css = animationCss(contract);
+    if (injected.get(id) === css) return;
+    const existing = document.head.querySelector<HTMLStyleElement>(`style[data-sbp-contract="${id}"]`);
+    if (existing) {
+      existing.innerHTML = css;
+    } else {
+      const style = document.createElement("style");
+      style.dataset.sbpContract = id;
+      style.innerHTML = css;
+      document.head.appendChild(style);
+    }
+    injected.set(id, css);
   }, [id, contract]);
   return (
     <div
@@ -52,8 +63,8 @@ export function PetSprite({
       data-hungry={hungry ? "true" : "false"}
       style={{ position: "relative", lineHeight: 0 }}
     >
-      <span className={`pixelated sbp-${id}`} style={{ ...frameStyle({ contract, anim, scale }), filter: coatFilterCss }} />
-      {hungry && (
+      <span className={`pixelated sbp-${id}`} style={{ ...frameStyle({ contract, anim, scale, basePath }), filter: coatFilterCss }} />
+      {hungry && contract.overlays && (
         <span
           aria-hidden
           className={`pixelated sbp-${id}`}

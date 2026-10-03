@@ -16,7 +16,7 @@ import { eq } from 'drizzle-orm';
 import { getDb, _resetDb, type ControlDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { pushSubscriptions, pets, tenants } from '../db/schema.js';
-import { getOrCreateTenant, tenantDataDir } from '../tenant.js';
+import { getOrCreateTenant, tenantDataDir } from '../infra/tenant.js';
 import { createEventBus, type EventBus } from '../events/bus.js';
 import {
   Scheduler,
@@ -204,7 +204,7 @@ describe('调度器', () => {
     await sched.drain();
   });
 
-  // ── #265 每租户每日 LLM 预算闸 ──────────────────────────────────
+  // #265 每租户每日 LLM 预算闸
 
   /** 写一条当日 LLM 用量（deepseek-chat 输入 ¥2/M）；inputTokens=1M ≈ ¥2 */
   function writeLlmUsage(tenantId: string, dateKey: string, inputTokens: number): void {
@@ -348,7 +348,7 @@ describe('调度器', () => {
     expect(runner).toHaveBeenCalledTimes(2);
   });
 
-  // ─── #275 首推保证 ───
+  // #275 首推保证
 
   /** 首推期宠物：createdAt = 10 分钟前（前推即就绪），lastRunAt=null（首次游荡） */
   async function addFirstPushPet(id: string, tenantId: string): Promise<void> {

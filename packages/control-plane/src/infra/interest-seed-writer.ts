@@ -14,7 +14,7 @@ import {
   INTEREST_SEED_WEIGHT,
   type InterestGraphData,
 } from '@cyber-stray/shared/interest-graph';
-import { tenantDataDir } from '../tenant.js';
+import { tenantDataDir } from './tenant.js';
 
 export async function seedInterestsIfAbsent(
   dataDir: string,

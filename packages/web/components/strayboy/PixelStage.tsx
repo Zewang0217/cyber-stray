@@ -34,6 +34,13 @@ const STARS = Array.from({ length: 12 }, (_, i) => ({
   top: `${(i * 37) % 46}%`,
 }));
 
+/** 白天云（宪法 §7 白天街区）：像素块云，静态（装饰不动，motion.md §5）。 */
+const CLOUDS = [
+  { left: "8%", top: "12%" },
+  { left: "44%", top: "7%" },
+  { left: "78%", top: "16%" },
+];
+
 /** 5×5 圆月格子（row, col）——像素语法月相的底盘。 */
 const MOON_CELLS: Array<[number, number]> = [
   [0, 1], [0, 2], [0, 3],
@@ -56,10 +63,12 @@ const MOON_PHASES: Array<{ name: string; shadow: number }> = [
 ];
 
 /**
- * 像素夜城街景（DESIGN.md §1 主屏）：sky/楼/窗/星/月/路缘 + 猫的活动层。
+ * 像素夜城街景（docs/design-v3/DESIGN.md §1 主屏）：sky/楼/窗/星/月/路缘 + 猫的活动层。
  * #208 可交互装饰：点窗灯（亮/灭）、点月亮换相、点水沟盖冒蒸汽、霓虹招牌 hover 亮。
  * 动效纪律（motion.md §5）：装饰静态定位；新增动效仅水沟盖蒸汽一处一次性
  * transform/opacity（事件触发，reduced-motion 停帧），霓虹 hover 为静态 opacity 态。
+ * 白天模式（§7，daytime = 宠物醒着）：近楼 --bld-far/远楼 --curb + 像素云 --star，
+ * 窗灯点灯率降档，星/月/霓虹/湿地反光全部隐藏——只动配色与显隐，零新动效。
  */
 export function PixelStage({ children, onStreet, demo, daytime = false, onPasserbyGreet }: { children: ReactNode; onStreet: boolean; demo?: boolean; daytime?: boolean; onPasserbyGreet?: () => void }) {
   const rand = seeded(20260906);
@@ -89,6 +98,13 @@ export function PixelStage({ children, onStreet, demo, daytime = false, onPasser
       style={{ backgroundColor: daytime ? "#5C94FC" : "var(--sky)" }}
       suppressHydrationWarning
     >
+      {/* 云仅白天（宪法 §7：白天街区换装；夜空归星月） */}
+      {daytime && CLOUDS.map((c, i) => (
+        <span key={i} aria-hidden className="absolute" style={{ left: c.left, top: c.top }}>
+          <b className="absolute top-[4px] h-[6px] w-[44px] bg-[var(--star)]" />
+          <b className="absolute left-[10px] h-[6px] w-[24px] bg-[var(--star)]" />
+        </span>
+      ))}
       {/* 星/月仅夜间（宪法 §7 白天：星月隐藏） */}
       {!daytime && STARS.map((star, i) => (
         <span
@@ -128,11 +144,13 @@ export function PixelStage({ children, onStreet, demo, daytime = false, onPasser
       {BUILDINGS.map((b, i) => (
         <div
           key={i}
-          className={`absolute bottom-10 ${b.near ? "bg-[var(--bld-near)]" : "bg-[var(--bld-far)]"}`}
+          className={`absolute bottom-10 ${b.near
+            ? daytime ? "bg-[var(--bld-far)]" : "bg-[var(--bld-near)]"
+            : daytime ? "bg-[var(--curb)]" : "bg-[var(--bld-far)]"}`}
           style={{ left: b.left, width: b.width, height: b.height }}
         >
-          {b.neon && variant === 0 && (
-            /* 霓虹招牌（#208）：hover 亮起（静态 opacity 态，零动画） */
+          {!daytime && b.neon && variant === 0 && (
+            /* 霓虹招牌（#208）：hover 亮起（静态 opacity 态，零动画）；白天灯牌熄灭（§7） */
             <span
               aria-hidden
               className="neon-sign absolute -top-5 left-1/2 -translate-x-1/2 border border-[var(--neon)] bg-[var(--sky)] px-1 font-ps2p text-[8px] leading-[1.4] text-[var(--neon)]"
@@ -158,7 +176,8 @@ export function PixelStage({ children, onStreet, demo, daytime = false, onPasser
                 const key = `${i}-${row}-${col}`;
                 // rand() 必须无条件消耗：?? 短路会让被 toggle 的格跳过消耗，
                 // 后续窗灯基态整体前移一位（评审 HIGH-1 实证）
-                const base = rand() > 0.45;
+                // 白天点灯率降档（§7 白天：窗灯大半熄灭；rand 消耗顺序不受影响）
+                const base = rand() > (daytime ? 0.78 : 0.45);
                 const lit = lamps[key] ?? base;
                 return (
                   /* 点窗亮灯（#208）：基态由 seed 决定，点按在亮/灭间切换 */
@@ -185,9 +204,13 @@ export function PixelStage({ children, onStreet, demo, daytime = false, onPasser
           <Wires top="22%" left="58%" width="16%" />
           <LampPost left="70%" />
           <ParkedCar left="40%" />
-          {/* 地面反光：橱窗/霓虹在湿路面上的低透明色条 */}
-          <span aria-hidden className="absolute bottom-[4px] left-[24%] h-[5px] w-[8px] bg-[var(--window)] opacity-20" />
-          <span aria-hidden className="absolute bottom-[6px] left-[59%] h-[6px] w-[6px] bg-[var(--neon)] opacity-20" />
+          {/* 地面反光：橱窗/霓虹在湿路面上的低透明色条（夜景专属，白天隐藏） */}
+          {!daytime && (
+            <>
+              <span aria-hidden className="absolute bottom-[4px] left-[24%] h-[5px] w-[8px] bg-[var(--window)] opacity-20" />
+              <span aria-hidden className="absolute bottom-[6px] left-[59%] h-[6px] w-[6px] bg-[var(--neon)] opacity-20" />
+            </>
+          )}
         </>
       )}
       {variant === 1 && (

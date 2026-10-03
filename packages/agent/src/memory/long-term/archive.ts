@@ -13,8 +13,7 @@
  * - **`.archive/` 不被重扫**：归档落在 `.archive/<MEMORY_TYPE_PATHS[type]>/` 下，
  *   `MEMORY_TYPE_PATHS` 不含 `.archive`，getRecentMemories/rebuildIndexFromMarkdown
  *   只扫显式四目录（Pitfall 6 / T-01-07）。
- * - **D-09 显式报错**：sourcePath 不存在直接抛 Error（不静默跳过，符合 CLAUDE.md
- *   禁止兜底红线）。
+ * - **D-09 显式报错**：sourcePath 不存在直接抛 Error（不静默跳过，符合无兜底红线）。
  */
 
 import { rename, mkdir, stat } from 'fs/promises';

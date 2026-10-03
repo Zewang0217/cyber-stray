@@ -11,7 +11,7 @@ import { TimeMachine } from "@/components/strayboy/TimeMachine";
 import { CoatPicker } from "@/components/strayboy/CoatPicker";
 import { DEMO_NODES, DEMO_SNAPSHOTS } from "@/lib/strayboy/demo";
 import { GRUMPY_MS } from "@/hooks/usePatStreak";
-import type { InterestNodeData } from "@/lib/types";
+import type { InterestNode } from "@cyber-stray/shared/interest-graph";
 
 const GRUMPY_KEY = "sb_grumpy_until";
 const DEMO_ENTROPY = 1.71;
@@ -30,7 +30,7 @@ function EvolutionInner() {
 
   const [rolling, setRolling] = useState(false);
   const nodeCountRef = useRef<number | null>(null);
-  const nodes = (demo ? DEMO_NODES : graph.nodes) as InterestNodeData[];
+  const nodes = (demo ? DEMO_NODES : graph.nodes) as InterestNode[];
   // useEvolution.data 初始为 null（加载前）——快照取其 .snapshots，空态兜 []。
   // 此前把整个 data 硬转数组，TimeMachine 读 null.length 直接崩（#202 根因）
   const snapshots = demo ? DEMO_SNAPSHOTS : (evolution.data?.snapshots ?? []);
@@ -78,7 +78,7 @@ function EvolutionInner() {
         <h2 className="font-ps2p mb-3 mt-8 text-xs text-[var(--hi)] lg:mt-0">SKIN · 图鉴皮肤</h2>
         <div className="mb-2 border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
           <CoatPicker />
-          <p className="mt-1.5 text-[11px] text-[var(--curb)]">选择后街角同步换色（橘/黑/三花，DESIGN.md §7）。</p>
+          <p className="mt-1.5 text-[11px] text-[var(--curb)]">选择后街角同步换色（橘/黑/三花，docs/design-v3/DESIGN.md §7）。</p>
         </div>
       </div>
 

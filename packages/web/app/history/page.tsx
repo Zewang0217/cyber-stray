@@ -11,14 +11,14 @@ import { useTenantEvents } from "@/hooks/useTenantEvents";
 import { MailCard } from "@/components/strayboy/MailCard";
 import { PostcardDetail } from "@/components/strayboy/PostcardDetail";
 import { DAY_MS, getSeenTimestamp, markAllSeen } from "@/lib/strayboy/mail";
-import type { PushContent } from "@/lib/types";
+import type { SpeakHistoryItem } from "@cyber-stray/shared/push";
 
 
 /** 演示夹具（?demo=1）：无会话时的墙上视觉验收数据。
  * 时间戳固化自固定基准（#210：模块级 Date.now() 跨分钟边界渲染出不同
  * 日期签 → hydration 告警）；NEW! 未读推导在 demo 下恒视为未读，不受影响。 */
 const DEMO_EPOCH = new Date("2026-09-01T10:00:00+08:00").getTime();
-const DEMO_CARDS: PushContent[] = [
+const DEMO_CARDS: SpeakHistoryItem[] = [
   {
     message: "帖子全文……", timestamp: new Date(DEMO_EPOCH - 2 * 3_600_000).toISOString(),
     title: "科学实锤：猫能听懂自己的名字", summary: "新研究覆盖 78 只猫。听懂率 94%，回应率 11%——这不是 bug，是性格。",
@@ -50,7 +50,7 @@ function WallInner() {
 
   const [animateParent] = useAutoAnimate();
   // #205：详情模态（墙上卡片只显标题，点开读全文）
-  const [detail, setDetail] = useState<PushContent | null>(null);
+  const [detail, setDetail] = useState<SpeakHistoryItem | null>(null);
   // demo 未读推导隔离：夹具恒视为未读（NEW! 验收项不读真实 localStorage）
   const [seenMs, setSeenMs] = useState<number>(() => getSeenTimestamp());
   const seen = demo ? 0 : seenMs;
@@ -79,13 +79,13 @@ function WallInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demo, newestMs]);
 
-  const onFeedback = (type: "like" | "dislike", card: PushContent): void => {
+  const onFeedback = (type: "like" | "dislike", card: SpeakHistoryItem): void => {
     void feedback.sendFeedback(type, card.messageId ?? "").then((ok) => {
       if (ok) toast(type === "like" ? "已记下：你喜欢这类货。" : "已记下：少送这类货。");
       else toast("反馈没送到（网络/权限）");
     });
   };
-  const onPin = (card: PushContent): void => {
+  const onPin = (card: SpeakHistoryItem): void => {
     if (demo) return; // 演示通道不写真实 CP
     void feedback.boostTopic(card.matchedTopics?.[0] ?? "").then((ok) => {
       if (ok) toast(`话题「${card.matchedTopics?.[0]}」顶到最前。`);

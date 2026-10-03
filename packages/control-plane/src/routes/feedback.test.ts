@@ -10,7 +10,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'fs';
+import { rmDataDir } from '../test/rm-data-dir.js';
+import { mkdtempSync, readFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
@@ -18,9 +19,9 @@ import { eq } from 'drizzle-orm';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { pets, tenants, userTenants } from '../db/schema.js';
-import { getOrCreateTenant } from '../tenant.js';
-import { tenantDataDir } from '../tenant.js';
-import { signSession, SESSION_COOKIE } from '../session.js';
+import { getOrCreateTenant } from '../infra/tenant.js';
+import { tenantDataDir } from '../infra/tenant.js';
+import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { createFeedbackRoutes } from './feedback.js';
 
 const SECRET = 'x'.repeat(40);
@@ -80,9 +81,9 @@ describe('feedback 路由（点赞/踩 + 顶话题）', () => {
     app.route('/api', createFeedbackRoutes({ config, spawnFn: fake.spawnFn }));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   async function authed(
@@ -344,9 +345,9 @@ describe('feedback 口头禅归因写回（#114 切片 5）', () => {
     await getOrCreateTenant(dataDir, 'alice');
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _resetDb();
-    rmSync(dataDir, { recursive: true, force: true });
+    await rmDataDir(dataDir);
   });
 
   async function authed(url: string, init: RequestInit = {}): Promise<Request> {

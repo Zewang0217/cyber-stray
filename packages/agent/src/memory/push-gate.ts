@@ -2,12 +2,12 @@
  * 推送上下文（模块沿用 push-gate 遗留名——配置键 `pushGate` 已部署在
  * 各租户 agent-config.json，改名会破坏存量配置）
  *
- * 门控 P3（ADR-0010 / #152）后，本模块不再做价值评分与阈值拦截——
+ * 评分门控移除后（ADR-0010），本模块不再做价值评分与阈值拦截——
  * speak 是否推送由 LLM 在 ReAct 循环内自判断。这里只剩两件确定性工作：
  * - 内容扫描（scanContentWarnings）：prompt injection 特征 / URL 数量异常，
  *   供 quality hook 做安全护栏与留痕
  * - 话题归因（attributeTopics）：内容命中的图谱话题，随 speak 落盘供反馈
- *   归因（S2 Phase A；S4 分类管线 contentTopics 落地后逐步替代）
+ *   归因（分类管线 contentTopics 落地后逐步替代）
  */
 
 import { z } from 'zod';
@@ -30,9 +30,7 @@ export const PushGateConfigSchema = z.object({
   contentScan: PushGateContentScanSchema,
 });
 
-// ============================================
 // Types
-// ============================================
 
 export interface PushGateContentScan {
   enabled: boolean;
@@ -46,12 +44,8 @@ export interface PushGateConfig {
   contentScan: PushGateContentScan;
 }
 
-/** speak 内容类型。与 src/tools/push/speak.ts 的 SpeakType 同步保持。 */
-export type SpeakType = 'share' | 'nonsense' | 'article';
-
-// ============================================
-// 默认配置
-// ============================================
+/** speak 内容类型契约在 shared/push（speak 工具、CP、web 同源） */
+export type { SpeakType } from '@cyber-stray/shared/push';
 
 export const DEFAULT_PUSH_GATE_CONFIG: PushGateConfig = {
   enabled: true,
@@ -63,9 +57,7 @@ export const DEFAULT_PUSH_GATE_CONFIG: PushGateConfig = {
   },
 };
 
-// ============================================
 // Prompt injection 检测特征
-// ============================================
 
 /** 可疑的 prompt injection 模式 */
 const INJECTION_PATTERNS = [
@@ -81,9 +73,7 @@ const INJECTION_PATTERNS = [
   /:::\s*(system|instruction)/,
 ];
 
-// ============================================
 // 兴趣词匹配
-// ============================================
 
 /** 需要词边界保护的 ASCII 兴趣词长度上限 */
 const SHORT_ASCII_MAX_LEN = 4;
@@ -108,9 +98,7 @@ export function matchInterest(contentLower: string, interestId: string): boolean
   return contentLower.includes(idLower);
 }
 
-// ============================================
 // 内容扫描
-// ============================================
 
 /**
  * 扫描内容安全问题。
@@ -164,16 +152,14 @@ export function scanContentWarnings(
   return { warnings, hasInjection };
 }
 
-// ============================================
 // 话题归因
-// ============================================
 
 /** 归因扫描的图谱节点数与最低权重（与旧评分维同参数，仅去打分） */
 const ATTRIBUTION_TOP_N = 10;
 const ATTRIBUTION_MIN_WEIGHT = 0.05;
 
 /**
- * 内容命中的图谱话题（反馈归因依据，S2 Phase A）。
+ * 内容命中的图谱话题（反馈归因依据）。
  *
  * 只做匹配不打分——命中列表跟随 speak 落盘，反馈时按 messageId 反查精确
  * 加权到叶子。图谱不可用时返回 []（归因是 best-effort：失败只影响本次

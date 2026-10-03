@@ -10,14 +10,15 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs';
+import { rmDataDir } from '../test/rm-data-dir.js';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
-import { getOrCreateTenant, tenantDataDir } from '../tenant.js';
-import { signSession, SESSION_COOKIE } from '../session.js';
+import { getOrCreateTenant, tenantDataDir } from '../infra/tenant.js';
+import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { createDreamRoutes } from './dream.js';
 
 const SECRET = 'x'.repeat(40);
@@ -36,8 +37,8 @@ describe('dream 路由（#93 梦境）', () => {
     app.route('/api/dream', createDreamRoutes({ config: { dataDir, sessionSecret: SECRET } }));
   });
 
-  afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+  afterEach(async () => {
+    await rmDataDir(dataDir);
   });
 
   async function authed(

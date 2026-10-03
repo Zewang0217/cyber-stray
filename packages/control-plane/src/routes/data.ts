@@ -14,7 +14,8 @@
 import { Hono } from 'hono';
 import type { ControlPlaneConfig } from '../config.js';
 import { findUserTenantRelation } from '../infra/tenant-access.js';
-import { resolveTenantFromRequest } from '../request-tenant.js';
+import { noteTenantActivity } from '../infra/tenant-activity.js';
+import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { createDataService } from '../services/data-service.js';
 
@@ -38,6 +39,8 @@ async function scopedTenantId(
   // 路径拼接前校验（与 tenant-secrets 的 fs 边界同规矩：防注入）
   if (!TENANT_ID_RE.test(session.tenantId)) return { error: 403 };
 
+  // X1「回访」埋点（与 requireTenant 同款；仪表盘主端点走本路由组）
+  noteTenantActivity(config.dataDir, session.tenantId);
   return { tenantId: session.tenantId };
 }
 

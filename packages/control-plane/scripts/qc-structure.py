@@ -2,12 +2,14 @@
 """生成素材结构质检(#94)——ADR-0001 两层质检的结构层。
 
 检查成品状态帧是否满足素材契约(spike §5):
-- 256x256 方格(解析 PNG IHDR,不依赖 PIL 之外的能力)
+- 方格尺寸:单帧默认 256(--frame 可改);name:frames 形式按 frames×frame 宽校验
+  (领养精灵图的横排帧条,如 idle:4 --frame 64 → 256x64)
 - 透明底(存在 alpha 通道,且背景区域确实透明)
 - 内容占比 ≥ 20%(前景像素比例;角色被切断/整格空白 → 不合格)
 
 用法:
   python3 qc-structure.py <states_dir> idle walk joy ...
+  python3 qc-structure.py <states_dir> --frame 64 idle:4 walk:4 sleep:2 ...
 
 输出:stdout 单行 JSON { "ok": bool, "states": { "<state>": { ok, width, height,
 hasAlpha, contentRatio, reason? } } }。任一状态不合格 → ok=false。
@@ -26,7 +28,7 @@ FRAME = 256
 MIN_CONTENT = 0.20
 
 
-def check_png(path: Path) -> dict:
+def check_png(path: Path, expect_w: int, expect_h: int) -> dict:
     img = Image.open(path)
     width, height = img.size
     mode = img.mode
@@ -36,8 +38,8 @@ def check_png(path: Path) -> dict:
     arr = np.array(rgba)
     content_ratio = float((arr[..., 3] > 0).mean())
     reasons: list[str] = []
-    if (width, height) != (FRAME, FRAME):
-        reasons.append(f"尺寸 {width}x{height} != {FRAME}x{FRAME}")
+    if (width, height) != (expect_w, expect_h):
+        reasons.append(f"尺寸 {width}x{height} != {expect_w}x{expect_h}")
     if not has_alpha:
         reasons.append("无 alpha 通道(非透明底)")
     if content_ratio < MIN_CONTENT:
@@ -56,20 +58,23 @@ def check_png(path: Path) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("states_dir")
-    ap.add_argument("states", nargs="+")
+    ap.add_argument("states", nargs="+", help="状态名,或 name:frames(横排帧条)")
+    ap.add_argument("--frame", type=int, default=FRAME, help="单帧边长(默认 256)")
     args = ap.parse_args()
 
     states_dir = Path(args.states_dir)
     results: dict[str, dict] = {}
     missing: list[str] = []
-    for state in args.states:
+    for token in args.states:
+        state, sep, frames_raw = token.partition(":")
+        frames = int(frames_raw) if sep and frames_raw.isdigit() else 1
         path = states_dir / f"{state}.png"
         if not path.is_file():
             missing.append(state)
             results[state] = {"ok": False, "reason": "文件缺失"}
             continue
         try:
-            results[state] = check_png(path)
+            results[state] = check_png(path, args.frame * frames, args.frame)
         except Exception as error:  # noqa: BLE001 —— 解析失败按不合格上报,交由语义层/重试
             results[state] = {"ok": False, "reason": f"读取失败: {error}"}
 

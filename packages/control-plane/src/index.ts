@@ -4,7 +4,7 @@
 
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
-import { createCasdoorOidc } from './oidc.js';
+import { createCasdoorOidc } from './auth/oidc.js';
 import { getDb } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
 import { loadMasterKey } from './secrets/master-key.js';
@@ -23,10 +23,10 @@ import { createImageGenerator } from './petgen/ark.js';
 import { createVisionQc } from './petgen/vision.js';
 import { createSplitter } from './petgen/splitter.js';
 import { createStructureQc } from './petgen/structure-qc.js';
-import { createPetUsageRecorder } from './usage.js';
-import { refreshModelConfig, getModelConfig } from './app-config.js';
+import { createPetUsageRecorder } from './infra/usage.js';
+import { refreshModelConfig, getModelConfig } from './infra/app-config.js';
 import { runGracefulShutdown } from './graceful-shutdown.js';
-import { initLogger } from './logger.js';
+import { initLogger } from './infra/logger.js';
 
 const config = loadConfig();
 
@@ -88,22 +88,36 @@ scheduler.start(config.schedulerIntervalMs);
 const petGenProcessor = new PetGenProcessor({
   dataDir: config.dataDir,
   db: await getDb(config.dataDir),
+  // pet_assets_ready 事件（领养精灵图就绪 → web 拉 manifest 换形象）
+  bus,
   imageGen: createImageGenerator(config.arkApiKey, {
     // #131：每次 generate 读配置缓存（admin 改面板 → 下次生图即生效，无重启）
     model: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).imageModel,
     size: '2K', // Seedream 5.0 无 1K 档，最小 2K（2048×2048）
   }),
-  visionQc: createVisionQc(config.visionApiKey, { model: config.visionModel }),
+  visionQc: createVisionQc(config.visionApiKey, {
+    // #131：与生图同款热更新——每次质检读配置缓存，usage 记录同源不漂移
+    model: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).visionModel,
+    // 空 = vision.ts 默认端点（智谱）；配 CP_VISION_BASE_URL 切任意 OpenAI 兼容端点
+    baseUrl: config.visionBaseUrl || undefined,
+    thinking: config.visionThinking,
+    temperature: 0, // 质检判定要稳定
+  }),
   splitter: createSplitter(),
   structureQc: createStructureQc(),
-  // #129：petgen 生图/质检用量记录（no-throw）
+  // #129：petgen 生图/质检用量记录（no-throw；模型名与实际调用同源热更新）
   usage: createPetUsageRecorder(config.dataDir, {
-    imageModel: config.arkImageModel,
-    visionModel: config.visionModel,
+    imageModel: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).imageModel,
+    visionModel: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).visionModel,
   }),
   config: {
     maxBatchRetries: 2,
-    maxQcRetries: 2,
+    // 真机数据：每轮 QC 挂的动画随机（生成随机性），只重生成失败动画 + 多轮
+    // 预算才能凑齐全过；每轮成本 = 挂掉动画数 × (1 生图 + 1 视觉调用)，有界
+    maxQcRetries: 4,
+    // 视觉质检 infra 异常（断连/key 失效/坏格式）只重试质检本身、不重生成图；
+    // 供应商故障恢复通常在分钟级，5 轮（默认 5s tick）后放弃并显式失败
+    maxQcInfraRetries: 5,
     conceptFrame: 512,
     referenceFrame: 384,
     gridSize: '1024*1024',

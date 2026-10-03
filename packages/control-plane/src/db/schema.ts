@@ -13,6 +13,7 @@ import { sqliteTable, text, integer, primaryKey, uniqueIndex, index } from 'driz
 import { PERSONALITY_IDS, DEFAULT_PERSONALITY } from '@cyber-stray/shared';
 import { PET_MOODS } from '@cyber-stray/shared/pet-stats';
 import { DIARY_STYLES, DEFAULT_DIARY_STYLE } from '@cyber-stray/shared/diary';
+import { PET_GEN_TASK_STATUSES } from '@cyber-stray/shared/petgen';
 
 /** 时间戳：unix 毫秒（SQLite 无原生 datetime，integer 跨方言最稳） */
 const now = () => Date.now();
@@ -37,7 +38,7 @@ export const admins = sqliteTable('admins', {
   createdAt: integer('created_at').notNull().$defaultFn(now),
 });
 
-// ─── 用户 ↔ 租户关系 ────────────────────────────────────────────────────
+// 用户 ↔ 租户关系
 
 export const userTenants = sqliteTable('user_tenants', {
   /** Casdoor sub */
@@ -52,7 +53,26 @@ export const userTenants = sqliteTable('user_tenants', {
   userTenantsPk: primaryKey({ columns: [t.userId, t.tenantId] }),
 }));
 
-// ─── 宠物（每租户可多只；当前单用户模式 1 租户 1 宠物） ─────────────────
+/** 内测邀请（#301，#273 拍板）：一次性链接凭证，raw token 不落库（只存 sha256） */
+export const invites = sqliteTable('invites', {
+  /** 邀请 id（uuid） */
+  id: text('id').primaryKey(),
+  /** sha256(raw token)；raw 只在生成响应里出现一次 */
+  tokenHash: text('token_hash').notNull().unique(),
+  /** admin 备注（发给谁） */
+  label: text('label'),
+  /** 生成者 admin sub */
+  createdBy: text('created_by').notNull(),
+  createdAt: integer('created_at').notNull().$defaultFn(now),
+  /** 吊销时刻；非 NULL 即不可用 */
+  revokedAt: integer('revoked_at'),
+  /** 用后即焚时刻；非 NULL 即不可用 */
+  consumedAt: integer('consumed_at'),
+  /** 归因（invitedBy）：由此邀请建立的租户 id */
+  consumedTenantId: text('consumed_tenant_id'),
+});
+
+// 宠物（每租户可多只；当前单用户模式 1 租户 1 宠物）
 
 export const pets = sqliteTable('pets', {
   id: text('id').primaryKey(),
@@ -102,7 +122,7 @@ export const pets = sqliteTable('pets', {
   petsTenantUnique: uniqueIndex('pets_tenant_unique').on(t.tenantId),
 }));
 
-// ─── 账单（预留：S11 双轨定价后启用） ──────────────────────────────────
+// 账单（预留：双轨定价后启用）
 
 export const billing = sqliteTable('billing', {
   id: text('id').primaryKey(),
@@ -121,7 +141,7 @@ export const billing = sqliteTable('billing', {
   createdAt: integer('created_at').notNull().$defaultFn(now),
 });
 
-// ─── 每租户 secrets（占位：S4 信封加密后填充 encrypted blob + DEK keyId） ─
+// 每租户 secrets（信封加密：encrypted blob + DEK keyId）
 export const tenantSecrets = sqliteTable('tenant_secrets', {
   tenantId: text('tenant_id')
     .primaryKey()
@@ -133,7 +153,7 @@ export const tenantSecrets = sqliteTable('tenant_secrets', {
   updatedAt: integer('updated_at').notNull().$defaultFn(now).$onUpdate(() => Date.now()),
 });
 
-// ─── Web Push 订阅（S10，#77） ─────────────────────────────────────────
+// Web Push 订阅
 
 export const pushSubscriptions = sqliteTable('push_subscriptions', {
   id: text('id').primaryKey(),
@@ -159,7 +179,7 @@ export const vapidKeys = sqliteTable('vapid_keys', {
   createdAt: integer('created_at').notNull().$defaultFn(now),
 });
 
-// ─── 宠物 IP 自定义生成任务（#94：Pro/BYOK 专属异步管线） ───────────────
+// 宠物 IP 自定义生成任务（Pro/BYOK 专属异步管线）
 
 /**
  * 任务状态机（异步队列，进程内 PetGenProcessor tick 推进）：
@@ -178,17 +198,7 @@ export const petGenTasks = sqliteTable('pet_gen_tasks', {
     .notNull()
     .references(() => tenants.id, { onDelete: 'cascade' }),
   /** 状态机状态（推进见 petgen/processor.ts） */
-  status: text('status', {
-    enum: [
-      'spec_submitted',
-      'concept_generating',
-      'awaiting_confirmation',
-      'generating_states',
-      'qc',
-      'done',
-      'failed',
-    ],
-  })
+  status: text('status', { enum: [...PET_GEN_TASK_STATUSES] })
     .notNull()
     .default('spec_submitted'),
   /** 用户 spec 纯文本（1-500 字符） */
@@ -199,8 +209,9 @@ export const petGenTasks = sqliteTable('pet_gen_tasks', {
   stylePreset: text('style_preset'),
   /** 概念图路径（相对租户数据目录；awaiting_confirmation 起存在） */
   conceptPath: text('concept_path'),
-  /** 当前生成策略（quad/nine/per；生成失败的批次按策略阶梯回退） */
-  strategy: text('strategy', { enum: ['quad', 'nine', 'per'] })
+  /** 当前生成策略（sheet/strip=领养精灵图；quad/nine/per=改造屋；失败沿各自阶梯回退）。
+   * SQLite 层就是 TEXT（enum 仅 TS 类型约束），扩枚举值无需迁移。 */
+  strategy: text('strategy', { enum: ['sheet', 'strip', 'quad', 'nine', 'per'] })
     .notNull()
     .default('quad'),
   /** 当前策略连续批次失败计数（≥ maxBatchRetries 且非末级 → 升级策略） */
@@ -224,7 +235,7 @@ export const petGenTasks = sqliteTable('pet_gen_tasks', {
   petGenTasksTenantIdx: index('pet_gen_tasks_tenant_idx').on(t.tenantId),
 }));
 
-// ─── 应用级配置（#131：全局模型选择，admin 面板热更新） ────────────────
+// 应用级配置（全局模型选择，admin 面板热更新）
 
 export const appConfig = sqliteTable('app_config', {
   /** 配置键（imageModel / visionModel） */

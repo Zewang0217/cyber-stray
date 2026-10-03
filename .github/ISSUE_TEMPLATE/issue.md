@@ -20,7 +20,7 @@ labels: [needs-triage]
 - [ ] packages/web
 - [ ] packages/shared
 - [ ] packages/slides
-- [ ] Deploy / CI / infrastructure (.github, packages/control-plane/deploy)
+- [ ] Deploy / CI / infrastructure (.github, deploy/)
 
 ## Background & goal
 

@@ -1,17 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { InterestNode, InterestSnapshot } from "@cyber-stray/shared/interest-graph";
 import type {
-  InterestNodeData,
-  InterestSnapshot,
-  InterestGraphResponse,
-  CollapseDetection,
   ApiResponse,
+  CollapseDetection,
+  InterestGraphResponse,
 } from "@/lib/types";
 
 interface UseInterestGraphReturn {
   /** 当前兴趣节点 */
-  nodes: InterestNodeData[];
+  nodes: InterestNode[];
   /** 当前熵值 */
   entropy: number;
   /** 节点数量 */
@@ -50,7 +49,7 @@ function detectCollapse(entropy: number, nodeCount: number): CollapseDetection {
 
 
 interface UseInterestGraphOptions {
-  /** S8：SSE 刷新信号（worker 跑完图谱可能已强化/新增节点，变化即拉取） */
+  /** SSE 刷新信号（worker 跑完图谱可能已强化/新增节点，变化即拉取） */
   refreshSignal?: number;
   /** false 时不发起任何请求（demo 模式视觉验收用） */
   enabled?: boolean;
@@ -64,7 +63,7 @@ export function useInterestGraph(
   options: UseInterestGraphOptions = {},
 ): UseInterestGraphReturn {
   const { refreshSignal = 0, enabled = true } = options;
-  const [nodes, setNodes] = useState<InterestNodeData[]>([]);
+  const [nodes, setNodes] = useState<InterestNode[]>([]);
   const [entropy, setEntropy] = useState(0);
   const [nodeCount, setNodeCount] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);

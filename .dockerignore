@@ -8,8 +8,5 @@ data
 .env
 .env.*
 *.tar.gz
-.trellis
-.claude
-.planning
 packages/web/.next
 packages/web/dist

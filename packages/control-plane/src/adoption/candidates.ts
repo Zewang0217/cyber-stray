@@ -10,7 +10,7 @@
  */
 
 import { getPersonality, isPersonalityId, type PersonalityId } from '@cyber-stray/shared';
-import { logger } from '../logger.js';
+import { logger } from '../infra/logger.js';
 
 /** 候选步（性格/兴趣步无需 AI——注册表固定 4 型/纯自选） */
 export type CandidateStep = 'name' | 'catchphrase';

@@ -11,14 +11,33 @@
 import { readFile } from 'fs/promises';
 import { extname } from 'path';
 import type { VisionQc, VisionQcRequest } from './types.js';
-import { buildQcPrompt } from './prompt.js';
+import { buildAnimQcPrompt, buildQcPrompt } from './prompt.js';
 
 export const DEFAULT_VISION_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4';
 
+/** ECNU OpenAI 兼容网关（ecnu 系视觉模型的配套端点） */
+export const ECNU_VISION_BASE_URL = 'https://chat.ecnu.edu.cn/open/api/v1';
+
+/** 模型感知的端点缺省：ecnu 系 → ECNU 网关，其余 → 智谱（防模型/端点错配打 404） */
+export function resolveVisionBaseUrl(model: string): string {
+  return model.startsWith('ecnu') ? ECNU_VISION_BASE_URL : DEFAULT_VISION_BASE_URL;
+}
+
 export interface VisionOptions {
-  model: string;
+  /** 质检模型（支持 getter：与 ark 同款热更新——admin 改面板后下次质检即生效，
+   *  与 usage 记录的模型名保持同源不漂移） */
+  model: string | (() => string);
   /** OpenAI 兼容端点根（不含 /chat/completions；默认智谱） */
   baseUrl?: string;
+  /**
+   * 思考模式（ECNU / 智谱同款 thinking 参数）。基准口径单一真相（8 用例
+   * 送审图与人判一致率，scripts/try-vision-bench.ts 可复测）：glm-4.5v
+   * 6/8、glm-4v-flash 2/8；ecnu-plus 开思考 6/8（两轮全拦坏 walk）、关
+   * 思考 2/8（官方帧条都误杀）——视觉判定必须开思考才达到产线水位。
+   */
+  thinking?: boolean;
+  /** 采样温度（质检要判定稳定，产线配 0） */
+  temperature?: number;
   fetchFn?: typeof fetch;
 }
 
@@ -70,12 +89,13 @@ export function createVisionQc(apiKey: string, opts: VisionOptions): VisionQc {
   return {
     async inspect(req: VisionQcRequest) {
       if (!apiKey) {
-        throw new Error('缺少视觉质检 API key（环境变量 ZHIPU_API_KEY）');
+        throw new Error('缺少视觉质检 API key（env CP_VISION_API_KEY / ZHIPU_API_KEY）');
       }
       const [refDataUrl, stateDataUrl] = await Promise.all([
         imageToDataUrl(req.referencePath),
         imageToDataUrl(req.statePath),
       ]);
+      const model = typeof opts.model === 'function' ? opts.model() : opts.model;
       const res = await fetchFn(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -83,19 +103,26 @@ export function createVisionQc(apiKey: string, opts: VisionOptions): VisionQc {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: opts.model,
+          model,
+          ...(opts.thinking
+            ? { thinking: { type: 'enabled' }, reasoning_effort: 'medium' }
+            : {}),
+          ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
           messages: [
             {
               role: 'user',
               content: [
                 { type: 'image_url', image_url: { url: refDataUrl } },
                 { type: 'image_url', image_url: { url: stateDataUrl } },
-                { type: 'text', text: buildQcPrompt(req.state, req.spec) },
+                { type: 'text', text: (req.frames ?? 1) >= 2
+                  ? buildAnimQcPrompt(req.state, req.frames ?? 1, req.spec)
+                  : buildQcPrompt(req.state, req.spec) },
               ],
             },
           ],
         }),
-        signal: AbortSignal.timeout(60_000),
+        // 思考模式出 reasoning_content 再出正文，60s 会掐断有效调用
+        signal: AbortSignal.timeout(90_000),
       });
       if (!res.ok) {
         throw new Error(`质检调用失败: HTTP ${res.status} ${await res.text()}`);

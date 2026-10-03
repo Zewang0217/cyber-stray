@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import confetti from "canvas-confetti";
 import { CATCHPHRASE_LIST_MAX, CATCHPHRASE_TEXT_MAX, listPersonalities, type Catchphrase, type PersonalityId } from "@cyber-stray/shared";
+import { ADOPT_REFERENCE_MIME, ADOPT_REFERENCE_MAX_BYTES } from "@cyber-stray/shared/pet";
 import { PetSprite } from "@/components/strayboy/PetSprite";
-import type { SpriteContract } from "@/lib/strayboy/sprite";
+import type { SpriteContract } from "@cyber-stray/shared/sprite";
 
 /** 默认初始兴趣（与服务端 DEFAULT_ADOPTION_INTERESTS 一致；贴纸多选可改）。 */
 const SUGGESTED_INTERESTS = [
@@ -13,6 +14,24 @@ const SUGGESTED_INTERESTS = [
 ];
 /** "换一批"上限（含首次共 4 次请求；ADR 0005 限流防成本滥用）。 */
 const MAX_BATCH = 3;
+/** 参考图客户端预校验（mime/上限与 CP 路由同源 shared，快失败省一次上传）。 */
+const REFERENCE_MIME = ADOPT_REFERENCE_MIME;
+const REFERENCE_MAX_BYTES = ADOPT_REFERENCE_MAX_BYTES;
+
+/**
+ * 上传形象参考图（POST /api/pets/adopt/reference，multipart；CP 压白底 JPEG
+ * 作为精灵图生成的角色锚点）。上传即时发生（不占领养确认等待），
+ * 失败显式呈现但可继续领养——参考图是可选增强，不是领养前提。
+ */
+async function uploadReference(file: File): Promise<void> {
+  const form = new FormData();
+  form.set("file", file);
+  const res = await fetch("/api/pets/adopt/reference", { method: "POST", body: form });
+  const json = (await res.json()) as { success: boolean; error?: string };
+  if (!res.ok || !json.success) {
+    throw new Error(json.error ?? "上传失败，请换一张试试");
+  }
+}
 /** 候选请求（POST /api/pets/adoption-candidates → LLM 3 候选）。失败显式报错，不静默降级。 */
 async function fetchCandidates(body: {
   step: "name" | "catchphrase";
@@ -79,6 +98,32 @@ export function AdoptionRitual({
   const [batches, setBatches] = useState<{ name: number; catchphrase: number }>({ name: 0, catchphrase: 0 });
   const [customInput, setCustomInput] = useState("");
   const requestIdRef = useRef(0);
+  // 形象参考图（可选）：idle → uploading → done | error
+  const [referenceState, setReferenceState] = useState<"idle" | "uploading" | "done" | "error">("idle");
+  const [referenceError, setReferenceError] = useState<string | null>(null);
+
+  const pickReference = async (file: File | undefined): Promise<void> => {
+    if (!file) return;
+    if (!REFERENCE_MIME.includes(file.type)) {
+      setReferenceState("error");
+      setReferenceError("仅支持 PNG/JPEG/WebP 图片");
+      return;
+    }
+    if (file.size > REFERENCE_MAX_BYTES) {
+      setReferenceState("error");
+      setReferenceError("图片须 ≤ 8MB");
+      return;
+    }
+    setReferenceState("uploading");
+    setReferenceError(null);
+    try {
+      await uploadReference(file);
+      setReferenceState("done");
+    } catch (err) {
+      setReferenceError(err instanceof Error ? err.message : "上传失败，请换一张试试");
+      setReferenceState("error");
+    }
+  };
 
   const loadCandidates = useCallback(async (step: "name" | "catchphrase", batch: number, extra: { name?: string; personality?: PersonalityId }) => {
     const id = ++requestIdRef.current;
@@ -167,6 +212,9 @@ export function AdoptionRitual({
             {`我叫${name}。从今晚起我出门替你逛这座城——找到好货就寄明信片。`}
           </div>
         </div>
+        <p className="text-[12px] leading-[1.7] text-[var(--curb)]">
+          内测期间数据可能随版本调整重置；你的反馈会直接帮这只街溜子长大。
+        </p>
         <button
           type="button"
           onClick={() => onAdopted()}
@@ -323,6 +371,26 @@ export function AdoptionRitual({
               );
             })}
           </div>
+
+          {/* 形象参考图（可选增强）：上传后生成专属像素形象，不传则用标准形象 */}
+          <div className="flex flex-col gap-1.5 border-2 border-dashed border-[var(--curb)] p-3">
+            <p className="text-[13px] text-[var(--paper)]">专属形象（可选）：传一张它的照片，街区形象会更像它</p>
+            <div className="flex items-center gap-2">
+              <label className="cursor-pointer border-2 border-[var(--curb)] bg-[var(--panel)] px-3 py-1.5 text-[13px] text-[var(--hi)]">
+                {referenceState === "done" ? "重新上传" : "选一张照片"}
+                <input
+                  type="file"
+                  accept={REFERENCE_MIME.join(",")}
+                  className="hidden"
+                  onChange={(e) => void pickReference(e.target.files?.[0])}
+                />
+              </label>
+              {referenceState === "uploading" && <span className="text-[12px] text-[var(--curb)]">上传中……</span>}
+              {referenceState === "done" && <span className="text-[12px] text-[var(--ok)]">收到，就按这张长</span>}
+            </div>
+            {referenceError && <p className="text-[12px] text-[var(--bad)]">{referenceError}</p>}
+          </div>
+
           <div className="flex justify-between">
             <button type="button" onClick={() => setStep("catchphrase")} className="px-3 py-2 text-[13px] text-[var(--curb)]">◀ 上一步</button>
             {adoptError && <p className="text-[13px] text-[var(--bad)]">领养失败：{adoptError}</p>}

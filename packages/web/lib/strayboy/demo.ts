@@ -1,21 +1,20 @@
 /**
  * 演示夹具（?demo=1）：无 Casdoor 会话时的视觉验收数据，醒目标注「演示数据」。
- * 形状与 CP API 返回严格一致（AgentState/Pet），仅用于人眼评审与截图，不进真实会话。
+ * 形状与 CP API 返回严格一致（AgentStateSnapshot/Pet），仅用于人眼评审与截图。
  */
-import type { AgentState } from "@/lib/types";
-import type { PetRecord } from "@/lib/strayboy/pet-view";
+import type { AgentStateSnapshot } from "@cyber-stray/shared/agent-state";
+import type { InterestNode } from "@cyber-stray/shared/interest-graph";
 import type { TenantEvent } from "@/hooks/useTenantEvents";
+import type { EvolutionSnapshot } from "@/hooks/useEvolution";
+import type { PetRecord } from "@/lib/strayboy/pet-view";
 
 const HOUR = 3_600_000;
-// 量化到小时桶：服务端与客户端各自 import 也能得到同一批时间戳（避免水合不匹配，#188）
-/**
- * demo 夹具固定基准（#210）：模块级 Date.now() 会让 SSR 与客户端渲染出
- * 不同的日期标签（跨分钟/日边界时）→ hydration 告警。demo 只做视觉验收，
- * 固定时刻即可；NEW! 未读推导与时间机器存档不受影响。
- */
+const DAY = 24 * HOUR;
+// 固定基准时刻 + 小时桶量化：模块级 Date.now() 会让 SSR 与客户端渲染出
+// 不同的日期标签（跨分钟/日边界时）→ hydration 告警。demo 只做视觉验收，
+// 固定时刻即可；服务端与客户端各自 import 也得到同一批时间戳。
 const DEMO_EPOCH = new Date("2026-09-01T10:00:00+08:00").getTime();
 const stableNow = Math.floor(DEMO_EPOCH / HOUR) * HOUR;
-const DAY = 24 * HOUR;
 
 export const DEMO_PET: PetRecord = {
   name: "年糕",
@@ -24,33 +23,29 @@ export const DEMO_PET: PetRecord = {
   sleepEnd: null,
 };
 
-export const DEMO_STATE: AgentState = {
+export const DEMO_STATE: AgentStateSnapshot = {
   boredom: 34,
   energy: 74,
   mood: "playful",
   temper: 12,
   stubbornness: 41,
-  lastAction: "procrastinate",
-  lastActionTime: new Date(DEMO_EPOCH - 2 * 3_600_000).toISOString(),
-  lastHuntResult: null,
+  lastActionTime: new Date(DEMO_EPOCH - 2 * HOUR).toISOString(),
   recentTopics: ["复古掌机", "像素画教程"],
   userLikes: ["像素游戏史"],
   userDislikes: ["区块链骗局"],
   agentInterests: ["掌机维修", "独立游戏"],
   wanderHistory: [
-    { timestamp: new Date(DEMO_EPOCH - 7_200_000).toISOString(), tool: "web_search", spoke: "城南论坛在吵掌机屏幕保养，蹲到了。" },
-    { timestamp: new Date(DEMO_EPOCH - 7_100_000).toISOString(), tool: "browser_visit", url: "https://example.com/pixel-post" },
-    { timestamp: new Date(DEMO_EPOCH - 7_000_000).toISOString(), tool: "speak", spoke: "这帖子写得跟说明书似的，无聊。" },
-    { timestamp: new Date(DEMO_EPOCH - 6_900_000).toISOString(), tool: "web_search", thought: "换了个关键词再找找。" },
+    { timestamp: new Date(DEMO_EPOCH - 2 * HOUR).toISOString(), tool: "web_search", spoke: "城南论坛在吵掌机屏幕保养，蹲到了。" },
+    { timestamp: new Date(DEMO_EPOCH - 119 * 60_000).toISOString(), tool: "browser_visit", url: "https://example.com/pixel-post" },
+    { timestamp: new Date(DEMO_EPOCH - 118 * 60_000).toISOString(), tool: "speak", spoke: "这帖子写得跟说明书似的，无聊。" },
+    { timestamp: new Date(DEMO_EPOCH - 117 * 60_000).toISOString(), tool: "web_search", thought: "换了个关键词再找找。" },
   ],
-  totalHunts: 12,
   totalWanders: 23,
   totalSteps: 87,
   totalPushes: 9,
   consecutiveFailures: 0,
-  lastHeartbeat: new Date().toISOString(),
-  lastHunt: null,
-  lastWander: new Date(DEMO_EPOCH - 2 * 3_600_000).toISOString(),
+  lastHeartbeat: new Date(DEMO_EPOCH).toISOString(),
+  lastWander: new Date(DEMO_EPOCH - 2 * HOUR).toISOString(),
   lastRest: null,
 };
 
@@ -64,15 +59,12 @@ export function demoEventStream(onEvent: (type: TenantEvent["type"]) => void): (
   return () => clearInterval(id);
 }
 
-import type { InterestNodeData } from "@/lib/types";
-import type { EvolutionSnapshot } from "@/hooks/useEvolution";
-
 /** 演示兴趣节点（图鉴 ?demo=1）。 */
-export const DEMO_NODES: InterestNodeData[] = [
-  { id: "复古掌机", weight: 0.9, effectiveWeight: 0.82, source: "feedback", reinforceCount: 6 },
-  { id: "像素画教程", weight: 0.7, effectiveWeight: 0.61, source: "reflection", reinforceCount: 3 },
-  { id: "猫行为学", weight: 0.5, effectiveWeight: 0.44, source: "feedback", reinforceCount: 2 },
-  { id: "独立游戏", weight: 0.4, effectiveWeight: 0.35, source: "reflection", reinforceCount: 1 },
+export const DEMO_NODES: InterestNode[] = [
+  { id: "复古掌机", weight: 0.9, source: "feedback", reinforceCount: 6, createdAt: new Date(DEMO_EPOCH - 2 * DAY).toISOString(), lastReinforced: new Date(DEMO_EPOCH - HOUR).toISOString() },
+  { id: "像素画教程", weight: 0.7, source: "reflection", reinforceCount: 3, createdAt: new Date(DEMO_EPOCH - 2 * DAY).toISOString(), lastReinforced: new Date(DEMO_EPOCH - 5 * HOUR).toISOString() },
+  { id: "猫行为学", weight: 0.5, source: "feedback", reinforceCount: 2, createdAt: new Date(DEMO_EPOCH - DAY).toISOString(), lastReinforced: new Date(DEMO_EPOCH - 8 * HOUR).toISOString() },
+  { id: "独立游戏", weight: 0.4, source: "reflection", reinforceCount: 1, createdAt: new Date(DEMO_EPOCH - DAY).toISOString(), lastReinforced: new Date(DEMO_EPOCH - 20 * HOUR).toISOString() },
 ];
 
 /** 演示快照（时间机器 SAVE 槽）。 */

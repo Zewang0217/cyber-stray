@@ -1,57 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { PetPresetId, PetStateId } from "@cyber-stray/shared/pet";
+import type { PetGenQuota, PetGenTaskView, PetSpec } from "@cyber-stray/shared/petgen";
 import type { ApiResponse } from "@/lib/types";
 
-/** 生成任务状态（与 control-plane petgen/types.ts 同步） */
-export type PetGenTaskStatus =
-  | "spec_submitted"
-  | "concept_generating"
-  | "awaiting_confirmation"
-  | "generating_states"
-  | "qc"
-  | "done"
-  | "failed";
-
-/** 单状态质检结果 */
-export interface StateQcResult {
-  pass: boolean;
-  issues: string[];
-}
-
-/** 任务 API 视图 */
-export interface PetGenTaskView {
-  id: string;
-  status: PetGenTaskStatus;
-  specText: string;
-  options?: { palette?: string; size?: string; note?: string };
-  stylePreset: PetPresetId;
-  /** 概念图 URL（awaiting_confirmation 起存在） */
-  conceptUrl: string | null;
-  error: string | null;
-  qcResult: Record<PetStateId, StateQcResult> | null;
-  conceptAttempts: number;
-  createdAt: number;
-  updatedAt: number;
-  completedAt: number | null;
-  /** done 后成品素材根（/api/petgen/assets） */
-  assetBase: string | null;
-}
-
-export interface PetGenQuota {
-  available: boolean;
-  limit: number;
-  used: number;
-  remaining: number;
-  resetAt: string;
-}
-
-export interface PetGenSpecInput {
-  specText: string;
-  options?: { palette?: string; size?: string; note?: string };
-  stylePreset?: PetPresetId;
-}
+/** 任务 / 配额 / spec 契约见 shared/petgen（CP 服务层视图构造同源） */
 
 interface UsePetGenReturn {
   /** 任务轮询结果（当前活跃任务） */
@@ -60,17 +13,17 @@ interface UsePetGenReturn {
   loading: boolean;
   error: string | null;
   /** 提交 spec（Pro/BYOK 专属；403 = 无入口） */
-  submit: (spec: PetGenSpecInput) => Promise<PetGenTaskView | null>;
+  submit: (spec: PetSpec) => Promise<PetGenTaskView | null>;
   /** 确认概念图 → 开始多状态生成 */
   confirm: (taskId: string) => Promise<boolean>;
   /** 不满意：改 spec 重出概念图 */
-  restart: (taskId: string, spec: PetGenSpecInput) => Promise<boolean>;
+  restart: (taskId: string, spec: PetSpec) => Promise<boolean>;
   /** 手动刷新任务 */
   refresh: () => Promise<void>;
 }
 
 /**
- * 宠物 IP 定制 Hook（#94）：提交 spec → 概念图 → 确认/调整 → 生成 + 质检。
+ * 宠物 IP 定制 Hook：提交 spec → 概念图 → 确认/调整 → 生成 + 质检。
  * 任务在 CP 侧异步队列推进，前端轮询 GET /tasks/:id 直到停驻态
  * （awaiting_confirmation 等用户 / done / failed）。
  */
@@ -124,7 +77,7 @@ export function usePetGen(): UsePetGenReturn {
   }, [task, refresh]);
 
   const submit = useCallback(
-    async (spec: PetGenSpecInput): Promise<PetGenTaskView | null> => {
+    async (spec: PetSpec): Promise<PetGenTaskView | null> => {
       setLoading(true);
       try {
         const res = await fetch("/api/petgen/tasks", {
@@ -174,7 +127,7 @@ export function usePetGen(): UsePetGenReturn {
   );
 
   const restart = useCallback(
-    async (taskId: string, spec: PetGenSpecInput): Promise<boolean> => {
+    async (taskId: string, spec: PetSpec): Promise<boolean> => {
       try {
         const res = await fetch(`/api/petgen/tasks/${taskId}/restart`, {
           method: "POST",
