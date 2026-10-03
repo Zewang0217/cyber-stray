@@ -77,7 +77,9 @@ agent 内核（`packages/agent/src/`）= 三层 + hook：
 
 ## Git
 
-- 只在 `develop` 开发：功能 / 修复分支从 develop 切出 → PR 目标 **develop**（CI 只对 base=develop 的 PR 跑质量门）；`main` 只接受 develop 的发布 PR（squash 合并，ADR-0009）。
+- **一切改动先进 develop**：功能 / 修复 / hotfix / 发版收口一律从 develop 切分支 → PR 目标 **develop**（CI 只对 base=develop 的 PR 跑质量门）。**禁止直推任何远端分支**——尤其发版 PR 存续期的 release 分支（#306 期间直推的提交差点被 `-s ours` 收口静默回滚）。
+- `main` 只接受 **develop**（或自 develop 切出的 release 分支）的发布 PR，squash 合并（ADR-0009）。
+- **发版收口（必做）**：发布 PR 合并进 main 后，立即在 develop 侧 `git merge -s ours origin/main`——main 的 squash 提交与 develop 无共同祖先，不收口则下次发版 PR 全量冲突（#306 实例：162 文件）。校验：`git diff origin/main origin/develop --stat` 应只剩 develop 的领先内容。
 - 开发前必拉：`git fetch origin`；develop 有新改动则 `git pull --ff-only origin develop`（或 rebase 到最新 develop）。
 - Commit 用**中文** + Conventional Commits（`feat` / `fix` / `refactor` / `chore` / `docs`）；一个提交 = 一个逻辑单元（按功能点，不按文件拆）。
 - 分支命名：`feat/xxx` / `fix/xxx` / `refactor/xxx` / `chore/xxx`。

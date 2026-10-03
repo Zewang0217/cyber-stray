@@ -43,15 +43,32 @@ docker compose version >/dev/null 2>&1 || { echo "docker compose 插件缺失" >
 cd "$DEPLOY_DIR"
 export IMAGE_TAG="$TAG"
 
-# .env.example（键清单模板）安装：顶层 /opt/cyber-stray/ root 属主、部署
-# 用户不可直写，CI 先落 deploy/env.example 暂存，这里以 root 身份有变才覆盖
-# （与 casdoor app.conf 同款 cmp 模式）。暂存位缺失（手工运行脚本）则跳过。
+# 暂存位落位（root 统一收口）：服务器目录属主不可预测（deploy/ 平面部署
+# 用户可写；顶层、deploy/nginx/ 等 root 属主——#306 发布 CD 两连挂皆由此），
+# CI 只往 deploy/ 平面同步暂存，这里以 root 身份有变才覆盖到各生效位。
+# 暂存位缺失（手工运行脚本）则跳过对应落位，不阻断。
+
+# .env.example（键清单模板）→ 顶层
 ENV_EXAMPLE_STAGED=$DEPLOY_DIR/env.example
 ENV_EXAMPLE=/opt/cyber-stray/.env.example
 if [ -f "$ENV_EXAMPLE_STAGED" ] && ! cmp -s "$ENV_EXAMPLE_STAGED" "$ENV_EXAMPLE"; then
   cp "$ENV_EXAMPLE_STAGED" "$ENV_EXAMPLE"
   echo "    .env.example 有变更 → 更新键清单模板"
 fi
+
+# nginx 路由配置 → deploy/nginx/（bind mount 生效位；目录可能 root 属主）
+NGINX_STAGED=$DEPLOY_DIR/cyber-stray.conf
+NGINX_CONF=$DEPLOY_DIR/nginx/cyber-stray.conf
+if [ -f "$NGINX_STAGED" ]; then
+  mkdir -p "$DEPLOY_DIR/nginx"
+  if ! cmp -s "$NGINX_STAGED" "$NGINX_CONF"; then
+    cp "$NGINX_STAGED" "$NGINX_CONF"
+    echo "    cyber-stray.conf 暂存有变更 → 已落位 deploy/nginx/"
+  fi
+fi
+
+# acme-webroot（certbot HTTP-01 验证目录；首次部署可能不存在）
+mkdir -p /opt/cyber-stray/acme-webroot
 
 # .env 键集校验：.env.example 列出而 .env 缺失的键显式警告——关键键真缺时
 # CP 起不来，由健康门兜住
@@ -75,20 +92,22 @@ done
 echo "==> [2/4] 重建容器"
 docker compose up -d --remove-orphans
 
-# casdoor 配置以仓库 deploy/casdoor/app.conf 为准：内容有变才覆盖并重启，
-# 常规发布不打扰 IdP；重启后由下方健康门验证
+# casdoor 配置以仓库 deploy/casdoor/app.conf 为准（CI 平面暂存为
+# deploy/app.conf）：内容有变才覆盖并重启，常规发布不打扰 IdP；重启后
+# 由下方健康门验证
+CASDOOR_STAGED=$DEPLOY_DIR/app.conf
 CASDOOR_CONF=/opt/cyber-stray/casdoor/conf/app.conf
-if ! cmp -s "$DEPLOY_DIR/casdoor/app.conf" "$CASDOOR_CONF"; then
-  cp "$DEPLOY_DIR/casdoor/app.conf" "$CASDOOR_CONF"
+if [ -f "$CASDOOR_STAGED" ] && ! cmp -s "$CASDOOR_STAGED" "$CASDOOR_CONF"; then
+  mkdir -p /opt/cyber-stray/casdoor/conf
+  cp "$CASDOOR_STAGED" "$CASDOOR_CONF"
   echo "    app.conf 有变更 → 重启 casdoor"
   docker compose restart casdoor
 fi
 
-# nginx 路由配置（deploy/nginx → bind mount 只读挂载）：文件内容随发布
-# scp 同步，但 nginx 只在 reload 时重读配置——不处理就「流水线改了路由、
-# 线上不生效」。与 casdoor 同款「有变才动」，用内容戳判定 + 先 nginx -t
-# 校验再平滑 reload（不断连接；坏配置在校验步就失败，不进健康门）
-NGINX_CONF=$DEPLOY_DIR/nginx/cyber-stray.conf
+# nginx 路由配置（deploy/nginx → bind mount 只读挂载）：落位已在前述暂存
+# 收口段完成，此处只管生效——nginx 仅 reload 时重读配置，不处理就「流水线
+# 改了路由、线上不生效」。内容戳判定 + 先 nginx -t 校验再平滑 reload
+# （不断连接；坏配置在校验步就失败，不进健康门）
 NGINX_STAMP=/opt/cyber-stray/.nginx-conf.sha256
 if [ -f "$NGINX_CONF" ]; then
   nginx_sha=$(sha256sum "$NGINX_CONF" | cut -d' ' -f1)
