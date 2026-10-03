@@ -89,6 +89,7 @@ sudo /opt/cyber-stray/deploy/restore.sh /backup/cyber-stray/cyber-stray-<时间�
 - Casdoor 默认 signupItems 含邮箱验证：未配 SMTP 时注册无法完成，生产配 SMTP
   或调整 signupItems。
 - `CP_ORIGIN` 构建期注入 web 镜像（默认 compose 网络内 `http://control-plane:8787`）。
-- site 对外路由：官网容器只绑 `127.0.0.1:3001`；site 发布时把
+- site 对外路由：官网容器**不占宿主机端口**（ingress nginx 走 compose
+  内网反代；曾与宿主机其他项目的 3001 占用冲突）；site 发布时把
   `nginx/cyber-stray.conf` 的 apex 块 404 占位换成 `proxy_pass http://site`。
   官网 CTA 构建期烘焙，改 `vars.APP_URL` 后需重发一次才生效。
