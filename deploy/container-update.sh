@@ -135,7 +135,8 @@ while true; do
 done
 curl -fsS http://127.0.0.1:8787/healthz >/dev/null
 curl -fsS -o /dev/null http://127.0.0.1:3000/
-curl -fsS -o /dev/null http://127.0.0.1:3001/
+# site 不占宿主机端口（曾与宿主机 3001 占用冲突）：健康检查走容器内网
+docker compose exec -T site wget -q -O /dev/null http://127.0.0.1:80/
 curl -fsS http://127.0.0.1:8000/.well-known/openid-configuration >/dev/null
 echo "    全部健康：控制面 healthz / web / site / Casdoor OIDC ✓"
 

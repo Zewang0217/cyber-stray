@@ -57,8 +57,9 @@ services:
     image: ghcr.io/zewang0217/cyber-stray-site:${IMAGE_TAG:-sha}
     container_name: cyber-stray-site
     restart: always
-    ports:
-      - "127.0.0.1:3001:80"
+    # 不占宿主机端口（对外路由由 ingress nginx 走 compose 内网反代；
+    # 健康由下方 healthcheck + 健康门 exec 覆盖——曾与宿主机其他项目的
+    # 3001 占用冲突导致 site 起不来，#306 发布 CD 第三挂）
     healthcheck:
       test: [ "CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/" ]
       interval: 10s
