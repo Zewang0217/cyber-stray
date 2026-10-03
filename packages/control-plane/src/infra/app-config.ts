@@ -29,7 +29,7 @@ export const MODEL_CANDIDATES: Record<'image' | 'vision', string[]> = {
     'doubao-seedream-4-5-251128',
     'doubao-seedream-4-0-250828',
   ],
-  vision: ['glm-4v-flash', 'glm-4v'],
+  vision: ['ecnu-plus', 'glm-4.5v', 'glm-4v-flash'],
 };
 
 /** 进程内缓存（null = 未加载；get 回退 defaults） */
