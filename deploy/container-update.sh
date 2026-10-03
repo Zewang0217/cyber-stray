@@ -43,8 +43,18 @@ docker compose version >/dev/null 2>&1 || { echo "docker compose 插件缺失" >
 cd "$DEPLOY_DIR"
 export IMAGE_TAG="$TAG"
 
-# .env 键集校验：.env.example（随发布同步到 /opt/cyber-stray/）列出而 .env
-# 缺失的键显式警告——关键键真缺时 CP 起不来，由健康门兜住
+# .env.example（键清单模板）安装：顶层 /opt/cyber-stray/ root 属主、部署
+# 用户不可直写，CI 先落 deploy/env.example 暂存，这里以 root 身份有变才覆盖
+# （与 casdoor app.conf 同款 cmp 模式）。暂存位缺失（手工运行脚本）则跳过。
+ENV_EXAMPLE_STAGED=$DEPLOY_DIR/env.example
+ENV_EXAMPLE=/opt/cyber-stray/.env.example
+if [ -f "$ENV_EXAMPLE_STAGED" ] && ! cmp -s "$ENV_EXAMPLE_STAGED" "$ENV_EXAMPLE"; then
+  cp "$ENV_EXAMPLE_STAGED" "$ENV_EXAMPLE"
+  echo "    .env.example 有变更 → 更新键清单模板"
+fi
+
+# .env 键集校验：.env.example 列出而 .env 缺失的键显式警告——关键键真缺时
+# CP 起不来，由健康门兜住
 if [ -f /opt/cyber-stray/.env ] && [ -f /opt/cyber-stray/.env.example ]; then
   missing=$(comm -23 \
     <(grep -oE '^[A-Z][A-Z0-9_]*=' /opt/cyber-stray/.env.example | tr -d '=' | sort -u) \
