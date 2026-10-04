@@ -38,9 +38,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: typecheck & test & lint + web/site construct
+        env:
+          NEXT_PUBLIC_APP_URL: ${{ vars.APP_URL }}
         run: |
           pnpm typecheck
           pnpm test
+          python3 -B -m unittest discover -s deploy -p 'test_*.py'
           pnpm lint
           pnpm -F @cyber-stray/web build
           pnpm -F @cyber-stray/site build
@@ -92,7 +95,7 @@ jobs:
           tags: ghcr.io/zewang0217/cyber-stray-web:${{ steps.tag.outputs.tag }}
 
       # 官网 CTA 地址构建期烘焙：仓库 variable APP_URL（伴侣端对外 https 地址）；
-      # 未配置时 Dockerfile 回落 127.0.0.1:3000（仅本机联调形态）
+      # 未配置时构建失败，防止把本地地址发布到官网。
       - name: Build & push site image
         if: steps.tag.outputs.build == '1'
         uses: docker/build-push-action@v6
@@ -119,6 +122,9 @@ jobs:
           scp -P "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
             deploy/compose.yaml \
             deploy/container-update.sh \
+            deploy/check-production.py \
+            deploy/compose.bootstrap.yaml \
+            deploy/nginx-bootstrap.conf \
             deploy/backup.sh \
             deploy/restore.sh \
             .env.example \

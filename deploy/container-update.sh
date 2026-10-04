@@ -43,6 +43,21 @@ docker compose version >/dev/null 2>&1 || { echo "docker compose 插件缺失" >
 cd "$DEPLOY_DIR"
 export IMAGE_TAG="$TAG"
 
+# 只读预检必须先于配置落位和容器变更；旧 HTTP 环境会明确阻断发布。
+python3 "$DEPLOY_DIR/check-production.py"
+
+# Casdoor 首次启动前必须已有配置，否则 compose 的健康依赖会等待到失败。
+CASDOOR_STAGED=$DEPLOY_DIR/app.conf
+CASDOOR_CONF=/opt/cyber-stray/casdoor/conf/app.conf
+CASDOOR_CHANGED=0
+if [ -f "$CASDOOR_STAGED" ] && ! cmp -s "$CASDOOR_STAGED" "$CASDOOR_CONF"; then
+  mkdir -p /opt/cyber-stray/casdoor/conf
+  cp "$CASDOOR_STAGED" "$CASDOOR_CONF"
+  CASDOOR_CHANGED=1
+  echo "    app.conf 有变更 → 已落位"
+fi
+[ -f "$CASDOOR_CONF" ] || { echo "缺少 Casdoor 配置，发布停止" >&2; exit 1; }
+
 # 暂存位落位（root 统一收口）：服务器目录属主不可预测（deploy/ 平面部署
 # 用户可写；顶层、deploy/nginx/ 等 root 属主——#306 发布 CD 两连挂皆由此），
 # CI 只往 deploy/ 平面同步暂存，这里以 root 身份有变才覆盖到各生效位。
@@ -95,11 +110,7 @@ docker compose up -d --remove-orphans
 # casdoor 配置以仓库 deploy/casdoor/app.conf 为准（CI 平面暂存为
 # deploy/app.conf）：内容有变才覆盖并重启，常规发布不打扰 IdP；重启后
 # 由下方健康门验证
-CASDOOR_STAGED=$DEPLOY_DIR/app.conf
-CASDOOR_CONF=/opt/cyber-stray/casdoor/conf/app.conf
-if [ -f "$CASDOOR_STAGED" ] && ! cmp -s "$CASDOOR_STAGED" "$CASDOOR_CONF"; then
-  mkdir -p /opt/cyber-stray/casdoor/conf
-  cp "$CASDOOR_STAGED" "$CASDOOR_CONF"
+if [ "$CASDOOR_CHANGED" = 1 ]; then
   echo "    app.conf 有变更 → 重启 casdoor"
   docker compose restart casdoor
 fi
@@ -134,11 +145,14 @@ while true; do
   sleep 5
 done
 curl -fsS http://127.0.0.1:8787/healthz >/dev/null
-curl -fsS -o /dev/null http://127.0.0.1:3000/
+curl -fsS -o /dev/null http://127.0.0.1:3000/login
 # site 不占宿主机端口（曾与宿主机 3001 占用冲突）：健康检查走容器内网
 docker compose exec -T site wget -q -O /dev/null http://127.0.0.1:80/
 curl -fsS http://127.0.0.1:8000/.well-known/openid-configuration >/dev/null
-echo "    全部健康：控制面 healthz / web / site / Casdoor OIDC ✓"
+curl -fsS --resolve kleinbottle.top:443:127.0.0.1 https://kleinbottle.top/ >/dev/null
+curl -fsS --resolve app.kleinbottle.top:443:127.0.0.1 https://app.kleinbottle.top/login >/dev/null
+curl -fsS --resolve auth.kleinbottle.top:443:127.0.0.1 https://auth.kleinbottle.top/.well-known/openid-configuration >/dev/null
+echo "    全部健康：控制面 / web / site / Casdoor OIDC / 三域名 HTTPS ✓"
 
 echo "==> [4/4] 镜像清理（仅本项目镜像；保留在用 tag）"
 docker image prune -f >/dev/null 2>&1 || true

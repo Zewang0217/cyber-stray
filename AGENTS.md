@@ -46,7 +46,7 @@ agent 内核（`packages/agent/src/`）= 三层 + hook：
 - **grounding**：反思每条洞察必须引用 ≥1 条真实存在的观察 id（`sourceIds`），无源整条丢弃——防幻觉核心，**不得绕过**，改反思结构时勿断此链；反思温度 0.4（一致性 > 创造性）。
 - **数据路径**：一律 `getDataPath()`（锚定 `packages/agent/data`，与启动 cwd 无关，且尊重 `DATA_DIR`）；**禁模块级路径常量**——import 期求值会被固化，而测试在 import 之后才设 `DATA_DIR`，于是测试写穿生产数据；一律写成调用时求值的函数（缓存单例同理：调用处取 `getMemoryStore()`）。门禁：`grep -rn "['\"]data/" packages/agent/src --include='*.ts' | grep -v '\.test\.ts'` 应无输出。
 - **异步**：所有 I/O 用 `fs/promises`；耗时操作（浏览器 / 外部进程）用 `execFile` / `spawn` 包 Promise + `AbortController` 超时。`execSync` 会卡死事件循环——心跳 / TUI 渲染 / `onStepFinish` / 反思调度全停摆。唯一豁免：`SkillIndex`（启动时一次性扫描 + 低频文件管理，不在热路径）。
-- **浏览器**：工具按 `config.browser?.enabled !== false` 条件注册；`BrowserExecutor` 用 `spawn` 调 agent-browser CLI（统一追加 `--json --session cyber-stray`），单例 `getBrowserExecutor()`；`browserWarmUp()` 在 `main()` best-effort（失败降级，不阻塞启动），`browserShutdown()` 在信号处理器调用；`BrowserContext` 是模块级单例（`lifecycle.ts`），工具执行后 `updateBrowserContext()` 更新并注入 `ToolContext.browserContext` + system prompt；Skill 文件 `data/skills/<name>/SKILL.md`（YAML frontmatter 的 name + description 必填，name 格式 `[a-z0-9-]+` ≤64 字符）。
+- **浏览器**：SaaS worker 禁用外部浏览器 CLI（ADR-0016）；单机工具按 `config.browser?.enabled !== false` 条件注册。`BrowserExecutor` 用 `spawn` 调 agent-browser CLI（追加 `--json --session`，并以数据目录派生 namespace 隔离外部守护进程），实例由 `getBrowserExecutor()` 按数据根缓存；`browserWarmUp()` 在 `main()` best-effort（失败降级，不阻塞启动），`browserShutdown()` 在信号处理器调用；`BrowserContext` 在 `lifecycle.ts` 按数据根缓存，工具执行后 `updateBrowserContext()` 更新并注入 `ToolContext.browserContext` + system prompt；Skill 文件 `data/skills/<name>/SKILL.md`（YAML frontmatter 的 name + description 必填，name 格式 `[a-z0-9-]+` ≤64 字符）。
 
 **web（只读契约，不可破坏）**
 
