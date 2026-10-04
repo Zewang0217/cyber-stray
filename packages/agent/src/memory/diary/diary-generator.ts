@@ -23,7 +23,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { getDataPath, getDataRoot } from '../../config.js';
 import { loadFeedbacks } from '../feedback-store.js';
-import { recordUsage, modelIdOf } from '../../usage/usage.js';
+import { assertUsageReady, recordUsage, modelIdOf } from '../../usage/usage.js';
 import type { PersonalityProfile } from '@cyber-stray/shared';
 import { resolveDiaryStylePrompt } from '@cyber-stray/shared/diary';
 import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
@@ -250,8 +250,9 @@ export async function generateDiaryNarrative(
   model: Parameters<typeof generateText>[0]['model'],
   temperature: number,
 ): Promise<string> {
+  assertUsageReady(getDataRoot(), modelIdOf(model), 'llm');
   const result = await generateText({ model, temperature, prompt: sanitizeForLLM(prompt) });
-  // #129：用量记录（no-throw）
+  // 付费调用完成后记账；故障上抛，由 CP 停止后续派发。
   await recordUsage(getDataRoot(), {
     kind: 'llm',
     model: modelIdOf(model),

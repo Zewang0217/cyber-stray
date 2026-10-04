@@ -5,7 +5,7 @@
  * content 字符串 + JSON 解析（容忍 markdown 围栏）；baseUrl 默认智谱、可配置。
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -45,6 +45,46 @@ describe('createVisionQc', () => {
 
   afterEach(() => {
     rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('HTTP 成功后的无效 JSON 仍按请求实际模型记账，不受热更新影响', async () => {
+    let model = 'glm-4.5v';
+    const onUsage = vi.fn(async (_actualModel: string) => {});
+    const qc = createVisionQc(API_KEY, {
+      model: () => model,
+      fetchFn: fakeFetch([{ status: 200, body: { choices: [{ message: { content: '不是 JSON' } }] } }], () => { model = 'glm-4v-flash'; }),
+    });
+    await expect(qc.inspect({ referencePath: join(tmp, 'concept.png'), statePath: join(tmp, 'idle.png'),
+      state: 'idle', spec: { specText: '猫' }, onUsage })).rejects.toThrow('非 JSON');
+    expect(onUsage).toHaveBeenCalledExactlyOnceWith('glm-4.5v');
+  });
+
+  it('HTTP 响应体本身损坏也先记账；记账异常先于响应解析抛出', async () => {
+    const response = new Response('invalid response JSON');
+    const parse = vi.spyOn(response, 'json');
+    const onUsage = vi.fn(async (_model: string): Promise<void> => { throw new Error('账本故障'); });
+    const qc = createVisionQc(API_KEY, {
+      model: 'glm-4.5v',
+      fetchFn: (async (_url: string | URL | Request, _init?: RequestInit) => response) as typeof fetch,
+    });
+    const request = { referencePath: join(tmp, 'concept.png'), statePath: join(tmp, 'idle.png'),
+      state: 'idle' as const, spec: { specText: '猫' }, onUsage };
+    await expect(qc.inspect(request)).rejects.toThrow('账本故障');
+    expect(parse).not.toHaveBeenCalled();
+    onUsage.mockResolvedValue(undefined);
+    await expect(qc.inspect(request)).rejects.toThrow();
+    expect(onUsage).toHaveBeenCalledTimes(2);
+    expect(parse).toHaveBeenCalledOnce();
+  });
+
+  it('热切未知质检模型在付费请求前失败', async () => {
+    let calls = 0;
+    const qc = createVisionQc(API_KEY, {
+      model: () => 'unknown-vision-model', fetchFn: fakeFetch([], () => { calls++; }),
+    });
+    await expect(qc.inspect({ referencePath: join(tmp, 'concept.png'), statePath: join(tmp, 'idle.png'),
+      state: 'idle', spec: { specText: '猫' } })).rejects.toThrow('未知模型单价');
+    expect(calls).toBe(0);
   });
 
   it('端点缺省随模型：ecnu 系走 ECNU 网关，其余走智谱（防模型/端点错配）', () => {
@@ -100,7 +140,7 @@ describe('createVisionQc', () => {
         seenUrl = url;
       },
     );
-    const qc = createVisionQc(API_KEY, { model: 'other-vl', baseUrl: 'https://example.com/v1', fetchFn });
+    const qc = createVisionQc(API_KEY, { model: 'glm-4v-flash', baseUrl: 'https://example.com/v1', fetchFn });
     await qc.inspect({
       referencePath: join(tmp, 'concept.png'),
       statePath: join(tmp, 'idle.png'),

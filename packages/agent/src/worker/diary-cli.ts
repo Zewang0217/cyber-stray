@@ -10,7 +10,7 @@
  * 读当天足迹/新兴趣/主人反馈 → 性格化日记 markdown → 落盘 diary/YYYY-MM-DD.md；
  * 同刻生成当晚梦境 → 独立文件 diary/dreams/YYYY-MM-DD.md（#93，result.dreamFile）。
  *
- * 退出码：0 = 完成（或今天无事跳过）；1 = 失败；2 = 参数错误。
+ * 退出码：0 = 完成（或今天无事跳过）；1 = 失败；2 = 参数错误；3 = 记账故障，CP 停派发。
  * stdout 一行 JSON（{ ok, tenantId, result }）；失败时 stderr 一行 JSON。
  */
 
@@ -20,6 +20,8 @@ import { isPersonalityId, type PersonalityId } from '@cyber-stray/shared';
 import { isDiaryStyleChoice, type DiaryStyleChoice } from '@cyber-stray/shared/diary';
 import type { AgentSecrets, PlanExecutionArgs } from '../types.js';
 import { runDiaryWorker } from './generate-diary.js';
+import { UsageAccountingError } from '../usage/usage.js';
+import { USAGE_ACCOUNTING_FAILURE_EXIT_CODE } from '@cyber-stray/shared/worker';
 
 function parseArg(name: string): string | undefined {
   const idx = process.argv.indexOf(`--${name}`);
@@ -99,5 +101,5 @@ main().catch((error: unknown) => {
   console.error(
     JSON.stringify({ ok: false, tenantId, error: error instanceof Error ? error.message : String(error) }),
   );
-  process.exit(1);
+  process.exit(error instanceof UsageAccountingError ? USAGE_ACCOUNTING_FAILURE_EXIT_CODE : 1);
 });

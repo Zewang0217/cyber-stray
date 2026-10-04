@@ -5,21 +5,32 @@ import { StreetStage } from "@/components/StreetStage";
 import { LoopFlow } from "@/components/LoopFlow";
 import { FeatureBento } from "@/components/FeatureBento";
 import { PostcardWall } from "@/components/PostcardWall";
-import { PricingCarts } from "@/components/PricingCarts";
+import { InviteBenefits } from "@/components/InviteBenefits";
 
 /**
  * 官网单页（静态导出）：掌机顶栏 + Hero 街区舞台 + 闭环 + 功能 + 明信片墙 +
- * 定价 + 领养 CTA。帧表契约构建期读盘校验（同 web/app/page.tsx 模式），
+ * 内测权益 + 邀请 CTA。帧表契约构建期读盘校验（同 web/app/page.tsx 模式），
  * 交互体全部下沉 StreetStage 一个 client 岛。
  */
 
 // CTA 指向伴侣端应用。静态导出 = 构建期烘焙 NEXT_PUBLIC_APP_URL；
-// 发布流水线经 Dockerfile.site 的 ARG 注入对外地址（|| 兜住空串），
-// 本地默认 web dev 端口。
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://127.0.0.1:3000";
+// 发布必须明确提供地址，防止静态产物把用户送到自己的 localhost。
+function appUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL;
+  if (!configured && process.env.NODE_ENV === "production") {
+    throw new Error("官网构建缺少 NEXT_PUBLIC_APP_URL");
+  }
+  const url = new URL(configured ?? "http://127.0.0.1:3000");
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
+    throw new Error("NEXT_PUBLIC_APP_URL 必须为无凭据的 HTTP(S) 地址");
+  }
+  return url.toString();
+}
 const REPO_URL = "https://github.com/Zewang0217/cyber-stray";
+const INVITE_URL = `${REPO_URL}/issues/new?title=${encodeURIComponent("申请邀请内测")}&body=${encodeURIComponent("想让街溜子探索的兴趣方向：\n\n请勿在公开 Issue 中填写邮箱、邀请码或其他隐私信息。")}`;
 
 export default function Home() {
+  const app = appUrl();
   const contract = parseSpriteContract(
     JSON.parse(readFileSync(join(process.cwd(), "public/pet/strayboy/frames.json"), "utf8")),
   );
@@ -38,11 +49,11 @@ export default function Home() {
           <a className="navi" href="#wall">
             明信片墙
           </a>
-          <a className="navi" href="#pricing">
-            定价
+          <a className="navi" href="#invite">
+            内测权益
           </a>
-          <a className="pbtn blue" href={APP_URL}>
-            领养一只
+          <a className="pbtn blue" href={INVITE_URL}>
+            申请邀请
           </a>
         </nav>
       </header>
@@ -60,9 +71,10 @@ export default function Home() {
                 它自己选路线，自己记看到的东西，喜好慢慢自己长。遇上它觉得你会喜欢的，就寄成明信片回来。
               </p>
               <div className="cta-row">
-                <a className="pbtn blue big" href={APP_URL}>
-                  领养一只
+                <a className="pbtn blue big" href={INVITE_URL}>
+                  申请邀请内测
                 </a>
+                <a className="navi" href={app}>已有账号，进入街区</a>
               </div>
             </div>
             <StreetStage contract={contract} />
@@ -72,16 +84,16 @@ export default function Home() {
         <LoopFlow />
         <FeatureBento />
         <PostcardWall />
-        <PricingCarts />
+        <InviteBenefits />
 
         <section id="adopt">
           <div className="wrap">
             <div className="adopt">
               <span className="who">&lt;年糕&gt;</span>
               <h2 className="dot">墙上给你留了位置。</h2>
-              <p>免费档就够它过日子。领养之后，它今晚就开始逛。</p>
-              <a className="pbtn blue big" href={APP_URL}>
-                领养一只
+              <p>内测期间免费，按批次邀请。收到邀请函后，从专属链接登录领养。</p>
+              <a className="pbtn blue big" href={INVITE_URL}>
+                申请邀请内测
               </a>
             </div>
           </div>

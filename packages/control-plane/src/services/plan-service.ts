@@ -10,7 +10,7 @@
 import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
 import type { PlanValue } from '../plan/limits.js';
-import { planLimits } from '../plan/limits.js';
+import { resolveEntitlements } from '../plan/entitlements.js';
 import * as petsRepo from '../infra/pets-repo.js';
 import { findTenantById, findTenantPlan, updateTenantPlan } from '../infra/tenant-access.js';
 import { openTenantSecrets } from '../secrets/tenant-secrets.js';
@@ -19,7 +19,7 @@ import { openTenantSecrets } from '../secrets/tenant-secrets.js';
 export const BYOK_KEY_SECRET = 'deepseek_api_key';
 
 export interface PlanServiceDeps {
-  config: Pick<ControlPlaneConfig, 'dataDir'>;
+  config: Pick<ControlPlaneConfig, 'dataDir' | 'productMode'>;
 }
 
 export type PlanOutcome<T> =
@@ -32,14 +32,13 @@ export function createPlanService({ config }: PlanServiceDeps) {
     const pet = await petsRepo.findPetByTenant(await getDb(), tenantId);
     if (!pet) return { ok: false, status: 409, error: '尚未领养宠物' };
 
-    const plan = (await findTenantPlan(config.dataDir, tenantId)) ?? 'free';
+    const entitlements = resolveEntitlements(await findTenantPlan(config.dataDir, tenantId), config.productMode);
     const store = await openTenantSecrets(config.dataDir, tenantId);
     const names = await store.list();
     return {
       ok: true,
       data: {
-        plan,
-        limits: planLimits(plan),
+        ...entitlements,
         pushWindow:
           pet.pushWindowStart !== null && pet.pushWindowEnd !== null
             ? { startHour: pet.pushWindowStart, endHour: pet.pushWindowEnd }
@@ -51,6 +50,9 @@ export function createPlanService({ config }: PlanServiceDeps) {
 
   /** 切换套餐；降级清窗口（自定义推送时间是 Pro 权益，BYOK 同 Pro 保留） */
   async function changePlan(tenantId: string, nextPlan: PlanValue): Promise<PlanOutcome<{ plan: string }>> {
+    if (config.productMode !== 'paid') {
+      return { ok: false, status: 403, error: '邀请内测统一享有 Pro 权益，无需切换套餐' };
+    }
     const db = await getDb();
     const pet = await petsRepo.findPetByTenant(db, tenantId);
     if (!pet) return { ok: false, status: 409, error: '尚未领养宠物' };
@@ -71,7 +73,7 @@ export function createPlanService({ config }: PlanServiceDeps) {
     const db = await getDb();
     const pet = await petsRepo.findPetByTenant(db, tenantId);
     if (!pet) return { ok: false, status: 409, error: '尚未领养宠物' };
-    const plan = (await findTenantPlan(config.dataDir, tenantId)) ?? 'free';
+    const { plan } = resolveEntitlements(await findTenantPlan(config.dataDir, tenantId), config.productMode);
     if (plan === 'free') {
       return { ok: false, status: 403, error: '自定义推送时间是 Pro 权益' };
     }

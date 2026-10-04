@@ -10,6 +10,8 @@ export interface TenantEvent {
     | 'worker_succeeded'
     | 'worker_retry'
     | 'worker_failed'
+    /** 游荡数值及内容已交付；反思待后续 worker 重试（detail = 原因） */
+    | 'reflection_failed'
     | 'worker_timeout'
     /** 日记生成（睡前任务；Web Push 消费） */
     | 'diary_generated'

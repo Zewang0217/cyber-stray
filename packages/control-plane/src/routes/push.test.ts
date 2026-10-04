@@ -157,6 +157,7 @@ describe('push 路由（Web Push 订阅管理）', () => {
 
   it('参数校验：缺 endpoint/keys/p256dh/auth → 400', async () => {
     for (const body of [
+      ...['http://public.example/push', 'https://127.0.0.1/push', 'https://user:pass@public.example/push'].map((endpoint) => JSON.stringify({ ...SUB, endpoint })),
       JSON.stringify({ keys: SUB.keys }),
       JSON.stringify({ endpoint: SUB.endpoint }),
       JSON.stringify({ endpoint: SUB.endpoint, keys: { p256dh: 'B', auth: '' } }),

@@ -48,6 +48,7 @@ vi.mock('../../config.js', () => ({
     },
   }),
   getDataRoot: () => 'data',
+  getTenantId: () => null,
 }));
 
 vi.mock('../../logger.js', () => ({

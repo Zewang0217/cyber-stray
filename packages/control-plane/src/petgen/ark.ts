@@ -16,6 +16,7 @@
 import { readFile, writeFile } from 'fs/promises';
 import { extname } from 'path';
 import type { ImageGenerator, ImageGenRequest } from './types.js';
+import { requireModelPrice } from '../domain/pricing.js';
 
 const ARK_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
 
@@ -55,6 +56,7 @@ export function createImageGenerator(apiKey: string, opts: ArkImageOptions): Ima
         throw new Error('缺少火山方舟 API key（环境变量 ARK_API_KEY）');
       }
       const model = typeof opts.model === 'function' ? opts.model() : opts.model;
+      requireModelPrice(model, 'image');
       const body: Record<string, unknown> = {
         model,
         prompt: req.prompt,
@@ -78,6 +80,8 @@ export function createImageGenerator(apiKey: string, opts: ArkImageOptions): Ima
       if (!res.ok) {
         throw new Error(`生图失败: HTTP ${res.status} ${await res.text()}`);
       }
+      // 成功响应已产生供应商用量；JSON/图片写入失败不能抹掉这次调用。
+      await req.onUsage?.(model);
       const parsed = (await res.json()) as { data?: Array<{ b64_json?: string; url?: string }> };
       const b64 = parsed.data?.[0]?.b64_json;
       if (!b64) {

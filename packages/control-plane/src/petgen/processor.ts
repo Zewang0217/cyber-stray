@@ -40,12 +40,14 @@ import {
 import { petGenTasks, type PetGenTask } from '../db/schema.js';
 import { findPetByTenant } from '../infra/pets-repo.js';
 import { tenantDataDir } from '../infra/tenant.js';
+import { assertUsageHealthy, UsageAccountingError } from '../infra/usage.js';
 import { buildConceptPrompt, buildGridPrompt, buildSheetPrompt, buildStripPrompt, sheetRowOf } from './prompt.js';
 import {
   CLASSIC_STRATEGY_LADDER,
   type GenStrategy,
   type PetGenProcessorDeps,
   type PetSpec,
+  type RecordProviderUsage,
   type StateQcResult,
   strategyLadder,
 } from './types.js';
@@ -180,6 +182,16 @@ export class PetGenProcessor {
     return taskDirOf(this.deps.dataDir, task.tenantId, task.id);
   }
 
+  /** 租户归属由任务绑定，模型由 provider 的实际请求捕获。 */
+  private usageCallback(task: PetGenTask, kind: 'image' | 'vision_qc'): RecordProviderUsage {
+    return async (model) => {
+      const recorder = this.deps.usage;
+      if (!recorder) return;
+      if (kind === 'image') await recorder.recordImage(task.tenantId, model);
+      else await recorder.recordVision(task.tenantId, model);
+    };
+  }
+
   private specFromTask(task: PetGenTask): PetSpec {
     const stylePreset = (task.stylePreset ?? DEFAULT_PET_PRESET) as PetPresetId;
     if (!(stylePreset in PET_STYLE_PRESETS)) {
@@ -214,6 +226,11 @@ export class PetGenProcessor {
   }
 
   private async advance(task: PetGenTask): Promise<void> {
+    try { await assertUsageHealthy(tenantDataDir(this.deps.dataDir, task.tenantId)); }
+    catch (error) {
+      await this.fail(task, `用量记账异常，任务已停止：${messageOf(error)}`);
+      return;
+    }
     switch (task.status) {
       case 'spec_submitted':
       case 'concept_generating':
@@ -267,9 +284,8 @@ export class PetGenProcessor {
       kind: 'concept',
       prompt: buildConceptPrompt(spec, preset),
       outPath: rawPath,
+      onUsage: this.usageCallback(task, 'image'),
     });
-    // #129：生图成功记用量（no-throw）
-    this.deps.usage?.recordImage(task.tenantId);
     await this.deps.splitter.normalizeConcept(
       rawPath,
       join(taskDir, 'concept.png'),
@@ -369,8 +385,8 @@ export class PetGenProcessor {
       prompt: buildSheetPrompt(spec, preset, PET_SHEET_ANIMS, PET_SHEET_GRID),
       outPath: gridPath,
       reference,
+      onUsage: this.usageCallback(task, 'image'),
     });
-    this.deps.usage?.recordImage(task.tenantId);
     const result = await this.deps.splitter.splitSheet(gridPath, {
       rows: PET_SHEET_GRID,
       cols: PET_SHEET_GRID,
@@ -410,8 +426,8 @@ export class PetGenProcessor {
         ),
         outPath: stripPath,
         reference,
+        onUsage: this.usageCallback(task, 'image'),
       });
-      this.deps.usage?.recordImage(task.tenantId);
       const result = await this.deps.splitter.splitSheet(stripPath, {
         rows: 1,
         cols: declared.frames,
@@ -449,9 +465,8 @@ export class PetGenProcessor {
         prompt: buildGridPrompt(spec, preset, batch, layout),
         outPath: gridPath,
         reference,
+        onUsage: this.usageCallback(task, 'image'),
       });
-      // #129：每批网格生图成功记用量（no-throw）
-      this.deps.usage?.recordImage(task.tenantId);
       const { files, emptyCells } = await this.deps.splitter.splitGrid(gridPath, batch, {
         cols,
         outDir: statesDir,
@@ -484,6 +499,10 @@ export class PetGenProcessor {
         updatedAt: now,
       });
     } catch (error) {
+      if (error instanceof UsageAccountingError) {
+        await this.fail(task, `用量记账异常，任务已停止：${messageOf(error)}`);
+        return;
+      }
       // 单次批次失败：升级策略或计数重试（状态保持 generating_states，下 tick 重试）；
       // 阶梯（按任务路径：sheet→strip 或 quad→nine→per）已到顶且次数超限 → 整体失败
       const ladder = strategyLadder(task.strategy);
@@ -517,6 +536,10 @@ export class PetGenProcessor {
    * 计数在内存：进程重启归零可接受（连续故障语义不变）。
    */
   private async handleQcInfraError(task: PetGenTask, error: unknown): Promise<void> {
+    if (error instanceof UsageAccountingError) {
+      await this.fail(task, `用量记账异常，任务已停止：${messageOf(error)}`);
+      return;
+    }
     const fails = (this.qcInfraFails.get(task.id) ?? 0) + 1;
     if (fails >= this.deps.config.maxQcInfraRetries) {
       await this.fail(task, `视觉质检连续异常（${messageOf(error)}）——质检服务暂不可用，请稍后重试`);
@@ -554,9 +577,8 @@ export class PetGenProcessor {
             statePath: join(statesDir, `${state}.png`),
             state,
             spec,
+            onUsage: this.usageCallback(task, 'vision_qc'),
           });
-          // #129：视觉质检成功才记用量；infra 异常并入独立重试机制（不重生成）
-          this.deps.usage?.recordVision(task.tenantId);
           semantic[state] = r;
         } catch (error) {
           // 基础设施/格式错误 ≠ 内容不合格：本轮作废（旧实现转成 pass:false
@@ -630,9 +652,8 @@ export class PetGenProcessor {
             state: anim,
             spec,
             frames: frames[anim],
+            onUsage: this.usageCallback(task, 'vision_qc'),
           });
-          // 同经典路径：成功才记用量；infra 异常走独立重试（不重生成）
-          this.deps.usage?.recordVision(task.tenantId);
           semantic[anim] = r;
         } catch (error) {
           infraError = error;

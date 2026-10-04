@@ -28,6 +28,9 @@ import {
 } from './scheduler.js';
 import type { DiaryJob, DiaryWorkerResult, DiaryRunner } from './diary-runner.js';
 import type { LlmBudgetConfig } from './budget.js';
+import { localDateKey } from '../infra/usage.js';
+import { attachPushGateway } from '../push/push-gateway.js';
+import webpush from 'web-push';
 
 describe('调度器', () => {
   let dataDir: string;
@@ -181,6 +184,70 @@ describe('调度器', () => {
     await addPet('p1', 't1', { status: 'paused' });
     await tick();
     expect(runner).not.toHaveBeenCalled();
+  });
+
+  it('预算关闭仍拒绝损坏账本，次日与调度器重启也不自动解锁', async () => {
+    await addPet('p-corrupt', 't1');
+    const dir = join(tenantDataDir(dataDir, 't1'), 'usage');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `usage-${localDateKey(new Date(clock.now))}.jsonl`), '{broken');
+    await tick();
+    expect(runner).not.toHaveBeenCalled();
+    sched = makeScheduler();
+    await tick(24 * 60 * MINUTE_MS);
+    expect(runner).not.toHaveBeenCalled();
+  });
+
+  it('记账失败 exit 3 持久暂停，重启调度器也不会自动重试花费', async () => {
+    await addPet('p-accounting', 't1');
+    runner.mockResolvedValueOnce({ ok: false, exitCode: 3 });
+    await tick();
+    expect((await getPet('p-accounting'))?.status).toBe('paused');
+    sched = makeScheduler();
+    await tick(60 * 60 * 1000);
+    expect(runner).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([3, 4])('游荡完成后反思失败 exit %i：数值和交付事件保留，错误仍可见', async (exitCode) => {
+    await addPet('p-reflection', 't1');
+    const historyDir = join(tenantDataDir(dataDir, 't1'), 'history');
+    mkdirSync(historyDir, { recursive: true });
+    writeFileSync(join(historyDir, 'speaks-2026-10-04.jsonl'), JSON.stringify({
+      contentId: 'completed-before-reflection', content: '已经完成的发现', type: 'share',
+      pushed: false, timestamp: new Date().toISOString(),
+    }) + '\n');
+    await db.insert(pushSubscriptions).values({ id: 'reflection-sub', tenantId: 't1',
+      endpoint: 'https://push.example/reflection', p256dh: 'test', auth: 'test',
+      createdAt: 0, updatedAt: 0 }).run();
+    const send = vi.fn(async () => {});
+    const detach = attachPushGateway({ dataDir, bus, sendFn: send,
+      getKeys: async () => webpush.generateVAPIDKeys() });
+    const events: Array<{ type: string; detail?: string }> = [];
+    bus.subscribe('t1', (event) => events.push(event));
+    runner.mockResolvedValueOnce({ ok: false, exitCode, stats: { energy: 40, boredom: 20 },
+      reflectionError: 'provider unavailable' });
+    try {
+      await tick();
+      expect(await getPet('p-reflection')).toMatchObject({ energy: 40, boredom: 20, lastRunAt: clock.now });
+      expect(events.map((event) => event.type)).toContain('worker_succeeded');
+      expect(events.find((event) => event.type === 'reflection_failed')?.detail).toContain('provider unavailable');
+      expect(events.map((event) => event.type)).not.toContain('worker_retry');
+      expect((await getPet('p-reflection'))?.status).toBe(exitCode === 3 ? 'paused' : 'active');
+      await vi.waitFor(async () => {
+        expect(send).toHaveBeenCalledOnce();
+        expect((await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.id, 'reflection-sub')).get())?.lastNotifiedAt)
+          .toBeGreaterThan(0);
+      });
+    } finally { detach(); }
+  });
+
+  it('邀请内测将存量 free 记录作为 Pro 权益下发', async () => {
+    await addPet('p-beta', 't1');
+    await tick();
+    expect(runner).toHaveBeenCalledWith(expect.objectContaining({
+      plan: expect.objectContaining({ plan: 'pro', pushesPerDay: 20 }),
+    }));
+    expect((await db.select().from(tenants).where(eq(tenants.id, 't1')).get())?.plan).toBe('free');
   });
 
   it('并发上限：maxConcurrent=2 时第三只不被拉起', async () => {
@@ -646,6 +713,36 @@ describe('调度器', () => {
       clock.now = new Date(`2026-08-20T${hhmm}:00`).getTime();
     }
 
+    it('日记记账失败持久暂停，下一天也不自动重试', async () => {
+      setLocal('21:00');
+      await addPet('pd-accounting', 't1', { sleepStart: 22, sleepEnd: 7, lastRunAt: clock.now });
+      diaryRunner.mockResolvedValue({ ok: false, exitCode: 3 });
+      await tick();
+      await tick(60 * MINUTE_MS);
+      expect((await getPet('pd-accounting'))?.status).toBe('paused');
+      sched = makeScheduler();
+      await tick(24 * 60 * MINUTE_MS);
+      expect(diaryRunner).toHaveBeenCalledTimes(1);
+      expect(runner).not.toHaveBeenCalled();
+    });
+
+    it('日记与游荡共享全局并发槽，排队日记在释放后继续', async () => {
+      setLocal('21:00');
+      sched = makeScheduler({ maxConcurrent: 1 });
+      await addPet('pd-a', 't1', { sleepStart: 22, sleepEnd: 7, lastRunAt: clock.now });
+      await addPet('pd-b', 't2', { sleepStart: 22, sleepEnd: 7, lastRunAt: clock.now });
+      let finish!: (r: DiaryWorkerResult) => void;
+      diaryRunner.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+      await tick();
+      clock.now += 60 * 60 * 1000;
+      await sched.runOnce();
+      expect(diaryRunner).toHaveBeenCalledTimes(1);
+      finish({ ok: true, exitCode: 0 });
+      await sched.drain();
+      await tick();
+      expect(diaryRunner).toHaveBeenCalledTimes(2);
+    });
+
     it('有作息：睡眠开始触发日记 worker 并更新 lastDiaryDate', async () => {
       setLocal('21:00'); // 清醒，播种 wasSleeping=false
       await addPet('pd1', 't1', { sleepStart: 22, sleepEnd: 7, lastRunAt: clock.now });
@@ -726,6 +823,9 @@ describe('调度器', () => {
       expect(diaryRunner).toHaveBeenCalledTimes(1);
       expect((await getPet('pd5'))?.lastDiaryDate).toBeNull();
 
+      await tick();
+      expect(diaryRunner).toHaveBeenCalledTimes(1);
+
       await tick(60 * 60 * 1000); // 23:00 仍在睡 → 重试
       expect(diaryRunner).toHaveBeenCalledTimes(2);
       expect((await getPet('pd5'))?.lastDiaryDate).toBe('2026-08-20');
@@ -757,6 +857,8 @@ describe('调度器', () => {
     try {
       sched.start(1_000);
       await vi.advanceTimersByTimeAsync(2_000); // 2 个 tick：宠物就绪 → 拉起
+      await sched.runOnce(); // 等待 tick 内真实文件 I/O；虚拟计时器不会等待它。
+      await sched.drain();
       expect(runner).toHaveBeenCalled();
       const callsAtStop = runner.mock.calls.length;
 

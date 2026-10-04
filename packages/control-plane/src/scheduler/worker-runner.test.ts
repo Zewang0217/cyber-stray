@@ -37,6 +37,7 @@ describe('worker runner', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     delete process.env.CP_MASTER_KEY;
     _resetDb();
     rmSync(dataDir, { recursive: true, force: true });
@@ -72,6 +73,13 @@ describe('worker runner', () => {
     });
   }
 
+  it('未知 LLM 单价在 spawn 前阻断，与预算是否启用无关', async () => {
+    vi.stubEnv('LLM_MODEL', 'unknown-llm');
+    const spawn = vi.fn(fakeSpawn());
+    await expect(makeRunner(spawn)(makeJob())).rejects.toThrow('未知模型单价');
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
   it('拉起 CLI：args 含 --tenant/--data-dir，退出码透传', async () => {
     const runner = makeRunner(fakeSpawn(0));
     const result = await runner(makeJob());
@@ -101,6 +109,14 @@ describe('worker runner', () => {
     const result = await runner(makeJob());
     expect(result.ok).toBe(true);
     expect(result.stats).toEqual(stats);
+  });
+
+  it.each([3, 4])('已完成游荡的退出码 %i 保留数值与明确反思错误', async (exitCode) => {
+    const stats = { energy: 55, boredom: 45 };
+    const runner = makeRunner(async () => ({ exitCode, stdout: JSON.stringify({
+      ok: false, result: { stats }, reflectionError: '反思失败',
+    }) }));
+    expect(await runner(makeJob())).toMatchObject({ ok: false, exitCode, stats, reflectionError: '反思失败' });
   });
 
   it('stdout 超 64KiB：保尾弃头，末行 stats JSON 仍完整（P1-1 回归）', () => {

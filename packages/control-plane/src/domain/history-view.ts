@@ -7,7 +7,7 @@
  */
 
 import { isPetMood } from '@cyber-stray/shared/pet-stats';
-import { isSpeakType, SPEAK_TYPE_LABELS, type SpeakHistoryItem } from '@cyber-stray/shared/push';
+import { getSpeakFeedbackIdentity, getSpeakSourceUrl, isSpeakType, SPEAK_TYPE_LABELS, type SpeakHistoryItem } from '@cyber-stray/shared/push';
 
 const TITLE_MAX_CHARS = 40;
 const SUMMARY_MAX_CHARS = 120;
@@ -34,6 +34,8 @@ export function normalizeRecord(raw: Record<string, unknown>): SpeakHistoryItem 
   const type = isSpeakType(raw.type) ? raw.type : undefined;
   const stripped = stripDecoration(message);
   const fallbackTitle = type ? SPEAK_TYPE_LABELS[type] : '推送';
+  const { contentId, messageId } = getSpeakFeedbackIdentity(raw);
+  const url = getSpeakSourceUrl(raw.url);
 
   return {
     message,
@@ -46,7 +48,7 @@ export function normalizeRecord(raw: Record<string, unknown>): SpeakHistoryItem 
           : fallbackTitle,
     summary:
       typeof raw.summary === 'string' ? raw.summary : truncate(stripped, SUMMARY_MAX_CHARS),
-    ...(typeof raw.url === 'string' ? { url: raw.url } : {}),
+    ...(url ? { url } : {}),
     ...(isPetMood(raw.mood) ? { mood: raw.mood } : {}),
     ...(type ? { type } : {}),
     ...(typeof raw.pushed === 'boolean' ? { pushed: raw.pushed } : {}),
@@ -54,7 +56,8 @@ export function normalizeRecord(raw: Record<string, unknown>): SpeakHistoryItem 
     ...(Array.isArray(raw.gateReasons)
       ? { gateReasons: raw.gateReasons.filter((r): r is string => typeof r === 'string') }
       : {}),
-    ...(typeof raw.messageId === 'string' ? { messageId: raw.messageId } : {}),
+    ...(contentId ? { contentId } : {}),
+    ...(messageId ? { messageId } : {}),
     ...(Array.isArray(raw.matchedTopics)
       ? { matchedTopics: raw.matchedTopics.filter((t): t is string => typeof t === 'string') }
       : {}),

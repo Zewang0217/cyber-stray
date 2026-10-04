@@ -31,9 +31,10 @@ import { nextMonthStart, petGenQuota } from '../petgen/quota.js';
 import type { PetSpec, PetGenTaskStatus } from '../petgen/types.js';
 import { createSplitter } from '../petgen/splitter.js';
 import { tenantDataDir } from '../infra/tenant.js';
+import { resolveEntitlements } from '../plan/entitlements.js';
 
 export interface PetGenServiceDeps {
-  config: Pick<ControlPlaneConfig, 'dataDir' | 'petGenMonthlyQuota'>;
+  config: Pick<ControlPlaneConfig, 'dataDir' | 'productMode' | 'petGenMonthlyQuota'>;
 }
 
 export type PetGenOutcome<T> =
@@ -108,7 +109,7 @@ function toTaskView(task: PetGenTask): PetGenTaskView {
 export function createPetGenService({ config }: PetGenServiceDeps) {
   /** 租户套餐是否可用 IP 定制（Pro/BYOK 专属；免费无入口） */
   async function planAllowed(db: ControlDb, tenantId: string): Promise<boolean> {
-    const plan = await findTenantPlan(config.dataDir, tenantId);
+    const { plan } = resolveEntitlements(await findTenantPlan(config.dataDir, tenantId), config.productMode);
     return plan === 'pro' || plan === 'byok';
   }
 

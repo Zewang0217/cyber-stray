@@ -22,6 +22,8 @@ import { openTenantSecrets, type TenantSecretsStore } from '../secrets/tenant-se
 import { writeSecretsFile, resolveAgentSecrets } from '../secrets/worker-secrets.js';
 import type { WanderStatsReport } from '@cyber-stray/shared/pet-stats';
 import type { WorkerJob, WorkerResult, WorkerRunner } from './scheduler.js';
+import { requireModelPrice } from '../domain/pricing.js';
+import { REFLECTION_FAILURE_EXIT_CODE, USAGE_ACCOUNTING_FAILURE_EXIT_CODE } from '@cyber-stray/shared/worker';
 
 /** agent 包 CLI 绝对路径（仓库内锚定，无硬编码全路径） */
 const AGENT_CLI = fileURLToPath(
@@ -212,6 +214,7 @@ export function createWorkerRunner(deps: WorkerRunnerDeps): WorkerRunner {
   sweepWorkerLogs(deps.dataDir);
 
   return async (job: WorkerJob): Promise<WorkerResult> => {
+    requireModelPrice(process.env.LLM_MODEL || 'deepseek-chat', 'llm');
     const secretsPath = await writeSecretsFile(open, deps.dataDir, job.tenantId);
     try {
       const args = [AGENT_CLI, '--tenant', job.tenantId, '--data-dir', job.dataDir];
@@ -223,8 +226,15 @@ export function createWorkerRunner(deps: WorkerRunnerDeps): WorkerRunner {
       args.push('--pet-state', JSON.stringify(job.petStats));
       const logFile = workerLogPath(deps.dataDir, 'worker', job.tenantId);
       const { exitCode, stdout } = await spawnFn(command, args, { timeoutMs: deps.timeoutMs, logFile });
-      if (exitCode !== 0) return { ok: false, exitCode };
-      const stats = parseWanderStatsReport(stdout ?? '');
+      const report = parseWorkerReport(stdout ?? '');
+      const stats = parseWanderStatsReport(report);
+      if (exitCode !== 0) {
+        if ((exitCode === REFLECTION_FAILURE_EXIT_CODE || exitCode === USAGE_ACCOUNTING_FAILURE_EXIT_CODE)
+          && stats && typeof report?.reflectionError === 'string' && report.reflectionError.trim()) {
+          return { ok: false, exitCode, stats, reflectionError: report.reflectionError };
+        }
+        return { ok: false, exitCode };
+      }
       if (!stats) {
         console.error(`[worker-runner] worker exit 0 但无 stats 回报（${job.tenantId}/${job.petId}）`);
       }
@@ -247,7 +257,7 @@ export function createWorkerRunner(deps: WorkerRunnerDeps): WorkerRunner {
  * 解析 worker stdout 末行 JSON 的 result.stats（cli.ts 成功出口的唯一行；
  * 取末行防库/调试输出混入）。形状非法返回 undefined——调用方显式告警不落库。
  */
-function parseWanderStatsReport(stdout: string): WanderStatsReport | undefined {
+function parseWorkerReport(stdout: string): Record<string, unknown> | undefined {
   const last = stdout.trim().split('\n').filter(Boolean).pop();
   if (!last) return undefined;
   let parsed: unknown;
@@ -257,7 +267,12 @@ function parseWanderStatsReport(stdout: string): WanderStatsReport | undefined {
     return undefined;
   }
   if (typeof parsed !== 'object' || parsed === null) return undefined;
-  const result = (parsed as { result?: unknown }).result;
+  return parsed as Record<string, unknown>;
+}
+
+/** 只采信完整的已完成游荡数值；非法回报不能被当作部分完成。 */
+function parseWanderStatsReport(report: Record<string, unknown> | undefined): WanderStatsReport | undefined {
+  const result = report?.result;
   if (typeof result !== 'object' || result === null) return undefined;
   const stats = (result as { stats?: unknown }).stats;
   if (typeof stats !== 'object' || stats === null) return undefined;

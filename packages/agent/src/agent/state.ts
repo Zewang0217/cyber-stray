@@ -67,25 +67,17 @@ function parseStateJson(content: string): AgentState {
 export async function loadState(): Promise<AgentState> {
   const statePath = getDataPath('state.json');
   
-  if (!existsSync(statePath)) {
-    const defaultState = createDefaultState();
-    await saveState(defaultState);
-    return defaultState;
-  }
-  
-  const content = await readFile(statePath, 'utf-8');
-  const state = parseStateJson(content);
+  const isNew = !existsSync(statePath);
+  const state = isNew
+    ? createDefaultState()
+    : parseStateJson(await readFile(statePath, 'utf-8'));
 
-  // Phase 2: 从 InterestGraph 同步 agentInterests（派生字段）
-  try {
-    const graph = getInterestGraph();
-    await graph.load();
-    const topInterests = graph.getTopInterests(10, 0.05);
-    state.agentInterests = topInterests; // 空数组也同步（清空旧值）
-  } catch (error) {
-    // InterestGraph 加载失败不阻断状态加载，保留 state.json 中的值
-    consola.withTag('state').warn('InterestGraph 同步失败，使用 state.json 中的 agentInterests', { error });
-  }
+  // 领养先写图谱，state.json 在第一次游荡才创建；两条路径必须共同加载。
+  // 损坏的图谱显式失败，不能让宠物带着空/旧兴趣继续探索。
+  const graph = getInterestGraph();
+  await graph.load();
+  state.agentInterests = graph.getTopInterests(10, 0.05);
+  if (isNew) await saveState(state);
 
   return state;
 }

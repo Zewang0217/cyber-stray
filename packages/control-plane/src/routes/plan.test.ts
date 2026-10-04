@@ -29,7 +29,7 @@ describe('plan 路由（S11 套餐管理）', () => {
     writeFileSync(join(dataDir, 'master.key'), 'ab'.repeat(32), { mode: 0o600 });
     await loadMasterKey(dataDir);
     app = new Hono();
-    const config = { dataDir, sessionSecret: SECRET, adminSubs: ['alice'] } as Parameters<
+    const config = { dataDir, productMode: 'paid', sessionSecret: SECRET, adminSubs: ['alice'] } as Parameters<
       typeof createPlanRoutes
     >[0]['config'];
     app.route('/api/plan', createPlanRoutes({ config }));
@@ -109,6 +109,26 @@ describe('plan 路由（S11 套餐管理）', () => {
       }),
     );
     expect(bad.status).toBe(400);
+  });
+
+  it('邀请内测：存量 free 享 Pro 权益和自定义窗口，但不改存储套餐也不售卖', async () => {
+    await seedPet('alice');
+    const beta = new Hono().route('/api/plan', createPlanRoutes({
+      config: { dataDir, productMode: 'invite_beta', sessionSecret: SECRET, adminSubs: ['alice'] },
+    }));
+    const view = await beta.request(await authed('http://x/api/plan'));
+    expect((await view.json()).data).toMatchObject({
+      mode: 'invite_beta', plan: 'pro', limits: { pushesPerDay: 20, boostIntervalMs: 86_400_000 },
+      billing: { enabled: false, canPurchase: false },
+    });
+    const window = await beta.request(await authed('http://x/api/plan/push-window', {
+      method: 'PUT', body: JSON.stringify({ startHour: 9, endHour: 22 }),
+    }));
+    expect(window.status).toBe(200);
+    const change = await beta.request(await authed('http://x/api/plan', { method: 'PUT', body: JSON.stringify({ plan: 'byok' }) }));
+    expect(change.status).toBe(403);
+    const db = await getDb(dataDir);
+    expect((await db.select().from(tenants).where(eq(tenants.id, 'alice')).get())?.plan).toBe('free');
   });
 
   it('PUT 套餐降级时清推送窗口（free 用户无自定义窗口权限）', async () => {

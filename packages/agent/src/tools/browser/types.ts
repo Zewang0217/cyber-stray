@@ -15,6 +15,8 @@ export interface BrowserCommandResult {
 
 /** BrowserExecutor 构造选项 */
 export interface BrowserExecutorOptions {
+  /** daemon socket 与持久状态的隔离命名空间 */
+  namespace?: string;
   /** 会话名称，默认 'cyber-stray' */
   session?: string;
   /** 超时毫秒数，默认 AGENT_BROWSER_TIMEOUT 环境变量或 30000 */

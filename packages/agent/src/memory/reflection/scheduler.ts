@@ -13,6 +13,7 @@
 
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
+import { z } from 'zod';
 import { consola } from '../../logger.js';
 import { getDataPath } from '../../config.js';
 import { atomicWriteJson } from '../../utils/atomic-json.js';
@@ -27,6 +28,12 @@ import type { ReflectionResult2 } from './engine.js';
 const logger = consola.withTag('ReflectionScheduler');
 
 const STATE_PATH = 'reflection-state.json';
+const SchedulerStateSchema = z.object({
+  pendingReflection: z.boolean().default(false),
+  wanderCount: z.number().int().nonnegative(),
+  totalReflections: z.number().int().nonnegative(),
+  lastReflectionAt: z.string().datetime({ offset: true }).nullable(),
+});
 
 // ReflectionScheduler
 
@@ -56,19 +63,8 @@ export class ReflectionScheduler {
       return;
     }
 
-    try {
-      const raw = await readFile(this.statePath, 'utf-8');
-      const parsed = JSON.parse(raw) as Partial<SchedulerState>;
-      this.state = {
-        ...createDefaultSchedulerState(),
-        ...parsed,
-        wanderCount: typeof parsed.wanderCount === 'number' ? parsed.wanderCount : 0,
-        totalReflections: typeof parsed.totalReflections === 'number' ? parsed.totalReflections : 0,
-      };
-    } catch (error) {
-      logger.warn('加载调度器状态失败，使用默认状态', { error });
-      this.state = createDefaultSchedulerState();
-    }
+    const raw = await readFile(this.statePath, 'utf-8');
+    this.state = SchedulerStateSchema.parse(JSON.parse(raw));
   }
 
   /** 持久化调度器状态 */
@@ -81,36 +77,33 @@ export class ReflectionScheduler {
 
   /**
    * 每次游荡结束后调用。
-   * 判断是否需要触发反思，若需要则异步执行（不阻塞主流程）。
+   * 判断是否需要反思，等待执行及持久化完成。短命 worker 必须 await；
+   * 常驻 Harness 可自行选择异步调用并处理错误。
    *
    * @returns 本次是否触发了反思
    */
-  async tick(): Promise<boolean> {
+  async tick(abortSignal?: AbortSignal): Promise<boolean> {
     if (!this.cfg.enabled) {
       return false;
     }
 
-    // 游荡计数累加
+    // 游荡计数与待反思标记一起持久化，短命进程退出后仍能恢复阶段。
     this.state.wanderCount += 1;
-    await this.persist();
-
-    // 检查触发条件
     const shouldReflect = this.checkTrigger();
-    if (!shouldReflect) {
-      return false;
-    }
+    if (shouldReflect) this.state.pendingReflection = true;
+    await this.persist();
+    return this.retryPending(abortSignal);
+  }
 
-    // 防重叠：上次反思还在进行中则跳过
-    if (this.reflecting) {
-      logger.debug('上次反思仍在进行中，跳过本次触发');
-      return false;
-    }
-
-    // 异步执行反思，不阻塞调用方
+  /** 新 worker 恢复未完成反思；不递增游荡计数，不重做已交付的探索。 */
+  async retryPending(abortSignal?: AbortSignal): Promise<boolean> {
+    if (!this.cfg.enabled || !this.state.pendingReflection || this.reflecting) return false;
     this.reflecting = true;
-    this.executeReflection().finally(() => {
+    try {
+      await this.executeReflection(abortSignal);
+    } finally {
       this.reflecting = false;
-    });
+    }
 
     return true;
   }
@@ -158,23 +151,26 @@ export class ReflectionScheduler {
   }
 
   /** 执行反思并更新状态 */
-  private async executeReflection(): Promise<void> {
+  private async executeReflection(abortSignal?: AbortSignal): Promise<void> {
     const startTime = Date.now();
     let result: ReflectionResult2;
 
     try {
       const engine = getReflectionEngine(this.cfg);
-      result = await engine.reflect();
+      result = await engine.reflect(abortSignal);
     } catch (error) {
       logger.error('反思执行失败', { error });
-      return;
+      throw error;
     }
 
     const durationMs = Date.now() - startTime;
 
     // 更新状态
-    this.state.lastReflectionAt = new Date().toISOString();
-    this.state.totalReflections += 1;
+    if (result.executed) {
+      this.state.lastReflectionAt = new Date().toISOString();
+      this.state.totalReflections += 1;
+    }
+    this.state.pendingReflection = false;
     await this.persist();
 
     logger.info('反思调度完成', {

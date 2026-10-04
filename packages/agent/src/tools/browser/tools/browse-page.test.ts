@@ -55,12 +55,21 @@ function getExecute(ctx: ToolContext) {
 
 describe('browse_page', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it('metadata: category 为 browser', () => {
     expect(browsePageToolDef.metadata.name).toBe('browse_page');
     expect(browsePageToolDef.metadata.category).toBe('browser');
+  });
+
+  it.each(['file:///etc/passwd', 'javascript:alert(1)', 'http://127.0.0.1/admin'])('拒绝不安全页面输入 %s', async (url) => {
+    mockExecute.mockResolvedValue(ok({}));
+    const ctx = makeCtx();
+    const result = await getExecute(ctx)({ url }, {});
+    expect(result.error).toBeTruthy();
+    expect(mockExecute).not.toHaveBeenCalled();
+    expect(ctx.wanderHistory[0]?.thought).toContain('拒绝');
   });
 
   it('成功：open + read 合并结果，记录 URL 与游荡步骤', async () => {

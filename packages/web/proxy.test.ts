@@ -31,6 +31,24 @@ function matcherRe(): RegExp {
 }
 
 describe('proxy 登录墙（函数体：cookie 判定 + 素材直通）', () => {
+  it('访客打开管理员根路径邀请链接，首次登录仍携带原令牌', () => {
+    // CP admin 路由测试验证生产端生成此格式；Web 消费方保持独立构建。
+    const token = '0123456789abcdef'.repeat(2);
+    const source = new URL(`https://app.example.com/?invite=${token}`);
+    expect(matcherRe().test(source.pathname)).toBe(true);
+    const response = proxy(new NextRequest(source));
+    const destination = new URL(response.headers.get('location')!);
+    expect(destination.origin).toBe(source.origin);
+    expect(destination.pathname).toBe('/api/auth/login');
+    expect(destination.searchParams.get('invite')).toBe(token);
+  });
+
+  it.each(['https://evil.example', '//evil.example', 'a'.repeat(31), 'a'.repeat(33), 'g'.repeat(32)])(
+    '非法邀请参数不透传且不改变本站登录目标：%s', (invite) => {
+      const response = proxy(req(`/?invite=${encodeURIComponent(invite)}&next=https://evil.example`));
+      expect(response.headers.get('location')).toBe('http://localhost:3000/api/auth/login');
+    },
+  );
   it('无 session 访问受保护页 → 302 到 /api/auth/login', () => {
     const res = proxy(req('/street'));
     expect(res.status).toBe(307);

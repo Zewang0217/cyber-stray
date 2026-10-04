@@ -11,6 +11,7 @@ import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { admins, pets, tenants } from '../db/schema.js';
 import { createAdminRoutes } from './admin.js';
 import { refreshModelConfig } from '../infra/app-config.js';
+import { isInviteToken } from '@cyber-stray/shared/invite';
 
 const SECRET = 'x'.repeat(40);
 
@@ -45,7 +46,7 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
 
     app = new Hono();
     const config = {
-      dataDir, sessionSecret: SECRET,
+      dataDir, sessionSecret: SECRET, productMode: 'paid', webOrigin: 'https://app.example.com',
       adminSubs: ['admin-1'], // env bootstrap
       arkImageModel: 'default-img',
       visionModel: 'default-vl',
@@ -99,6 +100,37 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     // 宠物行 plan 列已废弃（S14 迁移），不应再读
     const pet = await db.select().from(pets).where(eq(pets.tenantId, 'tenant-a')).get();
     expect(pet?.plan).toBe('free');
+  });
+
+  it('管理员生成的邀请保留根路径链接及共享契约令牌，供 Web 首次登录透传', async () => {
+    const res = await app.request(await authed('http://x/api/admin/invites', {
+      method: 'POST', body: JSON.stringify({ label: '首次领养邀请' }),
+    }));
+    expect(res.status).toBe(200);
+    const body = await res.json() as { data: { token: string; link: string } };
+    expect(isInviteToken(body.data.token)).toBe(true);
+    const link = new URL(body.data.link);
+    expect(link.origin).toBe('https://app.example.com');
+    expect(link.pathname).toBe('/');
+    expect(link.searchParams.get('invite')).toBe(body.data.token);
+    expect(Array.from(link.searchParams.keys())).toEqual(['invite']);
+  });
+
+  it('邀请内测统一显示 Pro，并拒绝管理员改写存量套餐', async () => {
+    const beta = new Hono();
+    beta.route('/api/admin', createAdminRoutes({ config: {
+      dataDir, sessionSecret: SECRET, productMode: 'invite_beta', adminSubs: ['admin-1'],
+      arkImageModel: 'default-img', visionModel: 'default-vl', webOrigin: 'http://localhost:3000',
+      llmBudgetEnabled: true, llmBudgetYuan: { free: 0.5, pro: 2, byok: 2 },
+    } }));
+    const list = await beta.request(await authed('http://x/api/admin/users'));
+    const body = await list.json() as { data: Array<{ plan: string; mode: string }> };
+    expect(body.data.every((row) => row.plan === 'pro' && row.mode === 'invite_beta')).toBe(true);
+    const update = await beta.request(await authed('http://x/api/admin/users/tenant-a/plan', {
+      method: 'PUT', body: JSON.stringify({ plan: 'byok' }),
+    }));
+    expect(update.status).toBe(400);
+    expect((await (await getDb(dataDir)).select().from(tenants).where(eq(tenants.id, 'tenant-a')).get())?.plan).toBe('free');
   });
 
   it('RBAC：admins 表判定（非 env 白名单但入表）可访问', async () => {
@@ -259,8 +291,8 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
   it('GET /api/admin/usage?from/to：时间范围筛选文件与行', async () => {
     const dir = join(tenantDataDir(dataDir, 'tenant-a'), 'usage');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'usage-2026-08-20.jsonl'), JSON.stringify({ timestamp: '2026-08-20T01:00:00.000Z', tenantId: 'tenant-a', kind: 'llm', model: 'deepseek-chat', inputTokens: 100 }) + '\n');
-    writeFileSync(join(dir, 'usage-2026-08-25.jsonl'), JSON.stringify({ timestamp: '2026-08-25T01:00:00.000Z', tenantId: 'tenant-a', kind: 'llm', model: 'deepseek-chat', inputTokens: 200 }) + '\n');
+    writeFileSync(join(dir, 'usage-2026-08-20.jsonl'), JSON.stringify({ timestamp: '2026-08-20T01:00:00.000Z', tenantId: 'tenant-a', kind: 'llm', model: 'deepseek-chat', inputTokens: 100, outputTokens: 0 }) + '\n');
+    writeFileSync(join(dir, 'usage-2026-08-25.jsonl'), JSON.stringify({ timestamp: '2026-08-25T01:00:00.000Z', tenantId: 'tenant-a', kind: 'llm', model: 'deepseek-chat', inputTokens: 200, outputTokens: 0 }) + '\n');
 
     const res = await app.request(await authed('http://x/api/admin/usage?from=2026-08-22&to=2026-08-25'));
     expect(res.status).toBe(200);
@@ -288,21 +320,32 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
   });
 
   it('PUT /api/admin/config：写 DB 生效，下次 GET 读到新值', async () => {
-    await refreshModelConfig(dataDir, { imageModel: 'default-img', visionModel: 'default-vl' });
+    await refreshModelConfig(dataDir, { imageModel: 'doubao-seedream-5-0-260128', visionModel: 'glm-4v-flash' });
     const res = await app.request(
       await authed('http://x/api/admin/config', {
         method: 'PUT',
-        body: JSON.stringify({ imageModel: 'new-img-model' }),
+        body: JSON.stringify({ visionModel: 'glm-4.5v' }),
       }),
     );
     expect(res.status).toBe(200);
     const json = (await res.json()) as { data: { imageModel: string; visionModel: string } };
-    expect(json.data.imageModel).toBe('new-img-model');
-    expect(json.data.visionModel).toBe('default-vl'); // 未传字段保持
+    expect(json.data.imageModel).toBe('doubao-seedream-5-0-260128'); // 未传字段保持
+    expect(json.data.visionModel).toBe('glm-4.5v');
 
     const get = await app.request(await authed('http://x/api/admin/config'));
     const getJson = (await get.json()) as { data: { imageModel: string } };
-    expect(getJson.data.imageModel).toBe('new-img-model');
+    expect(getJson.data.imageModel).toBe('doubao-seedream-5-0-260128');
+  });
+
+  it('PUT /api/admin/config：未知单价拒绝保存，继续保留已知配置', async () => {
+    const current = { imageModel: 'doubao-seedream-5-0-260128', visionModel: 'glm-4v-flash' };
+    await refreshModelConfig(dataDir, current);
+    const res = await app.request(await authed('http://x/api/admin/config', {
+      method: 'PUT', body: JSON.stringify({ imageModel: 'unknown-model' }),
+    }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining('未知模型单价') });
+    expect(await refreshModelConfig(dataDir, current)).toEqual(current);
   });
 
   it('PUT /api/admin/config：空/超长模型 ID → 400；非管理员 → 403', async () => {

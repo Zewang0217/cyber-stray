@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE } from "@cyber-stray/shared/session";
+import { isInviteToken } from "@cyber-stray/shared/invite";
 
 /**
  * 登录墙：未登录访问跳转 Casdoor 登录。
@@ -21,6 +22,9 @@ export function proxy(request: NextRequest) {
   const hasSession = request.cookies.has(SESSION_COOKIE);
   if (!hasSession) {
     const loginUrl = new URL("/api/auth/login", request.url);
+    // 首页邀请链接先经过 proxy，不能等 page.tsx 再转发凭据。
+    const invite = request.nextUrl.searchParams.get("invite");
+    if (isInviteToken(invite)) loginUrl.searchParams.set("invite", invite);
     return NextResponse.redirect(loginUrl);
   }
   return NextResponse.next();

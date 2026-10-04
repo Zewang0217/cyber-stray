@@ -11,7 +11,7 @@ import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { ControlPlaneConfig } from '../config.js';
 import type { OidcProvider } from '../auth/oidc.js';
-import { StateStore } from '../auth/state-store.js';
+import { StateStore, STATE_TTL_SECONDS } from '../auth/state-store.js';
 import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { getOrCreateTenant } from '../infra/tenant.js';
 import { findUserTenantRelation } from '../infra/tenant-access.js';
@@ -26,24 +26,33 @@ export interface AuthDeps {
 
 export function createAuthRoutes({ config, oidc, states }: AuthDeps): Hono {
   const app = new Hono();
+  const secure = config.webOrigin.startsWith('https:');
+  // __Host- 阻止同站其他子域投放认证 cookie；开发 HTTP 使用独立名称。
+  const stateCookie = secure ? '__Host-cs_oidc_state' : 'cs_oidc_state';
 
   /** 登录：跳转 Casdoor 授权页（?invite= 邀请 raw token 随 state 穿越往返） */
   app.get('/login', async (c) => {
     const { url, state, nonce, verifier } = await oidc.buildAuthUrl();
     const inviteToken = c.req.query('invite');
     states.set(state, nonce, verifier, inviteToken); // state 防 CSRF 重放，一次性
+    setCookie(c, stateCookie, state, {
+      httpOnly: true, sameSite: 'Lax', secure, path: '/', maxAge: STATE_TTL_SECONDS,
+    });
     return c.redirect(url, 302);
   });
 
   /** 回调：换 token → 建租户 → 签 session */
   app.get('/callback', async (c) => {
     const state = c.req.query('state');
-    const entry = state ? states.consume(state) : null;
+    // 先验浏览器归属再消费：窃取的回调链接不能登录另一浏览器，也不能焚毁合法登录。
+    const boundState = getCookie(c, stateCookie);
+    const entry = state && boundState === state ? states.consume(state) : null;
     if (!state || !entry) {
       // state 无效/已过期（用户刷新重试等）→ 重新走登录，不裸抛 JSON
       console.warn(`[auth] callback state 无效（${String(state).slice(0, 8)}…）`);
       return c.redirect(`${config.webOrigin}/api/auth/login?error=state_invalid`, 302);
     }
+    deleteCookie(c, stateCookie, { path: '/', secure });
 
     let user;
     try {

@@ -37,11 +37,14 @@ import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { createPetsService, type AdoptInput } from '../services/pets-service.js';
 import { createPetGenService } from '../services/petgen-service.js';
 import { ADOPT_REFERENCE_MIME, ADOPT_REFERENCE_MAX_BYTES } from '@cyber-stray/shared/pet';
+import { CandidateRequestSchema } from '../adoption/candidates.js';
+import { CandidateRequestError } from '../adoption/candidate-store.js';
 
 export interface PetsDeps {
   config: Pick<
     ControlPlaneConfig,
     | 'dataDir'
+    | 'productMode'
     | 'sessionSecret'
     | 'llmBudgetEnabled'
     | 'llmBudgetYuan'
@@ -306,35 +309,18 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       return c.json(jsonError(scoped.error === 401 ? '未登录' : '无权访问该租户'), scoped.error);
     }
 
-    let body: { step?: unknown; name?: unknown; personality?: unknown; batch?: unknown };
+    let body: unknown;
+    try { body = await c.req.json(); }
+    catch { return c.json(jsonError('请求体须为 JSON'), 400); }
+    const parsed = CandidateRequestSchema.safeParse(body);
+    if (!parsed.success) return c.json(jsonError('候选参数无效：batch 须为 0-3 整数，口头禅需要名字与性格'), 400);
     try {
-      body = await c.req.json() as typeof body;
-    } catch {
-      return c.json(jsonError('请求体须为 JSON'), 400);
+      const result = await service.adoptionCandidates(scoped.tenantId, parsed.data);
+      return c.json({ success: true, data: result });
+    } catch (error) {
+      if (error instanceof CandidateRequestError) return c.json(jsonError(error.message), error.status);
+      throw error;
     }
-    if (body.step !== 'name' && body.step !== 'catchphrase') {
-      return c.json(jsonError('step 须为 name|catchphrase'), 400);
-    }
-    if (body.step === 'catchphrase' && (typeof body.name !== 'string' || body.name.length === 0)) {
-      return c.json(jsonError('catchphrase 步需要 name（候选依赖宠物名）'), 400);
-    }
-    if (
-      body.step === 'catchphrase' &&
-      (typeof body.personality !== 'string' || !isPersonalityId(body.personality))
-    ) {
-      return c.json(jsonError('catchphrase 步需要合法 personality'), 400);
-    }
-    if (body.batch !== undefined && (typeof body.batch !== 'number' || body.batch < 0 || body.batch > 3)) {
-      return c.json(jsonError('batch 须为 0-3 的数字（换一批每步限 3 次）'), 400);
-    }
-
-    const result = await service.adoptionCandidates(scoped.tenantId, {
-      step: body.step,
-      name: typeof body.name === 'string' ? body.name : undefined,
-      personality: typeof body.personality === 'string' ? body.personality : undefined,
-      batch: typeof body.batch === 'number' ? body.batch : 0,
-    });
-    return c.json({ success: true, data: result });
   });
 
   /** PUT /api/pets/catchphrases — 编辑口头禅集合（至少 1 条） */

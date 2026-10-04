@@ -25,7 +25,7 @@ import { sanitizeForLLM } from '../../utils/text-sanitize.js';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { consola } from '../../logger.js';
 import { getDataRoot } from '../../config.js';
-import { recordUsage } from '../../usage/usage.js';
+import { assertUsageReady, recordUsage } from '../../usage/usage.js';
 import { getConfig } from '../../config.js';
 import { getMemoryStore } from '../long-term/index.js';
 import { getInterestGraph } from '../interest-graph.js';
@@ -153,7 +153,7 @@ export class ReflectionEngine {
    * 失败抛错，由调用方（scheduler）try/catch 处理。
    * 观察不足时返回空结果（不是错误——"没什么可反思"是正常状态）。
    */
-  async reflect(): Promise<ReflectionResult2> {
+  async reflect(abortSignal?: AbortSignal): Promise<ReflectionResult2> {
     if (!this.cfg.enabled) {
       logger.debug('反思引擎已禁用，跳过');
       return EMPTY_RESULT;
@@ -167,7 +167,7 @@ export class ReflectionEngine {
     }
 
     // Step 2: 调用 LLM 反思
-    const rawOutput = await this.callLLM(materials);
+    const rawOutput = await this.callLLM(materials, abortSignal);
 
     // Step 3: 解析 + Zod 校验
     const parseResult = this.parseAndValidate(rawOutput);
@@ -265,7 +265,7 @@ export class ReflectionEngine {
   }
 
   /** 调用 LLM 反思，返回原始文本 */
-  private async callLLM(materials: MemoryEntry[]): Promise<string> {
+  private async callLLM(materials: MemoryEntry[], abortSignal?: AbortSignal): Promise<string> {
     const cfg = getConfig();
     // BYOK：不回退平台 env（config.ts 已挡；这里同规矩再挡）
     const apiKey =
@@ -286,15 +286,17 @@ export class ReflectionEngine {
 
     logger.debug('发起反思 LLM 调用', { materialCount: materials.length });
 
+    assertUsageReady(getDataRoot(), cfg.llmModel, 'llm');
     const result = await generateText({
       model: provider.chat(cfg.llmModel),
       temperature: 0.4, // 反思需要一致性高于创造性
       system: sanitizeForLLM(systemPrompt),
       prompt: sanitizeForLLM(userPrompt),
       maxOutputTokens: 3000,
+      abortSignal,
     });
 
-    // #129：用量记录（no-throw）
+    // 反思也是付费调用，记账失败必须交给 worker 停派发。
     await recordUsage(getDataRoot(), {
       kind: 'llm',
       model: cfg.llmModel,
@@ -410,6 +412,7 @@ export class ReflectionEngine {
         written++;
       } catch (error) {
         logger.error('写入洞察记忆失败', { error, title: insight.title });
+        throw error;
       }
     }
 
@@ -463,10 +466,11 @@ export class ReflectionEngine {
 
       await graph.persist();
       // S2 #151：反思改图谱后从图谱重生成派生摘要（spec：反思时从图谱重新生成，
-      // 不独立维护）；复用本方法的 best-effort 容错域
+      // 不独立维护）；写失败交给调度器显式重试。
       await regenerateProfileSummary(graph);
     } catch (error) {
       logger.error('更新兴趣图谱失败', { error });
+      throw error;
     }
 
     return { newAdded, updated };

@@ -19,6 +19,7 @@ import { writeSecretsFile } from '../secrets/worker-secrets.js';
 import { workerLogPath, appendWorkerLog } from './worker-runner.js';
 import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
 import type { PersonalityId } from '@cyber-stray/shared';
+import { requireModelPrice } from '../domain/pricing.js';
 
 /** agent 日记 CLI 绝对路径（仓库内锚定，与 worker-runner 的 AGENT_CLI 同模式） */
 const DIARY_CLI = fileURLToPath(
@@ -116,6 +117,7 @@ export function createDiaryRunner(deps: DiaryRunnerDeps): DiaryRunner {
   const open = deps.openSecrets ?? openTenantSecrets;
 
   return async (job: DiaryJob): Promise<DiaryWorkerResult> => {
+    requireModelPrice(process.env.LLM_MODEL || 'deepseek-chat', 'llm');
     const secretsPath = await writeSecretsFile(open, deps.dataDir, job.tenantId);
     try {
       const args = [

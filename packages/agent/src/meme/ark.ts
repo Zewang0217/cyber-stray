@@ -14,11 +14,12 @@
 import { readFile, writeFile } from 'fs/promises';
 import { extname } from 'path';
 import type { ImageGenerator } from './types.js';
+import type { UsageTrackedRequest } from '../usage/usage.js';
 
 const ARK_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
 
 /** 生图请求 */
-export interface ImageGenRequest {
+export interface ImageGenRequest extends UsageTrackedRequest {
   prompt: string;
   /** 输出路径（管线落盘用） */
   outPath: string;
@@ -78,6 +79,7 @@ export function createImageGenerator(apiKey: string, opts: ArkImageOptions): Ima
       if (!res.ok) {
         throw new Error(`表情包生图失败: HTTP ${res.status} ${await res.text()}`);
       }
+      await req.onUsage?.();
       const parsed = (await res.json()) as { data?: Array<{ b64_json?: string }> };
       const b64 = parsed.data?.[0]?.b64_json;
       if (!b64) {

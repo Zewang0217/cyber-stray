@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { consola } from '../../logger.js';
-import { getConfig, getDataRoot } from '../../config.js';
+import { getConfig, getDataRoot, getTenantId } from '../../config.js';
+import { createHash } from 'node:crypto';
+import { TENANT_BROWSER_DISABLED_REASON } from './policy.js';
 import type { AgentBrowserEnvelope, BrowserCommandResult, BrowserExecutorOptions } from './types.js';
 
 const logger = consola.withTag('browser:executor');
@@ -15,6 +17,7 @@ export class BrowserExecutor {
   private readonly binaryPath: string;
   private readonly restore: boolean;
   private readonly encryptionKey: string | undefined;
+  private readonly namespace: string | undefined;
 
   constructor(options?: BrowserExecutorOptions) {
     this.session = options?.session ?? DEFAULT_SESSION;
@@ -22,6 +25,7 @@ export class BrowserExecutor {
     this.binaryPath = options?.binaryPath ?? DEFAULT_BINARY;
     this.restore = options?.restore ?? true;
     this.encryptionKey = options?.encryptionKey;
+    this.namespace = options?.namespace;
   }
 
   /**
@@ -31,6 +35,7 @@ export class BrowserExecutor {
    * restore 模式追加 `--restore`（cookies + localStorage 跨重启持久化）。
    */
   async execute(command: string, args: string[] = []): Promise<BrowserCommandResult> {
+    if (getTenantId() !== null) throw new Error(TENANT_BROWSER_DISABLED_REASON);
     const startTime = performance.now();
     const fullArgs = [command, ...args, '--json', '--session', this.session];
     if (this.restore) fullArgs.push('--restore');
@@ -70,6 +75,7 @@ export class BrowserExecutor {
               ...process.env,
               // #54: 禁用空闲超时（Cyber Stray 心跳间隔可能 >1h）
               AGENT_BROWSER_IDLE_TIMEOUT_MS: '0',
+              ...(this.namespace ? { AGENT_BROWSER_NAMESPACE: this.namespace } : {}),
               // #54: 加密 state 文件（AES-256-GCM）
               ...(this.encryptionKey
                 ? { AGENT_BROWSER_ENCRYPTION_KEY: this.encryptionKey }
@@ -189,11 +195,18 @@ export class BrowserExecutor {
 const executorCache = new Map<string, BrowserExecutor>();
 
 export function getBrowserExecutor(options?: BrowserExecutorOptions): BrowserExecutor {
-  const session =
-    options?.session ?? getConfig().browser?.sessionName ?? DEFAULT_SESSION;
+  const cfg = getConfig().browser;
+  const scope = createHash('sha256').update(getDataRoot()).digest('hex').slice(0, 24);
+  const session = getTenantId() !== null
+    ? `tenant-${scope}`
+    : options?.session ?? cfg?.sessionName ?? DEFAULT_SESSION;
   const key = `${session}::${getDataRoot()}`;
   if (!executorCache.has(key)) {
-    executorCache.set(key, new BrowserExecutor(options));
+    executorCache.set(key, new BrowserExecutor({
+      timeout: cfg?.timeout, restore: cfg?.restore, ...options, session,
+      // 外部 daemon 与磁盘 state 同样按数据根隔离，不能只隔离进程内 Map。
+      namespace: `cyber-stray-${scope}`,
+    }));
   }
   return executorCache.get(key)!;
 }

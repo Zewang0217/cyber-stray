@@ -28,7 +28,7 @@ export function createMemePipelineDeps(dataDir: string): MemePipelineDeps {
 
   return {
     dataDir,
-    // #129：生图/质检成功后各记一条用量（no-throw）
+    // HTTP 付费响应后立即记账，解析/落盘失败也保留费用；记账失败锁住后续调用。
     imageGen: withImageUsageTracking(
       createImageGenerator(arkKey, { model: imageModel, size }),
       dataDir,
