@@ -1,107 +1,48 @@
-/**
- * 领养候选生成测试（#114 切片 3）
- *
- * 契约：
- * - parseCandidates：恰 3 条非空字符串（剥 code fence）；其他形态全 null
- * - fallbackCandidates：name 按 batch 轮换；catchphrase = 性格默认组文本
- * - generateCandidates：无 key 直接降级；LLM 正常返回走 llm；
- *   非 2xx / 坏 JSON / 网络错 → 降级且不抛
- */
+import { describe, it, expect, vi } from 'vitest';
+import { generateCandidates, parseCandidates } from './candidates.js';
 
-import { describe, it, expect } from 'vitest';
-import { getPersonality } from '@cyber-stray/shared';
-import {
-  fallbackCandidates,
-  generateCandidates,
-  parseCandidates,
-} from './candidates.js';
+const response = (content = '["煤球","年糕","小溜"]') => new Response(JSON.stringify({
+  choices: [{ message: { content } }], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
+}), { status: 200 });
 
-describe('parseCandidates', () => {
-  it('恰 3 条非空字符串（含 code fence 剥离 + trim）', () => {
-    expect(parseCandidates('```json\n[" 煤球 ", "年糕", "小溜"]\n```')).toEqual([
-      '煤球',
-      '年糕',
-      '小溜',
-    ]);
-  });
-
-  it('非 3 条 / 非字符串 / 超 24 字 / 坏 JSON → null', () => {
-    expect(parseCandidates('["a", "b"]')).toBeNull();
-    expect(parseCandidates('["a", "b", "c", "d"]')).toBeNull();
-    expect(parseCandidates('["a", 1, "c"]')).toBeNull();
-    expect(parseCandidates('["a", "", "c"]')).toBeNull();
-    expect(parseCandidates(`["a", "${'x'.repeat(25)}", "c"]`)).toBeNull();
-    expect(parseCandidates('不是 JSON')).toBeNull();
-    expect(parseCandidates('{"candidates":["a","b","c"]}')).toBeNull();
-  });
-});
-
-describe('fallbackCandidates', () => {
-  it('name 按 batch 轮换本地模板池', () => {
-    const b0 = fallbackCandidates({ step: 'name', batch: 0 });
-    const b1 = fallbackCandidates({ step: 'name', batch: 1 });
-    expect(b0).toHaveLength(3);
-    expect(b1).toHaveLength(3);
-    expect(b0).not.toEqual(b1);
-  });
-
-  it('catchphrase 降级 = 性格默认组文本', () => {
-    for (const personality of ['curious', 'playful', 'lazy', 'steady'] as const) {
-      const out = fallbackCandidates({ step: 'catchphrase', personality });
-      expect(out).toEqual(getPersonality(personality).catchphrases.map((c) => c.text));
-    }
-  });
-});
-
-describe('generateCandidates', () => {
-  const okResponse = (
-    _input: string | URL | Request,
-    _init?: RequestInit,
-  ): Promise<Response> =>
-    Promise.resolve(
-      new Response(
-        JSON.stringify({ choices: [{ message: { content: '["煤球","年糕","小溜"]' } }] }),
-        { status: 200 },
-      ),
-    );
-
-  it('无 key → 直接降级，不发请求', async () => {
-    const fetchFn = () => {
-      throw new Error('不应发请求');
-    };
-    const result = await generateCandidates({ step: 'name' }, '', { fetchFn });
-    expect(result.source).toBe('fallback');
-    expect(result.candidates).toHaveLength(3);
-  });
-
-  it('LLM 正常返回 → source=llm', async () => {
-    const result = await generateCandidates({ step: 'name' }, 'sk-test', { fetchFn: okResponse });
+describe('adoption candidate generation', () => {
+  it('records real input/output usage before returning valid candidates', async () => {
+    const onUsage = vi.fn(async () => {});
+    const result = await generateCandidates({ step: 'name' }, 'test-key', { fetchFn: async () => response(), onUsage });
     expect(result).toEqual({ candidates: ['煤球', '年糕', '小溜'], source: 'llm' });
+    expect(onUsage).toHaveBeenCalledWith({ inputTokens: 100, outputTokens: 20, tokens: 120 });
   });
-
-  it('非 2xx / 坏 JSON / 网络错 → 降级不抛', async () => {
-    const badStatus = new Response('rate limited', { status: 429 });
-    const fetchFns: Array<(input: string | URL | Request, init?: RequestInit) => Promise<Response>> = [
-      () => Promise.resolve(badStatus),
-      () => Promise.resolve(new Response('not json', { status: 200 })),
-      () => Promise.reject(new Error('network down')),
-    ];
-    for (const fetchFn of fetchFns) {
-      const result = await generateCandidates({ step: 'name' }, 'sk-test', { fetchFn });
-      expect(result.source).toBe('fallback');
-      expect(result.candidates).toHaveLength(3);
+  it('makes missing keys and provider failures visible without returning invented candidates', async () => {
+    const fetchFn = vi.fn(async () => new Response('', { status: 429 }));
+    const opts = { fetchFn, onUsage: async () => {} };
+    await expect(generateCandidates({ step: 'name' }, '', opts)).rejects.toThrow('API key');
+    expect(fetchFn).not.toHaveBeenCalled();
+    await expect(generateCandidates({ step: 'name' }, 'key', opts)).rejects.toThrow('429');
+  });
+  it('still accounts for a paid response whose candidate content is invalid', async () => {
+    const onUsage = vi.fn(async () => {});
+    await expect(generateCandidates({ step: 'name' }, 'key', {
+      fetchFn: async () => response('["只有一条"]'), onUsage,
+    })).rejects.toThrow('候选');
+    expect(onUsage).toHaveBeenCalledTimes(1);
+  });
+  it('does not report success when accounting fails', async () => {
+    await expect(generateCandidates({ step: 'name' }, 'key', {
+      fetchFn: async () => response(), onUsage: async () => { throw new Error('ledger full'); },
+    })).rejects.toThrow('ledger full');
+  });
+  it('requires a complete measured usage response and known model price', async () => {
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ choices: [] })));
+    const onUsage = vi.fn(async () => {});
+    await expect(generateCandidates({ step: 'name' }, 'key', { fetchFn, onUsage })).rejects.toThrow();
+    await expect(generateCandidates({ step: 'name' }, 'key', { model: 'unpriced', fetchFn, onUsage })).rejects.toThrow('未知模型单价');
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(onUsage).not.toHaveBeenCalled();
+  });
+  it('validates exactly three nonempty short strings after removing JSON fences', () => {
+    expect(parseCandidates('```json\n[" 煤球 ","年糕","小溜"]\n```')).toEqual(['煤球', '年糕', '小溜']);
+    for (const raw of ['["a","b"]', '["a",1,"c"]', '["a"," ","c"]', 'not json']) {
+      expect(parseCandidates(raw)).toBeNull();
     }
-  });
-
-  it('LLM 返回坏内容（2 条）→ 降级', async () => {
-    const fetchFn = () =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({ choices: [{ message: { content: '["只有一条","第二条"]' } }] }),
-          { status: 200 },
-        ),
-      );
-    const result = await generateCandidates({ step: 'name' }, 'sk-test', { fetchFn });
-    expect(result.source).toBe('fallback');
   });
 });

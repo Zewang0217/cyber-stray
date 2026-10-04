@@ -14,7 +14,7 @@ type View = "root" | "channels" | "pet" | "account" | "admin";
 const ROWS: Array<[View, string, string]> = [
   ["channels", "通道", "飞书 / 系统推送"],
   ["pet", "宠物", "作息 / 日记 / 口头禅"],
-  ["account", "账号", "套餐 / BYOK / 退出"],
+  ["account", "账号", "使用权益 / 推送时间 / 退出"],
 ];
 
 const DIARY_STYLES = [
@@ -29,9 +29,9 @@ export default function SettingsPage() {
   const [view, setView] = useState<View>("root");
   const { state: pushState, error: pushError, enable, disable } = useWebPush();
   const { channels, bindFeishu, unbindFeishu, error: channelError } = useChannels();
-  const { plan, error: planError, switchPlan, setPushWindow, clearPushWindow, bindByokKey } = usePlan();
+  const { plan, error: planError, setPushWindow, clearPushWindow, bindByokKey } = usePlan();
   const [sleepSaved, setSleepSaved] = useState(false);
-  const { pets, setSleepSchedule, clearSleepSchedule, setDiaryStyle, setDiaryPush, setCatchphrases, error: petsError } = usePets();
+  const { pets, isLoaded: petsLoaded, loadError: petsLoadError, refresh: refreshPets, setSleepSchedule, clearSleepSchedule, setDiaryStyle, setDiaryPush, setCatchphrases, error: petsError } = usePets();
   const sleepPet = pets[0] ?? null;
   const hasSleepSchedule = sleepPet !== null && sleepPet.sleepStart !== null && sleepPet.sleepEnd !== null;
 
@@ -102,7 +102,14 @@ export default function SettingsPage() {
 
       {view === "pet" && (
         <SubView title="宠物" onBack={() => setView("root")}>
-          {!sleepPet ? (
+          {!petsLoaded ? (
+            <p className="text-[13px] text-[var(--curb)]">正在连接宠物…</p>
+          ) : petsLoadError && !sleepPet ? (
+            <div role="alert" className="text-[13px] text-[var(--bad)]">
+              <p>{petsLoadError}</p>
+              <button type="button" onClick={() => void refreshPets()} className="mt-2 underline">重新连接</button>
+            </div>
+          ) : !sleepPet ? (
             <p className="text-[13px] text-[var(--curb)]">尚未领养宠物</p>
           ) : (
             <>
@@ -172,26 +179,21 @@ export default function SettingsPage() {
           <section className="mb-4 border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
             <h3 className="mb-1 text-[14px] text-[var(--paper)]">账号是怎么工作的</h3>
             <p className="text-[12px] leading-[1.7] text-[var(--curb)]">
-              登录走 Casdoor 统一身份（跳转外部登录页，支持已有账号直接登录）；
-              本站只持有会话凭证，密码不经手。你的宠物、记忆、兴趣图谱都挂在
-              这个账号下隔离存放——退出登录后宠物还在，重新登录即接回。
+              你的宠物、记忆和兴趣图谱都属于这个账号。退出后宠物仍会按自己的作息探索，
+              重新登录就能接回。内测需要邀请链接，已有账号可以直接登录。
             </p>
           </section>
 
           <section className="mb-4 border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
-            <h3 className="mb-1 text-[14px] text-[var(--paper)]">套餐</h3>
+            <h3 className="mb-1 text-[14px] text-[var(--paper)]">使用权益</h3>
             <p className="mb-2 text-[12px] leading-[1.6] text-[var(--curb)]">
-              {plan ? `当前 ${plan.plan.toUpperCase()} · 每日推送上限 ${plan.limits.pushesPerDay} 条` : "加载中…"}
-              。宠物自进化永不设限，套餐只卡「到达主人」的频率。
+              {plan ? `${plan.mode === "invite_beta" ? "邀请内测 · 免费享有 Pro 权益" : plan.plan.toUpperCase()} · 每日推送上限 ${plan.limits.pushesPerDay} 条` : planError ? "权益暂时无法加载" : "加载中…"}
             </p>
-            <div className="mb-3 flex gap-2">
-              {(["free", "pro", "byok"] as const).map((pc) => (
-                <button key={pc} type="button" disabled={plan?.plan === pc} onClick={() => void switchPlan(pc)}
-                  className={`border-2 px-3 py-1.5 text-[13px] ${plan?.plan === pc ? "border-[var(--ok)] bg-[var(--panel)] text-[var(--ok)]" : "border-[var(--curb)] bg-[var(--panel)] text-[var(--paper)]"}`}>
-                  {pc === "free" ? "免费" : pc === "pro" ? "Pro" : "BYOK"}
-                </button>
-              ))}
-            </div>
+            {plan?.mode === "invite_beta" && (
+              <p className="mb-3 text-[12px] leading-[1.7] text-[var(--curb)]">
+                内测期间所有受邀用户享有相同权益，无需订阅。可以每天顶一次话题，也可以设置合适的推送时间。
+              </p>
+            )}
             {plan && plan.plan !== "free" ? (
               <form className="flex items-center gap-2" onSubmit={(e) => {
                 e.preventDefault();
@@ -213,7 +215,7 @@ export default function SettingsPage() {
                 ) : null}
               </form>
             ) : null}
-            {plan?.plan === "byok" ? (
+            {plan && (plan.mode === "invite_beta" || plan.plan === "byok") ? (
               <form className="mt-2 flex gap-2" onSubmit={(e) => {
                 e.preventDefault();
                 const form = e.currentTarget;
@@ -222,7 +224,8 @@ export default function SettingsPage() {
                 form.reset();
               }}>
                 <input name="apiKey" type="password" required
-                  placeholder={plan.byok.keyBound ? "已绑定（输入新 key 可更换）" : "sk-…（DeepSeek API key）"}
+                  aria-label="自带 DeepSeek API key（可选）"
+                  placeholder={plan.byok.keyBound ? "已绑定（输入新 key 可更换）" : "可选：自带 DeepSeek API key"}
                   className="flex-1 border-2 border-[var(--curb)] bg-[var(--sky)] px-2 py-1.5 text-[13px] text-[var(--paper)]" />
                 <button type="submit" className="border-2 border-[var(--curb)] bg-[var(--panel)] px-3 text-[13px] text-[var(--paper)]">
                   {plan.byok.keyBound ? "更换" : "绑定"}
@@ -236,7 +239,7 @@ export default function SettingsPage() {
             <h3 className="mb-1 text-[14px] text-[var(--paper)]">退出登录</h3>
             <form action="/api/auth/logout" method="POST">
               <button type="submit" className="border-2 border-[var(--bad)] bg-[var(--panel)] px-3 py-1.5 text-[13px] text-[var(--bad)]">
-                退出（POST /api/auth/logout）
+                退出登录
               </button>
             </form>
           </section>

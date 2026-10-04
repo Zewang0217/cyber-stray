@@ -21,7 +21,7 @@ import { createPetGenService } from '../services/petgen-service.js';
 export interface PetGenDeps {
   config: Pick<
     ControlPlaneConfig,
-    'dataDir' | 'sessionSecret' | 'petGenMonthlyQuota'
+    'dataDir' | 'productMode' | 'sessionSecret' | 'petGenMonthlyQuota'
   >;
 }
 

@@ -28,12 +28,14 @@ import {
   updateTenantPlan,
 } from '../infra/tenant-access.js';
 import { readTenantWanderStats } from '../infra/tenant-data-reader.js';
-import { costOf } from '../domain/pricing.js';
+import { costOf, requireModelPrice } from '../domain/pricing.js';
+import { resolveEntitlements } from '../plan/entitlements.js';
+import { planBudgetYuan } from '../scheduler/budget.js';
 
 export interface AdminServiceDeps {
   config: Pick<
     ControlPlaneConfig,
-    'dataDir' | 'adminSubs' | 'arkImageModel' | 'visionModel' | 'llmBudgetEnabled' | 'llmBudgetYuan' | 'webOrigin'
+    'dataDir' | 'productMode' | 'adminSubs' | 'arkImageModel' | 'visionModel' | 'llmBudgetEnabled' | 'llmBudgetYuan' | 'webOrigin'
   >;
 }
 
@@ -76,7 +78,7 @@ export function createAdminService({ config }: AdminServiceDeps) {
         return {
           tenantId: t.id,
           tenantName: t.name,
-          plan: t.plan,
+          ...resolveEntitlements(t.plan, config.productMode),
           createdAt: t.createdAt,
           petId: pet?.id ?? null,
           petName: pet?.name ?? null,
@@ -93,6 +95,9 @@ export function createAdminService({ config }: AdminServiceDeps) {
   }
 
   async function updatePlan(tenantId: string, plan: PlanValue): Promise<AdminOutcome<{ tenantId: string; plan: string }>> {
+    if (config.productMode !== 'paid') {
+      return { ok: false, status: 400, error: '邀请内测统一享有 Pro 权益，套餐变更未开放' };
+    }
     const tenant = await findTenantById(config.dataDir, tenantId);
     if (!tenant) return { ok: false, status: 404, error: '用户不存在' };
     await updateTenantPlan(config.dataDir, tenantId, plan);
@@ -141,9 +146,8 @@ export function createAdminService({ config }: AdminServiceDeps) {
 
   /** 每套餐今日 LLM 预算水位（0 = 该套餐不限；未启用 → null） */
   function budgetYuanFor(plan: string): number | null {
-    if (!config.llmBudgetEnabled) return null;
-    const yuan = config.llmBudgetYuan[plan as keyof typeof config.llmBudgetYuan] ?? 0;
-    return yuan > 0 ? yuan : null;
+    return planBudgetYuan({ enabled: config.llmBudgetEnabled, yuanPerPlan: config.llmBudgetYuan },
+      resolveEntitlements(plan, config.productMode).plan);
   }
 
   /** 用量成本报表：summary 总览 + perTenant（含今日 LLM 水位）+ recent 最近 50 条明细 */
@@ -159,7 +163,7 @@ export function createAdminService({ config }: AdminServiceDeps) {
         return {
           tenantId: t.id,
           tenantName: t.name,
-          plan: t.plan,
+          ...resolveEntitlements(t.plan, config.productMode),
           llmCostToday,
           llmBudgetYuan: budgetYuanFor(t.plan),
           ...agg,
@@ -194,7 +198,7 @@ export function createAdminService({ config }: AdminServiceDeps) {
   }
 
   /** 更新全局模型（缺省字段保持不变）：写 DB + 刷缓存，下次生图生效 */
-  async function updateModelSettings(next: { imageModel?: string; visionModel?: string }) {
+  async function updateModelSettings(next: { imageModel?: string; visionModel?: string }): Promise<AdminOutcome<ModelConfig>> {
     const current = getModelConfig({
       imageModel: config.arkImageModel,
       visionModel: config.visionModel,
@@ -203,8 +207,14 @@ export function createAdminService({ config }: AdminServiceDeps) {
       imageModel: next.imageModel ?? current.imageModel,
       visionModel: next.visionModel ?? current.visionModel,
     };
+    try {
+      requireModelPrice(merged.imageModel, 'image');
+      requireModelPrice(merged.visionModel, 'vision_qc');
+    } catch (error) {
+      return { ok: false, status: 400, error: error instanceof Error ? error.message : String(error) };
+    }
     const saved = await setModelConfig(config.dataDir, merged);
-    return { imageModel: saved.imageModel, visionModel: saved.visionModel };
+    return { ok: true, data: { imageModel: saved.imageModel, visionModel: saved.visionModel } };
   }
 
   return {

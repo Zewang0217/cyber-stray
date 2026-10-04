@@ -1,16 +1,17 @@
 /**
- * 用量记录测试（#129）—— recordUsage JSONL 落盘 / no-throw / 按天轮转
+ * 用量记录测试—— JSONL 落盘 / 记账失败显式停止 / 按天轮转
  *
  * 契约：租户目录 usage/usage-YYYY-MM-DD.jsonl（本地日期）；行含
- * timestamp/tenantId/kind/model/tokens|images；写入失败静默不抛。
+ * timestamp/tenantId/kind/model/tokens|images；写入或计量字段无效即抛错。
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync } from 'fs';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { recordUsage, localDateKey, withImageUsageTracking, modelIdOf } from './usage.js';
+import { recordUsage, localDateKey, withImageUsageTracking, withVisionUsageTracking, modelIdOf } from './usage.js';
 import type { ImageGenerator } from '../meme/types.js';
+import type { ImageGenRequest } from '../meme/ark.js';
 
 describe('recordUsage', () => {
   let dir: string;
@@ -51,8 +52,40 @@ describe('recordUsage', () => {
     expect(readFileSync(file, 'utf-8').trim().split('\n')).toHaveLength(2);
   });
 
-  it('no-throw：坏 dataDir 不抛错', async () => {
-    await expect(recordUsage('/nonexistent-root', { kind: 'llm', model: 'm' })).resolves.toBeUndefined();
+  it('账本不可写时显式报错，不把失败当作零用量', async () => {
+    writeFileSync(join(dir, 'usage'), 'blocked');
+    await expect(recordUsage(dir, { kind: 'llm', model: 'm', tokens: 1 })).rejects.toThrow('用量记账失败');
+  });
+
+  it('供应商缺少用量时明确失败，不写没有计量的账单行', async () => {
+    await expect(recordUsage(dir, { kind: 'llm', model: 'm' })).rejects.toThrow('用量记账失败');
+  });
+
+  it('未知生图或质检价格在调用供应商前拒绝', async () => {
+    const generate = vi.fn(async (req: { outPath: string }) => ({ imagePath: req.outPath }));
+    const inspect = vi.fn(async () => ({ ok: true }));
+    const image = withImageUsageTracking({ generate }, dir, 'unpriced-image');
+    const vision = withVisionUsageTracking(inspect, dir, 'unpriced-vision');
+    await expect(image.generate({ prompt: 'x', outPath: 'x' })).rejects.toThrow('未知模型单价');
+    await expect(vision({})).rejects.toThrow('未知模型单价');
+    expect(generate).not.toHaveBeenCalled();
+    expect(inspect).not.toHaveBeenCalled();
+  });
+
+  it('记账失败即便被上层捕获，后续生图和质检也不会再次调用供应商', async () => {
+    const generate = vi.fn(async (req: ImageGenRequest) => {
+      await req.onUsage?.();
+      return { imagePath: req.outPath };
+    });
+    const inspect = vi.fn(async () => ({ ok: true }));
+    const image = withImageUsageTracking({ generate }, dir, 'doubao-seedream-5-0-260128');
+    const vision = withVisionUsageTracking(inspect, dir, 'glm-4v-flash');
+    writeFileSync(join(dir, 'usage'), 'blocked');
+    await expect(image.generate({ prompt: 'x', outPath: 'x' })).rejects.toThrow('用量记账失败');
+    await expect(image.generate({ prompt: 'x', outPath: 'x' })).rejects.toThrow('用量记账失败');
+    await expect(vision({})).rejects.toThrow('用量记账失败');
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(inspect).not.toHaveBeenCalled();
   });
 });
 
@@ -62,15 +95,16 @@ describe('withImageUsageTracking', () => {
     try {
       const inner: ImageGenerator = {
         async generate(req) {
+          await req.onUsage?.();
           return { imagePath: req.outPath };
         },
       };
-      const tracked = withImageUsageTracking(inner, dir, 'seedream-m');
+      const tracked = withImageUsageTracking(inner, dir, 'doubao-seedream-5-0-260128');
       await tracked.generate({ prompt: 'x', outPath: join(dir, 'g.png') });
       const file = join(dir, 'usage', `usage-${localDateKey()}.jsonl`);
       const line = JSON.parse(readFileSync(file, 'utf-8').trim()) as Record<string, unknown>;
       expect(line.kind).toBe('image');
-      expect(line.model).toBe('seedream-m');
+      expect(line.model).toBe('doubao-seedream-5-0-260128');
       expect(line.images).toBe(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -85,7 +119,7 @@ describe('withImageUsageTracking', () => {
           throw new Error('boom');
         },
       };
-      const tracked = withImageUsageTracking(inner, dir, 'm');
+      const tracked = withImageUsageTracking(inner, dir, 'doubao-seedream-5-0-260128');
       await expect(tracked.generate({ prompt: 'x', outPath: 'x' })).rejects.toThrow('boom');
       expect(existsSync(join(dir, 'usage'))).toBe(false);
     } finally {

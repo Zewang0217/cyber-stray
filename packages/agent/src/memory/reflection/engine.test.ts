@@ -10,6 +10,8 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
+import { rename, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 vi.mock('ai', () => ({
   generateText: vi.fn(),
@@ -56,7 +58,9 @@ function makeMaterial(type: MemoryEntry['type'], overrides: Partial<MemoryEntry>
 
 /** 安装 ai 模块 mock */
 function mockGenerateText(impl: (opts: Record<string, unknown>) => Promise<{ text: string }>): void {
-  (generateText as ReturnType<typeof vi.fn>).mockImplementation(impl);
+  (generateText as ReturnType<typeof vi.fn>).mockImplementation(async (opts) => ({
+    ...await impl(opts), usage: { inputTokens: 10, outputTokens: 2 },
+  }));
 }
 
 /** 构建模拟反思 LLM 输出 */
@@ -108,6 +112,20 @@ describe('ReflectionEngine', () => {
   // ==========================================
   // 观察收集
   // ==========================================
+
+  test('洞察落盘失败必须上抛，不能让调度器记为反思成功', async () => {
+    for (const id of ['obs-1', 'obs-2', 'obs-3']) await store.saveMemory(makeObservation({ id }));
+    mockGenerateText(async () => {
+      const observations = join(store.basePath, 'observations');
+      await rename(observations, `${observations}-saved`);
+      await writeFile(observations, 'blocked directory');
+      return { text: makeReflectionOutput([{
+        title: '应保存的洞察', content: '真实来源', sourceIds: ['obs-1'],
+        newInterests: [], existingInterestUpdates: [],
+      }]) };
+    });
+    await expect(engine.reflect()).rejects.toThrow();
+  });
 
   test('应该过滤掉 provenance=self:reflection 的洞察', async () => {
     await store.saveMemory(makeObservation({ id: 'obs-1', summary: 'web 观察 1', provenance: 'untrusted:web' }));

@@ -42,9 +42,9 @@ export default async function LoginPage({
           <span className="font-ps2p text-xs text-[var(--ok)]">POWER ON · 登录</span>
         </a>
         <p className="mt-4 text-center text-[12px] leading-[1.7] text-[var(--curb)]">
-          通电即进入像素夜城。
+          {invite ? "带着邀请函，来认识你的街溜子。" : "已有账号可直接登录，新用户需要邀请函。"}
           <br />
-          认证由 Casdoor 提供（点击后跳转授权页）。
+          内测期间免费，登录后保留你的宠物与记忆。
         </p>
       </div>
     </div>

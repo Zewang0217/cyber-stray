@@ -101,6 +101,10 @@ describe('channels 路由（飞书可选通道绑定）', () => {
   });
 
   it('校验：非 https webhook → 400；未登录 401', async () => {
+    for (const webhook of ['https://127.0.0.1/hook', 'https://open.feishu.cn.evil.example/open-apis/bot/v2/hook/x', 'https://user:pass@open.feishu.cn/open-apis/bot/v2/hook/x']) {
+      const request = await authed('http://x/api/channels/feishu', { method: 'PUT', body: JSON.stringify({ webhook }) });
+      expect((await app.request(request)).status).toBe(400);
+    }
     const bad = await authed('http://x/api/channels/feishu', {
       method: 'PUT',
       body: JSON.stringify({ webhook: 'http://insecure.example/hook' }),

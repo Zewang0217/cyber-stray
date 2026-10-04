@@ -90,7 +90,7 @@ export function MailCard({
         <button
           type="button"
           disabled={pending || !card.messageId}
-          title={card.messageId ? "赞（归因到推送话题）" : "无渠道消息 ID，不可反馈"}
+          title={card.messageId ? "赞（归因到推送话题）" : "这张旧明信片暂不支持反馈"}
           onClick={() => onFeedback("like", card)}
           className="border-2 border-[var(--curb)] bg-[var(--panel)] px-2 py-1 text-[12px] text-[var(--paper)]"
         >
@@ -99,7 +99,7 @@ export function MailCard({
         <button
           type="button"
           disabled={pending || !card.messageId}
-          title={card.messageId ? "踩" : "无渠道消息 ID，不可反馈"}
+          title={card.messageId ? "踩" : "这张旧明信片暂不支持反馈"}
           onClick={() => onFeedback("dislike", card)}
           className="border-2 border-[var(--curb)] bg-[var(--panel)] px-2 py-1 text-[12px] text-[var(--paper)]"
         >

@@ -103,7 +103,7 @@ export default function UsagePanel(): React.ReactElement {
           <thead>
             <tr className="text-left text-subtext border-b border-[var(--c-engraving-fine)]">
               <th className="py-2 pr-3">宠物</th>
-              <th className="py-2 pr-3">套餐</th>
+              <th className="py-2 pr-3">权益</th>
               <th className="py-2 pr-3">LLM token</th>
               <th className="py-2 pr-3">生图</th>
               <th className="py-2 pr-3">质检</th>

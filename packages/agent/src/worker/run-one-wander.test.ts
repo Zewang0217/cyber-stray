@@ -24,9 +24,9 @@ vi.mock('@ai-sdk/deepseek', () => ({
 
 import { generateText } from 'ai';
 import { runOneWander } from './run-one-wander.js';
-import { loadConfig } from '../config.js';
+import { loadConfig, setTenantContext } from '../config.js';
 import { ToolManager } from '../tools/tool-manager.js';
-import { _resetMemoryStore } from '../memory/long-term/index.js';
+import { getMemoryStore, _resetMemoryStore } from '../memory/long-term/index.js';
 import { _resetMemoryIndex } from '../memory/long-term/memory-index.js';
 import { _resetInterestGraphCache } from '../memory/interest-graph.js';
 import { _resetReflectionScheduler } from '../memory/reflection/index.js';
@@ -34,10 +34,10 @@ import { _resetSkillIndex } from '../tools/browser/skills/skill-index.js';
 
 function mockGenerateTextWithSteps(steps: number): void {
   (generateText as ReturnType<typeof vi.fn>).mockImplementation(async (opts: {
-    onStepFinish?: (event: { stepNumber: number }) => void;
+    onStepFinish?: (event: { stepNumber: number; usage: { inputTokens: number; outputTokens: number } }) => Promise<void>;
   }) => {
     for (let i = 0; i < steps; i++) {
-      opts.onStepFinish?.({ stepNumber: i });
+      await opts.onStepFinish?.({ stepNumber: i, usage: { inputTokens: 10, outputTokens: 2 } });
     }
     return {
       text: '',
@@ -180,5 +180,89 @@ describe('runOneWander 双租户隔离', () => {
     // 游荡结束后租户上下文已清除，回到单用户默认
     const { getTenantContext } = await import('../config.js');
     expect(getTenantContext()).toBeNull();
+  });
+
+  test('第五次短命游荡返回前，反思洞察及调度进度已持久化', async () => {
+    const tenant = makeTenantDir('reflection');
+    dirs = [tenant];
+    setTenantContext({ ...tenant, config: loadConfig(tenant.dataDir) });
+    const store = getMemoryStore();
+    for (const id of ['obs-1', 'obs-2', 'obs-3']) {
+      await store.saveMemory({ id, type: 'observation', timestamp: new Date().toISOString(),
+        tags: [], summary: '量子计算进展', content: '量子纠错获得进展',
+        importance: 0.7, provenance: 'untrusted:web' });
+    }
+    setTenantContext(null);
+    await writeFile(join(tenant.dataDir, 'reflection-state.json'), JSON.stringify({
+      wanderCount: 4, totalReflections: 0, lastReflectionAt: null,
+    }));
+    vi.mocked(generateText).mockImplementation(async (opts) => {
+      if ('onStepFinish' in opts) return { text: '', steps: [], toolCalls: [] } as never;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(opts.temperature).toBe(0.4);
+      return { usage: { inputTokens: 10, outputTokens: 2 }, text: JSON.stringify({ summary: '反思完成', insights: [{
+        title: '量子纠错趋势', content: '来自真实观察的洞察', sourceIds: ['obs-1'],
+        newInterests: [], existingInterestUpdates: [],
+      }] }) } as never;
+    });
+
+    await runOneWander({ ...tenant, petStats: PET_STATS });
+    const state = JSON.parse(await readFile(join(tenant.dataDir, 'reflection-state.json'), 'utf8'));
+    expect(state).toMatchObject({ wanderCount: 5, totalReflections: 1 });
+    const memories = await store.getRecentMemories({ count: 20 });
+    expect(memories.some((m) => m.provenance === 'self:reflection' && m.tags.includes('ref:obs-1'))).toBe(true);
+  });
+
+  test('损坏的反思进度显式失败，不重置成首次游荡', async () => {
+    const tenant = makeTenantDir('broken-reflection');
+    dirs = [tenant];
+    await writeFile(join(tenant.dataDir, 'reflection-state.json'), '{broken');
+    await expect(runOneWander({ ...tenant, petStats: PET_STATS })).rejects.toThrow();
+    expect(await readFile(join(tenant.dataDir, 'reflection-state.json'), 'utf8')).toBe('{broken');
+  });
+
+  test('反思失败保留已完成游荡回报，重启后先重试反思再开展新游荡', async () => {
+    const tenant = makeTenantDir('reflection-retry');
+    dirs = [tenant];
+    setTenantContext({ ...tenant, config: loadConfig(tenant.dataDir) });
+    for (const id of ['obs-1', 'obs-2', 'obs-3']) {
+      await getMemoryStore().saveMemory({ id, type: 'observation', timestamp: new Date().toISOString(),
+        tags: [], summary: '量子进展', content: '真实观察', importance: 0.7, provenance: 'untrusted:web' });
+    }
+    setTenantContext(null);
+    await writeFile(join(tenant.dataDir, 'reflection-state.json'), JSON.stringify({
+      wanderCount: 4, totalReflections: 0, lastReflectionAt: null,
+    }));
+    const calls: string[] = [];
+    let reflectionFails = true;
+    vi.mocked(generateText).mockImplementation(async (opts) => {
+      if (opts.onStepFinish) {
+        calls.push('wander');
+        await (opts.onStepFinish as (step: unknown) => Promise<void>)({
+          stepNumber: 0, usage: { inputTokens: 10, outputTokens: 2 }, toolCalls: [],
+        });
+        return { text: '', steps: [], toolCalls: [] } as never;
+      }
+      calls.push('reflection');
+      if (reflectionFails) throw new Error('reflection provider unavailable');
+      return { text: JSON.stringify({ summary: '已反思', insights: [] }),
+        usage: { inputTokens: 10, outputTokens: 2 } } as never;
+    });
+    await expect(runOneWander({ ...tenant, petStats: PET_STATS })).rejects.toMatchObject({
+      message: expect.stringContaining('reflection provider unavailable'),
+      result: { stats: { energy: 78, boredom: 68 } },
+    });
+    const saved = JSON.parse(await readFile(join(tenant.dataDir, 'reflection-state.json'), 'utf8'));
+    expect(saved.pendingReflection).toBe(true);
+    expect(JSON.parse(await readFile(join(tenant.dataDir, 'state.json'), 'utf8')).totalWanders).toBe(1);
+    _resetReflectionScheduler();
+    // 再次反思失败时只重试反思，不重复已完成的游荡。
+    await expect(runOneWander({ ...tenant, petStats: PET_STATS })).rejects.toThrow('reflection provider unavailable');
+    reflectionFails = false;
+    _resetReflectionScheduler();
+    await runOneWander({ ...tenant, petStats: PET_STATS });
+    expect(calls).toEqual(['wander', 'reflection', 'reflection', 'reflection', 'wander']);
+    expect(JSON.parse(await readFile(join(tenant.dataDir, 'reflection-state.json'), 'utf8')))
+      .toMatchObject({ wanderCount: 6, totalReflections: 1, pendingReflection: false });
   });
 });

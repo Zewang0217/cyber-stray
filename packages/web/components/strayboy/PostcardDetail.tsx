@@ -61,11 +61,17 @@ export function PostcardDetail({
         <p className="font-noto mb-4 whitespace-pre-wrap pl-5 text-[14px] leading-[1.8] text-[var(--ink-soft)]">
           {card.message}
         </p>
+        {card.url && (
+          <p className="mb-4 pl-5 text-[14px]">
+            <a href={card.url} target="_blank" rel="noopener noreferrer"
+              className="text-[var(--act)] underline underline-offset-4">阅读原文 ↗</a>
+          </p>
+        )}
         <div className="flex items-center gap-2 pl-5">
           <button
             type="button"
             disabled={pending || !card.messageId}
-            title={card.messageId ? "赞（归因到推送话题）" : "无渠道消息 ID，不可反馈"}
+            title={card.messageId ? "赞（归因到推送话题）" : "这张旧明信片暂不支持反馈"}
             onClick={() => onFeedback("like", card)}
             className="border-2 border-[var(--curb)] bg-[var(--panel)] px-2 py-1 text-[12px] text-[var(--paper)]"
           >
@@ -74,7 +80,7 @@ export function PostcardDetail({
           <button
             type="button"
             disabled={pending || !card.messageId}
-            title={card.messageId ? "踩" : "无渠道消息 ID，不可反馈"}
+            title={card.messageId ? "踩" : "这张旧明信片暂不支持反馈"}
             onClick={() => onFeedback("dislike", card)}
             className="border-2 border-[var(--curb)] bg-[var(--panel)] px-2 py-1 text-[12px] text-[var(--paper)]"
           >

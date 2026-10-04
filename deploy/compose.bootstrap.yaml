@@ -1,0 +1,10 @@
+# 首次签发证书的独立入口，仅提供 ACME；不会启动 CP、Casdoor 或数据库。
+name: cyber-stray-acme
+services:
+  acme:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx-bootstrap.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/cyber-stray/acme-webroot:/var/www/certbot:ro

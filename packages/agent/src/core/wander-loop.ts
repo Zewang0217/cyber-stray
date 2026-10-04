@@ -12,7 +12,7 @@
 import { generateText, stepCountIs, hasToolCall } from 'ai';
 import { sanitizeForLLM } from '../utils/text-sanitize.js';
 import { getDataRoot } from '../config.js';
-import { recordUsage } from '../usage/usage.js';
+import { assertUsageHealthy, assertUsageReady, recordUsage, UsageAccountingError } from '../usage/usage.js';
 import type { Tool } from 'ai';
 import { consola } from '../logger.js';
 import { resetLLMStats, getLLMStats, recordStep } from '../llm/stats.js';
@@ -61,6 +61,7 @@ export interface WanderLoopInput {
  */
 export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> {
   const { state, config, systemPrompt, userPrompt, tools, emit, traceId, model, toolCtx } = input;
+  assertUsageReady(getDataRoot(), config.llmModel, 'llm');
   const startTime = Date.now();
 
   resetLLMStats();
@@ -97,6 +98,7 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
       return failResult();
     }
     try {
+      assertUsageHealthy(getDataRoot());
       const result = await generateText({
         model,
         temperature: config.temperature,
@@ -104,8 +106,20 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
         prompt: sanitizeForLLM(userPrompt),
         stopWhen: [hasToolCall('rest'), stepCountIs(config.maxSteps)],
         tools,
+        prepareStep() {
+          // AI SDK 会吞掉 onStepFinish 异常；下一次付费调用前再次阻断。
+          assertUsageHealthy(getDataRoot());
+          return {};
+        },
         ...(remainingMs !== null ? { abortSignal: AbortSignal.timeout(remainingMs) } : {}),
-        onStepFinish({ stepNumber, usage, toolCalls }) {
+        async onStepFinish({ stepNumber, usage, toolCalls }) {
+          // 每个已完成步骤立即落账，后续 provider 失败/整轮重试不能抹掉已花费的 token。
+          await recordUsage(getDataRoot(), {
+            kind: 'llm',
+            model: config.llmModel,
+            inputTokens: usage?.inputTokens,
+            outputTokens: usage?.outputTokens,
+          });
           try {
             recordStep({
               stepNumber,
@@ -126,6 +140,9 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
         },
       });
 
+      // 最后一步后没有 prepareStep，仍须把回调中的记账故障传播给 worker。
+      assertUsageHealthy(getDataRoot());
+
       // 记录 LLM 最终输出（用于复盘：为什么不调工具、为什么提前结束）
       const finalText = result?.text?.slice(0, 500) ?? '';
       const toolCallCount = result?.toolCalls?.length ?? 0;
@@ -134,16 +151,9 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
         toolCalls: result?.toolCalls?.map((tc) => tc.toolName) ?? [],
       });
 
-      // #129：用量记录（no-throw，失败不影响主流程）
-      await recordUsage(getDataRoot(), {
-        kind: 'llm',
-        model: config.llmModel,
-        inputTokens: result?.usage?.inputTokens,
-        outputTokens: result?.usage?.outputTokens,
-      });
-
       break; // 成功，退出重试
     } catch (error) {
+      if (error instanceof UsageAccountingError) throw error;
       logger.error(`[${traceId}] LLM 调用异常 (attempt ${attempt + 1}/${maxRetries + 1})`, { error });
       if (attempt === maxRetries) {
         emit({ type: 'error', phase: 'llm_call', error: String(error), recoverable: false });

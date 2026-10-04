@@ -35,6 +35,9 @@ export function strategyLadder(current: GenStrategy): readonly GenStrategy[] {
   return SHEET_STRATEGY_LADDER.includes(current) ? SHEET_STRATEGY_LADDER : CLASSIC_STRATEGY_LADDER;
 }
 
+/** 已收到成功 HTTP 响应，按请求实际模型记一次调用；必须在响应解析/落图前完成。 */
+export type RecordProviderUsage = (model: string) => Promise<void>;
+
 /** 图像生成请求 */
 export interface ImageGenRequest {
   kind: 'concept' | 'grid' | 'sheet';
@@ -44,6 +47,7 @@ export interface ImageGenRequest {
   outPath: string;
   /** 参考图（白底 JPEG 路径；grid/sheet 生成 = 角色锚点，ADR-0001 参考图锁角色） */
   reference?: string;
+  onUsage?: RecordProviderUsage;
 }
 
 export interface ImageGenResult {
@@ -65,6 +69,7 @@ export interface VisionQcRequest {
   spec: PetSpec;
   /** 帧数（≥2 = 横排动画帧条，质检含帧间角色/动作连贯；缺省 1 = 单帧） */
   frames?: number;
+  onUsage?: RecordProviderUsage;
 }
 
 /** 视觉质检服务 */
@@ -178,7 +183,7 @@ export interface PetGenProcessorDeps {
   splitter: Splitter;
   config: PetGenProcessorConfig;
   now?: () => number;
-  /** 用量记录（#129；缺省 = 不记录，测试/降级友好） */
+  /** 用量记录（生产装配必须提供；无付费调用的测试 fake 可省略） */
   usage?: PetUsageRecorder;
   /** 事件总线（pet_assets_ready 发布；缺省 = 不发布） */
   bus?: PetGenEventPublisher;

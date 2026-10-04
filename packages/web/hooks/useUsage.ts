@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { EffectiveEntitlements } from "@cyber-stray/shared/plan";
 
 export interface UsageSummary {
   totalCost: number;
@@ -9,10 +10,9 @@ export interface UsageSummary {
   totalVisionQc: number;
 }
 
-export interface TenantUsage {
+export interface TenantUsage extends EffectiveEntitlements {
   tenantId: string;
   tenantName: string;
-  plan: "free" | "pro" | "byok";
   llmTokens: number;
   imageCount: number;
   visionCount: number;

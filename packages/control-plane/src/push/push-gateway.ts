@@ -21,6 +21,7 @@ import { pets, pushSubscriptions, type PushSubscription } from '../db/schema.js'
 import { tenantDataDir } from '../infra/tenant.js';
 import { getVapidKeys } from '../infra/push-repo.js';
 import type { EventBus, TenantEvent, TenantEventHandler } from '../events/bus.js';
+import { sendPublicNotification } from './send-public-notification.js';
 
 /** 注入式发送（测试 fake）；真实实现用 web-push。keys 由调用方逐设备传入 */
 export type PushSendFn = (
@@ -30,12 +31,7 @@ export type PushSendFn = (
 ) => Promise<void>;
 
 /** 真实发送：web-push.sendNotification；404/410 抛带 statusCode 的错 */
-const realSend: PushSendFn = async (endpoint, payload, keys) => {
-  await webpush.sendNotification(
-    { endpoint, keys },
-    JSON.stringify(payload),
-  );
-};
+const realSend: PushSendFn = sendPublicNotification;
 
 export interface PushGatewayDeps {
   dataDir: string;

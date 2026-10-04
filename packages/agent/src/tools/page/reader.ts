@@ -1,7 +1,7 @@
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import { consola } from '../../logger.js';
-import { proxyFetch } from '../../net/proxy.js';
+import { requestPublicUrl } from '@cyber-stray/shared/outbound';
 
 const logger = consola.withTag('page-reader');
 
@@ -13,6 +13,7 @@ const MAX_LINKS = 10;
 
 /** 抓取网页超时时间（毫秒） */
 const FETCH_TIMEOUT_MS = 15_000;
+const MAX_HTML_BYTES = 2 * 1024 * 1024;
 
 /** 链接信息 */
 export interface PageLink {
@@ -92,8 +93,10 @@ export async function readPage(url: string): Promise<PageResult> {
   let html: string;
 
   try {
-    const response = await proxyFetch(url, {
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    const response = await requestPublicUrl(url, {
+      timeoutMs: FETCH_TIMEOUT_MS,
+      maxBytes: MAX_HTML_BYTES,
+      maxRedirects: 3,
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; CyberStrayBot/1.0)',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -101,18 +104,22 @@ export async function readPage(url: string): Promise<PageResult> {
       },
     });
 
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       logger.warn('网页抓取失败', { url, status: response.status });
       return {
         url,
         title: '',
         content: '',
         links: [],
-        error: `HTTP ${response.status}: ${response.statusText}`,
+        error: `HTTP ${response.status}`,
       };
     }
 
-    html = await response.text();
+    if (response.headers['content-encoding'] && response.headers['content-encoding'] !== 'identity') {
+      throw new Error('网页返回不支持的压缩编码');
+    }
+    html = response.body.toString('utf8');
+    url = response.url;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.warn('网页请求异常', { url, error: message });

@@ -19,6 +19,7 @@ import { eq } from 'drizzle-orm';
 import { getDb, _resetDb, type ControlDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { getOrCreateTenant } from '../infra/tenant.js';
+import { createPetUsageRecorder, readTenantUsage } from '../infra/usage.js';
 import { petGenTasks, pets, tenants, type PetGenTask } from '../db/schema.js';
 import { PetGenProcessor } from './processor.js';
 import { petGenQuota } from './quota.js';
@@ -98,19 +99,21 @@ describe('PetGenProcessor（#94 状态机）', () => {
     publishMock = vi.fn();
     clock = new Date(2026, 7, 10).getTime();
 
-    generateMock = vi.fn(async ({ kind, outPath }) => {
+    generateMock = vi.fn(async ({ kind, outPath, onUsage }) => {
       if (kind === 'concept' && conceptFails) {
         throw new Error('生图 API 500');
       }
+      await onUsage?.('doubao-seedream-5-0-260128');
       writeFileSync(outPath, PNG);
       return { imagePath: outPath };
     });
     imageGen = { generate: generateMock };
 
-    inspectMock = vi.fn(async ({ state }) => {
+    inspectMock = vi.fn(async ({ state, onUsage }) => {
       if (inspectRejects) {
         throw new Error('质检端点 503');
       }
+      await onUsage?.('glm-4.5v');
       if (qcFailures.has(state)) {
         return { pass: false, issues: ['状态未区分(与 idle 相关 <0.25)'] };
       }
@@ -238,6 +241,56 @@ describe('PetGenProcessor（#94 状态机）', () => {
   async function getTask(id: string): Promise<PetGenTask | undefined> {
     return db.select().from(petGenTasks).where(eq(petGenTasks.id, id)).get();
   }
+
+  it('记账写入失败后任务失败，新处理器也不再为该租户生成图片', async () => {
+    const tenantDir = join(dataDir, 'tenants', 'alice');
+    mkdirSync(tenantDir, { recursive: true });
+    writeFileSync(join(tenantDir, 'usage'), 'broken usage directory');
+    deps.usage = createPetUsageRecorder(dataDir);
+    processor = new PetGenProcessor(deps);
+    const first = await insertTask();
+    await processor.tick();
+    expect((await getTask(first.id))?.status).toBe('failed');
+    expect(generateMock).toHaveBeenCalledTimes(1);
+    expect(existsSync(join(tenantDir, 'usage-accounting-block.json'))).toBe(true);
+    rmSync(join(tenantDir, 'usage'));
+    const second = await insertTask();
+    await new PetGenProcessor(deps).tick();
+    expect((await getTask(second.id))?.status).toBe('failed');
+    expect(generateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['quad', 'sheet'] as const)('%s 完整调用链每次成功响应只记一次，模型来自 provider', async (strategy) => {
+    deps.usage = createPetUsageRecorder(dataDir);
+    processor = new PetGenProcessor(deps);
+    const task = await insertTask({ strategy });
+    if (strategy === 'quad') {
+      await tickUntil(task.id, ['awaiting_confirmation']);
+      await confirm(task.id);
+    }
+    await tickUntil(task.id, ['done']);
+    const entries = await readTenantUsage(dataDir, 'alice');
+    expect(entries.filter((entry) => entry.kind === 'image')).toHaveLength(generateMock.mock.calls.length);
+    expect(entries.filter((entry) => entry.kind === 'vision_qc')).toHaveLength(inspectMock.mock.calls.length);
+    expect(entries.filter((entry) => entry.kind === 'image').every((entry) => entry.model === 'doubao-seedream-5-0-260128')).toBe(true);
+    expect(entries.filter((entry) => entry.kind === 'vision_qc').every((entry) => entry.model === 'glm-4.5v')).toBe(true);
+  });
+
+  it('质检记账故障当轮失败，不走普通 infra 重试且不再质检其他状态', async () => {
+    const task = await insertTask();
+    await tickUntil(task.id, ['awaiting_confirmation']);
+    await confirm(task.id);
+    await tickUntil(task.id, ['qc']);
+    const tenantDir = join(dataDir, 'tenants', 'alice');
+    writeFileSync(join(tenantDir, 'usage'), 'broken ledger path');
+    deps.usage = createPetUsageRecorder(dataDir);
+    await processor.tick();
+    expect((await getTask(task.id))?.status).toBe('failed');
+    expect(inspectMock).toHaveBeenCalledOnce();
+    expect(existsSync(join(tenantDir, 'usage-accounting-block.json'))).toBe(true);
+    await new PetGenProcessor(deps).tick();
+    expect(inspectMock).toHaveBeenCalledOnce();
+  });
 
   /** 连续 tick 直到任务到达某状态或达上限 */
   async function tickUntil(id: string, statuses: PetGenTask['status'][], max = 40): Promise<PetGenTask> {

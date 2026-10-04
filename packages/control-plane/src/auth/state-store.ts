@@ -6,7 +6,8 @@
  * 多实例共享前（Redis/共享存储，与 Postgres 同一触发点）维持现状。
  */
 
-const STATE_TTL_MS = 10 * 60 * 1000; // 10 分钟
+export const STATE_TTL_SECONDS = 10 * 60;
+const STATE_TTL_MS = STATE_TTL_SECONDS * 1000;
 
 interface StateEntry {
   nonce: string;

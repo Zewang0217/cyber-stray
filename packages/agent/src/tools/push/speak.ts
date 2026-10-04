@@ -8,6 +8,7 @@ import { sendFeishuMessage } from './lark-sender.js';
 import { registerSpeakTopics } from '../../memory/feedback-pipeline.js';
 import { buildSpeakRecord, type SpeakRecord, type SpeakRecordMeta } from './history-record.js';
 import type { Mood } from '../../types.js';
+import { randomUUID } from 'node:crypto';
 
 const logger = consola.withTag('speak');
 
@@ -22,6 +23,7 @@ export interface SpeakInput {
 
 /** speak 工具返回值 */
 export interface SpeakResult {
+  contentId?: string;
   success: boolean;
   /**
    * 是否经 agent 直连渠道（飞书/Telegram）投递。租户（SaaS）模式下直连渠道
@@ -44,16 +46,11 @@ export interface SpeakResult {
  * 追加到推送历史记录文件
  */
 async function appendSpeakHistory(record: SpeakRecord): Promise<void> {
-  try {
-    const historyDir = getDataPath('history');
-    await mkdir(historyDir, { recursive: true });
-const filename = join(historyDir, todaySpeaksFile());
-    const line = JSON.stringify(record) + '\n';
-    await appendFile(filename, line, 'utf-8');
-  } catch (error) {
-    // 日志记录失败不影响主流程
-    logger.warn('记录推送历史失败', { error });
-  }
+  // 这是 Web Push 交付及反馈归因的真相源，不能当作可丢弃日志。
+  const historyDir = getDataPath('history');
+  await mkdir(historyDir, { recursive: true });
+  const filename = join(historyDir, todaySpeaksFile());
+  await appendFile(filename, JSON.stringify(record) + '\n', 'utf-8');
 }
 
 /**
@@ -137,6 +134,7 @@ export async function speak(
   } = {},
 ): Promise<SpeakResult> {
   const timestamp = new Date().toISOString();
+  const contentId = randomUUID();
 
   logger.info('speak 调用', { type, contentLength: content.length });
 
@@ -177,11 +175,13 @@ export async function speak(
     await appendSpeakHistory(
       buildSpeakRecord(content, type, false, timestamp, {
         ...meta,
+        contentId,
         planLimited: true,
       }),
     );
     return {
       success: true,
+      contentId,
       pushed: false,
       timestamp,
     };
@@ -189,6 +189,7 @@ export async function speak(
 
   let pushed = false;
   let messageId: string | undefined;
+  const channelMessageIds: NonNullable<SpeakRecord['channelMessageIds']> = {};
   const pushErrors: string[] = [];
 
   // 推送到飞书（根据配置选择方式）
@@ -197,6 +198,7 @@ export async function speak(
     if (cfg.larkAppId && cfg.larkAppSecret) {
       try {
         messageId = await sendFeishuMessage(content);
+        channelMessageIds.feishu = messageId;
         pushed = true;
         logger.success('飞书（LarkChannel）推送成功', { messageId });
       } catch (error) {
@@ -211,6 +213,7 @@ export async function speak(
     // Webhook 方式
     try {
       messageId = await sendFeishuMessage(content);
+      channelMessageIds.feishu = messageId;
       pushed = true;
       logger.success('飞书（Webhook）推送成功', { messageId });
     } catch (error) {
@@ -224,6 +227,7 @@ export async function speak(
   if (cfg.telegramBotToken && cfg.telegramChatId) {
     try {
       const tgMessageId = await pushToTelegram(content);
+      channelMessageIds.telegram = tgMessageId;
       pushed = true;
       // 飞书未回 ID 或未配置飞书时，用 Telegram message_id 做反馈归因
       if (!messageId) messageId = tgMessageId || undefined;
@@ -251,6 +255,8 @@ export async function speak(
   // 记录到历史文件
   await appendSpeakHistory(
     buildSpeakRecord(content, type, pushed, timestamp, {
+      contentId,
+      channelMessageIds,
       messageId,
       mood: meta.mood,
       gateScore: meta.gateScore,
@@ -263,11 +269,15 @@ export async function speak(
   // Phase 3: 注册消息-兴趣映射，供后续反馈强化。
   // 用门控算出的实际命中话题，而非图谱 Top N——后者与内容无关，会导致每次
   // 反馈等量强化所有节点，权重占比恒定不变，兴趣图谱永远无法分化。
-  if (pushed && messageId && meta.matchedTopics?.length) {
-    registerSpeakTopics(messageId, meta.matchedTopics);
+  if (meta.matchedTopics?.length) {
+    registerSpeakTopics(contentId, meta.matchedTopics);
+    for (const id of Object.values(channelMessageIds)) {
+      registerSpeakTopics(id, meta.matchedTopics);
+    }
   }
 
   const result: SpeakResult = {
+    contentId,
     success: true,
     pushed,
     timestamp,

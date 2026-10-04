@@ -6,6 +6,7 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
+import { parsePublicHttpUrl } from '@cyber-stray/shared/outbound';
 import { consola } from '../../../logger.js';
 import { pushWanderStep, type ToolContext } from '../../registry/context.js';
 import type { ToolDefinition } from '../../tool-manager.js';
@@ -31,6 +32,15 @@ export const browsePageToolDef: ToolDefinition = {
       }),
       execute: async ({ url }) => {
         ctx.stepCount++;
+        try {
+          parsePublicHttpUrl(url);
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          pushWanderStep(ctx, {
+            timestamp: new Date().toISOString(), tool: 'browse_page', thought: `拒绝页面地址: ${reason}`,
+          });
+          return { error: reason };
+        }
         const executor = getBrowserExecutor();
 
         // 1. 导航到目标 URL

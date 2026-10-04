@@ -28,6 +28,7 @@ describe('diary runner（#92）', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     _resetDb();
     rmSync(dataDir, { recursive: true, force: true });
   });
@@ -57,6 +58,13 @@ describe('diary runner（#92）', () => {
   function makeRunner(spawnFn: DiarySpawnLike) {
     return createDiaryRunner({ dataDir, timeoutMs: 30_000, spawnFn });
   }
+
+  it('未知 LLM 单价在日记 spawn 前阻断', async () => {
+    vi.stubEnv('LLM_MODEL', 'unknown-llm');
+    const spawn = vi.fn(fakeSpawn());
+    await expect(makeRunner(spawn)(makeJob())).rejects.toThrow('未知模型单价');
+    expect(spawn).not.toHaveBeenCalled();
+  });
 
   it('拉起 diary-cli：args 含 tenant/data-dir/pet-name/date/personality/diary-style，push 透传', async () => {
     const result = await makeRunner(fakeSpawn(0))(makeJob());

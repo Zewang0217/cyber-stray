@@ -35,10 +35,15 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Check deployment guard
+        run: python3 -B -m unittest discover -s deploy -p 'test_*.py'
+
       - name: Lint
         run: pnpm lint
 
       - name: Build web & site
+        env:
+          NEXT_PUBLIC_APP_URL: https://app.kleinbottle.top
         run: |
           pnpm -F @cyber-stray/web build
           pnpm -F @cyber-stray/site build

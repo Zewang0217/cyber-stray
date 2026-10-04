@@ -22,12 +22,10 @@ export interface ModelConfig {
 const KEY_IMAGE = 'imageModel';
 const KEY_VISION = 'visionModel';
 
-/** admin 面板下拉候选（建议值；允许自定义 ID——用户可能用自建接入点） */
+/** admin 面板推荐模型；新增 ID 必须先在 shared/pricing 登记成本。 */
 export const MODEL_CANDIDATES: Record<'image' | 'vision', string[]> = {
   image: [
     'doubao-seedream-5-0-260128',
-    'doubao-seedream-4-5-251128',
-    'doubao-seedream-4-0-250828',
   ],
   vision: ['ecnu-plus', 'glm-4.5v', 'glm-4v-flash'],
 };

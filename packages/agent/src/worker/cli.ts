@@ -4,7 +4,7 @@
  * 用法：
  *   tsx src/worker/cli.ts --tenant <id> --data-dir <dir> --pet-state <JSON> [--secrets-file <path>]
  *
- * 退出码：0 = 游荡完成；1 = 游荡失败；2 = 参数错误。
+ * 退出码：0 = 全部完成；1 = 游荡失败；2 = 参数错误；3 = 记账故障；4 = 游荡完成但反思失败。
  * 输出：stdout 一行 JSON（{ ok, tenantId, result }）；失败时 stderr 一行 JSON。
  *
  * per-tenant secrets 二选一：
@@ -14,7 +14,9 @@
 
 import { readFileSync } from 'fs';
 import { initLogger } from '../logger.js';
-import { runOneWander } from './run-one-wander.js';
+import { runOneWander, WanderReflectionError } from './run-one-wander.js';
+import { UsageAccountingError } from '../usage/usage.js';
+import { REFLECTION_FAILURE_EXIT_CODE, USAGE_ACCOUNTING_FAILURE_EXIT_CODE } from '@cyber-stray/shared/worker';
 import { isPersonalityId, parseCatchphraseList, type Catchphrase, type PersonalityId } from '@cyber-stray/shared';
 import { parsePetStats, type PetStats } from '@cyber-stray/shared/pet-stats';
 import type { AgentSecrets, PlanExecutionArgs } from '../types.js';
@@ -124,9 +126,14 @@ export function parsePetStateArg(raw: string | undefined): PetStats | null {
 if (process.argv[1]?.endsWith('worker/cli.ts')) {
   main().catch((error: unknown) => {
     const tenantId = parseArg('tenant');
+    if (error instanceof WanderReflectionError) {
+      console.log(JSON.stringify({ ok: false, tenantId, result: error.result, reflectionError: error.message }));
+      process.exit(error.cause instanceof UsageAccountingError
+        ? USAGE_ACCOUNTING_FAILURE_EXIT_CODE : REFLECTION_FAILURE_EXIT_CODE);
+    }
     console.error(
       JSON.stringify({ ok: false, tenantId, error: error instanceof Error ? error.message : String(error) }),
     );
-    process.exit(1);
+    process.exit(error instanceof UsageAccountingError ? USAGE_ACCOUNTING_FAILURE_EXIT_CODE : 1);
   });
 }

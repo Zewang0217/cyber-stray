@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { EffectiveEntitlements } from "@cyber-stray/shared/plan";
 
-export interface UserRow {
+export interface UserRow extends EffectiveEntitlements {
   tenantId: string;
   tenantName: string;
-  plan: "free" | "pro" | "byok";
   createdAt: number;
   petId: string | null;
   petName: string | null;

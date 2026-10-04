@@ -9,6 +9,7 @@ import { getDataPath, config } from '../config.js';
 import { WanderAgent } from '../core/wander-agent.js';
 import type { WanderStep } from '../types.js';
 import { useTempDataDir, makeState } from '../test/helpers.js';
+import { getInterestGraph, _resetInterestGraphCache } from '../memory/interest-graph.js';
 
 describe('agent/state', () => {
   let cleanup: () => void;
@@ -28,6 +29,17 @@ describe('agent/state', () => {
     expect(state.mood).toBe('curious');
     expect(state.consecutiveFailures).toBe(0);
     expect(state.totalWanders).toBe(0);
+  });
+
+  test('首次状态创建也加载领养兴趣，新的 worker 能立即使用', async () => {
+    const graph = getInterestGraph();
+    graph.addInterest('量子计算', 0.7);
+    await graph.persist();
+    _resetInterestGraphCache();
+
+    const state = await loadState();
+    expect(state.agentInterests).toEqual(['量子计算']);
+    expect(getInterestGraph().getTopInterests(3)).toEqual(['量子计算']);
   });
 
   test('save→load 往返一致', async () => {

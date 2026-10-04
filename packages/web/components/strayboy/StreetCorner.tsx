@@ -80,6 +80,16 @@ export function StreetCorner({ contract, demo = false }: { contract: SpriteContr
   if (!livePets.isLoaded) {
     return <div className="sb p-6 text-center text-[13px] text-[var(--curb)]">开机自检中……</div>;
   }
+  if (livePets.loadError && !livePets.pets[0]) {
+    return (
+      <div role="alert" className="m-4 border-2 border-[var(--bad)] bg-[var(--panel)] p-5 text-[var(--paper)]">
+        <p className="mb-2 text-[15px]">暂时没有接通你的街区</p>
+        <p className="mb-4 text-[13px]">{livePets.loadError}</p>
+        <button type="button" onClick={() => void livePets.refresh()}
+          className="border-2 border-[var(--act)] px-4 py-2 text-[14px]">重新连接</button>
+      </div>
+    );
+  }
   if (adoptedGate || !livePets.pets[0]) {
     return (
       <AdoptionRitual

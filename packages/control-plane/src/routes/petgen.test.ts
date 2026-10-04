@@ -42,6 +42,7 @@ describe('petgen 路由（#94）', () => {
       dataDir,
       sessionSecret: SECRET,
       petGenMonthlyQuota: 2,
+      productMode: 'paid',
     } as Parameters<typeof createPetGenRoutes>[0]['config'];
     app.route('/api/petgen', createPetGenRoutes({ config }));
   });
@@ -87,6 +88,16 @@ describe('petgen 路由（#94）', () => {
     const quota = await app.request(await authed('http://x/api/petgen/quota'));
     const quotaBody = (await quota.json()) as { data: { available: boolean } };
     expect(quotaBody.data.available).toBe(false);
+  });
+
+  it('邀请内测存量 free 可以定制宠物，保留原 Pro 月度配额', async () => {
+    const beta = new Hono().route('/api/petgen', createPetGenRoutes({
+      config: { dataDir, sessionSecret: SECRET, petGenMonthlyQuota: 2, productMode: 'invite_beta' },
+    }));
+    const res = await beta.request(await authed('http://x/api/petgen/tasks', { method: 'POST', body: JSON.stringify(SPEC) }));
+    expect(res.status).toBe(201);
+    const quota = await beta.request(await authed('http://x/api/petgen/quota'));
+    expect((await quota.json()).data).toMatchObject({ available: true });
   });
 
   it('Pro 提交 → 201 + 任务行（spec_submitted）；配额剩余展示', async () => {

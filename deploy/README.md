@@ -15,7 +15,9 @@ GitHub Actions 完成，生产机只拉镜像、跑容器。
 | `container-update.sh` | 生产机更新：拉镜像 → 起容器 → 同步 casdoor 配置 → 健康门 → 镜像清理 |
 | `casdoor/app.conf` | Casdoor 服务配置；`container-update.sh` 比对内容，有变化才覆盖到 `/opt/cyber-stray/casdoor/conf/` 并重启 |
 | `backup.sh` / `restore.sh` | 备份 / 恢复 |
-| `nginx/cyber-stray.conf` | nginx ingress 路由（阶段一 HTTP-only；域名备案后切 443，见 ADR-0015） |
+| `nginx/cyber-stray.conf` | 生产 HTTPS ingress：HTTP 跳转、apex 官网、app 伴侣端、auth 登录 |
+| `check-production.py` | 更新前只读检查 HTTPS 配置、证书域名/信任链/有效期/密钥匹配与出站代理限制 |
+| `compose.bootstrap.yaml` / `nginx-bootstrap.conf` | 首次签证书的独立 ACME 入口，不启动应用和数据库 |
 
 Casdoor 的密钥类内容不入库：OIDC 应用（client id/secret）在 Casdoor 管理界面
 创建后写入 `/opt/cyber-stray/.env`；`conf/init_data.json`（首启种子，含
@@ -46,9 +48,28 @@ clientSecret）仅在重建全新环境时手工放置。
 
 nginx 容器是唯一对外入口：`app.kleinbottle.top` → web、`auth.` → casdoor、
 apex → site，经 Cloudflare 橙云（SSL 模式 Full (strict)）。主机 nginx 改听
-:8081 只保留无关面板路由。**当前冻结在阶段一（HTTP + 公网 IP 直达）**：京东云
-拦截未备案域名的 :80/:443，证书签发与 issuer/origin 切换、casdoor 端口收口
-待备案通过后按 ADR-0015 冻结点清单同窗口执行。
+:8081 只保留无关面板路由。**仓库已准备阶段二配置，本次未执行线上切换**。
+ADR-0015 记录的备案前置条件仍有效；未准备好时 `check-production.py` 会在
+复制生效配置、拉镜像和重建容器之前拒绝发布。不要绕过预检将单个配置先行上线。
+
+备案通过后，在同一维护窗口完成：
+
+1. 准备包含 `kleinbottle.top`、`app.kleinbottle.top`、`auth.kleinbottle.top` 的证书，路径为 `/etc/letsencrypt/live/kleinbottle.top/`。首次空环境可使用 `docker compose -f compose.bootstrap.yaml up -d` 提供 HTTP-01；已有 ingress 提供的 ACME webroot 可继续使用，不要争用 80 端口。
+2. 使用 certbot webroot `/opt/cyber-stray/acme-webroot` 签发并验证证书，配置续期后 `docker compose exec -T nginx nginx -s reload` 的 deploy-hook。bootstrap 入口仅提供验证，其余请求返回 503；签发后关闭它再启动正式 ingress。
+3. 将生产 `.env` 的 `CP_WEB_ORIGIN` 设为 `https://app.kleinbottle.top`，`CASDOOR_ISSUER` 设为 `https://auth.kleinbottle.top`，`CASDOOR_REDIRECT_URI` 设为 `https://app.kleinbottle.top/api/auth/callback`。
+4. 在 Casdoor 管理界面同步应用 redirectUris。此动作涉及现有 IdP 数据，本次没有执行；必须与域名切换共同安排。
+5. GitHub 仓库变量 `APP_URL` 配置为 `https://app.kleinbottle.top`。确认 `python3 check-production.py` 通过后再发布，脚本同步 Casdoor prod/origin、收回 8000 到 loopback、启用 TLS 和官网路由。
+6. 验证真实浏览器登录、邀请领养、PWA 和 Web Push。脚本的 HTTPS 健康门只验证端点、证书和可达性，不能代替完整 OIDC 登录演练。
+
+预检需要 Python 3 和 OpenSSL，只读取配置与证书，不连接或修改数据库。
+
+## 内测权益与成本故障处理
+
+`CP_PRODUCT_MODE=invite_beta` 是当前模式；新老受邀账号都按有效 Pro 权益运行，无需批量改数据库。平台日预算使用 `CP_LLM_BUDGET_PRO_YUAN`，不是向用户收费。`paid` 模式尚未接入支付，启动会明确拒绝。模型价格的单一真相源为 `packages/shared/src/pricing.ts`；未知价格在调用提供方前拒绝。
+
+记账失败或发现账本损坏后，租户根目录会写入 `usage-accounting-block.json`，调度暂停宠物，候选与形象生成也停止后续付费调用。运维先核对提供方实际用量与 `usage/` 账本，修复缺失或损坏记录后，才可清理故障标记、重启 CP 并恢复宠物。不要仅恢复宠物状态或清标记来掩盖未知费用；本次未操作任何现有账本。
+
+SaaS 外部浏览器 CLI 暂停开放，搜索及安全网页阅读保持可用。Bun 不得带非空的 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`（大小写不限）启动；它会缓存代理配置，无法保证出站连接使用已验证的目标 IP。`NO_PROXY` 不豁免这项限制，预检会拒绝有代理的生产 `.env`，不显示代理凭据。需要代理的环境须先实现可验证的网络隔离再开放。
 
 ## 发布 / 回滚
 
@@ -56,8 +77,8 @@ apex → site，经 Cloudflare 橙云（SSL 模式 Full (strict)）。主机 ngi
   （tag = commit sha）→ 同步本目录到生产机 → `container-update.sh`。
 - 回滚：把 `compose.yaml` 的 `IMAGE_TAG:-sha` 占位改成旧 sha，合并 main 重发；
   流水线检测到非占位 tag 时跳过构建、只拉取部署。
-- 部署成功判定：容器 healthcheck 全绿 + 控制面 `/healthz`、web、Casdoor OIDC
-  discovery 三个端点可达；任一不健康则部署失败并保留现场。
+- 部署成功判定：容器 healthcheck 全绿 + 内部服务和三个域名的 HTTPS 端点可达；
+  任一不健康则部署失败并保留现场。
 
 ## 备份 / 恢复
 
@@ -79,8 +100,7 @@ sudo /opt/cyber-stray/deploy/restore.sh /backup/cyber-stray/cyber-stray-<时间�
 
 ## 已知边界
 
-- PWA / Web Push 需要 HTTPS 安全上下文：待域名备案后由 nginx ingress 终结 TLS
-  （ADR-0015 阶段二），`CASDOOR_REDIRECT_URI` / `CP_WEB_ORIGIN` 同窗口切 https 域名。
+- PWA / Web Push 需要 HTTPS 安全上下文；实际环境完成上述阶段二切换后才能验收。
 - `CASDOOR_ISSUER` 必须是浏览器可直达的对外地址：authorize 端点由浏览器访问，
   控制面容器内的 discovery 请求经 nginx ingress 转发，均不能用容器内网地址。
 - 单实例：调度器 / 推送网关内嵌控制面进程，多实例前需 DB 级租约。
@@ -89,7 +109,6 @@ sudo /opt/cyber-stray/deploy/restore.sh /backup/cyber-stray/cyber-stray-<时间�
 - Casdoor 默认 signupItems 含邮箱验证：未配 SMTP 时注册无法完成，生产配 SMTP
   或调整 signupItems。
 - `CP_ORIGIN` 构建期注入 web 镜像（默认 compose 网络内 `http://control-plane:8787`）。
-- site 对外路由：官网容器**不占宿主机端口**（ingress nginx 走 compose
-  内网反代；曾与宿主机其他项目的 3001 占用冲突）；site 发布时把
-  `nginx/cyber-stray.conf` 的 apex 块 404 占位换成 `proxy_pass http://site`。
+- site 对外路由：官网容器**不占宿主机端口**，ingress nginx 通过 compose
+  内网反代到 site:80，apex 已连接官网。
   官网 CTA 构建期烘焙，改 `vars.APP_URL` 后需重发一次才生效。

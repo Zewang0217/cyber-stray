@@ -27,7 +27,7 @@ export default function CustomizePage() {
       <div className="mx-auto max-w-2xl">
         <h1 className="font-ps2p mb-1 text-xs text-[var(--hi)]">CUSTOMIZE · 改造屋</h1>
         <p className="mb-5 text-[13px] leading-[1.7] text-[var(--curb)]">
-          Pro/BYOK 专属：描述你的专属街溜子，全自动生成完整像素素材。
+          描述你的专属街溜子，生成完整像素素材。受邀内测用户均可使用，生成次数以当前额度为准。
           {quota ? `本月配额 ${quota.used}/${quota.limit} 套。` : ""}
         </p>
 
@@ -73,7 +73,7 @@ export default function CustomizePage() {
                   ? "配额加载中……"
                   : quota.available
                     ? `剩余 ${quota.remaining}/${quota.limit} 套`
-                    : "当前套餐无自助生成入口（免费档用平台预置 IP）"}
+                    : "当前账号暂不支持自助生成，可使用平台预置形象"}
               </span>
               <button
                 type="submit"

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Catchphrase, PersonalityId } from "@cyber-stray/shared";
+import type { PlanValue } from "@cyber-stray/shared/plan";
 import type { ApiResponse } from "@/lib/types";
 
 /** 控制面 pets 行（编排状态；详细字段见 control-plane/src/db/schema.ts） */
@@ -14,7 +15,7 @@ export interface Pet {
   cooldownUntil: number | null;
   boredom: number;
   energy: number;
-  plan: "free" | "pro" | "byok";
+  plan: PlanValue;
   /** 性格（#90：认领时选择；好奇=默认基准） */
   personality: PersonalityId;
   /** 口头禅集合（#114；GET 映射后始终为数组——NULL 列服务端已转性格默认组） */
@@ -35,6 +36,8 @@ interface UsePetsReturn {
   pets: Pet[];
   /** 是否已加载完成（区分"还没加载"与"确实没有宠物"） */
   isLoaded: boolean;
+  /** 列表读取失败与领养/设置失败分开，避免把请求失败当成没有宠物。 */
+  loadError: string | null;
   error: string | null;
   /** 领养（服务端校验；409 = 已有宠物会刷新列表） */
   adopt: (input: {
@@ -67,21 +70,27 @@ export function usePets(options: { enabled?: boolean } = {}): UsePetsReturn {
   const { enabled = true } = options;
   const [pets, setPets] = useState<Pet[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adopting, setAdopting] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!enabled) return;
+    setIsLoaded(false);
     try {
       const res = await fetch("/api/pets");
       const json = (await res.json()) as ApiResponse<Pet[]>;
-      if (!json.success) {
+      if (!res.ok || !json.success) {
         throw new Error(json.error ?? "获取宠物失败");
       }
-      setPets(json.data ?? []);
+      if (!Array.isArray(json.data)) throw new Error("宠物列表响应格式错误");
+      setPets(json.data);
+      setLoadError(null);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "未知错误");
+      const message = err instanceof Error ? err.message : "获取宠物失败";
+      setLoadError(message);
+      setError(message);
     } finally {
       setIsLoaded(true);
     }
@@ -192,6 +201,7 @@ export function usePets(options: { enabled?: boolean } = {}): UsePetsReturn {
   return {
     pets,
     isLoaded,
+    loadError,
     error,
     adopt,
     adopting,

@@ -1,6 +1,8 @@
 import { fileURLToPath } from 'url';
 
 import { resolveVisionBaseUrl } from './petgen/vision.js';
+import { parseProductMode } from './plan/entitlements.js';
+import type { ProductMode } from '@cyber-stray/shared/plan';
 
 /**
  * 控制面配置 — 来自环境变量；secrets 密文不落明文。
@@ -10,6 +12,8 @@ import { resolveVisionBaseUrl } from './petgen/vision.js';
 
 /** 控制面运行配置 */
 export interface ControlPlaneConfig {
+  /** Invite beta grants all tenants Pro benefits; paid is reserved, never implicitly enabled. */
+  productMode?: ProductMode;
   /** HTTP 端口（默认 8787） */
   port: number;
   /** Casdoor issuer（OIDC discovery 根） */
@@ -111,6 +115,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     }
   }
   return {
+    productMode: parseProductMode(env.CP_PRODUCT_MODE),
     port: Number(env.CP_PORT ?? 8787),
     casdoorIssuer: env.CASDOOR_ISSUER ?? 'http://localhost:8000',
     casdoorClientId: env.CASDOOR_CLIENT_ID ?? '',

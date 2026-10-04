@@ -25,6 +25,7 @@ export interface AdminDeps {
   config: Pick<
     ControlPlaneConfig,
     | 'dataDir'
+    | 'productMode'
     | 'sessionSecret'
     | 'adminSubs'
     | 'arkImageModel'
@@ -248,7 +249,9 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
       imageModel: typeof body.imageModel === 'string' ? body.imageModel : undefined,
       visionModel: typeof body.visionModel === 'string' ? body.visionModel : undefined,
     });
-    return c.json({ success: true, data: saved });
+    return saved.ok
+      ? c.json({ success: true, data: saved.data })
+      : c.json(jsonError(saved.error), saved.status);
   });
 
   return app;

@@ -20,7 +20,7 @@ import { isWellFormedStatsUpdate, type StatsUpdate } from '../domain/pet-stats-g
 import { realSpawn, runFeedbackCli, type CliSpawn } from '../infra/agent-cli-client.js';
 import * as petsRepo from '../infra/pets-repo.js';
 import { findTenantPlan } from '../infra/tenant-access.js';
-import { planLimits } from '../plan/limits.js';
+import { resolveEntitlements } from '../plan/entitlements.js';
 import { tenantDataDir } from '../infra/tenant.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -37,7 +37,7 @@ interface WorkerResult {
 }
 
 export interface FeedbackServiceDeps {
-  config: Pick<ControlPlaneConfig, 'dataDir'>;
+  config: Pick<ControlPlaneConfig, 'dataDir' | 'productMode'>;
   /** 注入式 spawn（测试用）；缺省真实 spawn */
   spawnFn?: CliSpawn;
 }
@@ -137,13 +137,13 @@ export function createFeedbackService({ config, spawnFn = realSpawn }: FeedbackS
     const pet = await petsRepo.findPetByTenant(db, tenantId);
     if (!pet) return { ok: false, status: 409, error: '尚未领养宠物' };
 
-    const plan = (await findTenantPlan(config.dataDir, tenantId)) ?? 'free';
+    const { limits } = resolveEntitlements(await findTenantPlan(config.dataDir, tenantId), config.productMode);
     const statsArgs = petStatsArgs(pet);
     if (!statsArgs) {
       return { ok: false, status: 409, error: '宠物数值未迁移，先执行 migrate:pet-stats' };
     }
 
-    const intervalMs = planLimits(plan).boostIntervalMs;
+    const intervalMs = limits.boostIntervalMs;
     const claimed = await petsRepo.claimBoostQuota(db, tenantId, intervalMs, Date.now());
     if (!claimed) {
       return {

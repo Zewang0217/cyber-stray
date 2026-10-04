@@ -17,7 +17,7 @@ import { requireTenant, type TenantEnv } from '../auth/require-tenant.js';
 import { createPlanService } from '../services/plan-service.js';
 
 export interface PlanDeps {
-  config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret' | 'adminSubs'>;
+  config: Pick<ControlPlaneConfig, 'dataDir' | 'productMode' | 'sessionSecret' | 'adminSubs'>;
 }
 
 const jsonError = (message: string) => ({ success: false, error: message });

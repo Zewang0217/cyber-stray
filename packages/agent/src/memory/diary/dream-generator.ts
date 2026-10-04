@@ -24,7 +24,7 @@ import { sanitizeForLLM } from '../../utils/text-sanitize.js';
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
 import { getDataRoot } from '../../config.js';
-import { recordUsage, modelIdOf } from '../../usage/usage.js';
+import { assertUsageReady, recordUsage, modelIdOf } from '../../usage/usage.js';
 import { getDataPath } from '../../config.js';
 import type { PersonalityProfile } from '@cyber-stray/shared';
 import type { DiaryData } from './diary-generator.js';
@@ -117,8 +117,9 @@ export async function generateDreamNarrative(
   model: Parameters<typeof generateText>[0]['model'],
   temperature: number,
 ): Promise<string> {
+  assertUsageReady(getDataRoot(), modelIdOf(model), 'llm');
   const result = await generateText({ model, temperature, prompt: sanitizeForLLM(prompt) });
-  // #129：用量记录（no-throw）
+  // 付费调用完成后记账；故障上抛，由 CP 停止后续派发。
   await recordUsage(getDataRoot(), {
     kind: 'llm',
     model: modelIdOf(model),

@@ -52,12 +52,19 @@ function getExecute(ctx: ToolContext) {
 
 describe('browse_act', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it('metadata: category 为 browser', () => {
     expect(browseActToolDef.metadata.name).toBe('browse_act');
     expect(browseActToolDef.metadata.category).toBe('browser');
+  });
+
+  it('新标签页拒绝 file URL 且不启动浏览器命令', async () => {
+    mockExecute.mockResolvedValueOnce(ok({}));
+    const result = await getExecute(makeCtx())({ action: 'tab_new', url: 'file:///etc/passwd' }, {});
+    expect(result.error).toBeTruthy();
+    expect(mockExecute).not.toHaveBeenCalled();
   });
 
   describe('action → CLI 命令映射', () => {
