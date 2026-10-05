@@ -13,6 +13,7 @@ import { Hono } from 'hono';
 import type { ControlPlaneConfig } from '../config.js';
 import { requireTenant, type TenantEnv } from '../auth/require-tenant.js';
 import { createChannelsService } from '../services/channels-service.js';
+import { parseFeishuWebhook } from '@cyber-stray/shared/outbound';
 
 export interface ChannelsDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
@@ -38,8 +39,13 @@ export function createChannelsRoutes({ config }: ChannelsDeps): Hono<TenantEnv> 
       return c.json({ success: false, error: '请求体须为 JSON' }, 400);
     }
     const webhook = body.webhook;
-    if (typeof webhook !== 'string' || !/^https:\/\//.test(webhook)) {
-      return c.json({ success: false, error: 'webhook 须为 https URL' }, 400);
+    if (typeof webhook !== 'string') {
+      return c.json({ success: false, error: 'webhook 须为飞书或 Lark 官方 HTTPS 群机器人地址' }, 400);
+    }
+    try {
+      parseFeishuWebhook(webhook);
+    } catch {
+      return c.json({ success: false, error: 'webhook 须为飞书或 Lark 官方 HTTPS 群机器人地址' }, 400);
     }
 
     return c.json({ success: true, data: await service.bindFeishu(c.get('tenantId'), webhook) });

@@ -29,7 +29,7 @@ import { join } from 'path';
 
 function mockGenerateText(
   impl: (opts: {
-    onStepFinish?: (event: { stepNumber: number; usage?: Record<string, number> }) => void;
+    onStepFinish?: (event: { stepNumber: number; usage?: Record<string, number> }) => Promise<void>;
   }) => Promise<void>,
 ): void {
   (generateText as ReturnType<typeof vi.fn>).mockImplementation(impl);
@@ -67,7 +67,7 @@ describe('WanderAgent.wander (loop + post-processing)', () => {
   test('D-11 按步计数：mock generateText 触发多个 onStepFinish 后 getLLMStats().calls > 1', async () => {
     mockGenerateText(async (opts) => {
       for (let i = 0; i < 3; i++) {
-        opts.onStepFinish?.({
+        await opts.onStepFinish?.({
           stepNumber: i,
           usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
         });
@@ -88,7 +88,7 @@ describe('WanderAgent.wander (loop + post-processing)', () => {
     vi.spyOn(Date, 'now').mockImplementation(() => { now += 5; return now; });
 
     mockGenerateText(async (opts) => {
-      opts.onStepFinish?.({
+      await opts.onStepFinish?.({
         stepNumber: 0,
         usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
       });
@@ -132,13 +132,11 @@ describe('WanderAgent.wander (loop + post-processing)', () => {
     expect(updated.totalWanders).toBe(startState.totalWanders);
   });
 
-  test('Pitfall 1 自愈：onStepFinish 回调内 usage=undefined → 主流程不中断', async () => {
+  test('供应商缺少 usage 时明确停止，不能静默遗漏成本', async () => {
     mockGenerateText(async (opts) => {
-      opts.onStepFinish?.({ stepNumber: 0, usage: undefined });
+      await opts.onStepFinish?.({ stepNumber: 0, usage: undefined });
     });
 
-    const result = await agent.wander(makeState());
-    expect(result).toBeDefined();
-    expect(result.endReason).not.toBe('error');
+    await expect(agent.wander(makeState())).rejects.toThrow('用量记账失败');
   });
 });

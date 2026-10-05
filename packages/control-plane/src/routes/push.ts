@@ -12,6 +12,7 @@ import { Hono } from 'hono';
 import type { ControlPlaneConfig } from '../config.js';
 import { requireTenant, type TenantEnv } from '../auth/require-tenant.js';
 import { createPushService } from '../services/push-service.js';
+import { parsePushEndpoint } from '@cyber-stray/shared/outbound';
 
 export interface PushDeps {
   config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
@@ -31,8 +32,11 @@ function parseSubscribeBody(
 ): { endpoint: string; p256dh: string; auth: string } | { invalid: string } {
   const endpoint = body.endpoint;
   const keys = body.keys;
-  if (typeof endpoint !== 'string' || !/^https?:\/\//.test(endpoint)) {
+  if (typeof endpoint !== 'string') {
     return { invalid: 'endpoint 须为合法 URL' };
+  }
+  try { parsePushEndpoint(endpoint); } catch {
+    return { invalid: 'endpoint 须为不含凭据的公开 HTTPS URL' };
   }
   if (
     !keys ||

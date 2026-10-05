@@ -12,6 +12,7 @@ import { readFile } from 'fs/promises';
 import { extname } from 'path';
 import type { VisionQc, VisionQcRequest } from './types.js';
 import { buildAnimQcPrompt, buildQcPrompt } from './prompt.js';
+import { requireModelPrice } from '../domain/pricing.js';
 
 export const DEFAULT_VISION_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4';
 
@@ -96,6 +97,7 @@ export function createVisionQc(apiKey: string, opts: VisionOptions): VisionQc {
         imageToDataUrl(req.statePath),
       ]);
       const model = typeof opts.model === 'function' ? opts.model() : opts.model;
+      requireModelPrice(model, 'vision_qc');
       const res = await fetchFn(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -127,6 +129,8 @@ export function createVisionQc(apiKey: string, opts: VisionOptions): VisionQc {
       if (!res.ok) {
         throw new Error(`质检调用失败: HTTP ${res.status} ${await res.text()}`);
       }
+      // 输出格式错误也已发生用量；记录请求时捕获的模型，禁止事后再读热配置。
+      await req.onUsage?.(model);
       const body = (await res.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
       };

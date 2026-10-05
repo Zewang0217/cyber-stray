@@ -13,6 +13,7 @@ import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { and, eq, isNull, desc } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { invites } from '../db/schema.js';
+import { INVITE_TOKEN_BYTES, isInviteToken } from '@cyber-stray/shared/invite';
 
 export interface InviteCreated {
   id: string;
@@ -35,7 +36,7 @@ export interface InvitePublic {
 
 /** 128bit 随机 token（hex）；链接形态 `?invite=<token>` */
 export function generateInviteToken(): string {
-  return randomBytes(16).toString('hex');
+  return randomBytes(INVITE_TOKEN_BYTES).toString('hex');
 }
 
 export function hashInviteToken(token: string): string {
@@ -81,6 +82,7 @@ export async function revokeInvite(dataDir: string, id: string): Promise<boolean
 
 /** 校验（不消费）：存在且未吊销未消费 = 有效；否则 null（无行 undefined 归一为 null） */
 export async function validateInvite(dataDir: string, token: string) {
+  if (!isInviteToken(token)) return null;
   const db = await getDb(dataDir);
   const row = await db
     .select()

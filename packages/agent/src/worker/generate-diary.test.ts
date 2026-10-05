@@ -23,7 +23,7 @@ vi.mock('ai', () => ({
 
 vi.mock('@ai-sdk/deepseek', () => ({
   createDeepSeek: vi.fn(() => ({
-    chat: vi.fn(() => ({ modelId: 'mock-model' })),
+    chat: vi.fn(() => ({ modelId: 'deepseek-chat' })),
   })),
 }));
 
@@ -35,7 +35,7 @@ function mockNarrative(text: string): { prompts: string[] } {
   const prompts: string[] = [];
   (generateText as ReturnType<typeof vi.fn>).mockImplementation(async (opts: { prompt?: string }) => {
     prompts.push(opts.prompt ?? '');
-    return { text };
+    return { text, usage: { inputTokens: 10, outputTokens: 2 } };
   });
   return { prompts };
 }
@@ -51,7 +51,7 @@ function mockNarratives(texts: string[]): { texts: string[]; prompts: string[] }
     prompts.push(opts.prompt ?? '');
     const text = texts[returned.length] ?? '';
     returned.push(text);
-    return { text };
+    return { text, usage: { inputTokens: 10, outputTokens: 2 } };
   });
   return { texts: returned, prompts };
 }

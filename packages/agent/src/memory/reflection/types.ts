@@ -106,6 +106,8 @@ export const DEFAULT_REFLECTION_CONFIG: ReflectionConfig = {
 // ============================================
 
 export interface SchedulerState {
+  /** 已触发但尚未完成；新 worker 先恢复这一阶段，不重复已完成的游荡。 */
+  pendingReflection?: boolean;
   /** 累计游荡次数（模 wanderInterval 用） */
   wanderCount: number;
   /** 上次反思时间 */

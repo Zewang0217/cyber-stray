@@ -9,6 +9,7 @@
 import { SPEAK_TYPE_LABELS, type SpeakRecord, type SpeakType } from '@cyber-stray/shared/push';
 import type { Mood } from '../../types.js';
 import { extractUrl } from '../dedup/url-tracker.js';
+import { randomUUID } from 'node:crypto';
 
 /** 标题最大字符数（按字符而非字节，中文场景下与显示宽度一致） */
 const TITLE_MAX_CHARS = 40;
@@ -21,6 +22,8 @@ export type { SpeakRecord };
 
 /** 构建记录时的附加信息 */
 export interface SpeakRecordMeta {
+  contentId?: string;
+  channelMessageIds?: SpeakRecord['channelMessageIds'];
   mood?: Mood;
   messageId?: string;
   gated?: boolean;
@@ -83,6 +86,7 @@ export function buildSpeakRecord(
   const url = extractUrl(content);
 
   return {
+    contentId: meta.contentId ?? randomUUID(),
     content,
     type,
     pushed,
@@ -91,6 +95,7 @@ export function buildSpeakRecord(
     summary: deriveSummary(content),
     ...(url ? { url } : {}),
     ...(meta.messageId ? { messageId: meta.messageId } : {}),
+    ...(meta.channelMessageIds ? { channelMessageIds: meta.channelMessageIds } : {}),
     ...(meta.mood ? { mood: meta.mood } : {}),
     ...(meta.gated ? { gated: true } : {}),
     ...(meta.planLimited ? { planLimited: true } : {}),

@@ -30,6 +30,9 @@ import { pets, pushSubscriptions, tenants } from '../db/schema.js';
 import type { EventBus } from '../events/bus.js';
 import { tenantDataDir } from '../infra/tenant.js';
 import { planLimits } from '../plan/limits.js';
+import { resolveEntitlements } from '../plan/entitlements.js';
+import type { ProductMode } from '@cyber-stray/shared/plan';
+import { REFLECTION_FAILURE_EXIT_CODE, USAGE_ACCOUNTING_FAILURE_EXIT_CODE } from '@cyber-stray/shared/worker';
 import { latestNotifiableSpeak } from '../push/push-gateway.js';
 import { sendOpsAlert, sendOpsAlertDedup } from './ops-alert.js';
 import {
@@ -46,7 +49,7 @@ import { isSleeping } from '@cyber-stray/shared/sleep';
 import { DIARY_FALLBACK_HOUR, shouldGenerateDiary } from './diary-schedule.js';
 import type { DiaryRunner } from './diary-runner.js';
 import { planBudgetYuan, todayLlmCostYuan, type LlmBudgetConfig } from './budget.js';
-import { localDateKey } from '../infra/usage.js';
+import { assertUsageHealthy, localDateKey, markUsageAccountingFailure } from '../infra/usage.js';
 
 export { MINUTE_MS } from './propagate.js';
 
@@ -56,6 +59,7 @@ export { MINUTE_MS } from './propagate.js';
  * stderr 留排障尾巴），而非被 SIGKILL 硬杀丢 stats 写回。
  */
 const LLM_TIMEOUT_MARGIN_MS = 30_000;
+const DIARY_RETRY_BACKOFF_MS = 5 * 60_000;
 
 // 首推保证
 
@@ -112,12 +116,14 @@ export interface WorkerJob {
   petStats: PetStats;
 }
 
-/** runner 结果：ok = 游荡完成（exit 0）；stats = worker 回报的新数值（ADR-0013 写回） */
+/** runner 结果：ok = 全部完成；reflectionError + stats = 游荡完成但反思失败。 */
 export interface WorkerResult {
   ok: boolean;
   exitCode: number;
   /** 解析自 worker stdout 末行 JSON；exit 0 但缺失 = 版本错位/输出损坏，落库方须显式告警 */
   stats?: WanderStatsReport;
+  /** 非空表示游荡已完成；后续反思失败，数值和交付必须保留。 */
+  reflectionError?: string;
 }
 
 /** worker 执行器（生产实现见 worker-runner.ts；测试注入 fake） */
@@ -125,6 +131,7 @@ export type WorkerRunner = (job: WorkerJob) => Promise<WorkerResult>;
 
 /** 调度参数 */
 export interface SchedulerConfig {
+  productMode?: ProductMode;
   /** 并发上限（2C4G 默认 4） */
   maxConcurrent: number;
   /** 单宠最大重试次数（不含首发） */
@@ -176,6 +183,8 @@ export class Scheduler {
   private readonly diaryRunning = new Map<string, number>();
   /** #92 日记：日记到期未完成（petId → 窗口内重试；窗口退出/完成即清） */
   private readonly diaryPending = new Set<string>();
+  private readonly diaryFailures = new Map<string, { date: string; count: number }>();
+  private readonly diaryClaimedThisTick = new Set<string>();
   /** #92 日记：每宠上次 tick 是否睡眠中（跨 tick 记忆，检测睡眠开始） */
   private readonly wasSleeping = new Map<string, boolean>();
   /** #96 表情包：日记写完是否触发生成（缺省 true） */
@@ -189,6 +198,7 @@ export class Scheduler {
   /** #275 首推 24h 告警：已告警/已送达的宠物（进程内去重，防分钟级刷屏） */
   private readonly firstPushAlerted = new Set<string>();
   private timer?: ReturnType<typeof setInterval>;
+  private activeTick?: Promise<void>;
 
   constructor(private readonly deps: SchedulerDeps) {
     this.memeEnabled = deps.memeEnabled ?? true;
@@ -199,7 +209,7 @@ export class Scheduler {
     this.stop();
     if (intervalMs <= 0) return;
     this.timer = setInterval(() => {
-      this.tick().catch((error: unknown) => {
+      this.runOnce().catch((error: unknown) => {
         console.error('[scheduler] tick 失败：', error instanceof Error ? error.message : error);
       });
     }, intervalMs);
@@ -212,7 +222,11 @@ export class Scheduler {
 
   /** 单次 tick（测试直接驱动；start 内部也走这里） */
   async runOnce(): Promise<void> {
-    await this.tick();
+    if (this.activeTick) return this.activeTick;
+    const task = this.tick();
+    this.activeTick = task;
+    try { await task; }
+    finally { this.activeTick = undefined; }
   }
 
   /** 等所有在飞任务落定（测试/优雅关停用） */
@@ -222,9 +236,21 @@ export class Scheduler {
     }
   }
 
+  /** Observe terminal persistence errors as well as runner errors; never leave a rejected cleanup promise. */
+  private trackTask(task: Promise<void>): void {
+    this.inFlight.add(task);
+    void task.then(
+      () => { this.inFlight.delete(task); },
+      (error: unknown) => {
+        this.inFlight.delete(task);
+        console.error('[scheduler] 任务状态持久化失败：', error instanceof Error ? error.message : error);
+      },
+    );
+  }
+
   /** 在飞任务数（可观测） */
   runningCount(): number {
-    return this.running.size;
+    return this.running.size + this.diaryRunning.size;
   }
 
   private async tick(): Promise<void> {
@@ -252,13 +278,17 @@ export class Scheduler {
     const rows = await dbh.select().from(pets).all();
     // S14：套餐在账号层（tenants.plan）——一次拉租户 plan 映射，避免 N+1
     const tenantRows = await dbh.select().from(tenants).all();
-    const planByTenant = new Map(tenantRows.map((t) => [t.id, t.plan]));
+    const planByTenant = new Map(tenantRows.map((t) => [t.id, resolveEntitlements(t.plan, config.productMode).plan]));
     // #91 真实作息：服务器本地小时（与 pushWindow 语义对齐——窗口小时在
     // 消费进程本地时区判定）；睡眠中不拉 worker，醒来后下一 tick 自动恢复
     const localHour = new Date(nowMs).getHours();
+    // Due diaries take the shared slots before new wandering, so a busy 23:00 tick cannot starve them.
+    this.diaryClaimedThisTick.clear();
+    await this.runDiaryTriggers(rows, planByTenant, dataDir, nowMs, localHour, todayFor(nowMs));
 
     for (const pet of rows) {
       if (pet.status !== 'active') continue;
+      if (this.diaryClaimedThisTick.has(pet.id)) continue;
 
       // #275 首推 24h 告警：领养超 24h 且首推仍未送达任何设备 → 运维告警。
       // 无订阅不标记（用户可能之后才开通知，下个 tick 再判）；已送达/已告警
@@ -272,11 +302,11 @@ export class Scheduler {
       if (pet.cooldownUntil !== null && nowMs < pet.cooldownUntil) continue; // DB 冷却
       // 睡眠期跳过游荡（游荡计数不增长）；未设置作息恒 false，与现状一致
       if (isSleeping(localHour, pet.sleepStart, pet.sleepEnd)) continue;
-      if (this.running.has(pet.id)) continue;
+      if (this.running.has(pet.id) || this.diaryRunning.has(pet.id)) continue;
 
       const lease = this.leases.get(pet.id);
       if (lease && nowMs < lease.nextEligibleAt) continue; // 退避中
-      if (this.running.size >= config.maxConcurrent) break; // 并发上限
+      if (this.runningCount() >= config.maxConcurrent) break;
 
       // #90 性格：按宠物性格解析速率（好奇=基准，存量行为不变）
       // ADR-0013：注入需要 mood/temper（migrate:pet-stats 回填前为 null）——
@@ -317,9 +347,6 @@ export class Scheduler {
       );
     }
 
-    // #92 睡前任务：睡眠开始（或无作息固定时刻）触发当天日记。
-    // 与游荡解耦——独立 diaryRunning 在飞集合，不占游荡并发槽。
-    this.runDiaryTriggers(rows, dataDir, nowMs, localHour, todayFor(nowMs));
   }
 
   /**
@@ -388,13 +415,14 @@ export class Scheduler {
    * 重启：首次观测播种 wasSleeping（不触发）；若恰在睡眠窗口头部（今天入睡）
    * 且今天未生成 → 补触发（跨午夜尾部不补，防睡眠中段多生成一篇）。
    */
-  private runDiaryTriggers(
-    rows: Array<{ id: string; tenantId: string; status: string; name: string; personality: string; diaryStyle: string; diaryPushEnabled: boolean | number; sleepStart: number | null; sleepEnd: number | null; lastDiaryDate: string | null }>,
+  private async runDiaryTriggers(
+    rows: Array<{ id: string; tenantId: string; status: string; name: string; personality: string; diaryStyle: string; diaryPushEnabled: boolean | number; sleepStart: number | null; sleepEnd: number | null; lastDiaryDate: string | null; cooldownUntil: number | null }>,
+    planByTenant: Map<string, string>,
     dataRoot: string,
     nowMs: number,
     localHour: number,
     today: string,
-  ): void {
+  ): Promise<void> {
     for (const pet of rows) {
       if (pet.status !== 'active') continue;
 
@@ -413,7 +441,7 @@ export class Scheduler {
           !(pet.sleepStart > pet.sleepEnd && localHour < pet.sleepEnd);
         if (inHead && pet.lastDiaryDate !== today) {
           this.diaryPending.add(pet.id);
-          this.maybeLaunchDiary(pet, dataRoot, today, nowMs);
+          await this.maybeLaunchDiary(pet, planByTenant.get(pet.tenantId), dataRoot, today, nowMs);
         }
         continue;
       }
@@ -432,20 +460,26 @@ export class Scheduler {
       }
       if (!this.diaryPending.has(pet.id)) continue;
 
-      this.maybeLaunchDiary(pet, dataRoot, today, nowMs);
+      await this.maybeLaunchDiary(pet, planByTenant.get(pet.tenantId), dataRoot, today, nowMs);
     }
   }
 
   /** 若不在飞则拉起日记 worker */
-  private maybeLaunchDiary(
-    pet: { id: string; tenantId: string; name: string; personality: string; diaryStyle: string; diaryPushEnabled: boolean | number },
+  private async maybeLaunchDiary(
+    pet: { id: string; tenantId: string; name: string; personality: string; diaryStyle: string; diaryPushEnabled: boolean | number; cooldownUntil: number | null },
+    plan: string | undefined,
     dataRoot: string,
     today: string,
     nowMs: number,
-  ): void {
-    if (this.diaryRunning.has(pet.id)) return;
+  ): Promise<void> {
+    if (this.diaryRunning.has(pet.id) || this.running.has(pet.id)) return;
+    if (this.runningCount() >= this.deps.config.maxConcurrent) return;
+    if (pet.cooldownUntil !== null && pet.cooldownUntil > nowMs) return;
+    if (!plan) throw new Error(`日记租户权益缺失：${pet.tenantId}`);
+    if (!await this.budgetAllows(pet.id, pet.tenantId, plan, nowMs)) return;
     const petId = pet.id;
     const tenantId = pet.tenantId;
+    this.diaryClaimedThisTick.add(petId);
     this.diaryRunning.set(petId, nowMs);
     const diaryStyle = (['casual', 'careful', 'literary', 'personality'] as const).includes(
       pet.diaryStyle as DiaryStyleChoice,
@@ -466,6 +500,10 @@ export class Scheduler {
           pushEnabled: Boolean(pet.diaryPushEnabled),
           memeEnabled: this.memeEnabled,
         });
+        if (result.exitCode === USAGE_ACCOUNTING_FAILURE_EXIT_CODE) {
+          await this.pauseForAccountingFailure(petId, tenantId);
+          return;
+        }
         if (!result.ok) {
           throw new Error(`日记 worker 退出码 ${result.exitCode}`);
         }
@@ -477,6 +515,7 @@ export class Scheduler {
           .where(eq(pets.id, petId))
           .run();
         this.diaryPending.delete(petId);
+        this.diaryFailures.delete(petId);
         this.deps.bus.publish(tenantId, {
           type: 'diary_generated',
           tenantId,
@@ -489,13 +528,42 @@ export class Scheduler {
           `[scheduler] 睡前任务失败（${tenantId}/${petId}）：`,
           error instanceof Error ? error.message : error,
         );
-        // 不置 lastDiaryDate、不清 pending：窗口内下一 tick 重试
+        await this.backoffDiary(petId, tenantId, today);
       } finally {
         this.diaryRunning.delete(petId);
       }
     })();
-    this.inFlight.add(task);
-    void task.finally(() => this.inFlight.delete(task));
+    this.trackTask(task);
+  }
+
+  /** Persist cooldown so a restart cannot immediately fan out failed diary calls again. */
+  private async backoffDiary(petId: string, tenantId: string, date: string): Promise<void> {
+    const prior = this.diaryFailures.get(petId);
+    const count = (prior?.date === date ? prior.count : 0) + 1;
+    this.diaryFailures.set(petId, { date, count });
+    const now = this.deps.now();
+    const tomorrow = new Date(now);
+    tomorrow.setHours(24, 0, 0, 0);
+    const cooldownUntil = count > this.deps.config.maxRetries
+      ? tomorrow.getTime() : now + Math.max(DIARY_RETRY_BACKOFF_MS, this.deps.config.retryBackoffMs);
+    const db = await this.deps.db();
+    await db.update(pets).set({ cooldownUntil }).where(eq(pets.id, petId)).run();
+    this.deps.bus.publish(tenantId, {
+      type: 'worker_failed', tenantId, petId, at: now,
+      detail: `日记生成失败，已退避至 ${new Date(cooldownUntil).toISOString()}`,
+    });
+  }
+
+  /** Missing accounting needs operator repair; retries must never spend against an incomplete ledger. */
+  private async pauseForAccountingFailure(petId: string, tenantId: string): Promise<void> {
+    const db = await this.deps.db();
+    await db.update(pets).set({ status: 'paused' }).where(eq(pets.id, petId)).run();
+    await markUsageAccountingFailure(tenantDataDir(this.deps.dataDir, tenantId), 'worker 计量写入失败');
+    this.diaryPending.delete(petId);
+    this.leases.delete(petId);
+    const detail = '用量记账失败，宠物已暂停；请管理员核对账本后再恢复';
+    this.deps.bus.publish(tenantId, { type: 'budget_check_failed', tenantId, petId, at: this.deps.now(), detail });
+    console.error(`[scheduler] ${tenantId}/${petId} ${detail}`);
   }
 
 
@@ -541,6 +609,21 @@ export class Scheduler {
           // ADR-0013 注入：前推瞬时值 + 库中心情/脾气
           petStats: stats,
         });
+        if ((result.exitCode === REFLECTION_FAILURE_EXIT_CODE || result.exitCode === USAGE_ACCOUNTING_FAILURE_EXIT_CODE)
+          && result.reflectionError && result.stats && isOwner()) {
+          await this.handleSuccess(petId, tenantId, result.stats, bus, now);
+          bus.publish(tenantId, { type: 'reflection_failed', tenantId, petId, at: now(),
+            detail: result.reflectionError });
+          console.error(`[scheduler] ${tenantId}/${petId} ${result.reflectionError}`);
+          if (result.exitCode === USAGE_ACCOUNTING_FAILURE_EXIT_CODE) {
+            await this.pauseForAccountingFailure(petId, tenantId);
+          }
+          return;
+        }
+        if (result.exitCode === USAGE_ACCOUNTING_FAILURE_EXIT_CODE) {
+          await this.pauseForAccountingFailure(petId, tenantId);
+          return;
+        }
         if (!result.ok) {
           throw new Error(`worker 退出码 ${result.exitCode}`);
         }
@@ -554,8 +637,7 @@ export class Scheduler {
         if (isOwner()) this.running.delete(petId);
       }
     })();
-    this.inFlight.add(task);
-    void task.finally(() => this.inFlight.delete(task));
+    this.trackTask(task);
   }
 
   /**
@@ -573,10 +655,9 @@ export class Scheduler {
   ): Promise<boolean> {
     const { dataDir, bus } = this.deps;
     const limit = planBudgetYuan(this.deps.config.llmBudget, plan);
-    if (limit === null) return true; // 未启用/该套餐不限：无闸可谈
-
     let cost: number;
     try {
+      await assertUsageHealthy(tenantDataDir(dataDir, tenantId));
       cost = await todayLlmCostYuan(dataDir, tenantId, localDateKey(new Date(nowMs)));
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -588,6 +669,7 @@ export class Scheduler {
       return false;
     }
     this.budgetCheckFailed.delete(petId); // 判定恢复：去重集清掉，下次失败再告警
+    if (limit === null) return true;
 
     if (cost >= limit) {
       if (!this.budgetPaused.has(petId)) {

@@ -101,7 +101,7 @@ describe('auth 路由', () => {
     const state = extractState(loginRes.headers.get('location')!);
 
     // 2. 浏览器带 code+state 回回调
-    const callbackRes = await app.request(`/api/auth/callback?code=mock-code&state=${state}`);
+    const callbackRes = await app.request(`/api/auth/callback?code=mock-code&state=${state}`, { headers: { cookie: loginRes.headers.get('set-cookie')!.split(';')[0]! } });
     expect(callbackRes.status).toBe(302);
     expect(callbackRes.headers.get('location')).toBe('http://localhost:3000');
 
@@ -117,7 +117,7 @@ describe('auth 路由', () => {
     expect(tenant?.id).toBe('casdoor-user-42');
 
     // 5. /me 带 cookie → 200
-    const cookie = setCookie.split(';')[0]!;
+    const cookie = setCookie.match(/cs_session=[^;,]+/)![0];
     const meRes = await app.request('/api/auth/me', {
       headers: { cookie },
     });
@@ -133,7 +133,7 @@ describe('auth 路由', () => {
   it('邀请门：无邀请的新用户 → 302 need-invite 且不建租户', async () => {
     const loginRes = await app.request('/api/auth/login');
     const state = extractState(loginRes.headers.get('location')!);
-    const res = await app.request(`/api/auth/callback?code=mock-code&state=${state}`);
+    const res = await app.request(`/api/auth/callback?code=mock-code&state=${state}`, { headers: { cookie: loginRes.headers.get('set-cookie')!.split(';')[0]! } });
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toBe('http://localhost:3000/need-invite');
     const db = await getDb(dataDir);
@@ -143,7 +143,7 @@ describe('auth 路由', () => {
   it('邀请门：无效邀请（乱 token）→ 302 need-invite', async () => {
     const loginRes = await app.request('/api/auth/login?invite=deadbeef');
     const state = extractState(loginRes.headers.get('location')!);
-    const res = await app.request(`/api/auth/callback?code=mock-code&state=${state}`);
+    const res = await app.request(`/api/auth/callback?code=mock-code&state=${state}`, { headers: { cookie: loginRes.headers.get('set-cookie')!.split(';')[0]! } });
     expect(res.headers.get('location')).toBe('http://localhost:3000/need-invite');
   });
 
@@ -151,14 +151,14 @@ describe('auth 路由', () => {
     const invite = await mintInvite();
     const loginRes = await app.request(`/api/auth/login?invite=${invite}`);
     const state = extractState(loginRes.headers.get('location')!);
-    await app.request(`/api/auth/callback?code=mock-code&state=${state}`);
+    await app.request(`/api/auth/callback?code=mock-code&state=${state}`, { headers: { cookie: loginRes.headers.get('set-cookie')!.split(';')[0]! } });
 
     // 用户 B 复用同一条已消费邀请
     oidc = makeMockOidc({ sub: 'casdoor-user-b', email: 'b@b.c' });
     app = createApp({ config: makeConfig(dataDir), oidc, bus: createEventBus() });
     const loginRes2 = await app.request(`/api/auth/login?invite=${invite}`);
     const state2 = extractState(loginRes2.headers.get('location')!);
-    const res2 = await app.request(`/api/auth/callback?code=mock-code&state=${state2}`);
+    const res2 = await app.request(`/api/auth/callback?code=mock-code&state=${state2}`, { headers: { cookie: loginRes2.headers.get('set-cookie')!.split(';')[0]! } });
     expect(res2.headers.get('location')).toBe('http://localhost:3000/need-invite');
     const db = await getDb(dataDir);
     expect((await db.select().from(tenants).all()).length).toBe(1);
@@ -168,11 +168,11 @@ describe('auth 路由', () => {
     const invite = await mintInvite();
     const loginRes = await app.request(`/api/auth/login?invite=${invite}`);
     const state = extractState(loginRes.headers.get('location')!);
-    await app.request(`/api/auth/callback?code=mock-code&state=${state}`);
+    await app.request(`/api/auth/callback?code=mock-code&state=${state}`, { headers: { cookie: loginRes.headers.get('set-cookie')!.split(';')[0]! } });
 
     const loginRes2 = await app.request('/api/auth/login');
     const state2 = extractState(loginRes2.headers.get('location')!);
-    const res2 = await app.request(`/api/auth/callback?code=c2&state=${state2}`);
+    const res2 = await app.request(`/api/auth/callback?code=c2&state=${state2}`, { headers: { cookie: loginRes2.headers.get('set-cookie')!.split(';')[0]! } });
     expect(res2.status).toBe(302);
     expect(res2.headers.get('location')).toBe('http://localhost:3000');
   });
@@ -198,8 +198,8 @@ describe('auth 路由', () => {
     // 合法 state 只能消费一次
     const loginRes = await app.request('/api/auth/login');
     const state = extractState(loginRes.headers.get('location')!);
-    await app.request(`/api/auth/callback?code=mock-code&state=${state}`);
-    const replay = await app.request(`/api/auth/callback?code=mock-code&state=${state}`);
+    await app.request(`/api/auth/callback?code=mock-code&state=${state}`, { headers: { cookie: loginRes.headers.get('set-cookie')!.split(';')[0]! } });
+    const replay = await app.request(`/api/auth/callback?code=mock-code&state=${state}`, { headers: { cookie: loginRes.headers.get('set-cookie')!.split(';')[0]! } });
     expect(replay.status).toBe(302);
     expect(replay.headers.get('location')).toContain('/api/auth/login?error=state_invalid');
   });
@@ -216,11 +216,11 @@ describe('auth 路由', () => {
     const invite = await mintInvite();
     const loginRes = await app.request(`/api/auth/login?invite=${invite}`);
     const state1 = extractState(loginRes.headers.get('location')!);
-    await app.request(`/api/auth/callback?code=c1&state=${state1}`);
+    await app.request(`/api/auth/callback?code=c1&state=${state1}`, { headers: { cookie: loginRes.headers.get('set-cookie')!.split(';')[0]! } });
 
     const loginRes2 = await app.request('/api/auth/login');
     const state2 = extractState(loginRes2.headers.get('location')!);
-    const res2 = await app.request(`/api/auth/callback?code=c2&state=${state2}`);
+    const res2 = await app.request(`/api/auth/callback?code=c2&state=${state2}`, { headers: { cookie: loginRes2.headers.get('set-cookie')!.split(';')[0]! } });
     expect(res2.status).toBe(302);
 
     // 二次登录后租户表仍只有一条

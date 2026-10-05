@@ -4,37 +4,49 @@
  * 文件：<dataDir>/usage/usage-YYYY-MM-DD.jsonl（本地日期轮转，与 speaks 同源；
  * 租户目录隔离天然成立，备份天然包含）。
  * 行：{ timestamp, tenantId, kind, model, tokens?, images? }——cost 不在行内，
- * 由控制面聚合时按单价表折算（单价表单一真相源在 CP）。
+ * 由控制面聚合时按单价表折算（单价表单一真相源在 shared/pricing）。
  *
- * 铁律：no-throw。埋点在 LLM/生图主路径上，记录失败绝不影响主流程
- * （speak.ts 同模式：catch + warn）。
+ * 账本用于平台预算，记录失败必须停下；worker 以专用退出码要求 CP 停派发。
  */
 
 import { appendFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { getTenantId } from '../config.js';
-import { logger } from '../logger.js';
 import type { ImageGenerator } from '../meme/types.js';
+import { UsageEntrySchema, type UsageRow } from '@cyber-stray/shared/usage';
+import { requireModelPrice } from '@cyber-stray/shared/pricing';
 
 /** 用量类型：llm 调用 / 生图 / 视觉质检 */
 export type UsageKind = 'llm' | 'image' | 'vision_qc';
 
-export interface UsageEntry {
-  /** ISO 时间戳 */
-  timestamp: string;
-  /** 租户键（Casdoor sub / 注册 id）；单用户模式 = 'default' */
-  tenantId: string;
-  kind: UsageKind;
-  /** 模型 ID（如 deepseek-chat / doubao-seedream-5-0-260128 / glm-4v-flash） */
-  model: string;
-  /** LLM 调用总 token（兼容旧行；新行用 inputTokens/outputTokens） */
-  tokens?: number;
-  /** LLM 输入 token */
-  inputTokens?: number;
-  /** LLM 输出 token */
-  outputTokens?: number;
-  /** 生图/质检张数（每次调用 1 张） */
-  images?: number;
+/** 用量已发生但账本无法写入，不能按普通 provider 错误重试。 */
+export class UsageAccountingError extends Error {
+  constructor(cause: unknown) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    super(`用量记账失败，停止后续派发并检查账本：${detail}`, { cause });
+    this.name = 'UsageAccountingError';
+  }
+}
+
+const accountingFailures = new Map<string, UsageAccountingError>();
+
+/** 工具/可选管线可能捕获错误；worker 返回前仍须检查账本健康，避免虚报成功。 */
+export function assertUsageHealthy(dataDir: string): void {
+  const failure = accountingFailures.get(dataDir);
+  if (failure) throw failure;
+}
+
+/** 付费调用前验证账本及实际模型的单价，未知价格不能先花费再发现。 */
+export function assertUsageReady(dataDir: string, model: string, kind: UsageKind): void {
+  assertUsageHealthy(dataDir);
+  requireModelPrice(model, kind);
+}
+
+export type UsageEntry = UsageRow;
+
+/** HTTP 成功响应已发生计费，在解析内容或落图之前调用且等待此回调。 */
+export interface UsageTrackedRequest {
+  onUsage?: () => Promise<void>;
 }
 
 /** 本地日期键（YYYY-MM-DD；与 speaks-*.jsonl 文件名同源，见 push-budget.localDateKey） */
@@ -51,28 +63,51 @@ export function currentTenantId(): string {
 }
 
 /**
- * 记录一条用量（no-throw：文件写失败只 warn，不打断主流程）
+ * 记录一条用量；写入失败明确抛错并锁住本 worker 的账本。
  */
 export async function recordUsage(
   dataDir: string,
   entry: Omit<UsageEntry, 'timestamp' | 'tenantId'>,
 ): Promise<void> {
+  assertUsageHealthy(dataDir);
   try {
     const dir = join(dataDir, 'usage');
     await mkdir(dir, { recursive: true });
     const file = join(dir, `usage-${localDateKey()}.jsonl`);
-    const line: UsageEntry = {
+    const line = UsageEntrySchema.parse({
       timestamp: new Date().toISOString(),
       tenantId: currentTenantId(),
       ...entry,
-    };
+    });
     await appendFile(file, JSON.stringify(line) + '\n', 'utf-8');
   } catch (error) {
-    logger.warn('记录用量失败（不影响主流程）', { error });
+    const failure = new UsageAccountingError(error);
+    accountingFailures.set(dataDir, failure);
+    throw failure;
   }
 }
 
-/** 生图用量包装：generate 成功后记一条 image 用量（模型名绑定，装饰器） */
+/** 在供应商确认付费响应时记账；本地解析/落盘失败不会抹掉已发生的费用。 */
+async function trackProviderResponse<T>(
+  dataDir: string, model: string, kind: 'image' | 'vision_qc',
+  call: (onUsage: () => Promise<void>) => Promise<T>,
+): Promise<T> {
+  assertUsageReady(dataDir, model, kind);
+  let acknowledged = false;
+  const result = await call(async () => {
+    if (acknowledged) throw new Error('供应商重复报告同一次付费响应');
+    acknowledged = true;
+    await recordUsage(dataDir, { kind, model, images: 1 });
+  });
+  if (!acknowledged) {
+    const failure = new UsageAccountingError('供应商返回成功却没有报告付费响应');
+    accountingFailures.set(dataDir, failure);
+    throw failure;
+  }
+  return result;
+}
+
+/** 生图用量包装：计量回调在 HTTP 成功后、图片解析/落盘前执行。 */
 export function withImageUsageTracking(
   gen: ImageGenerator,
   dataDir: string,
@@ -80,24 +115,18 @@ export function withImageUsageTracking(
 ): ImageGenerator {
   return {
     async generate(req) {
-      const result = await gen.generate(req);
-      await recordUsage(dataDir, { kind: 'image', model, images: 1 });
-      return result;
+      return trackProviderResponse(dataDir, model, 'image', (onUsage) => gen.generate({ ...req, onUsage }));
     },
   };
 }
 
-/** 视觉质检用量包装：inspect 成功后记一条 vision_qc 用量 */
-export function withVisionUsageTracking<F extends (req: never) => Promise<unknown>>(
-  fn: F,
+/** 视觉质检计量在 HTTP 成功后执行，无效生成内容同样计量。 */
+export function withVisionUsageTracking<Request extends UsageTrackedRequest, Result>(
+  fn: (req: Request) => Promise<Result>,
   dataDir: string,
   model: string,
-): F {
-  return (async (req: never) => {
-    const result = await fn(req);
-    await recordUsage(dataDir, { kind: 'vision_qc', model, images: 1 });
-    return result;
-  }) as F;
+): (req: Request) => Promise<Result> {
+  return (req) => trackProviderResponse(dataDir, model, 'vision_qc', (onUsage) => fn({ ...req, onUsage }));
 }
 
 /** 从 AI SDK 模型实例取模型 ID（provider.chat('deepseek-chat') → 'deepseek-chat'）；拿不到 → 'unknown' */

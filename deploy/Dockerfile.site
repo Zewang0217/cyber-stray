@@ -4,8 +4,7 @@
 # 官网零服务端逻辑，静态文件即全部）。
 #
 # NEXT_PUBLIC_APP_URL 是构建期变量（静态导出把 CTA 地址内联进 HTML）：
-# 发布流水线经 build-args 注入对外伴侣端地址；未注入（空值）时回落
-# 127.0.0.1:3000（本机联调形态）。
+# 发布流水线经 build-args 注入对外伴侣端地址；缺失时构建失败。
 FROM node:22-bookworm-slim AS builder
 WORKDIR /repo
 # 只拷贝清单 → 锁文件安装（同 Dockerfile.web 模式，利用 layer 缓存）
@@ -17,7 +16,11 @@ COPY packages/shared ./packages/shared
 COPY packages/site ./packages/site
 RUN corepack enable && pnpm install --frozen-lockfile --filter @cyber-stray/site
 ARG NEXT_PUBLIC_APP_URL=""
-ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://127.0.0.1:3000}
+ARG DEPLOY_MODE="https_domains"
+ARG PUBLIC_IP=""
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+COPY deploy/check-site-url.mjs ./deploy/check-site-url.mjs
+RUN DEPLOY_MODE=${DEPLOY_MODE} PUBLIC_IP=${PUBLIC_IP} node deploy/check-site-url.mjs
 RUN pnpm --filter @cyber-stray/site build
 
 FROM nginx:1.27-alpine

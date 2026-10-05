@@ -7,6 +7,7 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
+import { parsePublicHttpUrl } from '@cyber-stray/shared/outbound';
 import { consola } from '../../../logger.js';
 import { pushWanderStep, type ToolContext } from '../../registry/context.js';
 import type { ToolDefinition } from '../../tool-manager.js';
@@ -104,6 +105,11 @@ function resolveCommand(input: BrowseActInput): Resolved {
       return { ok: true, command: 'tab', args: [] };
 
     case 'tab_new':
+      if (url) {
+        try { parsePublicHttpUrl(url); } catch (error) {
+          return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        }
+      }
       return { ok: true, command: 'tab', args: ['new', ...(url ? [url] : [])] };
 
     case 'tab_switch':

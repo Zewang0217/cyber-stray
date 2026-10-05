@@ -5,11 +5,12 @@
  * 参考图 data URL（image 字段）。视觉质检见 vision.test.ts。
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createImageGenerator } from './ark.js';
+import { createPetUsageRecorder, assertUsageHealthy, UsageAccountingError } from '../infra/usage.js';
 
 const API_KEY = 'ark-test';
 
@@ -44,8 +45,50 @@ describe('createImageGenerator', () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  it('HTTP 成功后即使本地落图失败也记账，使用发请求时捕获的模型', async () => {
+    let model = 'doubao-seedream-5-0-260128';
+    const onUsage = vi.fn(async (_actualModel: string) => {});
+    const gen = createImageGenerator(API_KEY, {
+      model: () => model, size: '2K',
+      fetchFn: fakeFetch([{ status: 200, body: { data: [{ b64_json: 'AQ==' }] } }], () => { model = 'doubao-seedream-4-0'; }),
+    });
+    await expect(gen.generate({ kind: 'concept', prompt: '猫', outPath: join(tmp, 'missing', 'image.png'), onUsage }))
+      .rejects.toThrow('ENOENT');
+    expect(onUsage).toHaveBeenCalledExactlyOnceWith('doubao-seedream-5-0-260128');
+  });
+
+  it('成功响应后记账失败持久阻断，停止解析响应和落图', async () => {
+    const tenantDir = join(tmp, 'tenants', 'alice');
+    mkdirSync(tenantDir, { recursive: true });
+    writeFileSync(join(tenantDir, 'usage'), 'broken ledger path');
+    const recorder = createPetUsageRecorder(tmp);
+    const response = new Response('{"data":[{"b64_json":"AQ=="}]}');
+    const parse = vi.spyOn(response, 'json');
+    const gen = createImageGenerator(API_KEY, {
+      model: 'doubao-seedream-5-0-260128', size: '2K',
+      fetchFn: (async (_url: string | URL | Request, _init?: RequestInit) => response) as typeof fetch,
+    });
+    const outPath = join(tmp, 'image.png');
+    await expect(gen.generate({ kind: 'concept', prompt: '猫', outPath, onUsage: (model) => recorder.recordImage('alice', model) }))
+      .rejects.toBeInstanceOf(UsageAccountingError);
+    expect(parse).not.toHaveBeenCalled();
+    expect(existsSync(outPath)).toBe(false);
+    expect(existsSync(join(tenantDir, 'usage-accounting-block.json'))).toBe(true);
+    await expect(assertUsageHealthy(tenantDir)).rejects.toThrow('暂停');
+  });
+
+  it('热切未知模型在付费请求前失败', async () => {
+    let calls = 0;
+    const gen = createImageGenerator(API_KEY, {
+      model: () => 'unknown-image-model', size: '2K', fetchFn: fakeFetch([], () => { calls++; }),
+    });
+    await expect(gen.generate({ kind: 'concept', prompt: '猫', outPath: join(tmp, 'x.png') }))
+      .rejects.toThrow('未知模型单价');
+    expect(calls).toBe(0);
+  });
+
   it('缺 API key：构造不抛（不阻断 CP 启动），调用时显式失败', async () => {
-    const gen = createImageGenerator('', { model: 'm', size: '2K' });
+    const gen = createImageGenerator('', { model: 'doubao-seedream-5-0-260128', size: '2K' });
     await expect(
       gen.generate({ kind: 'concept', prompt: '一只猫', outPath: join(tmp, 'x.png') }),
     ).rejects.toThrow(/ARK_API_KEY/);
@@ -91,7 +134,7 @@ describe('createImageGenerator', () => {
         seenBody = String(init.body);
       },
     );
-    const gen = createImageGenerator(API_KEY, { model: 'm', size: '2K', fetchFn });
+    const gen = createImageGenerator(API_KEY, { model: 'doubao-seedream-5-0-260128', size: '2K', fetchFn });
     await gen.generate({
       kind: 'grid',
       prompt: 'x',
@@ -105,7 +148,7 @@ describe('createImageGenerator', () => {
 
   it('HTTP 4xx（含内容审核拦截）→ 显式抛错', async () => {
     const fetchFn = fakeFetch([{ status: 400, body: { error: { message: '内容违规' } } }]);
-    const gen = createImageGenerator(API_KEY, { model: 'm', size: '2K', fetchFn });
+    const gen = createImageGenerator(API_KEY, { model: 'doubao-seedream-5-0-260128', size: '2K', fetchFn });
     await expect(gen.generate({ kind: 'grid', prompt: 'x', outPath: join(tmp, 'g.png') })).rejects.toThrow(
       /内容违规/,
     );
@@ -113,7 +156,7 @@ describe('createImageGenerator', () => {
 
   it('响应无 b64_json → 显式抛错（禁兜底）', async () => {
     const fetchFn = fakeFetch([{ status: 200, body: { data: [{ url: 'https://img/x.png' }] } }]);
-    const gen = createImageGenerator(API_KEY, { model: 'm', size: '2K', fetchFn });
+    const gen = createImageGenerator(API_KEY, { model: 'doubao-seedream-5-0-260128', size: '2K', fetchFn });
     await expect(gen.generate({ kind: 'grid', prompt: 'x', outPath: join(tmp, 'g.png') })).rejects.toThrow(
       /无 b64_json/,
     );

@@ -9,6 +9,7 @@
 import { createLarkChannel, type SendResult } from '@larksuiteoapi/node-sdk';
 import { consola } from '../../logger.js';
 import { getConfig } from '../../config.js';
+import { parseFeishuWebhook, requestPublicUrl } from '@cyber-stray/shared/outbound';
 
 const logger = consola.withTag('feishu-sender');
 
@@ -93,18 +94,19 @@ async function sendViaWebhook(content: string, useCard = false): Promise<string 
     logger.debug('使用纯文本消息格式（Webhook）');
   }
 
-  const response = await fetch(webhook, {
+  const response = await requestPublicUrl(parseFeishuWebhook(webhook).href, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(10_000),
+    timeoutMs: 10_000,
+    maxBytes: 64 * 1024,
   });
 
-  if (!response.ok) {
+  if (response.status < 200 || response.status >= 300) {
     throw new Error(`飞书 Webhook 推送失败: HTTP ${response.status}`);
   }
 
-  const data = (await response.json()) as {
+  const data = JSON.parse(response.body.toString('utf8')) as {
     code?: number;
     msg?: string;
     data?: { message_id?: string };

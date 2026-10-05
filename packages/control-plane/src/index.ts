@@ -68,6 +68,7 @@ const scheduler = new Scheduler({
   }),
   now: () => Date.now(),
   config: {
+    productMode: config.productMode,
     maxConcurrent: config.schedulerMaxConcurrent,
     maxRetries: config.workerMaxRetries,
     retryBackoffMs: config.workerRetryBackoffMs,
@@ -105,11 +106,8 @@ const petGenProcessor = new PetGenProcessor({
   }),
   splitter: createSplitter(),
   structureQc: createStructureQc(),
-  // #129：petgen 生图/质检用量记录（no-throw；模型名与实际调用同源热更新）
-  usage: createPetUsageRecorder(config.dataDir, {
-    imageModel: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).imageModel,
-    visionModel: () => getModelConfig({ imageModel: config.arkImageModel, visionModel: config.visionModel }).visionModel,
-  }),
+  // provider 收到成功 HTTP 响应即等待记账，并传入实际请求模型。
+  usage: createPetUsageRecorder(config.dataDir),
   config: {
     maxBatchRetries: 2,
     // 真机数据：每轮 QC 挂的动画随机（生成随机性），只重生成失败动画 + 多轮

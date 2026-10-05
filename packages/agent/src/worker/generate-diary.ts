@@ -16,6 +16,7 @@ import { createDeepSeek } from '@ai-sdk/deepseek';
 import { getPersonality, type PersonalityId } from '@cyber-stray/shared';
 import { DIARY_STYLE_NAMES, isDiaryStyleChoice, resolveDiaryStylePrompt, type DiaryStyleChoice } from '@cyber-stray/shared/diary';
 import { loadConfig, setTenantContext, getDataPath } from '../config.js';
+import { assertUsageHealthy } from '../usage/usage.js';
 import type { AgentSecrets, PlanExecutionArgs } from '../types.js';
 import {
   buildDiaryPrompt,
@@ -224,5 +225,6 @@ export async function runDiaryWorker(options: DiaryWorkerOptions): Promise<Diary
     };
   } finally {
     setTenantContext(null);
+    assertUsageHealthy(options.dataDir);
   }
 }

@@ -9,14 +9,15 @@
  * 由调度器（S5）拉起的外部入口：同一进程可先后跑多个租户的游荡，
  * 数据目录/配置/单例缓存按租户键隔离，互不串数据。
  *
- * 注意：本入口不含浏览器预热/反思调度/心跳——那是常驻 Harness 或调度器
- * 的职责；浏览器按租户隔离（browser/lifecycle 按数据根键化），需要时由
- * 调用方显式 warmUp。
+ * 成功游荡后等待到期的反思及状态持久化；短命进程退出前必须完成这些写入。
  */
 
 import { loadConfig, setTenantContext, type TenantContext } from '../config.js';
 import { loadState } from '../agent/state.js';
 import { WanderAgent } from '../core/wander-agent.js';
+import { getReflectionScheduler } from '../memory/reflection/index.js';
+import { initializeTenantBrowserPolicy } from '../tools/browser/lifecycle.js';
+import { assertUsageHealthy } from '../usage/usage.js';
 import type { AgentSecrets, PlanExecutionArgs, WanderResult } from '../types.js';
 import type { Catchphrase, PersonalityId } from '@cyber-stray/shared';
 import type { PetStats } from '@cyber-stray/shared/pet-stats';
@@ -42,6 +43,14 @@ export interface RunOneWanderOptions {
   petStats: PetStats;
 }
 
+/** 反思失败时携带已完成的游荡回报，不能把完成的数值和内容丢给整轮重试。 */
+export class WanderReflectionError extends Error {
+  constructor(readonly result: WanderResult, cause: unknown) {
+    super(`游荡已完成，反思失败：${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+    this.name = 'WanderReflectionError';
+  }
+}
+
 /**
  * 为指定租户执行一次游荡并退出。
  *
@@ -58,7 +67,19 @@ export async function runOneWander(options: RunOneWanderOptions): Promise<Wander
 
   setTenantContext(ctx);
   try {
+    await initializeTenantBrowserPolicy();
+    const timeoutMs = options.planArgs?.llmTimeoutMs;
+    const deadlineMs = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
+    const abortSignal = timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs);
     const fileState = await loadState();
+    const reflection = getReflectionScheduler();
+    await reflection.load();
+    await reflection.retryPending(abortSignal);
+    abortSignal?.throwIfAborted();
+    if (deadlineMs !== undefined && config.plan) {
+      // 恢复反思也占同一短命 worker 预算，不能给后续游荡重新发完整时间额度。
+      config.plan = { ...config.plan, llmTimeoutMs: Math.max(0, deadlineMs - Date.now()) };
+    }
     // 数值以注入为准（ADR-0013）；state.json 只出叙事字段（游荡计数/最近话题等）
     const state = {
       ...fileState,
@@ -68,7 +89,18 @@ export async function runOneWander(options: RunOneWanderOptions): Promise<Wander
       temper: options.petStats.temper,
     };
     const agent = new WanderAgent(config);
-    return await agent.wander(state);
+    const result = await agent.wander(state);
+    if (result.endReason !== 'error') {
+      try {
+        assertUsageHealthy(options.dataDir);
+        await reflection.tick(abortSignal);
+        assertUsageHealthy(options.dataDir);
+      } catch (error) {
+        throw new WanderReflectionError(result, error);
+      }
+    }
+    assertUsageHealthy(options.dataDir);
+    return result;
   } finally {
     setTenantContext(null);
   }

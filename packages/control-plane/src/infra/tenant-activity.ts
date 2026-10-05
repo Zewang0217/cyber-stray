@@ -3,7 +3,7 @@
  *
  * requireTenant 门后每个鉴权请求追加一行：tenants/<id>/activity/activity-YYYY-MM-DD.jsonl，
  * 行 { timestamp, tenantId, kind }。每请求一行（内测 3-5 租户无压力），离线聚合时
- * 去重出「活跃日」。no-throw：度量失败绝不影响业务请求（同 recordUsage 立场）。
+ * 去重出「活跃日」。no-throw：非计费度量失败不影响业务请求。
  *
  * X1 判定消费方：metrics/x1.ts（离线）与 #299 证据快照。纯日志路线，无 migration。
  */

@@ -113,6 +113,9 @@ importers:
       web-push:
         specifier: ^3.6.7
         version: 3.6.7
+      zod:
+        specifier: '4'
+        version: 4.4.3
     optionalDependencies:
       '@libsql/linux-x64-gnu':
         specifier: 0.5.29
@@ -150,6 +153,10 @@ importers:
         version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0)
 
   packages/shared:
+    dependencies:
+      zod:
+        specifier: '4'
+        version: 4.4.3
     devDependencies:
       '@types/react':
         specifier: ^19

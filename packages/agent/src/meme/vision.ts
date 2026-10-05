@@ -10,6 +10,7 @@
 import { readFile } from 'fs/promises';
 import { extname } from 'path';
 import type { MemeCopy, MemeMode } from './types.js';
+import type { UsageTrackedRequest } from '../usage/usage.js';
 
 export const DEFAULT_VISION_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4';
 
@@ -60,7 +61,7 @@ export function parseQcJson(text: string): { pass: boolean; issues: string[] } {
 }
 
 /** 视觉质检请求 */
-export interface MemeVisionQcRequest {
+export interface MemeVisionQcRequest extends UsageTrackedRequest {
   /** 待检成品图（已叠加文字） */
   imagePath: string;
   /** IP 模式参考图（宠物概念图；abstract 无参考） */
@@ -121,6 +122,7 @@ export function createVisionQc(
     if (!res.ok) {
       throw new Error(`表情包质检调用失败: HTTP ${res.status} ${await res.text()}`);
     }
+    await req.onUsage?.();
     const body = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };

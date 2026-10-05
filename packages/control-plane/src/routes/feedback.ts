@@ -24,7 +24,7 @@ import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 const TOPIC_MAX_CHARS = 50;
 
 export interface FeedbackDeps {
-  config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>;
+  config: Pick<ControlPlaneConfig, 'dataDir' | 'productMode' | 'sessionSecret'>;
   /** 注入式 spawn（测试）；缺省真实 spawn */
   spawnFn?: CliSpawn;
 }

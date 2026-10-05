@@ -37,10 +37,20 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Validate deployment mode and public application URL
+        env:
+          DEPLOY_MODE: ${{ vars.DEPLOY_MODE || 'https_domains' }}
+          PUBLIC_IP: ${{ vars.PUBLIC_IP }}
+          NEXT_PUBLIC_APP_URL: ${{ vars.APP_URL }}
+        run: node deploy/check-site-url.mjs
+
       - name: typecheck & test & lint + web/site construct
+        env:
+          NEXT_PUBLIC_APP_URL: ${{ vars.APP_URL }}
         run: |
           pnpm typecheck
           pnpm test
+          python3 -B -m unittest discover -s deploy -p 'test_*.py'
           pnpm lint
           pnpm -F @cyber-stray/web build
           pnpm -F @cyber-stray/site build
@@ -91,8 +101,8 @@ jobs:
           push: true
           tags: ghcr.io/zewang0217/cyber-stray-web:${{ steps.tag.outputs.tag }}
 
-      # 官网 CTA 地址构建期烘焙：仓库 variable APP_URL（伴侣端对外 https 地址）；
-      # 未配置时 Dockerfile 回落 127.0.0.1:3000（仅本机联调形态）
+      # 官网 CTA 地址构建期烘焙：仓库 variable APP_URL（伴侣端对外地址）；
+      # 未配置时构建失败，防止把本地地址发布到官网。
       - name: Build & push site image
         if: steps.tag.outputs.build == '1'
         uses: docker/build-push-action@v6
@@ -102,6 +112,8 @@ jobs:
           push: true
           build-args: |
             NEXT_PUBLIC_APP_URL=${{ vars.APP_URL }}
+            DEPLOY_MODE=${{ vars.DEPLOY_MODE || 'https_domains' }}
+            PUBLIC_IP=${{ vars.PUBLIC_IP }}
           tags: ghcr.io/zewang0217/cyber-stray-site:${{ steps.tag.outputs.tag }}
 
       - name: Sync deploy config to production
@@ -118,12 +130,18 @@ jobs:
           # / acme-webroot）由 root 身份的 container-update.sh 统一完成
           scp -P "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
             deploy/compose.yaml \
+            deploy/compose.http-ip.yaml \
             deploy/container-update.sh \
+            deploy/check-production.py \
+            deploy/compose.bootstrap.yaml \
+            deploy/nginx-bootstrap.conf \
             deploy/backup.sh \
             deploy/restore.sh \
             .env.example \
             deploy/casdoor/app.conf \
+            deploy/casdoor/app.http-ip.conf \
             deploy/nginx/cyber-stray.conf \
+            deploy/nginx/cyber-stray.http-ip.conf \
             "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/"
           # 兜底：脚本可执行位（git 在 Windows 侧记录 644 时 scp 后不可执行）
           ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
@@ -137,11 +155,16 @@ jobs:
 
       - name: Deployment (pull image + start container + health check + image cleanup)
         run: |
+          set -euo pipefail
+          case "$DEPLOY_MODE" in https_domains|http_ip) ;; *) exit 2 ;; esac
+          if [[ -n "$PUBLIC_IP" && ! "$PUBLIC_IP" =~ ^[0-9.]+$ ]]; then exit 2; fi
           ssh -p "$PROD_SSH_PORT" -i ~/.ssh/deploy_key \
             "${PROD_USER}@${PROD_HOST}" \
-            "sudo -n /opt/cyber-stray/deploy/container-update.sh --tag '$TAG'"
+            "sudo -n /opt/cyber-stray/deploy/container-update.sh --tag '$TAG' --mode '$DEPLOY_MODE' --public-ip '$PUBLIC_IP'"
         env:
           PROD_HOST: ${{ secrets.PROD_HOST }}
           PROD_USER: ${{ secrets.PROD_USER }}
           PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
           TAG: ${{ steps.tag.outputs.tag }}
+          DEPLOY_MODE: ${{ vars.DEPLOY_MODE || 'https_domains' }}
+          PUBLIC_IP: ${{ vars.PUBLIC_IP }}

@@ -22,6 +22,7 @@ import { join } from 'path';
 import { loadConfig, setTenantContext } from '../config.js';
 import { parseCatchphraseList, type Catchphrase } from '@cyber-stray/shared';
 import { parseFeedbackPetState, type FeedbackPetState } from '@cyber-stray/shared/pet-stats';
+import { getSpeakFeedbackIdentity } from '@cyber-stray/shared/push';
 import { processFeedback, boostTopic } from '../memory/feedback-pipeline.js';
 import type { FeedbackProcessResult } from '../memory/feedback-pipeline.js';
 
@@ -90,7 +91,7 @@ export async function findSpeakRecord(
       } catch {
         continue; // 单行损坏跳过
       }
-      if (record.messageId !== messageId) continue;
+      if (!getSpeakFeedbackIdentity(record).aliases.includes(messageId)) continue;
       return {
         matchedTopics: Array.isArray(record.matchedTopics)
           ? record.matchedTopics.filter((t): t is string => typeof t === 'string' && t.length > 0)

@@ -16,7 +16,13 @@
     "./petgen": "./src/petgen.ts",
     "./agent-state": "./src/agent-state.ts",
     "./push": "./src/push.ts",
-    "./sprite": "./src/sprite.ts"
+    "./worker": "./src/worker.ts",
+    "./sprite": "./src/sprite.ts",
+    "./outbound": "./src/outbound.ts",
+    "./plan": "./src/plan.ts",
+    "./usage": "./src/usage.ts",
+    "./pricing": "./src/pricing.ts",
+    "./invite": "./src/invite.ts"
   },
   "scripts": {
     "test": "vitest",
@@ -26,5 +32,8 @@
     "@types/react": "^19",
     "typescript": "^5",
     "vitest": "^3"
+  },
+  "dependencies": {
+    "zod": "4"
   }
 }

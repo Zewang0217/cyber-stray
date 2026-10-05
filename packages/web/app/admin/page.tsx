@@ -67,7 +67,7 @@ export default function AdminPage(): React.ReactElement {
               <thead>
                 <tr className="border-b-2 border-black text-left text-[var(--hi)]">
                   <th className="px-3 py-2.5">用户</th>
-                  <th className="px-3 py-2.5">套餐</th>
+                  <th className="px-3 py-2.5">权益</th>
                   <th className="px-3 py-2.5">宠物</th>
                   <th className="px-3 py-2.5">状态</th>
                   <th className="px-3 py-2.5">游荡/推送</th>
@@ -83,7 +83,9 @@ export default function AdminPage(): React.ReactElement {
                       {!u.petId ? <div className="text-[12px] text-[var(--curb)]">（无宠物）</div> : null}
                     </td>
                     <td className="px-3 py-2.5">
-                      <select
+                      {u.mode === "invite_beta" ? (
+                        <span className="text-[var(--ok)]">内测 Pro</span>
+                      ) : <select
                         value={u.plan}
                         onChange={(e) => void setPlan(u.tenantId, e.target.value as typeof u.plan)}
                         className="border-2 border-[var(--curb)] bg-[var(--sky)] px-1.5 py-1 text-[13px] text-[var(--paper)]"
@@ -91,7 +93,7 @@ export default function AdminPage(): React.ReactElement {
                         <option value="free">free</option>
                         <option value="pro">pro</option>
                         <option value="byok">byok</option>
-                      </select>
+                      </select>}
                     </td>
                     <td className="px-3 py-2.5">
                       {u.petId ? (
@@ -140,7 +142,7 @@ export default function AdminPage(): React.ReactElement {
           <div className="mt-6 border-2 border-[var(--curb)] bg-[var(--panel)] p-4">
             <h2 className="mb-1 text-[14px] text-[var(--paper)]">管理员</h2>
             <p className="mb-3 text-[12px] leading-[1.7] text-[var(--curb)]">
-              身份在 Casdoor（谁可登录），权限在控制面（能做什么）——管理员可看全部用户、分配套餐、授权他人。
+              管理员可查看用户与运行状态、发放邀请、授权他人。邀请内测期间，所有账号统一享有 Pro 权益。
             </p>
             <div className="mb-3 flex flex-wrap gap-2">
               {admins?.map((a) => (

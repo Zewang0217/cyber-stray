@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 /**
  * 需邀请页（#301）：注册面收口后，无有效邀请的登录者落这里。
- * 不暴露「如何获得邀请」的操作指引——内测邀请是熟人分发。
+ * 保留邀请门，同时提供明确的申请与已有账号入口。
  */
 export const metadata: Metadata = {
   title: "需要邀请函 · STRAY-BOY",
@@ -19,11 +19,19 @@ export default function NeedInvitePage() {
         <div className="mb-5 flex h-40 items-center justify-center border-2 border-black bg-[var(--window-off)]">
           <p className="font-vt323 text-[20px] text-[var(--street)]">INVITE ONLY</p>
         </div>
-        <p className="text-center text-[12px] leading-[1.7] text-[var(--curb)]">
+        <p className="text-center text-[14px] leading-[1.7] text-[var(--paper)]">
           这座像素夜城还在内测。
           <br />
           需要一张邀请函才能放你的街溜子出门。
         </p>
+        <p className="mt-3 text-[13px] leading-[1.7] text-[var(--curb)]">
+          受邀用户免费享有相同的 Pro 权益。已有邀请函，请从其中的专属链接重新进入。
+        </p>
+        <a href="https://github.com/Zewang0217/cyber-stray/issues/new?title=申请邀请内测"
+          className="mt-5 block border-2 border-[var(--act)] px-3 py-2 text-center text-[14px] text-[var(--paper)]">
+          向项目维护者申请邀请
+        </a>
+        <a href="/login" className="mt-4 block text-center text-[13px] text-[var(--act)] underline">已有账号，重新登录</a>
       </div>
     </div>
   );

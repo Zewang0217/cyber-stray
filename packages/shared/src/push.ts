@@ -23,12 +23,16 @@ export const SPEAK_TYPE_LABELS: Record<SpeakType, string> = {
 
 /** 推送历史记录（agent 写入的 speaks JSONL 一行） */
 export interface SpeakRecord {
+  /** 内容自身的稳定 ID，与投递渠道无关；旧历史可缺省。 */
+  contentId?: string;
   content: string;
   type: SpeakType;
   pushed: boolean;
   timestamp: string;
   /** 渠道消息 ID（点赞/踩按它归因；短命 worker 退出后靠它反查） */
   messageId?: string;
+  /** 各渠道返回的消息 ID，兼容从飞书/Telegram 发起的反馈。 */
+  channelMessageIds?: { feishu?: string; telegram?: string };
   /** 卡片标题，从 content 派生 */
   title: string;
   /** 内容中的第一个链接，无则省略 */
@@ -57,6 +61,7 @@ export interface SpeakRecord {
 
 /** /api/history 展示视图：CP 归一化后（content→message；旧记录补齐 title/summary） */
 export interface SpeakHistoryItem {
+  contentId?: string;
   /** 推送正文原文 */
   message: string;
   timestamp: string;
@@ -72,4 +77,34 @@ export interface SpeakHistoryItem {
   gateReasons?: string[];
   messageId?: string;
   matchedTopics?: string[];
+}
+
+/** 反馈归因统一投影：内容 ID 为主键，同时保留旧消息及飞书/Telegram 别名。 */
+export function getSpeakFeedbackIdentity(raw: Record<string, unknown>): {
+  contentId?: string;
+  messageId?: string;
+  aliases: string[];
+} {
+  const id = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+  const contentId = id(raw.contentId);
+  const legacyId = id(raw.messageId);
+  const channels = raw.channelMessageIds;
+  const channelIds = typeof channels === 'object' && channels !== null
+    ? [id(Reflect.get(channels, 'feishu')), id(Reflect.get(channels, 'telegram'))]
+    : [];
+  const aliases = [contentId, legacyId, ...channelIds].filter((value): value is string => value !== undefined);
+  return { contentId, messageId: contentId ?? legacyId, aliases: [...new Set(aliases)] };
+}
+
+/** 展示原文链接的语法校验；不承担服务端网络请求的 DNS/SSRF 隔离。 */
+export function getSpeakSourceUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  try {
+    const url = new URL(value);
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) return undefined;
+    return url.href;
+  } catch {
+    return undefined;
+  }
 }

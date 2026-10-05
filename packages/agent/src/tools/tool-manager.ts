@@ -10,7 +10,7 @@
 
 import type { Tool } from 'ai';
 import type { ToolContext } from './registry/context.js';
-import { getConfig } from '../config.js';
+import { isBrowserAllowed } from './browser/policy.js';
 
 /** 工具元信息（用于 Prompt 生成） */
 export interface ToolMetadata {
@@ -44,7 +44,7 @@ export class ToolManager {
    * 注册是进程级一次的，暴露与否按当前生效配置在 get 时判定。
    */
   private static isBrowserExposed(): boolean {
-    return getConfig().browser?.enabled !== false;
+    return isBrowserAllowed();
   }
 
   /** 过滤掉当前配置下禁用的浏览器工具 */

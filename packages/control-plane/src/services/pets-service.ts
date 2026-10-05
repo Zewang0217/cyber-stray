@@ -12,6 +12,7 @@ import type { Catchphrase, PersonalityId } from '@cyber-stray/shared';
 import { getPersonality } from '@cyber-stray/shared';
 import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
 import { generateCandidates } from '../adoption/candidates.js';
+import { CandidateRequestError, generateOnce } from '../adoption/candidate-store.js';
 import { appendCatchphraseHistory } from '../infra/catchphrase-history.js';
 import type { ControlPlaneConfig } from '../config.js';
 import { getDb } from '../db/client.js';
@@ -21,11 +22,12 @@ import * as petsRepo from '../infra/pets-repo.js';
 import { findTenantPlan } from '../infra/tenant-access.js';
 import { openTenantSecrets } from '../secrets/tenant-secrets.js';
 import { planBudgetYuan, todayLlmCostYuan } from '../scheduler/budget.js';
-import { localDateKey } from '../infra/usage.js';
+import { assertUsageHealthy, localDateKey, markUsageAccountingFailure, recordUsage } from '../infra/usage.js';
 import { tenantDataDir } from '../infra/tenant.js';
+import { resolveEntitlements } from '../plan/entitlements.js';
 
 export interface PetsServiceDeps {
-  config: Pick<ControlPlaneConfig, 'dataDir' | 'llmBudgetEnabled' | 'llmBudgetYuan' | 'adoptLlmModel'>;
+  config: Pick<ControlPlaneConfig, 'dataDir' | 'productMode' | 'llmBudgetEnabled' | 'llmBudgetYuan' | 'adoptLlmModel'>;
 }
 
 /** adopt 用例的已校验入参（请求体校验在接口层完成） */
@@ -69,7 +71,7 @@ export function createPetsService({ config }: PetsServiceDeps) {
     const rows = await petsRepo.findPetsByTenant(db, tenantId);
     const data = rows.map(toPetView);
     // 与调度闸同一判定（budget.ts 单一实现）；读失败显式 500，不静默当没超
-    const plan = (await findTenantPlan(config.dataDir, tenantId)) ?? 'free';
+    const { plan } = resolveEntitlements(await findTenantPlan(config.dataDir, tenantId), config.productMode);
     const budgetLimit = planBudgetYuan(
       { enabled: config.llmBudgetEnabled, yuanPerPlan: config.llmBudgetYuan },
       plan,
@@ -173,7 +175,7 @@ export function createPetsService({ config }: PetsServiceDeps) {
   /**
    * 起名/口头禅步的 3 候选。API key：租户 BYOK secret 优先，平台 env 兜底
    * （secrets 读取失败显式抛错——平台 key 不能替 BYOK 租户静默代付 LLM 成本）。
-   * 生成失败降级本地模板（仍 200，领养不阻塞）。
+   * 服务端持久化批次额度；同一请求并发/重放只付费生成一次。
    */
   async function adoptionCandidates(
     tenantId: string,
@@ -188,7 +190,23 @@ export function createPetsService({ config }: PetsServiceDeps) {
     let apiKey = process.env.DEEPSEEK_API_KEY ?? '';
     const store = await openTenantSecrets(config.dataDir, tenantId);
     apiKey = (await store.get('deepseek_api_key')) ?? apiKey;
-    return generateCandidates(input, apiKey, { model: config.adoptLlmModel });
+    if (!apiKey) throw new CandidateRequestError('候选生成未配置 API key，请手动填写或联系管理员', 503);
+    return generateOnce(tenantDataDir(config.dataDir, tenantId), input, async () => {
+      await assertUsageHealthy(tenantDataDir(config.dataDir, tenantId));
+      const { plan } = resolveEntitlements(await findTenantPlan(config.dataDir, tenantId), config.productMode);
+      const limit = planBudgetYuan({ enabled: config.llmBudgetEnabled, yuanPerPlan: config.llmBudgetYuan }, plan);
+      const cost = await todayLlmCostYuan(config.dataDir, tenantId, localDateKey());
+      if (limit !== null && cost >= limit) {
+        throw new CandidateRequestError('今日生成预算已用完，请手动填写', 429);
+      }
+      return generateCandidates(input, apiKey, {
+        model: config.adoptLlmModel,
+        onAccountingFailure: (error) => markUsageAccountingFailure(tenantDataDir(config.dataDir, tenantId), error),
+        onUsage: (usage) => recordUsage(tenantDataDir(config.dataDir, tenantId), {
+          ...usage, tenantId, kind: 'llm', model: config.adoptLlmModel,
+        }),
+      });
+    });
   }
 
   return {
