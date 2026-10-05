@@ -83,11 +83,9 @@ fi
 
 # Casdoor 首次启动前必须已有配置，否则 compose 的健康依赖会等待到失败。
 CASDOOR_CONF=/opt/cyber-stray/casdoor/conf/app.conf
-CASDOOR_CHANGED=0
 if [ -f "$CASDOOR_STAGED" ] && ! cmp -s "$CASDOOR_STAGED" "$CASDOOR_CONF"; then
   mkdir -p /opt/cyber-stray/casdoor/conf
   cp "$CASDOOR_STAGED" "$CASDOOR_CONF"
-  CASDOOR_CHANGED=1
   echo "    app.conf 有变更 → 已落位"
 fi
 [ -f "$CASDOOR_CONF" ] || { echo "缺少 Casdoor 配置，发布停止" >&2; exit 1; }
@@ -141,12 +139,14 @@ done
 echo "==> [2/4] 重建容器"
 "${COMPOSE[@]}" up -d --remove-orphans
 
-# casdoor 配置以仓库 deploy/casdoor/app.conf 为准（CI 平面暂存为
-# deploy/app.conf）：内容有变才覆盖并重启，常规发布不打扰 IdP；重启后
-# 由下方健康门验证
-if [ "$CASDOOR_CHANGED" = 1 ]; then
-  echo "    app.conf 有变更 → 重启 casdoor"
+# 文件已落位不代表进程已加载：pull/up 失败后的重试也必须完成重启。
+# 仅在 restart 成功后记录生效内容，常规同配置发布不打扰 IdP。
+CASDOOR_STAMP=/opt/cyber-stray/.casdoor-conf.sha256
+casdoor_sha=$(sha256sum "$CASDOOR_CONF" | cut -d' ' -f1)
+if [ ! -f "$CASDOOR_STAMP" ] || [ "$(cat "$CASDOOR_STAMP" 2>/dev/null || true)" != "$casdoor_sha" ]; then
+  echo "    app.conf 尚未确认生效 → 重启 casdoor"
   "${COMPOSE[@]}" restart casdoor
+  echo "$casdoor_sha" > "$CASDOOR_STAMP"
 fi
 
 # nginx 路由配置（deploy/nginx → bind mount 只读挂载）：落位已在前述暂存

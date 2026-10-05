@@ -12,7 +12,7 @@ COPY packages/web/package.json packages/web/
 # shared 源码：transpilePackages 构建期直接消费 TS
 COPY packages/shared ./packages/shared
 COPY packages/web ./packages/web
-RUN corepack enable && pnpm install --frozen-lockfile --filter @cyber-stray/web
+RUN corepack enable && pnpm install --frozen-lockfile --filter @cyber-stray/web...
 ARG CP_ORIGIN=http://control-plane:8787
 ENV CP_ORIGIN=$CP_ORIGIN
 RUN pnpm --filter @cyber-stray/web build

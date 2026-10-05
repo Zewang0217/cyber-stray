@@ -40,6 +40,8 @@ if 'version' in args:
     print('2.24.4')
 if 'config' in args and os.environ.get('TEST_REJECT_COMPOSE'):
     sys.exit(1)
+if name == 'docker' and os.environ.get('TEST_FAIL_DOCKER') in args:
+    sys.exit(1)
 if 'ps' in args:
     print('healthy' if '{{.Health}}' in args else 'cyber-stray-nginx')
 """
@@ -101,6 +103,34 @@ if 'ps' in args:
         result = self.update("--mode", "auto", env={**self.env, "RENDER_DIR": str(sentinel)})
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue(sentinel.is_dir())
+
+    def test_retry_after_failed_up_restarts_already_copied_casdoor_config_once(self):
+        args = ("--mode", "http_ip", "--public-ip", PUBLIC_IP)
+        failed = self.update(*args, env={**self.env, "TEST_FAIL_DOCKER": "up"})
+        self.assertNotEqual(failed.returncode, 0)
+        active = self.root / "casdoor/conf/app.conf"
+        copied = active.read_bytes()
+        self.assertFalse(any(command[-2:] == ["restart", "casdoor"] for command in self.commands()))
+        retry = self.update(*args)
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(active.read_bytes(), copied)
+        self.assertEqual(sum(command[-2:] == ["restart", "casdoor"] for command in self.commands()), 1)
+
+    def test_changed_casdoor_config_is_not_acknowledged_when_restart_fails(self):
+        args = ("--mode", "http_ip", "--public-ip", PUBLIC_IP)
+        initial = self.update(*args)
+        self.assertEqual(initial.returncode, 0, initial.stderr)
+        with (self.deploy / "app.http-ip.conf").open("a") as output:
+            output.write("\n# 配置内容变更样例\n")
+        failed = self.update(*args, env={**self.env, "TEST_FAIL_DOCKER": "restart"})
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertEqual(sum(command[-2:] == ["restart", "casdoor"] for command in self.commands()), 2)
+        retry = self.update(*args)
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(sum(command[-2:] == ["restart", "casdoor"] for command in self.commands()), 3)
+        unchanged = self.update(*args)
+        self.assertEqual(unchanged.returncode, 0, unchanged.stderr)
+        self.assertEqual(sum(command[-2:] == ["restart", "casdoor"] for command in self.commands()), 3)
 
     def test_default_unknown_mismatch_and_unsupported_compose_leave_config_untouched(self):
         cases = [([], self.env), (["--mode", "auto"], self.env),

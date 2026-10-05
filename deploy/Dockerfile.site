@@ -14,7 +14,7 @@ COPY packages/site/package.json packages/site/
 # shared 源码：transpilePackages 构建期直接消费 TS 源码
 COPY packages/shared ./packages/shared
 COPY packages/site ./packages/site
-RUN corepack enable && pnpm install --frozen-lockfile --filter @cyber-stray/site
+RUN corepack enable && pnpm install --frozen-lockfile --filter @cyber-stray/site...
 ARG NEXT_PUBLIC_APP_URL=""
 ARG DEPLOY_MODE="https_domains"
 ARG PUBLIC_IP=""
