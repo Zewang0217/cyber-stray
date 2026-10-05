@@ -19,8 +19,9 @@ COPY packages/slides/package.json packages/slides/
 # pnpm 钉 9.x（根 package.json 的 packageManager，corepack 读取）：pnpm 10
 # 默认要求 inject-workspace-packages，会使本构建失败。--prod：镜像内无构建
 # 步骤，devDeps（vitest/eslint/tsc）不进镜像
+# 递归选择 workspace 依赖，确保 shared 自己声明的运行时依赖也建立链接。
 RUN corepack enable \
-  && pnpm install --frozen-lockfile --prod --filter @cyber-stray/control-plane --filter @cyber-stray/agent
+  && pnpm install --frozen-lockfile --prod --filter @cyber-stray/control-plane... --filter @cyber-stray/agent...
 # 拷入源码：bun 直跑 TS，需要包内 src/
 COPY packages/shared ./packages/shared
 COPY packages/control-plane ./packages/control-plane
@@ -49,6 +50,8 @@ COPY --from=oven/bun:1-slim /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=builder /repo/node_modules /app/node_modules
 COPY --from=builder /repo/packages ./packages
 COPY --from=builder /repo/scripts ./scripts
+# 只导入契约，不启动 CP 或接触数据库；缺少 workspace 依赖时在构建期失败。
+RUN bun -e 'await import("./packages/shared/src/usage.ts")'
 # 数据目录由 compose bind mount 注入（/opt/cyber-stray/data → /data）
 ENV CP_DATA_DIR=/data
 EXPOSE 8787
