@@ -1,7 +1,7 @@
 /** 自定义宠物的可播放投影；消费方不再自行猜测 manifest 版本或状态字段。 */
 import { z } from 'zod';
-import { PET_SHEET_STATE_IDS, PET_STATE_IDS, type PetStateId, type PetStateSpec } from './pet.js';
-import { parseSpriteContract, type SpriteContract } from './sprite.js';
+import { PET_SHEET_STATE_IDS, PET_STATE_IDS, type PetStateId, type PetStateSpec } from './pet';
+import { parseSpriteContract, type SpriteContract } from './sprite';
 
 const AssetStemSchema = z.string().regex(/^[a-zA-Z0-9_-]+$/);
 const StateIdSchema = z.enum(PET_STATE_IDS);
