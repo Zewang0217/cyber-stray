@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read-only production checks. Never source .env or print secret values."""
 import argparse
+from ipaddress import IPv4Address
 from pathlib import Path
 import re
 import subprocess
@@ -12,6 +13,7 @@ EXPECTED_URLS = {
     "CASDOOR_REDIRECT_URI": "https://app.kleinbottle.top/api/auth/callback",
 }
 HOSTS = ("kleinbottle.top", "app.kleinbottle.top", "auth.kleinbottle.top")
+DEPLOY_MODES = ("https_domains", "http_ip")
 
 
 def read_urls(path: Path) -> dict[str, str]:
@@ -25,7 +27,7 @@ def read_urls(path: Path) -> dict[str, str]:
         if sep and key in EXPECTED_URLS:
             if key in result:
                 raise ValueError(f"重复环境变量：{key}")
-            result[key] = plain_value.rstrip("/")
+            result[key] = plain_value
     return result
 
 
@@ -36,12 +38,38 @@ def openssl(*args: str) -> bytes:
     ).stdout
 
 
-def validate(env_file: Path, cert_dir: Path, ca_file: Path | None = None) -> None:
-    """Require consistent HTTPS domains and a matching, current certificate."""
+def expected_urls(mode: str, public_ip: str | None) -> dict[str, str]:
+    """HTTP acceptance is opt-in and bound to one canonical public IPv4 address."""
+    if mode not in DEPLOY_MODES:
+        raise ValueError("未知发布模式；仅支持 https_domains / http_ip")
+    if mode == "https_domains":
+        if public_ip is not None:
+            raise ValueError("https_domains 模式不能传 --public-ip")
+        return EXPECTED_URLS
+    try:
+        address = IPv4Address(public_ip or "")
+    except ValueError as error:
+        raise ValueError("http_ip 模式必须指定合法的公网 IPv4 --public-ip") from error
+    if not address.is_global or address.is_multicast or address.is_reserved:
+        raise ValueError("http_ip 模式必须指定合法的公网 IPv4 --public-ip")
+    origin = f"http://{address}"
+    return {
+        "CP_WEB_ORIGIN": origin,
+        "CASDOOR_ISSUER": f"{origin}:8000",
+        "CASDOOR_REDIRECT_URI": f"{origin}/api/auth/callback",
+    }
+
+
+def validate(env_file: Path, cert_dir: Path, ca_file: Path | None = None,
+             *, mode: str = "https_domains", public_ip: str | None = None) -> None:
+    """Require exact public URLs; only the explicit IP mode skips TLS checks."""
+    expected = expected_urls(mode, public_ip)
     urls = read_urls(env_file)
-    for key, expected in EXPECTED_URLS.items():
-        if urls.get(key) != expected:
-            raise ValueError(f"{key} 必须配置为 {expected}")
+    for key, value in expected.items():
+        if urls.get(key) != value:
+            raise ValueError(f"{key} 必须配置为 {value}")
+    if mode == "http_ip":
+        return
     cert, key = cert_dir / "fullchain.pem", cert_dir / "privkey.pem"
     if not cert.is_file() or not key.is_file():
         raise ValueError("三域名 HTTPS 证书或私钥缺失；先完成证书签发")
@@ -65,14 +93,19 @@ def main() -> int:
     parser.add_argument("--env", type=Path, default=Path("/opt/cyber-stray/.env"))
     parser.add_argument("--cert-dir", type=Path,
                         default=Path("/etc/letsencrypt/live/kleinbottle.top"))
+    parser.add_argument("--mode", choices=DEPLOY_MODES, default="https_domains")
+    parser.add_argument("--public-ip", help="仅用于显式 http_ip 验收模式的公网 IPv4")
     args = parser.parse_args()
     try:
-        validate(args.env, args.cert_dir)
+        validate(args.env, args.cert_dir, mode=args.mode, public_ip=args.public_ip)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         detail = str(error) if isinstance(error, ValueError) else "文件不可读或证书校验失败"
         print(f"发布预检失败：{detail}。参见 deploy/README.md。", file=sys.stderr)
         return 1
-    print("发布预检通过：HTTPS URL / 证书域名 / 有效期 / 密钥匹配")
+    if args.mode == "http_ip":
+        print("发布预检通过：http_ip 显式验收模式 / 公网 IPv4 / HTTP URL 一致")
+    else:
+        print("发布预检通过：HTTPS URL / 证书域名 / 有效期 / 密钥匹配")
     return 0
 
 

@@ -7,7 +7,7 @@
 - Hero 街区舞台的猫走 `@cyber-stray/shared/sprite` 帧表契约（与 web 街角同源）。
 - `public/pet/strayboy/` 是从 `packages/web/public/pet/strayboy/` 复制的产物资产
   （真相源 = `packages/web/scripts/sprite/build_sprite.py`，重生成后两处需同步）。
-- 已有账号入口 = 构建期 `NEXT_PUBLIC_APP_URL`，生产构建必须显式提供；镜像要求 HTTPS。开发模式默认 `http://127.0.0.1:3000`。
+- 已有账号入口 = 构建期 `NEXT_PUBLIC_APP_URL`，生产构建必须显式提供；镜像默认要求正式 HTTPS 应用域名，显式 `DEPLOY_MODE=http_ip` 时须匹配 `http://PUBLIC_IP`。开发模式默认 `http://127.0.0.1:3000`。
 - 新用户 CTA 指向 GitHub 邀请申请，管理员审核后私下提供一次性邀请链接。公开申请勿填写邮箱、密钥等隐私信息。
 - 当前为免费邀请内测，权益读取 `@cyber-stray/shared/plan`，不展示收费套餐。
 

@@ -16,8 +16,11 @@ COPY packages/shared ./packages/shared
 COPY packages/site ./packages/site
 RUN corepack enable && pnpm install --frozen-lockfile --filter @cyber-stray/site
 ARG NEXT_PUBLIC_APP_URL=""
+ARG DEPLOY_MODE="https_domains"
+ARG PUBLIC_IP=""
 ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
-RUN node -e 'const u = new URL(process.env.NEXT_PUBLIC_APP_URL); if (u.protocol !== "https:" || u.username || u.password) throw new Error("官网生产地址必须使用 HTTPS")'
+COPY deploy/check-site-url.mjs ./deploy/check-site-url.mjs
+RUN DEPLOY_MODE=${DEPLOY_MODE} PUBLIC_IP=${PUBLIC_IP} node deploy/check-site-url.mjs
 RUN pnpm --filter @cyber-stray/site build
 
 FROM nginx:1.27-alpine

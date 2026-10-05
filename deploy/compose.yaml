@@ -101,7 +101,7 @@ services:
         condition: service_healthy
     volumes:
       # 路由配置随 deploy/ 同步入库管理；webroot 供 certbot HTTP-01 验证
-      - /opt/cyber-stray/deploy/nginx:/etc/nginx/conf.d:ro
+      - /opt/cyber-stray/deploy/nginx/cyber-stray.conf:/etc/nginx/conf.d/default.conf:ro
       - /opt/cyber-stray/acme-webroot:/var/www/certbot:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
     ports:

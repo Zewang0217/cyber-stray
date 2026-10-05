@@ -32,6 +32,58 @@ class ProductionPreflightTest(unittest.TestCase):
         self.certificate(preflight.HOSTS)
         preflight.validate(self.env, self.root, ca_file=self.root / "fullchain.pem")
 
+    def test_explicit_http_ip_acceptance_requires_no_certificate(self):
+        self.http_env()
+        preflight.validate(self.env, self.root, mode="http_ip", public_ip="117.72.100.212")
+
+    def http_env(self):
+        self.env.write_text("CP_WEB_ORIGIN=http://117.72.100.212\n"
+                            "CASDOOR_ISSUER=http://117.72.100.212:8000\n"
+                            "CASDOOR_REDIRECT_URI=http://117.72.100.212/api/auth/callback\n")
+
+    def test_http_ip_never_activates_implicitly(self):
+        self.http_env()
+        with self.assertRaisesRegex(ValueError, "CP_WEB_ORIGIN"):
+            preflight.validate(self.env, self.root)
+
+    def test_rejects_unknown_mode_or_ip_in_https_mode(self):
+        for mode, public_ip in (("auto", None), ("https_domains", "117.72.100.212")):
+            with self.subTest(mode=mode), self.assertRaises(ValueError):
+                preflight.validate(self.env, self.root, mode=mode, public_ip=public_ip)
+
+    def test_ip_mode_requires_canonical_public_ipv4(self):
+        self.http_env()
+        for value in (None, "", "localhost", "127.0.0.1", "10.0.0.1", "100.64.0.1",
+                      "169.254.169.254", "192.0.2.1", "224.0.0.1", "240.0.0.1",
+                      "::1", "117.72.100.212:80", "117.072.100.212"):
+            with self.subTest(public_ip=value), self.assertRaisesRegex(ValueError, "公网 IPv4"):
+                preflight.validate(self.env, self.root, mode="http_ip", public_ip=value)
+
+    def test_ip_mode_rejects_each_mismatched_public_url(self):
+        mismatches = {
+            "CP_WEB_ORIGIN": ("https://117.72.100.212", "http://117.72.100.212:80",
+                              "http://117.72.100.212/", "http://user@117.72.100.212"),
+            "CASDOOR_ISSUER": ("https://auth.kleinbottle.top", "http://117.72.100.212:8001"),
+            "CASDOOR_REDIRECT_URI": ("http://117.72.100.213/api/auth/callback",
+                                     "http://117.72.100.212/api/auth/callback?next=/"),
+        }
+        for key, values in mismatches.items():
+            for value in values:
+                self.http_env()
+                lines = self.env.read_text().splitlines()
+                self.env.write_text("\n".join(f"{key}={value}" if line.startswith(f"{key}=")
+                                              else line for line in lines))
+                with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, key):
+                    preflight.validate(self.env, self.root, mode="http_ip", public_ip="117.72.100.212")
+
+    def test_ip_mode_still_rejects_bun_proxy(self):
+        self.http_env()
+        with self.env.open("a") as out:
+            out.write("ALL_PROXY=http://secret@proxy.example\n")
+        with self.assertRaisesRegex(ValueError, "Bun") as caught:
+            preflight.validate(self.env, self.root, mode="http_ip", public_ip="117.72.100.212")
+        self.assertNotIn("secret", str(caught.exception))
+
     def test_rejects_untrusted_self_signed_certificate(self):
         self.certificate(preflight.HOSTS)
         with self.assertRaises(subprocess.CalledProcessError):
