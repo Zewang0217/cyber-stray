@@ -34,5 +34,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .classic { animation: none; }
+  .classic[data-anim] { animation: none; }
 }
