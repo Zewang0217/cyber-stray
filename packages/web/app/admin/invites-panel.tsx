@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * 邀请面板（#301，维修口第三 tab）——生成 / 列表 / 吊销。
@@ -24,6 +24,9 @@ export default function InvitesPanel() {
   const [freshLink, setFreshLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const linkInput = useRef<HTMLInputElement>(null);
+  const canCopy = typeof navigator !== "undefined" && typeof navigator.clipboard?.writeText === "function";
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/invites");
@@ -49,8 +52,25 @@ export default function InvitesPanel() {
     }
     setFreshLink(json.data.link);
     setCopied(false);
+    setCopyError(null);
     setLabel("");
     await load();
+  }
+
+  async function copyInvite() {
+    if (!freshLink) return;
+    setCopied(false);
+    setCopyError(null);
+    if (!canCopy) {
+      linkInput.current?.select();
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(freshLink);
+      setCopied(true);
+    } catch {
+      setCopyError("复制失败，请选中链接手动复制。");
+    }
   }
 
   async function revoke(id: string) {
@@ -90,17 +110,25 @@ export default function InvitesPanel() {
 
       {freshLink ? (
         <div className="mb-4 border-2 border-[var(--ok)] bg-[var(--panel)] p-3">
-          <p className="mb-1 break-all text-[13px] text-[var(--ink)]">{freshLink}</p>
+          <input
+            ref={linkInput}
+            aria-label="邀请链接"
+            readOnly
+            value={freshLink}
+            onClick={(event) => event.currentTarget.select()}
+            className="mb-2 w-full border-2 border-[var(--curb)] bg-[var(--paper)] px-2 py-1 text-[13px] text-[var(--ink)]"
+          />
+          {!canCopy ? (
+            <p className="mb-2 text-[12px] text-[var(--curb)]">当前环境不支持自动复制，请选中链接手动复制。</p>
+          ) : null}
+          {copyError ? <p role="alert" className="mb-2 text-[12px] text-[var(--bad)]">{copyError}</p> : null}
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => {
-                void navigator.clipboard.writeText(freshLink);
-                setCopied(true);
-              }}
+              onClick={() => void copyInvite()}
               className="border-2 border-[var(--curb)] bg-[var(--paper)] px-2 py-1 text-[12px] text-[var(--ink)]"
             >
-              {copied ? "已复制" : "复制链接"}
+              {!canCopy ? "选中链接" : copied ? "已复制" : "复制链接"}
             </button>
             <span className="text-[12px] text-[var(--curb)]">关闭本页后不再展示</span>
           </div>

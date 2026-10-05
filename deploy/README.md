@@ -2,7 +2,7 @@
 
 单机容器化部署（ADR-0008 / ADR-0015）：compose 编排五个容器——control-plane
 （控制面 + agent，worker 是短命子进程）、web（Next.js standalone）、site（官网
-静态镜像）、Casdoor（官方镜像 + SQLite）、nginx（唯一对外入口）。构建在
+静态镜像）、Casdoor（官方镜像 + SQLite）、nginx（HTTPS 模式的统一入口）。构建在
 GitHub Actions 完成，生产机只拉镜像、跑容器。
 
 本目录是部署配置的权威版本，发布流水线每次同步到生产机 `/opt/cyber-stray/deploy/`。
@@ -18,6 +18,8 @@ GitHub Actions 完成，生产机只拉镜像、跑容器。
 | `nginx/cyber-stray.conf` | 生产 HTTPS ingress：HTTP 跳转、apex 官网、app 伴侣端、auth 登录 |
 | `check-production.py` | 更新前只读检查 HTTPS 配置、证书域名/信任链/有效期/密钥匹配与出站代理限制 |
 | `compose.bootstrap.yaml` / `nginx-bootstrap.conf` | 首次签证书的独立 ACME 入口，不启动应用和数据库 |
+| `compose.http-ip.yaml` / `nginx/cyber-stray.http-ip.conf` / `casdoor/app.http-ip.conf` | 显式 HTTP IP 验收模式的端口、入口和 IdP 配置 |
+| `check-site-url.mjs` | 流水线与官网镜像共用的构建期入口地址校验 |
 
 Casdoor 的密钥类内容不入库：OIDC 应用（client id/secret）在 Casdoor 管理界面
 创建后写入 `/opt/cyber-stray/.env`；`conf/init_data.json`（首启种子，含
@@ -46,10 +48,10 @@ clientSecret）仅在重建全新环境时手工放置。
 
 ## 入口与域名（ADR-0015）
 
-nginx 容器是唯一对外入口：`app.kleinbottle.top` → web、`auth.` → casdoor、
+HTTPS 模式下 nginx 容器是唯一对外入口：`app.kleinbottle.top` → web、`auth.` → casdoor、
 apex → site，经 Cloudflare 橙云（SSL 模式 Full (strict)）。主机 nginx 改听
-:8081 只保留无关面板路由。**仓库已准备阶段二配置，本次未执行线上切换**。
-ADR-0015 记录的备案前置条件仍有效；未准备好时 `check-production.py` 会在
+:8081 只保留无关面板路由。默认发布模式为 `https_domains`。
+ADR-0015 记录的域名备案前置条件仍有效；未准备好时 `check-production.py` 会在
 复制生效配置、拉镜像和重建容器之前拒绝发布。不要绕过预检将单个配置先行上线。
 
 备案通过后，在同一维护窗口完成：
@@ -58,10 +60,24 @@ ADR-0015 记录的备案前置条件仍有效；未准备好时 `check-productio
 2. 使用 certbot webroot `/opt/cyber-stray/acme-webroot` 签发并验证证书，配置续期后 `docker compose exec -T nginx nginx -s reload` 的 deploy-hook。bootstrap 入口仅提供验证，其余请求返回 503；签发后关闭它再启动正式 ingress。
 3. 将生产 `.env` 的 `CP_WEB_ORIGIN` 设为 `https://app.kleinbottle.top`，`CASDOOR_ISSUER` 设为 `https://auth.kleinbottle.top`，`CASDOOR_REDIRECT_URI` 设为 `https://app.kleinbottle.top/api/auth/callback`。
 4. 在 Casdoor 管理界面同步应用 redirectUris。此动作涉及现有 IdP 数据，本次没有执行；必须与域名切换共同安排。
-5. GitHub 仓库变量 `APP_URL` 配置为 `https://app.kleinbottle.top`。确认 `python3 check-production.py` 通过后再发布，脚本同步 Casdoor prod/origin、收回 8000 到 loopback、启用 TLS 和官网路由。
+5. GitHub 仓库变量 `DEPLOY_MODE` 配置为 `https_domains`，清空 `PUBLIC_IP`，`APP_URL` 配置为 `https://app.kleinbottle.top`。确认 `python3 check-production.py` 通过后再发布，脚本同步 Casdoor prod/origin、收回 8000 到 loopback、启用 TLS 和官网路由。
 6. 验证真实浏览器登录、邀请领养、PWA 和 Web Push。脚本的 HTTPS 健康门只验证端点、证书和可达性，不能代替完整 OIDC 登录演练。
 
 预检需要 Python 3 和 OpenSSL，只读取配置与证书，不连接或修改数据库。
+
+### 备案前使用生产 IP 验收
+
+仅在明确选择 `http_ip` 时启用，默认模式不会因证书缺失而切换到 HTTP。要求 Docker Compose >= 2.24.4，覆盖文件使用 `!override` 替换端口与挂载，避免保留 TLS 证书依赖。
+
+GitHub 仓库变量：`DEPLOY_MODE=http_ip`、`PUBLIC_IP=117.72.100.212`、`APP_URL=http://117.72.100.212`。生产 `.env` 的三个 URL 必须分别为 `http://117.72.100.212`、`http://117.72.100.212:8000`、`http://117.72.100.212/api/auth/callback`；Casdoor 应用的允许回调须包含最后一个地址。预检验证公网 IPv4 与三个 URL 精确一致，不修改环境变量或数据库。
+
+```bash
+python3 check-production.py --mode http_ip --public-ip 117.72.100.212
+sudo ./container-update.sh --tag <commit-sha> --mode http_ip --public-ip 117.72.100.212
+docker compose -f compose.yaml -f compose.http-ip.yaml ps
+```
+
+IP 的 80 端口提供伴侣端，8000 提供 Casdoor，官网容器仍通过内部健康检查。此模式不开放 443，不加载证书；登录、邀请、领养、反馈和设置经真实 HTTP API 验证。公网 HTTP 无法启用 Web Push，邀请链接使用手动复制。完成备案后按上述域名流程同步切换 URL、允许回调、证书和仓库变量，再发布并验收 HTTPS 能力。
 
 ## 内测权益与成本故障处理
 
@@ -77,7 +93,7 @@ SaaS 外部浏览器 CLI 暂停开放，搜索及安全网页阅读保持可用�
   （tag = commit sha）→ 同步本目录到生产机 → `container-update.sh`。
 - 回滚：把 `compose.yaml` 的 `IMAGE_TAG:-sha` 占位改成旧 sha，合并 main 重发；
   流水线检测到非占位 tag 时跳过构建、只拉取部署。
-- 部署成功判定：容器 healthcheck 全绿 + 内部服务和三个域名的 HTTPS 端点可达；
+- 部署成功判定：容器 healthcheck 全绿 + 内部服务及所选模式的入口可达；HTTPS 模式验证三个域名，IP 模式验证 IP Host 的登录入口；
   任一不健康则部署失败并保留现场。
 
 ## 备份 / 恢复
@@ -110,5 +126,5 @@ sudo /opt/cyber-stray/deploy/restore.sh /backup/cyber-stray/cyber-stray-<时间�
   或调整 signupItems。
 - `CP_ORIGIN` 构建期注入 web 镜像（默认 compose 网络内 `http://control-plane:8787`）。
 - site 对外路由：官网容器**不占宿主机端口**，ingress nginx 通过 compose
-  内网反代到 site:80，apex 已连接官网。
+  内网反代到 site:80，HTTPS 模式的 apex 连接官网，IP 验收模式只验证官网容器健康。
   官网 CTA 构建期烘焙，改 `vars.APP_URL` 后需重发一次才生效。
