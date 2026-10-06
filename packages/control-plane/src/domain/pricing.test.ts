@@ -12,6 +12,11 @@ import { UsageEntrySchema } from '@cyber-stray/shared/usage';
 describe('costOf', () => {
   const base = { timestamp: '2026-10-04T00:00:00Z', tenantId: 'tenant', kind: 'llm', model: 'deepseek-chat' };
 
+  it.each(['deepseek-v4-flash', 'deepseek-flash'])('%s 的真实输入/输出拆分按人民币预算上界计入成本', (model) => {
+    const row = UsageEntrySchema.parse({ ...base, model, inputTokens: 1_000_000, outputTokens: 500_000 });
+    expect(costOf(row)).toBeCloseTo(6, 6); // 高峰未命中输入 ¥2 + 输出 ¥4
+  });
+
   it.each([
     { tokens: 1000, inputTokens: 100 },
     { tokens: 1000, outputTokens: 900 },
