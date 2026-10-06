@@ -1,0 +1,38 @@
+.classic {
+  display: block;
+  object-fit: contain;
+  image-rendering: pixelated;
+  transform-origin: bottom center;
+  /* 两段关键帧各跳一次，避免 1px 位移被插成半像素。 */
+  animation: breathe 1.6s steps(1, end) infinite;
+}
+
+.classic[data-anim="walk"],
+.classic[data-anim="grumpy"] {
+  animation-name: shuffle;
+}
+
+.classic[data-anim="joy"],
+.classic[data-anim="celebrate"],
+.classic[data-anim="welcome"] {
+  animation-name: bounce;
+}
+
+@keyframes breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(1px); }
+}
+
+@keyframes shuffle {
+  0%, 100% { transform: translateX(-1px); }
+  50% { transform: translateX(1px); }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .classic[data-anim] { animation: none; }
+}

@@ -39,20 +39,37 @@ describe('proxy 登录墙（函数体：cookie 判定 + 素材直通）', () => 
     const response = proxy(new NextRequest(source));
     const destination = new URL(response.headers.get('location')!);
     expect(destination.origin).toBe(source.origin);
-    expect(destination.pathname).toBe('/api/auth/login');
+    expect(destination.pathname).toBe('/login');
     expect(destination.searchParams.get('invite')).toBe(token);
   });
 
   it.each(['https://evil.example', '//evil.example', 'a'.repeat(31), 'a'.repeat(33), 'g'.repeat(32)])(
     '非法邀请参数不透传且不改变本站登录目标：%s', (invite) => {
       const response = proxy(req(`/?invite=${encodeURIComponent(invite)}&next=https://evil.example`));
-      expect(response.headers.get('location')).toBe('http://localhost:3000/api/auth/login');
+      expect(response.headers.get('location')).toBe('http://localhost:3000/login');
     },
   );
-  it('无 session 访问受保护页 → 302 到 /api/auth/login', () => {
+  it('无 session 访问受保护页 → 307 到无副作用的 /login', () => {
     const res = proxy(req('/street'));
     expect(res.status).toBe(307);
-    expect(res.headers.get('location')).toBe('http://localhost:3000/api/auth/login');
+    expect(res.headers.get('location')).toBe('http://localhost:3000/login');
+  });
+
+  it.each(['/', '/settings', '/evolution', '/history'])('未登录 Next 预取 %s 只到登录页，不创建认证状态', (path) => {
+    const request = new NextRequest(`http://localhost:3000${path}?_rsc=background`, {
+      headers: { 'next-router-prefetch': '1', purpose: 'prefetch', rsc: '1' },
+    });
+    const response = proxy(request);
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('http://localhost:3000/login');
+    expect(response.headers.has('set-cookie')).toBe(false);
+    expect(matcherRe().test(new URL(response.headers.get('location')!).pathname)).toBe(false);
+  });
+
+  it.each(['/manifest.webmanifest', '/icons/strayboy-192.png'])('无 session 后台资源 %s 也不能进入认证端点', (path) => {
+    const response = proxy(req(path));
+    expect(response.headers.get('location')).toBe('http://localhost:3000/login');
+    expect(response.headers.has('set-cookie')).toBe(false);
   });
 
   it('有 session 访问受保护页 → 放行', () => {

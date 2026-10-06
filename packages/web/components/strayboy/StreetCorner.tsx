@@ -4,12 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { SpriteContract } from "@cyber-stray/shared/sprite";
 import { deriveStreetView } from "@/lib/strayboy/pet-view";
-import {
-  CUSTOM_SPRITE_BASE_PATH,
-  displayScaleFromManifest,
-  spriteContractFromManifest,
-  streetAnimFor,
-} from "@/lib/strayboy/custom-sprite";
 import { useAgentState } from "@/hooks/useAgentState";
 import { usePetManifest } from "@/hooks/usePetManifest";
 import { usePets } from "@/hooks/usePets";
@@ -24,7 +18,7 @@ import { LogDrawer } from "@/components/strayboy/LogDrawer";
 import { AttrCard } from "@/components/strayboy/AttrCard";
 import { PASSERBY_LINES } from "@/components/strayboy/StreetLife";
 import { PixelStage } from "@/components/strayboy/PixelStage";
-import { PetSprite } from "@/components/strayboy/PetSprite";
+import { StreetPet } from "@/components/strayboy/StreetPet";
 import { WanderLog } from "@/components/strayboy/WanderLog";
 import { AdoptionRitual } from "@/components/strayboy/AdoptionRitual";
 import { PushNudgeBanner } from "@/components/strayboy/PushNudgeBanner";
@@ -165,21 +159,8 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
       setAssetsReadyAt((prev) => Math.max(prev, lastEvent.at));
     }
   }, [lastEvent]);
-  // 领养自定义精灵图：manifest 就绪（或 pet_assets_ready 事件）即热换形象，
-  // 缺素材/素材版本不受支持 → 回退内置猫
-  const { manifest } = usePetManifest({ enabled: !demo, refreshToken: assetsReadyAt });
-  const customContract = useMemo(
-    () => (manifest ? spriteContractFromManifest(manifest) : null),
-    [manifest],
-  );
-  const petContract = customContract ?? contract;
-  const petBasePath = customContract ? CUSTOM_SPRITE_BASE_PATH : undefined;
-  // 展示倍率：管线按实测内容高决议（每只宠物体型各异，基准 84px 落带内）；
-  // 只在自定义契约生效（素材已验证可播）时读 manifest——回退内置猫恒 3
-  // （内置猫 32px 帧 × 3 = 84px 基准本尊），畸形值由 displayScaleFromManifest 兜回 3
-  const petScale = customContract && manifest ? displayScaleFromManifest(manifest) : 3;
-  // 毛色滤镜只属于内置猫——自定义形象不被 hue-rotate 改色
-  const petCoat = customContract ? ("orange" as const) : coat;
+  // 经典九态 / sheet 共用素材读取和 pet_assets_ready 热切换，错误由播放器显示。
+  const petAssets = usePetManifest({ enabled: !demo, refreshToken: assetsReadyAt });
   // /footprint 重定向 ?drawer=log → 自动开 LOG 存档抽屉
   const openDrawerViaRoute = useSearchParams().get("drawer") === "log";
   useEffect(() => {
@@ -370,8 +351,6 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
     ? "grumpy"
     : overrideAnim && onStreet ? overrideAnim
     : theaterAnim ?? view.anim;
-  // 自定义精灵图的播放动画：4×4 集不含 pat/think 等 → 映射到最接近的已生成动画
-  const playAnim = customContract ? streetAnimFor(anim) : anim;
 
   // #218 随机 joy 闪烁：低频（约 2 分钟一次四成概率）、仅合成后站街 idle——
   // 打盹/无聊 grumpy 不被 joy 打断（评审 MEDIUM-1）；updater 内不带副作用（LOW-1）。
@@ -407,7 +386,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
       >
         {!view.away && (
           <button type="button" aria-label={`拍拍${pet.name}`} className="relative cursor-pointer" onClick={pat}>
-            <PetSprite contract={petContract} anim={playAnim} scale={petScale} basePath={petBasePath} hungry={view.hungry && (anim === "idle" || view.napping)} coat={petCoat} />
+            <StreetPet {...petAssets} loaded={demo || petAssets.loaded} contract={contract} anim={anim} hungry={view.hungry && (anim === "idle" || view.napping)} coat={coat} />
             {/* 打盹角标（#218）：非睡眠期的精力低打盹，复用 sleep 帧 + zZ 与 #91 睡眠期区分 */}
             {view.napping && anim === "sleep" && (
               <span aria-hidden className="sb-blink absolute -top-2 right-0 font-vt323 text-[13px] leading-none text-[var(--curb)]">
@@ -433,7 +412,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
       {attract && (
         <div className="fixed inset-0 z-[75] flex flex-col items-center justify-center gap-6 bg-[var(--sky)]" onClick={() => setAttract(false)}>
           <p className="font-ps2p text-sm text-[var(--neon)] sb-blink">STREET MODE</p>
-          <PetSprite contract={petContract} anim={streetAnimFor("walk")} scale={petScale} basePath={petBasePath} coat={petCoat} />
+          <StreetPet {...petAssets} loaded={demo || petAssets.loaded} contract={contract} anim="walk" coat={coat} />
           <p className="text-[12px] text-[var(--curb)]">点按任意处回到掌机</p>
         </div>
       )}
