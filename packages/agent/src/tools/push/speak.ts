@@ -193,21 +193,17 @@ export async function speak(
   const pushErrors: string[] = [];
 
   // 推送到飞书（根据配置选择方式）
-  if (cfg.feishu?.pushMode === 'lark_channel') {
+  if (cfg.feishu?.pushMode === 'lark_channel' && cfg.larkAppId && cfg.larkAppSecret) {
     // LarkChannel 方式
-    if (cfg.larkAppId && cfg.larkAppSecret) {
-      try {
-        messageId = await sendFeishuMessage(content);
-        channelMessageIds.feishu = messageId;
-        pushed = true;
-        logger.success('飞书（LarkChannel）推送成功', { messageId });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        pushErrors.push(`飞书: ${message}`);
-        logger.error('飞书（LarkChannel）推送失败', { error: message });
-      }
-    } else {
-      logger.warn('未配置 LARK_APP_ID/LARK_APP_SECRET，无法使用 LarkChannel');
+    try {
+      messageId = await sendFeishuMessage(content);
+      channelMessageIds.feishu = messageId;
+      pushed = true;
+      logger.success('飞书（LarkChannel）推送成功', { messageId });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      pushErrors.push(`飞书: ${message}`);
+      logger.error('飞书（LarkChannel）推送失败', { error: message });
     }
   } else if (cfg.feishuWebhook) {
     // Webhook 方式
@@ -242,7 +238,7 @@ export async function speak(
   // 没有配置任何直连渠道：内容照常落 speaks 历史，pushed=false 属预期——
   // 租户模式的送达由 CP push-gateway 读 speaks 历史经 Web Push 完成（#178），
   // 这里不是故障分支，不要告警
-  if (!cfg.feishu?.pushMode && !cfg.feishuWebhook && (!cfg.telegramBotToken || !cfg.telegramChatId)) {
+  if (!(cfg.larkAppId && cfg.larkAppSecret) && !cfg.feishuWebhook && !(cfg.telegramBotToken && cfg.telegramChatId)) {
     logger.info('无直连渠道配置，内容落历史（送达由 CP Web Push 网关负责）', { content });
   }
 

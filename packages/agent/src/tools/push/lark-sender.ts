@@ -48,13 +48,13 @@ async function sendViaLarkChannel(content: string): Promise<string | undefined> 
   const chatId = getConfig().feishu?.chatId;
 
   if (!chatId) {
-    logger.warn('未配置 feishu.chatId，消息可能无法发送');
+    throw new Error('未配置 feishu.chatId，无法使用 LarkChannel');
   }
 
   const ch = getChannel();
 
   // 使用 markdown 格式发送
-  const result = await ch.send(chatId || 'unknown', {
+  const result = await ch.send(chatId, {
     markdown: content,
   });
 

@@ -1,4 +1,4 @@
-import { describe, test, expect, afterEach } from 'vitest';
+import { describe, test, expect, afterEach, vi } from 'vitest';
 import { fileURLToPath } from 'url';
 import { join } from 'path';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
@@ -133,5 +133,43 @@ describe('租户上下文（tenant context）', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('直连渠道配置隔离', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  test('租户不继承宿主进程的飞书和 Telegram 凭据', () => {
+    vi.stubEnv('FEISHU_WEBHOOK', 'https://example.test/global-hook');
+    vi.stubEnv('TELEGRAM_BOT_TOKEN', 'global-token');
+    vi.stubEnv('TELEGRAM_CHAT_ID', 'global-chat');
+    vi.stubEnv('LARK_APP_ID', 'global-app');
+    vi.stubEnv('LARK_APP_SECRET', 'global-secret');
+
+    const tenant = loadConfig('/tmp/tenant-without-channels');
+    expect([tenant.feishuWebhook, tenant.telegramBotToken, tenant.telegramChatId,
+      tenant.larkAppId, tenant.larkAppSecret]).toEqual([undefined, undefined, undefined, undefined, undefined]);
+
+    const standalone = loadConfig();
+    expect(standalone.feishuWebhook).toBe('https://example.test/global-hook');
+    expect(standalone.telegramBotToken).toBe('global-token');
+    expect(standalone.telegramChatId).toBe('global-chat');
+    expect(standalone.larkAppId).toBe('global-app');
+    expect(standalone.larkAppSecret).toBe('global-secret');
+  });
+
+  test('租户只读取自己的渠道绑定，平台 Lark 凭据不能补齐缺项', () => {
+    vi.stubEnv('TELEGRAM_CHAT_ID', 'global-chat');
+    vi.stubEnv('LARK_APP_SECRET', 'global-secret');
+    const tenant = loadConfig('/tmp/tenant-with-channels', {
+      feishuWebhook: 'https://example.test/tenant-hook',
+      telegramBotToken: 'tenant-token',
+      larkAppId: 'tenant-app',
+    });
+    expect(tenant.feishuWebhook).toBe('https://example.test/tenant-hook');
+    expect(tenant.telegramBotToken).toBe('tenant-token');
+    expect(tenant.telegramChatId).toBeUndefined();
+    expect(tenant.larkAppId).toBe('tenant-app');
+    expect(tenant.larkAppSecret).toBeUndefined();
   });
 });
