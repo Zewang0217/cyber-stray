@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { recordUsage, localDateKey, withImageUsageTracking, withVisionUsageTracking, modelIdOf } from './usage.js';
+import { recordUsage, localDateKey, withImageUsageTracking, withVisionUsageTracking, modelIdOf, assertUsageReady } from './usage.js';
 import type { ImageGenerator } from '../meme/types.js';
 import type { ImageGenRequest } from '../meme/ark.js';
 
@@ -22,6 +22,13 @@ describe('recordUsage', () => {
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it.each(['deepseek-v4-flash', 'deepseek-flash'])('%s 通过付费前预检并按实际模型 ID 落账', async (model) => {
+    expect(() => assertUsageReady(dir, model, 'llm')).not.toThrow();
+    await recordUsage(dir, { kind: 'llm', model, inputTokens: 100, outputTokens: 50 });
+    const file = join(dir, 'usage', `usage-${localDateKey()}.jsonl`);
+    expect(JSON.parse(readFileSync(file, 'utf-8'))).toMatchObject({ model, inputTokens: 100, outputTokens: 50 });
   });
 
   it('写租户 usage 目录，按本地日期轮转，行结构完整', async () => {

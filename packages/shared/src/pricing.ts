@@ -8,10 +8,21 @@ export interface ModelPrice {
   perImage?: number;
 }
 
+/**
+ * 官方人民币价格，核验于 2026-10-06：
+ * https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
+ * Flash 高峰：输入未命中 ¥2/M、缓存命中 ¥0.04/M、输出 ¥8/M；空闲均半价。
+ * 账本未分缓存/峰谷，拆分用量统一按高峰未命中价估算预算上界，不冒充供应商账单。
+ * 官方仍接受 deepseek-v4-flash，并由 DeepSeek-V4.1-Flash 服务，按 Flash 价计费。
+ */
+const DEEPSEEK_FLASH_BUDGET_PRICE: ModelPrice = { inputPerM: 2, outputPerM: 8 };
+
 /** 内置成本估计表；增加模型时必须在此显式登记价格后才能调用。 */
 export const DEFAULT_PRICES: Record<string, ModelPrice> = {
   // DeepSeek 公开价：输入 ¥2/M、输出 ¥8/M（2026 在售）
   'deepseek-chat': { inputPerM: 2, outputPerM: 8 },
+  'deepseek-v4-flash': DEEPSEEK_FLASH_BUDGET_PRICE,
+  'deepseek-flash': DEEPSEEK_FLASH_BUDGET_PRICE,
   // Seedream 5.0 Lite：$0.055/张 ≈ ¥0.4/张（2K 档）
   'doubao-seedream-5-0-260128': { perImage: 0.4 },
   // 智谱 GLM-4V-Flash：免费

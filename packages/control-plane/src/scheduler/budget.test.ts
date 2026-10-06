@@ -42,6 +42,17 @@ describe('预算闸（#265）', () => {
   });
 
   describe('todayLlmCostYuan', () => {
+    it('已有 deepseek-v4-flash 账本与新 canonical ID 均可折算，预算判定不再因未知价格停派', async () => {
+      const usageDir = join(dataDir, 'tenants', 't1', 'usage');
+      mkdirSync(usageDir, { recursive: true });
+      const rows = ['deepseek-v4-flash', 'deepseek-flash'].map((model) => JSON.stringify({
+        timestamp: '2026-10-06T00:00:00.000Z', tenantId: 't1', kind: 'llm', model,
+        inputTokens: 500_000, outputTokens: 250_000,
+      }));
+      writeFileSync(join(usageDir, 'usage-2026-10-06.jsonl'), rows.join('\n') + '\n', 'utf-8');
+      await expect(todayLlmCostYuan(dataDir, 't1', '2026-10-06')).resolves.toBe(6);
+    });
+
     it('只计当日 kind=llm 的行，按单价表折算（deepseek-chat 输入 ¥2/M 输出 ¥8/M）', async () => {
       const usageDir = join(dataDir, 'tenants', 't1', 'usage');
       mkdirSync(usageDir, { recursive: true });
