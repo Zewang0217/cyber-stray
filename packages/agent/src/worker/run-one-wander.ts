@@ -28,7 +28,7 @@ export interface RunOneWanderOptions {
   tenantId: string;
   /** 该租户隔离的数据目录（DATA_DIR = 租户键） */
   dataDir: string;
-  /** per-tenant 敏感信息（控制面解密后注入；未提供的字段回退进程环境变量） */
+  /** per-tenant 敏感信息（控制面解密后注入；外部渠道不回退进程环境变量） */
   secrets?: AgentSecrets;
   /** 套餐执行参数（S11 门控；未注入 = 单用户模式，不设限） */
   planArgs?: PlanExecutionArgs;

@@ -230,7 +230,7 @@ function loadBehaviorConfig(dataDir?: string): BehaviorConfig {
 /**
  * 组装 Agent 配置
  * - 行为参数：从 data/agent-config.json 读取，失败时用默认值
- * - 敏感信息：secrets 显式注入优先，未注入的字段回退环境变量（单用户模式）
+ * - 显式 dataDir 是租户配置边界：直连渠道只取 secrets；省略时单用户模式可读环境变量
  * - 性格：控制面 worker CLI 注入（认领时选择）；缺省好奇（基准，行为不回退）
  * - 口头禅（#114）：worker CLI 注入（认领/反馈归因后的当前有效集合）；
  *   缺省 = 性格默认组（与 CP parseStoredCatchphrases 同语义）
@@ -248,6 +248,7 @@ export function loadConfig(
     throw new Error(`非法性格: ${String(personality)}`);
   }
   const s = secrets ?? {};
+  const tenantMode = dataDir !== undefined;
   // BYOK：租户 BYOK 模式下 deepseekApiKey 缺失时**不回退平台 env**——
   // 平台 token 不能替 BYOK 用户烧（那是付费墙反向漏洞）。缺 key 的游荡
   // 会在 provider 构造处显式抛错（显式失败优于静默换 key）。
@@ -264,14 +265,14 @@ export function loadConfig(
     searchApiKey: s.tavilyApiKey ?? process.env.TAVILY_API_KEY ?? '',
     exaApiKey: s.exaApiKey ?? process.env.EXA_API_KEY ?? '',
 
-    // 推送配置（webhook/token 来自环境变量，per-tenant 可经 secrets 覆盖）
-    feishuWebhook: s.feishuWebhook ?? process.env.FEISHU_WEBHOOK,
-    telegramBotToken: s.telegramBotToken ?? process.env.TELEGRAM_BOT_TOKEN,
-    telegramChatId: s.telegramChatId ?? process.env.TELEGRAM_CHAT_ID,
+    // 租户未绑定渠道时不能继承宿主进程的单用户推送凭据。
+    feishuWebhook: tenantMode ? s.feishuWebhook : (s.feishuWebhook ?? process.env.FEISHU_WEBHOOK),
+    telegramBotToken: tenantMode ? s.telegramBotToken : (s.telegramBotToken ?? process.env.TELEGRAM_BOT_TOKEN),
+    telegramChatId: tenantMode ? s.telegramChatId : (s.telegramChatId ?? process.env.TELEGRAM_CHAT_ID),
 
     // 飞书应用配置（用于卡片交互）
-    larkAppId: s.larkAppId ?? process.env.LARK_APP_ID,
-    larkAppSecret: s.larkAppSecret ?? process.env.LARK_APP_SECRET,
+    larkAppId: tenantMode ? s.larkAppId : (s.larkAppId ?? process.env.LARK_APP_ID),
+    larkAppSecret: tenantMode ? s.larkAppSecret : (s.larkAppSecret ?? process.env.LARK_APP_SECRET),
 
     // 飞书行为配置（CR-04：嵌套字段级合并，与 consolidation 的 W2 一致——用户只配部分字段时
     // 其余从默认取，不致 undefined。旧版 spread 后又被重建对象覆盖，首读结果被丢弃。）

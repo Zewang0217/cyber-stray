@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { requestPublicUrl } from '@cyber-stray/shared/outbound';
+import { createLarkChannel } from '@larksuiteoapi/node-sdk';
 import { sendFeishuMessage } from './lark-sender.js';
 
-const fixture = vi.hoisted(() => ({ config: { feishuWebhook: '', feishu: { pushMode: 'webhook' } } }));
+const fixture = vi.hoisted(() => ({ config: {
+  feishuWebhook: '',
+  feishu: { pushMode: 'webhook', chatId: '' },
+  larkAppId: '',
+  larkAppSecret: '',
+} }));
 vi.mock('../../config.js', () => ({ getConfig: () => fixture.config }));
 vi.mock('@larksuiteoapi/node-sdk', () => ({ createLarkChannel: vi.fn() }));
 vi.mock('@cyber-stray/shared/outbound', async (original) => ({ ...await original<object>(), requestPublicUrl: vi.fn() }));
@@ -10,6 +16,21 @@ vi.mock('@cyber-stray/shared/outbound', async (original) => ({ ...await original
 beforeEach(() => {
   vi.mocked(requestPublicUrl).mockReset();
   fixture.config.feishuWebhook = 'https://open.feishu.cn/open-apis/bot/v2/hook/test-hook';
+  fixture.config.feishu.pushMode = 'webhook';
+  fixture.config.feishu.chatId = '';
+  fixture.config.larkAppId = '';
+  fixture.config.larkAppSecret = '';
+});
+
+describe('LarkChannel 目标校验', () => {
+  it('缺 chatId 时明确报配置错误，绝不向 unknown 发送', async () => {
+    fixture.config.feishu.pushMode = 'lark_channel';
+    fixture.config.larkAppId = 'tenant-app';
+    fixture.config.larkAppSecret = 'tenant-secret';
+    fixture.config.feishuWebhook = '';
+    await expect(sendFeishuMessage('公开发现')).rejects.toThrow('未配置 feishu.chatId');
+    expect(createLarkChannel).not.toHaveBeenCalled();
+  });
 });
 
 describe('飞书 webhook 实际发送边界', () => {
