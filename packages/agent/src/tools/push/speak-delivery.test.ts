@@ -45,6 +45,42 @@ describe('内容交付与反馈', () => {
       matchedTopics: ['量子计算'] });
   });
 
+  test('SaaS 无绑定渠道时不使用全局凭据，内容仍进入历史', async () => {
+    vi.stubEnv('FEISHU_WEBHOOK', 'https://example.test/global-hook');
+    vi.stubEnv('TELEGRAM_BOT_TOKEN', 'global-token');
+    vi.stubEnv('TELEGRAM_CHAT_ID', 'global-chat');
+    vi.stubEnv('LARK_APP_ID', 'global-app');
+    vi.stubEnv('LARK_APP_SECRET', 'global-secret');
+    setTenantContext({ tenantId: 'delivery-test', dataDir, config: loadConfig(dataDir) });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await speak('只写入站内历史', 'article');
+    expect(result).toMatchObject({ success: true, pushed: false });
+    expect(sendFeishuMessage).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    const raw = JSON.parse((await readFile(join(dataDir, 'history', todaySpeaksFile()), 'utf8')).trim());
+    expect(raw).toMatchObject({ contentId: result.contentId, pushed: false });
+  });
+
+  test('SaaS 已绑定飞书 webhook 时在默认模式下发送', async () => {
+    setTenantContext({ tenantId: 'delivery-test', dataDir,
+      config: loadConfig(dataDir, { feishuWebhook: 'https://example.test/tenant-hook' }) });
+    const result = await speak('发送到租户飞书', 'article');
+    expect(result).toMatchObject({ success: true, pushed: true, messageId: 'feishu-1' });
+    expect(sendFeishuMessage).toHaveBeenCalledWith('发送到租户飞书');
+  });
+
+  test('明确配置的飞书渠道发送失败时返回错误并保留历史', async () => {
+    setTenantContext({ tenantId: 'delivery-test', dataDir,
+      config: loadConfig(dataDir, { larkAppId: 'tenant-app', larkAppSecret: 'tenant-secret' }) });
+    vi.mocked(sendFeishuMessage).mockRejectedValueOnce(new Error('未配置 feishu.chatId'));
+    const result = await speak('渠道配置不完整', 'article');
+    expect(result).toMatchObject({ success: true, pushed: false, error: '飞书: 未配置 feishu.chatId' });
+    const raw = JSON.parse((await readFile(join(dataDir, 'history', todaySpeaksFile()), 'utf8')).trim());
+    expect(raw).toMatchObject({ contentId: result.contentId, pushed: false });
+  });
+
   test('历史目录不可写时显式失败，不能把没有落盘的内容报成功', async () => {
     await writeFile(join(dataDir, 'history'), 'not a directory');
     await expect(speak('内容不能丢', 'article')).rejects.toThrow();
