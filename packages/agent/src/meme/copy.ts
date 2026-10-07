@@ -5,8 +5,8 @@
  * （Zod 校验 LLM 产出，禁兜底——字段缺失/非法显式抛错）。
  * I/O 层：generateMemeCopy（AI SDK generateText，模型由调用方注入）。
  *
- * 图文分离：这里只产出"梗文案"文本，绝不进生图 prompt（ADR-0001 硬契约）。
- * 元数据（话题/情绪）与文案同批产出，是图鉴检索基础。
+ * 图文分离：同一次调用产出梗文案与无字场景，生图只消费场景，
+ * 文案由程序叠加（ADR-0001）。话题/情绪用于图鉴检索。
  */
 
 import { generateText } from 'ai';
@@ -16,11 +16,15 @@ import { getDataRoot } from '../config.js';
 import { assertUsageReady, recordUsage, modelIdOf } from '../usage/usage.js';
 import type { MemeCopy } from './types.js';
 
-/** LLM 产出 schema（话题 → 梗文案 + 情绪；topic 可选——缺失回退触发话题） */
+/** LLM 产出 schema；scene 必须是可直接用于生图的具体无字场景。 */
 const MemeCopySchema = z.object({
   text: z.string().min(1).max(120).describe('梗文案，程序叠加到画面上'),
   emotion: z.string().min(1).max(20).describe('情绪标签，如 开心/自嘲/吐槽/燃'),
+  scene: z.string().trim().min(5).max(240).describe('与话题和文案呼应的无字画面，描述动作、道具或反差'),
   topic: z.string().min(1).max(60).optional().describe('话题（回显触发话题，供图鉴对账）'),
+}).refine((copy) => !copy.scene.includes(copy.text), {
+  message: 'scene 不得包含将由程序叠加的梗文案原文',
+  path: ['scene'],
 });
 
 /** 文案生成入参 */
@@ -40,7 +44,8 @@ export function buildMemeCopyPrompt(input: MemeCopyInput): string {
     `你是${input.petName}${persona}，一只赛博宠物。现在要把话题"${input.topic}"做成一张表情包。`,
     '请产出一句简短、有梗、符合你性格的中文梗文案（10-40 字，自然口语，能让人会心一笑或共鸣）。',
     '同时给这个表情包打一个情绪标签（2 字以内，如 开心/自嘲/吐槽/燃/丧）。',
-    '只输出 JSON：{"text": "梗文案", "emotion": "情绪标签", "topic": "话题"}。',
+    '再构思一个与话题和梗文案呼应的具体无字画面（5-240 字）：写清宠物的动作、道具或有趣的反差，让人不读字也能看懂笑点。画面内不出现文字、字母、标牌或梗文案原文。',
+    '只输出 JSON：{"text": "梗文案", "emotion": "情绪标签", "scene": "具体无字画面", "topic": "话题"}。',
   ].join('\n');
 }
 
@@ -58,6 +63,7 @@ export function parseMemeCopy(raw: string, expectedTopic: string): MemeCopy {
   return {
     text: parsed.data.text,
     emotion: parsed.data.emotion,
+    scene: parsed.data.scene,
     topic: parsed.data.topic ?? expectedTopic,
   };
 }

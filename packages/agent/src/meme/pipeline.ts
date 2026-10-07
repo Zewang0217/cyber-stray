@@ -103,8 +103,8 @@ export async function runMemePipeline(
       error: `表情包目录创建失败: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
-  const prompt = buildMemeImagePrompt(copy, input.mode, input.petSpecText);
   try {
+    const prompt = buildMemeImagePrompt(copy, input.mode, input.petSpecText);
     input.abortSignal?.throwIfAborted();
     await deps.imageGen.generate({
       prompt,

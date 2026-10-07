@@ -23,6 +23,7 @@ import type { MemeCopyGenerator } from '../../meme/pipeline.js';
 const COPY_GEN: MemeCopyGenerator = async () => ({
   text: '量子纠缠人生纠缠',
   emotion: '自嘲',
+  scene: '橘猫追着两只发光粒子转圈，尾巴打成结',
   topic: '量子计算',
 });
 

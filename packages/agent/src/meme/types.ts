@@ -14,12 +14,14 @@ import type { ImageGenRequest } from './ark.js';
 /** 表情包模式：abstract=通用风格抽象梗图 / ip=宠物概念图参考（IP 一致性） */
 export type MemeMode = 'abstract' | 'ip';
 
-/** LLM 出文案的产物（话题 → 梗文案 + 情绪） */
+/** 同一次 LLM 调用产出文案与无字画面场景。 */
 export interface MemeCopy {
   /** 梗文案（将程序叠加到画面上，用户可见） */
   text: string;
   /** 情绪标签（图鉴元数据） */
   emotion: string;
+  /** 与话题和文案呼应的具体无字画面；只送生图，不落旧图鉴元数据。 */
+  scene: string;
   /** 话题（图鉴元数据；通常 = 触发话题） */
   topic: string;
 }

@@ -21,7 +21,7 @@ describe('表情包视觉质检', () => {
       model: 'ecnu-plus', baseUrl: 'https://chat.ecnu.edu.cn/open/api/v1',
       thinking: true, temperature: 0, fetchFn: fetchFn as typeof fetch,
     });
-    await expect(qc({ referencePath, imagePath, copy: { topic: '测试', text: '有梗', emotion: '开心' },
+    await expect(qc({ referencePath, imagePath, copy: { topic: '测试', text: '有梗', emotion: '开心', scene: '猫抱着键盘跳舞' },
       mode: 'ip' })).resolves.toEqual({ pass: true, issues: [] });
     expect(fetchFn).toHaveBeenCalledOnce();
     const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
