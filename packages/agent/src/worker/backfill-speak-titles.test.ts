@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +11,9 @@ describe('旧文章与分享标题审阅及原子补全', () => {
   let path: string;
 
   beforeEach(async () => {
+    // 只固定日历日期；文件 I/O 和异步计时仍用真实实现。
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 7, 12));
     dataDir = await mkdtemp(join(tmpdir(), 'title-backfill-'));
     await mkdir(join(dataDir, 'history'));
     path = join(dataDir, 'history', HISTORY_FILE);
@@ -32,7 +35,10 @@ describe('旧文章与分享标题审阅及原子补全', () => {
       '',
     ].join('\n'));
   });
-  afterEach(async () => { await rm(dataDir, { recursive: true, force: true }); });
+  afterEach(async () => {
+    vi.useRealTimers();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   it('dry-run 不改历史；apply 只改标题并保留所有反馈关联字段', async () => {
     const before = await readFile(path, 'utf8');
