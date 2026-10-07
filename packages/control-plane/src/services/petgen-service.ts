@@ -244,17 +244,29 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     }
   }
 
+  /** Project retry eligibility from the same gates used by the retry command. */
+  async function verifiedTaskView(db: ControlDb, task: PetGenTask): Promise<PetGenTaskView> {
+    const view = toTaskView(task);
+    if (!view.canRetryQc) return view;
+    const sheet = task.strategy === 'sheet' || task.strategy === 'strip';
+    const allowed = sheet || await planAllowed(db, task.tenantId);
+    const quota = await petGenQuota(db, task.tenantId, config.petGenMonthlyQuota);
+    view.canRetryQc = allowed && quota.remaining > 0 &&
+      !(await hasInFlightTask(db, task.tenantId)) && await hasQcAssets(task);
+    return view;
+  }
+
   async function listTasks(tenantId: string) {
     const db = await getDb(config.dataDir);
     const rows = await petgenRepo.listTasksByTenant(db, tenantId);
-    return rows.map(toTaskView);
+    return Promise.all(rows.map((task) => verifiedTaskView(db, task)));
   }
 
   /** 任务详情（租户隔离：他人任务 404） */
   async function getTask(tenantId: string, id: string) {
     const db = await getDb(config.dataDir);
     const task = await petgenRepo.findTaskByIdAndTenant(db, id, tenantId);
-    return task ? toTaskView(task) : null;
+    return task ? verifiedTaskView(db, task) : null;
   }
 
   async function confirmTask(tenantId: string, id: string): Promise<PetGenOutcome<unknown>> {
@@ -298,12 +310,14 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
   /** Resume infrastructure-failed QC without another concept/image charge. */
   async function retryQcTask(tenantId: string, id: string): Promise<PetGenOutcome<PetGenTaskView>> {
     const db = await getDb(config.dataDir);
-    if (!(await planAllowed(db, tenantId))) {
-      return { ok: false, status: 403, error: '宠物 IP 定制是 Pro/BYOK 专属功能' };
-    }
     return serializedSubmit(tenantId, async () => {
       const task = await petgenRepo.findTaskByIdAndTenant(db, id, tenantId);
       if (!task) return { ok: false, status: 404, error: '任务不存在' };
+      const sheet = task.strategy === 'sheet' || task.strategy === 'strip';
+      // Sheet adoption is already available to free tenants; its recovery must be too.
+      if (!sheet && !(await planAllowed(db, tenantId))) {
+        return { ok: false, status: 403, error: '宠物 IP 定制是 Pro/BYOK 专属功能' };
+      }
       if (!canRetryPetGenQc(task)) {
         return { ok: false, status: 409, error: '仅质检服务异常的失败任务可重试质检' };
       }

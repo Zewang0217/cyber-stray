@@ -211,6 +211,33 @@ describe('petgen 路由（#94）', () => {
     expect((await db.select().from(petGenTasks).where(eq(petGenTasks.id, id)).get())?.status).toBe('failed');
   });
 
+  it('free 经典任务不显示恢复入口，免费领养精灵图保持原有恢复权益', async () => {
+    const { db, root, id } = await retainedQcTask();
+    await setPlan('alice', 'free');
+    const classic = await app.request(await authed(`http://x/api/petgen/tasks/${id}`));
+    expect((await classic.json()).data.canRetryQc).toBe(false);
+    await db.update(petGenTasks).set({ strategy: 'sheet', conceptPath: null }).where(eq(petGenTasks.id, id)).run();
+    writeFileSync(join(root, 'reference.jpg'), 'retained uploaded reference');
+    const sheet = await app.request(await authed(`http://x/api/petgen/tasks/${id}`));
+    expect((await sheet.json()).data.canRetryQc).toBe(true);
+    const retried = await app.request(await authed(`http://x/api/petgen/tasks/${id}/retry-qc`, { method: 'POST' }));
+    expect(retried.status).toBe(200);
+    expect((await retried.json()).data.status).toBe('qc');
+  });
+
+  it('素材缺失或配额耗尽时列表和详情不显示恢复按钮', async () => {
+    const { db, root, id } = await retainedQcTask();
+    unlinkSync(join(root, 'states', 'joy.png'));
+    const detail = await app.request(await authed(`http://x/api/petgen/tasks/${id}`));
+    expect((await detail.json()).data.canRetryQc).toBe(false);
+    writeFileSync(join(root, 'states', 'joy.png'), 'retained joy');
+    await db.insert(petGenTasks).values(['used1', 'used2'].map((id) => ({
+      id, tenantId: 'alice', specText: '猫', status: 'done' as const, completedAt: Date.now(),
+    }))).run();
+    const list = await app.request(await authed('http://x/api/petgen/tasks'));
+    expect((await list.json()).data.find((task: { id: string }) => task.id === id).canRetryQc).toBe(false);
+  });
+
   it('并发恢复两条失败任务仅一条进入 qc，避免同租户队列互卡', async () => {
     await retainedQcTask('retry-a');
     await retainedQcTask('retry-b');
