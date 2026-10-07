@@ -279,7 +279,8 @@ describe('data 路由（租户数据 + 鉴权）', () => {
       const files = readdirSync(activityDir);
       const f = files.find((n) => /^activity-\d{4}-\d{2}-\d{2}\.jsonl$/.test(n));
       if (f) lines = readFileSync(join(activityDir, f), 'utf-8');
-      else await new Promise((r) => setTimeout(r, 20));
+      // appendFile 会先创建空文件，内容尚未落盘时也必须让出事件循环。
+      if (!lines) await new Promise((r) => setTimeout(r, 20));
     }
     expect(lines).toContain('"tenantId":"alice"');
   });

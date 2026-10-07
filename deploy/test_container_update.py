@@ -13,7 +13,9 @@ PUBLIC_IP = "117.72.100.212"
 
 class ContainerUpdateTest(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="cyber-stray-update-", dir="/tmp")
+        temporary_root = DEPLOY.resolve().parent / "scratch" / "tmp"
+        temporary_root.mkdir(parents=True, exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(prefix="cyber-stray-update-", dir=temporary_root)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.deploy = self.root / "deploy"

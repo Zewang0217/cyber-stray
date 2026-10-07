@@ -23,8 +23,17 @@ jobs:
     name: Image build & Production deployment
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      TMPDIR: ${{ github.workspace }}/scratch/tmp
+      TMP: ${{ github.workspace }}/scratch/tmp
+      TEMP: ${{ github.workspace }}/scratch/tmp
     steps:
+      - name: Initialize repository temporary directory
+        run: mkdir -p "$TMPDIR"
       - uses: actions/checkout@v4
+      # checkout may remove the untracked scratch directory.
+      - name: Prepare repository temporary directory
+        run: mkdir -p "$TMPDIR"
       - uses: pnpm/action-setup@v4
       - uses: oven-sh/setup-bun@v2
         with:
@@ -168,3 +177,7 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
           DEPLOY_MODE: ${{ vars.DEPLOY_MODE || 'https_domains' }}
           PUBLIC_IP: ${{ vars.PUBLIC_IP }}
+
+      - name: Clean repository temporary directory
+        if: always()
+        run: rm -rf -- "${{ github.workspace }}/scratch/tmp"

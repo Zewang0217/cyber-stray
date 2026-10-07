@@ -2,7 +2,7 @@
  * prompt 构建器测试（#94）
  *
  * 契约：概念图 prompt 含 spec 文本 + 风格预设片段 + 绿幕/禁文字约束；
- * 网格 prompt 按布局给出格线/空格指令；质检 prompt 要求 JSON 输出。
+ * 网格 prompt 按布局给出纯绿留白/空格指令；质检 prompt 要求 JSON 输出。
  */
 
 import { describe, it, expect } from 'vitest';
@@ -27,6 +27,13 @@ const spec: PetSpec = {
   options: { palette: '橙色为主', size: '圆润' },
   stylePreset: 'chibi-kawaii',
 };
+
+function expectInvisibleGrid(prompt: string): void {
+  expect(prompt).toContain('等格虚拟网格');
+  expect(prompt).toContain('格子间仅用纯绿色(#00FF00)留白分隔');
+  expect(prompt).toContain('不要绘制可见网格线或边框');
+  expect(prompt).not.toContain('网格线用细白线');
+}
 
 describe('buildConceptPrompt', () => {
   it('含 spec 文本 + 风格片段 + 绿幕 + 禁文字水印', () => {
@@ -54,6 +61,7 @@ describe('buildGridPrompt', () => {
     expect(prompt).toContain('2x2');
     expect(prompt).toContain('右下角必须留空');
     expect(prompt).toContain('#00FF00');
+    expectInvisibleGrid(prompt);
   });
 
   it('3x3：9 状态行优先', () => {
@@ -62,6 +70,7 @@ describe('buildGridPrompt', () => {
     expect(prompt).toContain('3x3');
     expect(prompt).toContain('行优先');
     expect(prompt).toContain('celebrate');
+    expectInvisibleGrid(prompt);
   });
 
   it('1x1：单状态单图', () => {
@@ -97,6 +106,7 @@ describe('buildSheetPrompt / buildStripPrompt / buildAnimQcPrompt（领养精灵
     expect(prompt).toContain('思考(think)连续帧:');
     expect(prompt).toContain('脚底都贴在同一水平线');
     expect(prompt).toContain('#00FF00');
+    expectInvisibleGrid(prompt);
   });
 
   it('sheet prompt：帧数总和 != n×n 抛错（防 prompt 与网格不符）', () => {
@@ -125,6 +135,7 @@ describe('buildSheetPrompt / buildStripPrompt / buildAnimQcPrompt（领养精灵
     expect(prompt).toContain('1 行 2 列');
     expect(prompt).toContain('开心');
     expect(prompt).toContain('第1帧跳起');
+    expectInvisibleGrid(prompt);
   });
 
   it('动画帧条质检 prompt：锚定参考图 + 帧间只抓身份跳变', () => {
