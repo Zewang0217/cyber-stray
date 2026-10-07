@@ -13,7 +13,9 @@ spec.loader.exec_module(preflight)
 
 class ProductionPreflightTest(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="cyber-stray-tls-", dir="/tmp")
+        temporary_root = Path(__file__).resolve().parent.parent / "scratch" / "tmp"
+        temporary_root.mkdir(parents=True, exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(prefix="cyber-stray-tls-", dir=temporary_root)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.env = self.root / ".env"

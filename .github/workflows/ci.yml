@@ -15,8 +15,17 @@ jobs:
     name: Verify + build
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      TMPDIR: ${{ github.workspace }}/scratch/tmp
+      TMP: ${{ github.workspace }}/scratch/tmp
+      TEMP: ${{ github.workspace }}/scratch/tmp
     steps:
+      - name: Initialize repository temporary directory
+        run: mkdir -p "$TMPDIR"
       - uses: actions/checkout@v4
+      # checkout may remove the untracked scratch directory.
+      - name: Prepare repository temporary directory
+        run: mkdir -p "$TMPDIR"
       - uses: pnpm/action-setup@v4
       - uses: oven-sh/setup-bun@v2
         with:
@@ -47,3 +56,7 @@ jobs:
         run: |
           pnpm -F @cyber-stray/web build
           pnpm -F @cyber-stray/site build
+
+      - name: Clean repository temporary directory
+        if: always()
+        run: rm -rf -- "${{ github.workspace }}/scratch/tmp"
