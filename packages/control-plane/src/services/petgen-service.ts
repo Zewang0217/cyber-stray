@@ -16,7 +16,7 @@ import {
   type PetStateId,
 } from '@cyber-stray/shared/pet';
 import { getPersonality, type PersonalityId } from '@cyber-stray/shared';
-import type { PetGenQuota, PetGenTaskView, StateQcResult } from '@cyber-stray/shared/petgen';
+import { parseStoredQcResult, type PetGenQuota, type PetGenTaskView } from '@cyber-stray/shared/petgen';
 import type { ControlPlaneConfig } from '../config.js';
 import type { ControlDb } from '../db/client.js';
 import { getDb } from '../db/client.js';
@@ -97,7 +97,7 @@ function toTaskView(task: PetGenTask): PetGenTaskView {
     stylePreset: (task.stylePreset ?? DEFAULT_PET_PRESET) as PetPresetId,
     conceptUrl: task.conceptPath ? `/api/petgen/tasks/${task.id}/concept.png` : null,
     error: task.error,
-    qcResult: task.qcResult ? (JSON.parse(task.qcResult) as Record<PetStateId, StateQcResult>) : null,
+    qcResult: task.qcResult ? parseStoredQcResult(task.qcResult) : null,
     conceptAttempts: task.conceptAttempts,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,

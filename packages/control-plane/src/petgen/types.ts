@@ -20,7 +20,8 @@ export type { PetGenTaskStatus, PetSpec, StateQcResult };
  * 生成策略。两条阶梯（按任务首策略决定，见 strategyLadder）：
  * - 领养精灵图（一致性问题单图化）：sheet(单张 n×n 全动作全帧) → strip(每动画一行 1×n)。
  *   不落到 per——单帧 256px 与 sheet 的 64px 帧尺寸不同构，混拼会毁掉 sprite 总条。
- * - 改造屋经典路径：quad(2x2×3) → nine(3x3) → per(逐状态单帧)。
+ * - 改造屋经典路径：布局/切分失败按 quad(2x2×3) → nine(3x3) → per(逐状态单帧)
+ *   降级；内容 QC 失败直接逐态修复，保留已通过的图。
  */
 export type GenStrategy = 'sheet' | 'strip' | 'quad' | 'nine' | 'per';
 
