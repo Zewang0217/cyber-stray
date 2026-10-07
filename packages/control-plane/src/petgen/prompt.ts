@@ -15,6 +15,9 @@ const GREEN_SCREEN = '纯绿色背景(#00FF00)作为绿幕,角色完整可见,�
 /** 通用禁止项（图文分离 + 防水印） */
 const NEGATIVES = '不要文字,不要水印,不要签名,不要边框,不要其他物体,单一角色';
 
+/** 等格是布局坐标，不是画面元素；分隔留白必须能被绿幕抠除。 */
+const GRID_GUTTER_RULE = '格子间仅用纯绿色(#00FF00)留白分隔,不要绘制可见网格线或边框';
+
 /**
  * 精灵图逐帧姿态提示（PET_SHEET_ANIMS 全集；确定性模板的一部分）。
  * 每格内容锁死到词面——「连续 N 帧自由发挥」是格间漂移主因。
@@ -78,9 +81,9 @@ export function buildGridPrompt(
   const names = states.map((s) => `${PET_STATES[s].label}(${s})`).join('、');
   const layoutHint =
     layout === '2x2'
-      ? `一张 2x2 网格图,左上/右上/左下 3 格各画 1 个状态,右下角必须留空(纯绿色),网格线用细白线`
+      ? `一张 2x2 等格虚拟网格图,左上/右上/左下 3 格各画 1 个状态,右下角必须留空(纯绿色),${GRID_GUTTER_RULE}`
       : layout === '3x3'
-        ? `一张 3x3 网格图,9 格各画 1 个状态,行优先,格子大小一致,网格线用细白线`
+        ? `一张 3x3 等格虚拟网格图,9 格各画 1 个状态,行优先,格子大小一致,${GRID_GUTTER_RULE}`
         : `一张单图,画面中央 1 个角色`;
   return (
     `同一个角色(${spec.specText})的${names}${states.length > 1 ? '共' : ''}${states.length}个动作状态,` +
@@ -95,7 +98,7 @@ export function buildGridPrompt(
 
 /** 精灵图布局约束（sheet/strip 共用；确定性等分切分的约定前提） */
 const SHEET_LAYOUT_RULES =
-  '严格按网格排布,格子大小完全一致,网格线用细白线,每个格子角色大小一致、全身完整不出格,' +
+  `严格按等格虚拟网格排布,格子大小完全一致,${GRID_GUTTER_RULE},每个格子角色大小一致、全身完整不出格,` +
   '所有格子的脚底都贴在同一水平线上,行优先排列';
 
 /**
