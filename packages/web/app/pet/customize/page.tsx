@@ -128,8 +128,8 @@ export default function CustomizePage() {
                 </div>
               ))}
             </div>
-            <p className="mt-2 font-vt323 text-[16px] text-[var(--curb)]">
-              Loading = 猫形剪影原地小碎步（禁 spinner，components.md）
+            <p className="font-noto mt-2 text-[13px] leading-[1.7] text-[var(--curb)]">
+              正在生成动作并核对形象，完成后会自动更新。
             </p>
           </section>
         )}
