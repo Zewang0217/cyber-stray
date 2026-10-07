@@ -20,8 +20,9 @@ import type { SpeakHistoryItem } from "@cyber-stray/shared/push";
 const DEMO_EPOCH = new Date("2026-09-01T10:00:00+08:00").getTime();
 const DEMO_CARDS: SpeakHistoryItem[] = [
   {
-    message: "帖子全文……", timestamp: new Date(DEMO_EPOCH - 2 * 3_600_000).toISOString(),
+    message: "**它真的听得懂。** 新研究覆盖 78 只猫。\n\n- 听懂率 94%\n- 回应率 11%\n\n原文 https://example.com/cat-study", timestamp: new Date(DEMO_EPOCH - 2 * 3_600_000).toISOString(),
     title: "科学实锤：猫能听懂自己的名字", summary: "新研究覆盖 78 只猫。听懂率 94%，回应率 11%——这不是 bug，是性格。",
+    url: "https://example.com/cat-study",
     messageId: "demo-1", matchedTopics: ["猫行为学"], pushed: true,
   },
   {
@@ -49,7 +50,7 @@ function WallInner() {
   const adoptedAt = pets[0]?.createdAt ?? 0;
 
   const [animateParent] = useAutoAnimate();
-  // #205：详情模态（墙上卡片只显标题，点开读全文）
+  // 详情模态：墙上显示标题与摘要，点开读完整正文。
   const [detail, setDetail] = useState<SpeakHistoryItem | null>(null);
   // demo 未读推导隔离：夹具恒视为未读（NEW! 验收项不读真实 localStorage）
   const [seenMs, setSeenMs] = useState<number>(() => getSeenTimestamp());
@@ -94,7 +95,7 @@ function WallInner() {
   };
 
   return (
-    <div className="sb mx-auto max-w-3xl p-3">
+    <div className="sb mx-auto max-w-5xl p-3">
       <header className="mb-3 flex items-baseline justify-between">
         <h1 className="font-ps2p text-xs text-[var(--hi)]">WALL · 明信片墙</h1>
         <span className="font-vt323 text-[20px] text-[var(--curb)]">
@@ -106,7 +107,7 @@ function WallInner() {
           取件失败：{history.error}（可能未登录或网络中断）
         </div>
       )}
-      <div className="grid gap-5 sm:grid-cols-2 lg:block lg:columns-3 lg:gap-5" ref={animateParent}>
+      <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2" ref={animateParent}>
         {items.map((card) => (
           <MailCard
             key={`${card.timestamp}|${card.message}`}
