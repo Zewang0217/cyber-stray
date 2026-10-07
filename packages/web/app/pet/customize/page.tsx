@@ -3,6 +3,8 @@
 import { usePetGen } from "@/hooks/usePetGen";
 import { PET_STATE_IDS, type PetStateId } from "@cyber-stray/shared/pet";
 import { BootFrame } from "@/components/strayboy/BootFrame";
+import { GenerationWorkshop } from "@/components/strayboy/GenerationWorkshop";
+import Link from "next/link";
 
 /**
  * 改造屋（/pet/customize，#170 T2）：问卷纸 → 概念图相框确认 → 分段墨条进度 →
@@ -11,15 +13,6 @@ import { BootFrame } from "@/components/strayboy/BootFrame";
  */
 export default function CustomizePage() {
   const { task, quota, loading, error, submit, confirm, restart, retryQc } = usePetGen();
-
-  // 分段墨条进度：按任务状态映射阶段
-  const stages: Array<{ label: string; on: boolean }> = [
-    { label: "问卷", on: true },
-    { label: "概念图", on: !!task && ["awaiting_confirmation", "generating_states", "qc", "done"].includes(task.status) },
-    { label: "生成", on: !!task && ["generating_states", "qc", "done"].includes(task.status) },
-    { label: "质检", on: !!task && ["qc", "done"].includes(task.status) },
-    { label: "完成", on: task?.status === "done" },
-  ];
 
   return (
     <div className="sb min-h-screen bg-[var(--sky)] p-4">
@@ -34,6 +27,8 @@ export default function CustomizePage() {
         {error && (
           <p className="mb-4 border-2 border-[var(--bad)] bg-[var(--panel)] p-2.5 text-[13px] text-[var(--bad)]">{error}</p>
         )}
+        {task && task.status !== "failed" && <div className="mb-5"><GenerationWorkshop key={task.id} task={task} /></div>}
+        {task && task.status !== "failed" && <Link href="/" className="mb-5 inline-flex min-h-11 items-center border-2 border-[var(--curb)] px-4 text-[13px] text-[var(--hi)]">{task.status === "done" ? "去街角看它" : "先去街角逛逛"} ▶</Link>}
 
         {/* failed：显式呈现失败原因 + 重试引导（禁静默） */}
         {task?.status === "failed" && (
@@ -55,7 +50,7 @@ export default function CustomizePage() {
         {/* 问卷纸：spec 输入（任务进行中隐藏防重复提交烧配额） */}
         <section
           className="mb-5 border-2 border-[var(--ink)] bg-[var(--paper)] p-4 shadow-[5px_5px_0_#000]"
-          hidden={!!task && ["awaiting_confirmation", "generating_states", "qc"].includes(task.status)}
+          hidden={!!task && !["failed", "done"].includes(task.status)}
         >
           <h2 className="mb-2 text-[14px] text-[var(--ink)]">问卷纸 · 描述你的街溜子</h2>
           <form
@@ -104,6 +99,7 @@ export default function CustomizePage() {
             <div className="mt-3 flex justify-center gap-2">
               <button
                 type="button"
+                disabled={loading}
                 onClick={() => void confirm(task.id)}
                 className="border-2 border-black bg-[var(--ok)] px-4 py-2 font-ps2p text-xs text-[var(--sky)]"
               >
@@ -111,34 +107,13 @@ export default function CustomizePage() {
               </button>
               <button
                 type="button"
+                disabled={loading}
                 onClick={() => void restart(task.id, { specText: task.specText, stylePreset: "pixel" })}
                 className="border-2 border-[var(--curb)] bg-[var(--panel)] px-4 py-2 text-[13px] text-[var(--paper)]"
               >
-                改 spec 重出
+                重新画一张
               </button>
             </div>
-          </section>
-        )}
-
-        {/* 分段墨条进度（generating/qc） */}
-        {(task?.status === "generating_states" || task?.status === "qc") && (
-          <section className="mb-5 border-2 border-[var(--ink)] bg-[var(--panel)] p-4">
-            <h2 className="mb-3 text-[14px] text-[var(--paper)]">素材生成中……</h2>
-            <div className="flex flex-col gap-1.5">
-              {stages.map((st) => (
-                <div key={st.label} className="flex items-center gap-2">
-                  <span className="w-16 text-[12px] text-[var(--curb)]">{st.label}</span>
-                  <div className="flex h-3 flex-1 gap-[2px] border-2 border-black bg-[var(--sky)] p-[2px]">
-                    {Array.from({ length: 10 }, (_, i) => (
-                      <b key={i} className={`flex-1 ${st.on ? "bg-[var(--ok)]" : "bg-[var(--window-off)]"}`} />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <p className="font-noto mt-2 text-[13px] leading-[1.7] text-[var(--curb)]">
-              正在生成动作并核对形象，完成后会自动更新。
-            </p>
           </section>
         )}
 

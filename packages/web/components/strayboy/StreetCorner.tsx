@@ -21,6 +21,7 @@ import { PixelStage } from "@/components/strayboy/PixelStage";
 import { StreetPet } from "@/components/strayboy/StreetPet";
 import { WanderLog } from "@/components/strayboy/WanderLog";
 import { AdoptionRitual } from "@/components/strayboy/AdoptionRitual";
+import { PetArrivalPanel } from "@/components/strayboy/PetArrivalPanel";
 import { PushNudgeBanner } from "@/components/strayboy/PushNudgeBanner";
 import { useWebPush, type PushState } from "@/hooks/useWebPush";
 import { DEMO_PET, DEMO_STATE, demoEventStream } from "@/lib/strayboy/demo";
@@ -87,7 +88,6 @@ export function StreetCorner({ contract, demo = false }: { contract: SpriteContr
   if (adoptedGate || !livePets.pets[0]) {
     return (
       <AdoptionRitual
-        contract={contract}
         adopt={async (input) => {
           const result = await livePets.adopt(input);
           if (result) setAdoptedGate(true);
@@ -376,6 +376,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
   return (
     <>
       {banner}
+      {!demo && <PetArrivalPanel refreshSignal={assetsReadyAt} />}
       <div className="sb mx-auto flex max-w-3xl flex-col gap-3 p-3 lg:grid lg:max-w-5xl lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
       <div className="lg:col-start-1 lg:row-start-1">
       <PixelStage

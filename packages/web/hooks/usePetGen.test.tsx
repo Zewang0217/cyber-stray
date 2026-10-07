@@ -31,6 +31,15 @@ afterEach(async () => {
 });
 
 describe('usePetGen 质检恢复 API', () => {
+  it('街角只读进度不加载配额，并明确暴露服务端读取失败', async () => {
+    let value!: ReturnType<typeof usePetGen>;
+    const Probe = () => { value = usePetGen({ loadQuota: false }); return null; };
+    root = createRoot(document.createElement('div'));
+    fetchMock.mockImplementation(async () => ({ json: async () => ({ success: false, error: '会话已过期' }) }));
+    await act(async () => root.render(<Probe />));
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(['/api/petgen/tasks']);
+    expect(value.error).toBe('会话已过期');
+  });
   it('POST retry-qc 并消费返回的任务视图，不提交 spec 或 restart', async () => {
     let value!: ReturnType<typeof usePetGen>;
     const Probe = () => { value = usePetGen(); return null; };

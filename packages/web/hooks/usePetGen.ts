@@ -26,10 +26,11 @@ interface UsePetGenReturn {
 
 /**
  * 宠物 IP 定制 Hook：提交 spec → 概念图 → 确认/调整 → 生成 + 质检。
- * 任务在 CP 侧异步队列推进，前端轮询 GET /tasks/:id 直到停驻态
+ * 任务在 CP 侧异步队列推进，前端轮询 GET /tasks 直到停驻态
  * （awaiting_confirmation 等用户 / done / failed）。
  */
-export function usePetGen(): UsePetGenReturn {
+export function usePetGen(options: { loadQuota?: boolean; refreshSignal?: number } = {}): UsePetGenReturn {
+  const { loadQuota = true, refreshSignal = 0 } = options;
   const [task, setTask] = useState<PetGenTaskView | null>(null);
   const [quota, setQuota] = useState<PetGenQuota | null>(null);
   const [loading, setLoading] = useState(false);
@@ -49,10 +50,9 @@ export function usePetGen(): UsePetGenReturn {
     try {
       const res = await fetch("/api/petgen/tasks");
       const json = (await res.json()) as ApiResponse<PetGenTaskView[]>;
-      if (json.success) {
-        setTask(json.data?.[0] ?? null);
-        setError(null);
-      }
+      if (!json.success) throw new Error(json.error ?? "任务加载失败");
+      setTask(json.data?.[0] ?? null);
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "任务加载失败");
     }
@@ -60,8 +60,11 @@ export function usePetGen(): UsePetGenReturn {
 
   useEffect(() => {
     void refresh();
-    void refreshQuota();
-  }, [refresh, refreshQuota]);
+  }, [refresh, refreshSignal]);
+
+  useEffect(() => {
+    if (loadQuota) void refreshQuota();
+  }, [loadQuota, refreshQuota]);
 
   /** 轮询任务直到离开进行中状态（确认流展示用） */
   useEffect(() => {
@@ -110,6 +113,7 @@ export function usePetGen(): UsePetGenReturn {
 
   const confirm = useCallback(
     async (taskId: string): Promise<boolean> => {
+      setLoading(true);
       try {
         const res = await fetch(`/api/petgen/tasks/${taskId}/confirm`, { method: "POST" });
         const json = (await res.json()) as ApiResponse<PetGenTaskView>;
@@ -123,6 +127,8 @@ export function usePetGen(): UsePetGenReturn {
       } catch (err) {
         setError(err instanceof Error ? err.message : "确认失败");
         return false;
+      } finally {
+        setLoading(false);
       }
     },
     [],
@@ -130,6 +136,7 @@ export function usePetGen(): UsePetGenReturn {
 
   const restart = useCallback(
     async (taskId: string, spec: PetSpec): Promise<boolean> => {
+      setLoading(true);
       try {
         const res = await fetch(`/api/petgen/tasks/${taskId}/restart`, {
           method: "POST",
@@ -147,6 +154,8 @@ export function usePetGen(): UsePetGenReturn {
       } catch (err) {
         setError(err instanceof Error ? err.message : "调整失败");
         return false;
+      } finally {
+        setLoading(false);
       }
     },
     [],

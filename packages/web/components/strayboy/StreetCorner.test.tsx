@@ -46,6 +46,7 @@ beforeEach(() => {
   fetchMock = vi.fn(async (url: string) => {
     if (url === '/api/pets') return Response.json({ success: true, data: [DEMO_PET] });
     if (url === '/api/state') return Response.json({ success: true, data: agentState });
+    if (url === '/api/petgen/tasks') return Response.json({ success: true, data: [] });
     if (url === '/api/pet/manifest') return manifest ? Response.json(manifest) : new Response(null, { status: 404 });
     throw new Error(`非预期请求 ${url}`);
   });

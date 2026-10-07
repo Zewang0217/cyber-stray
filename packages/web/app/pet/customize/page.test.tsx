@@ -43,6 +43,16 @@ async function render(task: PetGenTaskView) {
 }
 
 describe('改造屋失败任务质检重试', () => {
+  it('概念图生成期间隐藏重复提交，敲门不调用生成接口，仍可返回街角', async () => {
+    await render({ ...failedTask, status: 'concept_generating', error: null, conceptUrl: null });
+    expect(container.querySelector('form')?.parentElement?.hidden).toBe(true);
+    expect(container.querySelector('a[href="/"]')?.textContent).toContain('先去街角');
+    const knock = Array.from(container.querySelectorAll('button')).find(b => b.textContent === '敲敲门')!;
+    await act(async () => knock.click());
+    expect(container.textContent).toContain('喵，别偷看');
+    expect(usePetGenMock.mock.results.at(-1)?.value.submit).not.toHaveBeenCalled();
+    expect(container.querySelector('[aria-current="step"]')?.textContent).toBe('画模样');
+  });
   it('仅 CP 字段允许时显示重试质检，点击只调用质检端点动作', async () => {
     await render(failedTask);
     const retry = Array.from(container.querySelectorAll('button')).find(button => button.textContent === '重试质检');
