@@ -21,6 +21,7 @@ import { runMigrations } from '../db/migrate.js';
 import { getOrCreateTenant } from '../infra/tenant.js';
 import { createPetUsageRecorder, readTenantUsage } from '../infra/usage.js';
 import { petGenTasks, pets, tenants, type PetGenTask } from '../db/schema.js';
+import { createPetGenService } from '../services/petgen-service.js';
 import { PetGenProcessor } from './processor.js';
 import { petGenQuota } from './quota.js';
 import type { PetStateId } from '@cyber-stray/shared/pet';
@@ -363,6 +364,28 @@ describe('PetGenProcessor（#94 状态机）', () => {
     expect(manifest.states['welcome']?.dur).toBeGreaterThan(0);
     const quota = await petGenQuota(db, 'alice', 2, clock);
     expect(quota.used).toBe(1);
+  });
+
+  it('质检服务恢复后正式重试接口复用已生成图片，通过九态 QC 才交付', async () => {
+    const task = await insertTask();
+    await tickUntil(task.id, ['awaiting_confirmation']);
+    await confirm(task.id);
+    await tickUntil(task.id, ['qc']);
+    const inspect = inspectMock.getMockImplementation()!;
+    inspectMock.mockRejectedValue(new Error('provider HTTP 500'));
+    await tickUntil(task.id, ['failed']);
+    const generated = generateMock.mock.calls.length;
+    const service = createPetGenService({ config: { dataDir, productMode: 'invite_beta', petGenMonthlyQuota: 2 } });
+    const retried = await service.retryQcTask('alice', task.id);
+    expect(retried.ok).toBe(true);
+    inspectMock.mockImplementation(inspect);
+    inspectMock.mockClear();
+    const done = await tickUntil(task.id, ['done']);
+    expect(done.qcRetries).toBe(0);
+    expect(generateMock).toHaveBeenCalledTimes(generated);
+    expect(inspectMock).toHaveBeenCalledTimes(9);
+    const qc = JSON.parse(done.qcResult!);
+    expect(ALL_STATES.every((state) => qc[state].pass === true)).toBe(true);
   });
 
   it('单状态质检失败：保留已通过八态，逐态重生失败态后二次验收 → done', async () => {

@@ -10,7 +10,7 @@ import { BootFrame } from "@/components/strayboy/BootFrame";
  * 字段与流程对齐 #169 混合管线结论（spec Decision 5/8）。
  */
 export default function CustomizePage() {
-  const { task, quota, loading, error, submit, confirm, restart } = usePetGen();
+  const { task, quota, loading, error, submit, confirm, restart, retryQc } = usePetGen();
 
   // 分段墨条进度：按任务状态映射阶段
   const stages: Array<{ label: string; on: boolean }> = [
@@ -40,7 +40,15 @@ export default function CustomizePage() {
           <section className="mb-5 border-2 border-[var(--bad)] bg-[var(--panel)] p-4">
             <h2 className="mb-1 text-[14px] text-[var(--bad)]">生成失败</h2>
             <p className="text-[13px] leading-[1.7] text-[var(--paper)]">{task.error ?? "未知原因"}</p>
-            <p className="text-[12px] text-[var(--curb)]">调整下面的描述重新提交；配额未消耗。</p>
+            {task.canRetryQc && (
+              <button type="button" disabled={loading} onClick={() => void retryQc(task.id)}
+                className="mt-3 border-2 border-[var(--ink)] bg-[var(--ok)] px-4 py-2 text-[13px] text-[var(--ink)] disabled:opacity-40">
+                {loading ? "提交中……" : "重试质检"}
+              </button>
+            )}
+            <p className="mt-2 text-[12px] text-[var(--curb)]">
+              {task.canRetryQc ? "可直接复检已有素材，无需重新生成；也可调整下面的描述重新提交。" : "调整下面的描述重新提交；配额未消耗。"}
+            </p>
           </section>
         )}
 

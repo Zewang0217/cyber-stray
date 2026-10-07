@@ -86,7 +86,7 @@ export function MailCard({
         <button
           type="button"
           onClick={() => onOpen(card)}
-          className="font-noto block w-full break-words text-balance text-left text-[17px] font-bold leading-[1.55] text-[var(--ink)] underline decoration-dotted decoration-[var(--curb)] underline-offset-4"
+          className="font-noto block min-w-0 w-full pr-2 [overflow-wrap:anywhere] text-balance text-left text-[17px] font-bold leading-[1.55] text-[var(--ink)] underline decoration-dotted decoration-[var(--curb)] underline-offset-4"
         >
           {card.title}
         </button>
