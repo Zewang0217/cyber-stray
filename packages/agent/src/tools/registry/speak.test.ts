@@ -88,4 +88,14 @@ describe('speak 工具 reason 落盘（#152）', () => {
     const record = await lastRecord();
     expect(record.gateReasons).toBeUndefined();
   });
+
+  test('share 也必须有独立标题，nonsense 可保持短句', async () => {
+    const tool = speakToolDef.createTool(makeToolCtx()) as unknown as ExecutableTool;
+    await expect(tool.execute({ content: '喵！新论文 https://example.com', type: 'share' }))
+      .rejects.toThrow(/share 必须提供独立短标题/);
+    const result = await tool.execute({ content: '喵！新论文 https://example.com',
+      type: 'share', title: '这篇新论文藏着惊喜' });
+    expect(result.success).toBe(true);
+    expect(await lastRecord()).toMatchObject({ title: '这篇新论文藏着惊喜', titleSource: 'react' });
+  });
 });

@@ -1,5 +1,5 @@
 /**
- * 旧 article 标题补全：先生成可审阅计划，再按源文件 hash 原子应用。
+ * 旧 article/share 标题补全：先生成可审阅计划，再按源文件 hash 原子应用。
  * 一次只处理一个租户的一天历史，保留正文、ID、渠道反馈别名和其余全部字段。
  */
 import { createHash, randomUUID } from 'node:crypto';
@@ -29,7 +29,7 @@ const PlanSchema = z.object({
     excerpt: z.string().min(1), title: TitleSchema })),
 });
 
-type Candidate = { line: number; content: string; oldTitle: string };
+type Candidate = { line: number; type: 'article' | 'share'; content: string; oldTitle: string };
 type TitlePlan = z.infer<typeof PlanSchema>;
 type TitleGenerator = (candidates: Candidate[]) => Promise<string[]>;
 
@@ -47,6 +47,10 @@ function sha256(content: string): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
+function needsIndependentTitle(value: unknown): value is 'article' | 'share' {
+  return value === 'article' || value === 'share';
+}
+
 function candidatesFromLines(lines: string[]): Candidate[] {
   const candidates: Candidate[] = [];
   for (const [line, text] of lines.entries()) {
@@ -54,11 +58,11 @@ function candidatesFromLines(lines: string[]): Candidate[] {
     const raw: unknown = JSON.parse(text);
     if (typeof raw !== 'object' || raw === null) throw new Error(`历史第 ${line + 1} 行不是对象`);
     const item = raw as Record<string, unknown>;
-    if (item.type !== 'article' || item.diary || item.meme || item.titleSource) continue;
+    if (!needsIndependentTitle(item.type) || item.diary || item.meme || item.titleSource) continue;
     if (typeof item.content !== 'string' || !item.content.trim()) continue;
     const oldTitle = typeof item.title === 'string' ? item.title : '';
-    if (oldTitle && oldTitle !== deriveTitle(item.content, 'article')) continue;
-    candidates.push({ line, content: item.content, oldTitle });
+    if (oldTitle && oldTitle !== deriveTitle(item.content, item.type)) continue;
+    candidates.push({ line, type: item.type, content: item.content, oldTitle });
   }
   return candidates;
 }
@@ -107,12 +111,12 @@ export async function applyTitlePlan(dataDir: string, tenantId: string, rawPlan:
     const raw: unknown = JSON.parse(text);
     if (typeof raw !== 'object' || raw === null) throw new Error(`历史第 ${change.line + 1} 行不是对象`);
     const item = raw as Record<string, unknown>;
-    if (item.type !== 'article' || item.diary || item.meme || item.titleSource ||
+    if (!needsIndependentTitle(item.type) || item.diary || item.meme || item.titleSource ||
         typeof item.content !== 'string' ||
         (typeof item.title === 'string' ? item.title : '') !== change.oldTitle ||
-        (change.oldTitle && change.oldTitle !== deriveTitle(item.content, 'article')) ||
+        (change.oldTitle && change.oldTitle !== deriveTitle(item.content, item.type)) ||
         [...item.content].slice(0, 160).join('') !== change.excerpt) {
-      throw new Error(`标题计划第 ${change.line + 1} 行不再符合旧文章条件`);
+      throw new Error(`标题计划第 ${change.line + 1} 行不再符合旧内容条件`);
     }
     lines[change.line] = JSON.stringify({ ...item, title: change.title, titleSource: 'backfill' });
   }
@@ -129,11 +133,11 @@ async function generateTitlesWithModel(dataDir: string, tenantId: string): Promi
   return async (candidates) => {
     assertUsageReady(dataDir, config.llmModel, 'llm');
     const input = candidates.map((item, index) => ({
-      index, content: [...item.content].slice(0, MAX_CONTENT_CHARS).join(''),
+      index, type: item.type, content: [...item.content].slice(0, MAX_CONTENT_CHARS).join(''),
     }));
     const result = await generateText({
       model, temperature: 0.4, abortSignal: AbortSignal.timeout(60_000),
-      prompt: `为以下文章各写一个4-24字的中文短标题。标题要有吸引力、忠于正文事实，不能截取首句、夸张或编造。只输出 JSON {"titles":[{"index":0,"title":"..."}]}，索引必须完整且按顺序。\n${JSON.stringify(input)}`,
+      prompt: `为以下文章或分享各写一个4-24字的中文短标题。标题要有吸引力、忠于正文事实，不能截取首句、夸张或编造。只输出 JSON {"titles":[{"index":0,"title":"..."}]}，索引必须完整且按顺序。\n${JSON.stringify(input)}`,
     });
     await recordUsage(dataDir, {
       kind: 'llm', model: config.llmModel,
