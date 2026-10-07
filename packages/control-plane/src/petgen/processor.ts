@@ -39,6 +39,7 @@ import {
 } from '@cyber-stray/shared/pet';
 import { parseStoredQcResult } from '@cyber-stray/shared/petgen';
 import { petGenTasks, type PetGenTask } from '../db/schema.js';
+import { qcInfraFailureMessage } from '../domain/petgen-failure.js';
 import { findPetByTenant } from '../infra/pets-repo.js';
 import { tenantDataDir } from '../infra/tenant.js';
 import { assertUsageHealthy, UsageAccountingError } from '../infra/usage.js';
@@ -574,7 +575,7 @@ export class PetGenProcessor {
     }
     const fails = (this.qcInfraFails.get(task.id) ?? 0) + 1;
     if (fails >= this.deps.config.maxQcInfraRetries) {
-      await this.fail(task, `视觉质检连续异常（${messageOf(error)}）——质检服务暂不可用，请稍后重试`);
+      await this.fail(task, qcInfraFailureMessage(messageOf(error)));
       return;
     }
     this.qcInfraFails.set(task.id, fails);

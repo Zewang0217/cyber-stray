@@ -18,6 +18,8 @@ interface UsePetGenReturn {
   confirm: (taskId: string) => Promise<boolean>;
   /** 不满意：改 spec 重出概念图 */
   restart: (taskId: string, spec: PetSpec) => Promise<boolean>;
+  /** 仅在 CP 显式允许时复用现有素材重试质检。 */
+  retryQc: (taskId: string) => Promise<boolean>;
   /** 手动刷新任务 */
   refresh: () => Promise<void>;
 }
@@ -150,5 +152,25 @@ export function usePetGen(): UsePetGenReturn {
     [],
   );
 
-  return { task, quota, loading, error, submit, confirm, restart, refresh };
+  const retryQc = useCallback(async (taskId: string): Promise<boolean> => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/petgen/tasks/${encodeURIComponent(taskId)}/retry-qc`, { method: "POST" });
+      const json = (await res.json()) as ApiResponse<PetGenTaskView>;
+      if (!json.success || !json.data) {
+        setError(json.error ?? "质检重试失败");
+        return false;
+      }
+      setError(null);
+      setTask(json.data);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "质检重试失败");
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { task, quota, loading, error, submit, confirm, restart, retryQc, refresh };
 }

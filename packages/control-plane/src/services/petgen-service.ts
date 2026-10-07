@@ -8,10 +8,12 @@
  */
 
 import { randomUUID } from 'crypto';
-import { mkdir, readFile, rm, writeFile } from 'fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'fs/promises';
 import { join } from 'path';
 import {
   DEFAULT_PET_PRESET,
+  PET_STATE_IDS,
+  PET_SHEET_STATE_IDS,
   type PetPresetId,
   type PetStateId,
 } from '@cyber-stray/shared/pet';
@@ -23,14 +25,15 @@ import { getDb } from '../db/client.js';
 import type { PetGenTask } from '../db/schema.js';
 import { petGenTasks } from '../db/schema.js';
 import { and, eq, inArray } from 'drizzle-orm';
-import { IN_FLIGHT } from '../petgen/processor.js';
+import { IN_FLIGHT, taskDirOf } from '../petgen/processor.js';
 import * as petgenRepo from '../infra/petgen-repo.js';
 import { readTenantAsset } from '../infra/tenant-data-reader.js';
 import { findTenantPlan } from '../infra/tenant-access.js';
 import { nextMonthStart, petGenQuota } from '../petgen/quota.js';
-import type { PetSpec, PetGenTaskStatus } from '../petgen/types.js';
+import type { PetSpec } from '../petgen/types.js';
 import { createSplitter } from '../petgen/splitter.js';
 import { tenantDataDir } from '../infra/tenant.js';
+import { canRetryPetGenQc } from '../domain/petgen-failure.js';
 import { resolveEntitlements } from '../plan/entitlements.js';
 
 export interface PetGenServiceDeps {
@@ -97,6 +100,7 @@ function toTaskView(task: PetGenTask): PetGenTaskView {
     stylePreset: (task.stylePreset ?? DEFAULT_PET_PRESET) as PetPresetId,
     conceptUrl: task.conceptPath ? `/api/petgen/tasks/${task.id}/concept.png` : null,
     error: task.error,
+    canRetryQc: canRetryPetGenQc(task),
     qcResult: task.qcResult ? parseStoredQcResult(task.qcResult) : null,
     conceptAttempts: task.conceptAttempts,
     createdAt: task.createdAt,
@@ -163,7 +167,7 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
         options: spec.options ? JSON.stringify(spec.options) : null,
         stylePreset: spec.stylePreset ?? null,
         conceptPath: null,
-        strategy: 'quad',
+        strategy: 'quad' as const,
         batchRetries: 0,
         qcRetries: 0,
         qcResult: null,
@@ -240,71 +244,144 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     }
   }
 
+  /** Project retry eligibility from the same gates used by the retry command. */
+  async function verifiedTaskView(db: ControlDb, task: PetGenTask): Promise<PetGenTaskView> {
+    const view = toTaskView(task);
+    if (!view.canRetryQc) return view;
+    const sheet = task.strategy === 'sheet' || task.strategy === 'strip';
+    const allowed = sheet || await planAllowed(db, task.tenantId);
+    const quota = await petGenQuota(db, task.tenantId, config.petGenMonthlyQuota);
+    view.canRetryQc = allowed && quota.remaining > 0 &&
+      !(await hasInFlightTask(db, task.tenantId)) && await hasQcAssets(task);
+    return view;
+  }
+
   async function listTasks(tenantId: string) {
     const db = await getDb(config.dataDir);
     const rows = await petgenRepo.listTasksByTenant(db, tenantId);
-    return rows.map(toTaskView);
+    return Promise.all(rows.map((task) => verifiedTaskView(db, task)));
   }
 
   /** 任务详情（租户隔离：他人任务 404） */
   async function getTask(tenantId: string, id: string) {
     const db = await getDb(config.dataDir);
     const task = await petgenRepo.findTaskByIdAndTenant(db, id, tenantId);
-    return task ? toTaskView(task) : null;
+    return task ? verifiedTaskView(db, task) : null;
   }
 
   async function confirmTask(tenantId: string, id: string): Promise<PetGenOutcome<unknown>> {
     const db = await getDb(config.dataDir);
-    const task = await petgenRepo.findTaskByIdAndTenant(db, id, tenantId);
-    if (!task) return { ok: false, status: 404, error: '任务不存在' };
-    if (task.status !== 'awaiting_confirmation') {
-      return {
-        ok: false,
-        status: 409,
-        error: `当前状态 ${task.status} 不可确认（需等待概念图确认）`,
-      };
-    }
-    await petgenRepo.updateTask(db, task.id, { status: 'generating_states', updatedAt: Date.now() });
-    return { ok: true, data: toTaskView({ ...task, status: 'generating_states' }) };
+    return serializedSubmit(tenantId, async () => {
+      const task = await petgenRepo.findTaskByIdAndTenant(db, id, tenantId);
+      if (!task) return { ok: false, status: 404, error: '任务不存在' };
+      if (task.status !== 'awaiting_confirmation') {
+        return {
+          ok: false,
+          status: 409,
+          error: `当前状态 ${task.status} 不可确认（需等待概念图确认）`,
+        };
+      }
+      if (await hasInFlightTask(db, tenantId)) {
+        return { ok: false, status: 409, error: '已有生成任务进行中，完成后再确认' };
+      }
+      const confirmed = { ...task, status: 'generating_states' as const, updatedAt: Date.now() };
+      await petgenRepo.updateTask(db, task.id, { status: confirmed.status, updatedAt: confirmed.updatedAt });
+      return { ok: true, data: toTaskView(confirmed) };
+    });
+  }
+
+  /** Missing retained images are a conflict; I/O failures remain explicit errors. */
+  async function hasQcAssets(task: PetGenTask): Promise<boolean> {
+    const sheet = task.strategy === 'sheet' || task.strategy === 'strip';
+    const root = taskDirOf(config.dataDir, task.tenantId, task.id);
+    const states = sheet ? PET_SHEET_STATE_IDS : PET_STATE_IDS;
+    const paths = [join(root, sheet ? 'reference.jpg' : 'concept.png'),
+      ...states.map((state) => join(root, 'states', `${state}.png`))];
+    const present = await Promise.all(paths.map(async (path) => {
+      try { return (await stat(path)).isFile(); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+        throw error;
+      }
+    }));
+    return present.every(Boolean);
+  }
+
+  /** Resume infrastructure-failed QC without another concept/image charge. */
+  async function retryQcTask(tenantId: string, id: string): Promise<PetGenOutcome<PetGenTaskView>> {
+    const db = await getDb(config.dataDir);
+    return serializedSubmit(tenantId, async () => {
+      const task = await petgenRepo.findTaskByIdAndTenant(db, id, tenantId);
+      if (!task) return { ok: false, status: 404, error: '任务不存在' };
+      const sheet = task.strategy === 'sheet' || task.strategy === 'strip';
+      // Sheet adoption is already available to free tenants; its recovery must be too.
+      if (!sheet && !(await planAllowed(db, tenantId))) {
+        return { ok: false, status: 403, error: '宠物 IP 定制是 Pro/BYOK 专属功能' };
+      }
+      if (!canRetryPetGenQc(task)) {
+        return { ok: false, status: 409, error: '仅质检服务异常的失败任务可重试质检' };
+      }
+      if (await hasInFlightTask(db, tenantId)) {
+        return { ok: false, status: 409, error: '已有生成任务进行中，完成后再重试' };
+      }
+      const quota = await petGenQuota(db, tenantId, config.petGenMonthlyQuota);
+      if (quota.remaining <= 0) {
+        return { ok: false, status: 429, error: '本月配额已用完', data: quota };
+      }
+      if (!(await hasQcAssets(task))) {
+        return { ok: false, status: 409, error: '已生成素材不完整，无法仅重试质检' };
+      }
+      const resumed = { ...task, status: 'qc' as const, error: null,
+        completedAt: null, updatedAt: Date.now() };
+      await petgenRepo.updateTask(db, id, {
+        status: resumed.status, error: null, completedAt: null, updatedAt: resumed.updatedAt,
+      });
+      return { ok: true, data: toTaskView(resumed) };
+    });
   }
 
   /** 不满意：改 spec 重出概念图。重启也是一次生成尝试——配额超限同样拦截（防绕过） */
   async function restartTask(tenantId: string, id: string, spec: PetSpec): Promise<PetGenOutcome<unknown>> {
     const db = await getDb(config.dataDir);
-    const task = await petgenRepo.findTaskByIdAndTenant(db, id, tenantId);
-    if (!task) return { ok: false, status: 404, error: '任务不存在' };
-    if (task.strategy === 'sheet' || task.strategy === 'strip') {
-      // 领养精灵图任务不在改造屋 UI 出现，误触 restart 会把策略打回 quad 破坏素材形状
-      return { ok: false, status: 409, error: '领养精灵图任务不支持改 spec 重来' };
-    }
-    if (task.status !== 'awaiting_confirmation' && task.status !== 'failed') {
-      return {
-        ok: false,
-        status: 409,
-        error: `当前状态 ${task.status} 不可重来（仅等待确认/失败后可改 spec）`,
+    return serializedSubmit(tenantId, async () => {
+      const task = await petgenRepo.findTaskByIdAndTenant(db, id, tenantId);
+      if (!task) return { ok: false, status: 404, error: '任务不存在' };
+      if (task.strategy === 'sheet' || task.strategy === 'strip') {
+        // 领养精灵图任务不在改造屋 UI 出现，误触 restart 会把策略打回 quad 破坏素材形状
+        return { ok: false, status: 409, error: '领养精灵图任务不支持改 spec 重来' };
+      }
+      if (task.status !== 'awaiting_confirmation' && task.status !== 'failed') {
+        return {
+          ok: false,
+          status: 409,
+          error: `当前状态 ${task.status} 不可重来（仅等待确认/失败后可改 spec）`,
+        };
+      }
+      if (await hasInFlightTask(db, tenantId)) {
+        return { ok: false, status: 409, error: '已有生成任务进行中，完成后再重来' };
+      }
+      const quota = await petGenQuota(db, tenantId, config.petGenMonthlyQuota);
+      if (quota.remaining <= 0) {
+        return { ok: false, status: 429, error: '本月配额已用完', data: quota };
+      }
+      const restarted = {
+        specText: spec.specText,
+        options: spec.options ? JSON.stringify(spec.options) : null,
+        stylePreset: spec.stylePreset ?? null,
+        status: 'spec_submitted' as const,
+        conceptPath: null,
+        strategy: 'quad' as const,
+        batchRetries: 0,
+        qcRetries: 0,
+        qcResult: null,
+        pendingStates: null,
+        error: null,
+        completedAt: null,
+        updatedAt: Date.now(),
       };
-    }
-    const quota = await petGenQuota(db, tenantId, config.petGenMonthlyQuota);
-    if (quota.remaining <= 0) {
-      return { ok: false, status: 429, error: '本月配额已用完', data: quota };
-    }
-    await petgenRepo.updateTask(db, task.id, {
-      specText: spec.specText,
-      options: spec.options ? JSON.stringify(spec.options) : null,
-      stylePreset: spec.stylePreset ?? null,
-      status: 'spec_submitted' as PetGenTaskStatus,
-      conceptPath: null,
-      strategy: 'quad',
-      batchRetries: 0,
-      qcRetries: 0,
-      qcResult: null,
-      pendingStates: null,
-      error: null,
-      completedAt: null,
-      updatedAt: Date.now(),
+      await petgenRepo.updateTask(db, task.id, restarted);
+      return { ok: true, data: toTaskView({ ...task, ...restarted }) };
     });
-    const updated = await petgenRepo.findTaskByIdAndTenant(db, id, tenantId);
-    return { ok: true, data: toTaskView(updated ?? task) };
   }
 
   /** 概念图草稿字节（确认流展示）；任务/文件不存在 → null */
@@ -367,6 +444,7 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     listTasks,
     getTask,
     confirmTask,
+    retryQcTask,
     restartTask,
     getConceptPng,
     getQuota,

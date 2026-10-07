@@ -59,7 +59,7 @@ export function PostcardDetail({
         >
           {`DAY ${day} · ${hhmm}`}
         </span>
-        <h2 className="font-noto mb-4 break-words text-balance pl-5 pr-10 text-[20px] font-bold leading-[1.55] text-[var(--ink)]">{card.title}</h2>
+        <h2 className="font-noto mb-4 min-w-0 [overflow-wrap:anywhere] text-balance pl-5 pr-10 text-[20px] font-bold leading-[1.55] text-[var(--ink)]">{card.title}</h2>
         <div className="font-noto mb-4 min-w-0 break-words pl-5 text-[15px] leading-[1.8] text-[var(--ink-soft)]">
           <PostcardMarkdown text={card.message} />
         </div>
