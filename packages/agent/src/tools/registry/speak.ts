@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import { IndependentTitleSchema } from '@cyber-stray/shared/title-overrides';
 import { consola } from '../../logger.js';
 import { getConfig } from '../../config.js';
 import { speak } from '../push/speak.js';
@@ -37,7 +38,7 @@ export const speakToolDef: ToolDefinition = {
     description: buildSpeakDescription(),
     inputSchema: z.object({
       content: z.string().describe('你要说的话、分享的内容或者碎碎念'),
-      title: z.string().trim().min(4).max(24).refine((value) => !/[\r\n]/.test(value), '标题必须为单行').optional()
+      title: IndependentTitleSchema.optional()
         .describe('article/share 必填：独立短标题，不截正文首句，事实准确且有吸引力'),
       memeId: z.uuid().optional().describe('可选：先调用 image_meme 后，将已过质检的表情包 id 附在本条'),
       type: z.enum(['share', 'nonsense', 'article']).describe(

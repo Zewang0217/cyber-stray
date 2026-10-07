@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { applyTitlePlan, createTitlePlan } from './backfill-speak-titles.js';
+import { applyTitlePlan, applyOverlayTitlePlan, createOverlayTitlePlan, createTitlePlan } from './backfill-speak-titles.js';
 
 const HISTORY_FILE = 'speaks-2026-10-06.jsonl';
 
@@ -72,5 +72,52 @@ describe('旧文章与分享标题审阅及原子补全', () => {
     expect(await readFile(path, 'utf8')).toBe(changed);
     await expect(applyTitlePlan(dataDir, 'tenant-b', plan)).rejects.toThrow(/租户不匹配/);
     expect(await readFile(path, 'utf8')).toBe(changed);
+  });
+
+  it('当天 overlay 只写 sidecar；apply 后 JSONL 可继续追加且新记录完整保留', async () => {
+    const todayFile = 'speaks-2026-10-07.jsonl';
+    const todayPath = join(dataDir, 'history', todayFile);
+    const id = 'aaaaaaaa-0000-4000-8000-000000000001';
+    const first = { contentId: id, type: 'share', content: '喵！今天在 AI 巷子发现新研究。',
+      title: '喵！今天在 AI 巷子发现新研究。', timestamp: '2026-10-07T08:00:00Z' };
+    await writeFile(todayPath, `${JSON.stringify(first)}\n`);
+    const before = await readFile(todayPath, 'utf8');
+    const plan = await createOverlayTitlePlan(dataDir, 'tenant-a', todayFile,
+      async () => ['小黑猫撞见 AI 新研究']);
+    expect(plan.changes).toHaveLength(1);
+    expect(await readFile(todayPath, 'utf8')).toBe(before);
+    const appended = { contentId: 'bbbbbbbb-0000-0000-0000-000000000002',
+      type: 'nonsense', content: '喵。', timestamp: '2026-10-07T09:00:00Z' };
+    await writeFile(todayPath, `${before}${JSON.stringify(appended)}\n`);
+    await expect(applyOverlayTitlePlan(dataDir, 'tenant-a', plan)).resolves.toBe(1);
+    expect(await readFile(todayPath, 'utf8')).toBe(`${before}${JSON.stringify(appended)}\n`);
+    const overlay = JSON.parse(await readFile(join(dataDir, 'history', 'title-overrides.json'), 'utf8'));
+    expect(overlay.entries[id]).toMatchObject({ title: '小黑猫撞见 AI 新研究',
+      timestamp: first.timestamp });
+  });
+
+  it('当天候选无稳定 UUID 时拒绝生成计划，不写 sidecar', async () => {
+    const todayFile = 'speaks-2026-10-07.jsonl';
+    await writeFile(join(dataDir, 'history', todayFile), JSON.stringify({
+      type: 'share', content: '开场句。', title: '开场句。', timestamp: '2026-10-07T08:00:00Z',
+    }) + '\n');
+    await expect(createOverlayTitlePlan(dataDir, 'tenant-a', todayFile, async () => ['独立短标题']))
+      .rejects.toThrow(/contentId/);
+  });
+
+  it('计划来源正文变化则拒绝 overlay，当前 JSONL 和 sidecar 都不改', async () => {
+    const todayFile = 'speaks-2026-10-07.jsonl';
+    const todayPath = join(dataDir, 'history', todayFile);
+    const item = { contentId: 'aaaaaaaa-0000-4000-8000-000000000001', type: 'share',
+      content: '喵！发现了新研究。', title: '喵！发现了新研究。', timestamp: '2026-10-07T08:00:00Z' };
+    await writeFile(todayPath, `${JSON.stringify(item)}\n`);
+    const plan = await createOverlayTitlePlan(dataDir, 'tenant-a', todayFile,
+      async () => ['小黑猫发现新研究']);
+    const changed = `${JSON.stringify({ ...item, content: '喵！发现了另一篇研究。' })}\n`;
+    await writeFile(todayPath, changed);
+    await expect(applyOverlayTitlePlan(dataDir, 'tenant-a', plan)).rejects.toThrow(/来源不一致/);
+    expect(await readFile(todayPath, 'utf8')).toBe(changed);
+    await expect(readFile(join(dataDir, 'history', 'title-overrides.json'), 'utf8'))
+      .rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

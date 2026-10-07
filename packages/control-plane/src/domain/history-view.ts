@@ -8,6 +8,8 @@
 
 import { isPetMood } from '@cyber-stray/shared/pet-stats';
 import { getMemeImageUrl, getSpeakFeedbackIdentity, getSpeakSourceUrl, isSpeakType, SPEAK_TYPE_LABELS, type SpeakHistoryItem } from '@cyber-stray/shared/push';
+import type { TitleOverrides } from '@cyber-stray/shared/title-overrides';
+import { createHash } from 'node:crypto';
 
 const TITLE_MAX_CHARS = 40;
 const SUMMARY_MAX_CHARS = 120;
@@ -67,17 +69,34 @@ export function normalizeRecord(raw: Record<string, unknown>): SpeakHistoryItem 
 }
 
 /** 解析 JSONL；单行损坏只跳过该行 */
-export function parseHistoryJsonl(content: string): SpeakHistoryItem[] {
+export function parseHistoryJsonl(
+  content: string, overrides?: TitleOverrides['entries'], applied?: Set<string>,
+): SpeakHistoryItem[] {
   const records: SpeakHistoryItem[] = [];
   for (const line of content.trim().split('\n')) {
     const trimmed = line.trim();
     if (!trimmed) continue;
+    let parsed: unknown;
     try {
-      const normalized = normalizeRecord(JSON.parse(trimmed) as Record<string, unknown>);
-      if (normalized) records.push(normalized);
+      parsed = JSON.parse(trimmed) as unknown;
     } catch {
       // 跳过损坏的单行
+      continue;
     }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) continue;
+    let raw = parsed as Record<string, unknown>;
+    const id = raw.contentId;
+    const override = typeof id === 'string' ? overrides?.[id] : undefined;
+    if (override) {
+      const contentHash = typeof raw.content === 'string'
+        ? createHash('sha256').update(raw.content).digest('hex') : '';
+      if (raw.timestamp !== override.timestamp || contentHash !== override.contentSha256 ||
+          applied?.has(id as string)) throw new Error(`标题覆盖来源不一致: ${id}`);
+      applied?.add(id as string);
+      raw = { ...raw, title: override.title, titleSource: 'backfill' };
+    }
+    const normalized = normalizeRecord(raw);
+    if (normalized) records.push(normalized);
   }
   return records;
 }

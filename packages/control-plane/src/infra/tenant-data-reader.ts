@@ -9,6 +9,7 @@
 import { readFile, readdir } from 'fs/promises';
 import { join } from 'path';
 import type { SpeakHistoryItem } from '@cyber-stray/shared/push';
+import { TitleOverridesSchema } from '@cyber-stray/shared/title-overrides';
 import { parseHistoryJsonl } from '../domain/history-view.js';
 import { isEnoent } from './enoent.js';
 import { tenantDataDir } from './tenant.js';
@@ -112,7 +113,17 @@ export async function readPushHistoryItems(
     throw new Error('历史目录不可读');
   }
 
+  let overrides: ReturnType<typeof TitleOverridesSchema.parse>['entries'] = {};
+  try {
+    overrides = TitleOverridesSchema.parse(JSON.parse(
+      await readFile(join(historyDir, 'title-overrides.json'), 'utf8'),
+    ) as unknown).entries;
+  } catch (error) {
+    if (!isEnoent(error)) throw new Error('标题覆盖文件损坏或不可读', { cause: error });
+  }
+
   const items: SpeakHistoryItem[] = [];
+  const applied = new Set<string>();
   // 全量遍历（分页契约要求 total/hasMore 基于全部记录；speaks 每天数行，解析开销毫秒级）
   for (const file of files) {
     let content: string;
@@ -124,7 +135,10 @@ export async function readPushHistoryItems(
       console.error('[data] history 文件读取失败：', error);
       throw new Error('历史记录不可读');
     }
-    items.push(...parseHistoryJsonl(content));
+    items.push(...parseHistoryJsonl(content, overrides, applied));
+  }
+  if (applied.size !== Object.keys(overrides).length) {
+    throw new Error('标题覆盖文件引用的历史记录不存在');
   }
   return items;
 }
