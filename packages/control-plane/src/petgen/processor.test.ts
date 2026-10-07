@@ -541,34 +541,64 @@ describe('PetGenProcessor（#94 状态机）', () => {
     writeFileSync(join(taskDir, 'concept.png'), PNG);
     const originalGenerate = generateMock.getMockImplementation()!;
     const originalInspect = inspectMock.getMockImplementation()!;
+    const nativeSetTimeout = setTimeout;
+    const sleepReal = (ms: number) => new Promise<void>((resolve) => nativeSetTimeout(resolve, ms));
+    let imageTimersArmed = 0;
+    let qcTimersArmed = 0;
     generateMock.mockImplementation(async (req) => {
-      await new Promise((resolve) => setTimeout(resolve, 60_000));
+      // Provider request preparation and response handling are real async work.
+      // The second request deliberately arms its fake timer later than the first.
+      if (generateMock.mock.calls.length === 2) {
+        await sleepReal(30);
+      }
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 60_000);
+        imageTimersArmed++;
+      });
+      await sleepReal(10);
       return originalGenerate(req);
     });
     inspectMock.mockImplementation(async (req) => {
-      await new Promise((resolve) => setTimeout(resolve, 20_000));
+      if (inspectMock.mock.calls.length === 2) await sleepReal(30);
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 20_000);
+        qcTimersArmed++;
+      });
+      await sleepReal(10);
       return originalInspect(req);
     });
     qcFailures.add('joy');
-    const nativeSetTimeout = setTimeout;
     vi.useFakeTimers();
     const started = Date.now();
-    const timedTick = async () => {
-      let settled = false;
-      const pending = processor.tick().then((result) => { settled = true; return result; });
-      for (let i = 0; i < 500 && !settled; i++) {
-        await new Promise<void>((resolve) => nativeSetTimeout(resolve, 2));
-        await vi.runOnlyPendingTimersAsync();
-      }
-      expect(settled).toBe(true);
-      await pending;
+    const waitForArmed = async (count: () => number, expected: number) => {
+      for (let i = 0; i < 2_000 && count() < expected; i++) await sleepReal(5);
+      expect(count()).toBe(expected);
     };
     try {
-      await timedTick(); // quad 三张图，两路调用
-      await timedTick(); // 首轮 QC 九态，两路调用
+      const initialImages = processor.tick();
+      for (const count of [2, 3]) {
+        await waitForArmed(() => imageTimersArmed, count);
+        await vi.advanceTimersByTimeAsync(60_000);
+      }
+      await initialImages; // quad 三张图，两路请求，耗时两波
+
+      const initialQc = processor.tick();
+      for (const count of [2, 4, 6, 8, 9]) {
+        await waitForArmed(() => qcTimersArmed, count);
+        await vi.advanceTimersByTimeAsync(20_000);
+      }
+      await initialQc; // 九态质检，两路请求，耗时五波
       qcFailures.clear();
-      await timedTick(); // per 仅重生 joy
-      await timedTick(); // 仅复检 joy 并交付
+
+      const repairedImage = processor.tick();
+      await waitForArmed(() => imageTimersArmed, 4);
+      await vi.advanceTimersByTimeAsync(60_000);
+      await repairedImage; // per 仅重生 joy
+
+      const repairedQc = processor.tick();
+      await waitForArmed(() => qcTimersArmed, 10);
+      await vi.advanceTimersByTimeAsync(20_000);
+      await repairedQc; // 仅复检 joy 并交付
 
       expect(Date.now() - started).toBe(300_000);
       expect(generateMock).toHaveBeenCalledTimes(4);
@@ -577,7 +607,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
     } finally {
       vi.useRealTimers();
     }
-  });
+  }, 20_000);
 
   it('质检重试超限 → failed 带失败状态明细（失败不占配额）', async () => {
     const task = await insertTask();
