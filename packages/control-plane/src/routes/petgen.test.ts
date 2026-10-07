@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { rmDataDir } from '../test/rm-data-dir.js';
-import { mkdtempSync, writeFileSync } from 'fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Hono } from 'hono';
@@ -23,6 +23,8 @@ import { runMigrations } from '../db/migrate.js';
 import { getOrCreateTenant } from '../infra/tenant.js';
 import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { petGenTasks, tenants } from '../db/schema.js';
+import { PET_STATE_IDS } from '@cyber-stray/shared/pet';
+import { qcInfraFailureMessage } from '../domain/petgen-failure.js';
 import { createPetGenRoutes } from './petgen.js';
 
 const SECRET = 'x'.repeat(40);
@@ -149,6 +151,85 @@ describe('petgen 路由（#94）', () => {
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain('已有生成任务');
+  });
+
+  async function retainedQcTask(id = 'qc-failed', error = qcInfraFailureMessage('HTTP 500')) {
+    await setPlan('alice', 'pro');
+    const db = await getDb(dataDir);
+    const root = join(dataDir, 'tenants', 'alice', 'pet-assets', 'tasks', id);
+    mkdirSync(join(root, 'states'), { recursive: true });
+    writeFileSync(join(root, 'concept.png'), 'retained concept');
+    for (const state of PET_STATE_IDS) writeFileSync(join(root, 'states', `${state}.png`), `retained ${state}`);
+    await db.insert(petGenTasks).values({ id, tenantId: 'alice', specText: '金眼黑猫',
+      status: 'failed', error, conceptPath: `pet-assets/tasks/${id}/concept.png`,
+      conceptAttempts: 1, qcRetries: 1, strategy: 'per',
+      pendingStates: JSON.stringify(['joy']),
+      qcResult: JSON.stringify({ idle: { pass: true, issues: [] } }) }).run();
+    return { db, root, id };
+  }
+
+  it('质检服务失败可恢复：保留图片、概念尝试和内容重试计数，进入 qc 而非生图', async () => {
+    const { db, root, id } = await retainedQcTask();
+    const before = await db.select().from(petGenTasks).where(eq(petGenTasks.id, id)).get();
+    const detail = await app.request(await authed(`http://x/api/petgen/tasks/${id}`));
+    expect((await detail.json()).data.canRetryQc).toBe(true);
+    const res = await app.request(await authed(`http://x/api/petgen/tasks/${id}/retry-qc`, { method: 'POST' }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toMatchObject({ status: 'qc', canRetryQc: false, error: null });
+    const after = await db.select().from(petGenTasks).where(eq(petGenTasks.id, id)).get();
+    expect(after).toMatchObject({ conceptPath: before!.conceptPath, conceptAttempts: 1,
+      strategy: 'per', qcRetries: 1, pendingStates: before!.pendingStates, qcResult: before!.qcResult });
+    expect(readFileSync(join(root, 'concept.png'), 'utf8')).toBe('retained concept');
+    for (const state of PET_STATE_IDS) expect(readFileSync(join(root, 'states', `${state}.png`), 'utf8')).toBe(`retained ${state}`);
+  });
+
+  it('重试质检同样有登录、租户、套餐和配额门', async () => {
+    const { db, id } = await retainedQcTask();
+    const path = `http://x/api/petgen/tasks/${id}/retry-qc`;
+    expect((await app.request(path, { method: 'POST' })).status).toBe(401);
+    await setPlan('bob', 'pro');
+    expect((await app.request(await authed(path, { method: 'POST' }, { sub: 'bob', tenantId: 'bob' }))).status).toBe(404);
+    await setPlan('alice', 'free');
+    expect((await app.request(await authed(path, { method: 'POST' }))).status).toBe(403);
+    await setPlan('alice', 'pro');
+    await db.insert(petGenTasks).values(['done1', 'done2'].map((id) => ({
+      id, tenantId: 'alice', specText: '猫', status: 'done' as const, completedAt: Date.now(),
+    }))).run();
+    expect((await app.request(await authed(path, { method: 'POST' }))).status).toBe(429);
+    expect((await db.select().from(petGenTasks).where(eq(petGenTasks.id, id)).get())?.status).toBe('failed');
+  });
+
+  it('内容质检不合格、非失败状态、保留图片缺失都不允许直接复检', async () => {
+    const { db, root, id } = await retainedQcTask('qc-content', '内容质检多次不合格');
+    const path = `http://x/api/petgen/tasks/${id}/retry-qc`;
+    expect((await app.request(await authed(path, { method: 'POST' }))).status).toBe(409);
+    await db.update(petGenTasks).set({ status: 'qc', error: qcInfraFailureMessage('500') }).where(eq(petGenTasks.id, id)).run();
+    expect((await app.request(await authed(path, { method: 'POST' }))).status).toBe(409);
+    await db.update(petGenTasks).set({ status: 'failed' }).where(eq(petGenTasks.id, id)).run();
+    unlinkSync(join(root, 'states', 'joy.png'));
+    expect((await app.request(await authed(path, { method: 'POST' }))).status).toBe(409);
+    expect((await db.select().from(petGenTasks).where(eq(petGenTasks.id, id)).get())?.status).toBe('failed');
+  });
+
+  it('并发恢复两条失败任务仅一条进入 qc，避免同租户队列互卡', async () => {
+    await retainedQcTask('retry-a');
+    await retainedQcTask('retry-b');
+    const requests = await Promise.all(['retry-a', 'retry-b'].map((id) =>
+      authed(`http://x/api/petgen/tasks/${id}/retry-qc`, { method: 'POST' })));
+    const responses = await Promise.all(requests.map((request) => app.request(request)));
+    expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
+  });
+
+  it('质检恢复与概念确认并发仅激活一条任务', async () => {
+    const { db } = await retainedQcTask('retry-a');
+    await db.insert(petGenTasks).values({ id: 'confirm-b', tenantId: 'alice',
+      specText: '猫', status: 'awaiting_confirmation' }).run();
+    const requests = await Promise.all([
+      authed('http://x/api/petgen/tasks/retry-a/retry-qc', { method: 'POST' }),
+      authed('http://x/api/petgen/tasks/confirm-b/confirm', { method: 'POST' }),
+    ]);
+    const responses = await Promise.all(requests.map((request) => app.request(request)));
+    expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
   });
 
   it('参数校验：缺 specText / 超长 / 非法预设 / 非法选项 → 400', async () => {

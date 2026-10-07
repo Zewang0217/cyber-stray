@@ -136,6 +136,15 @@ export function createPetGenRoutes({ config }: PetGenDeps): Hono<TenantEnv> {
       : c.json(jsonError(outcome.error), outcome.status);
   });
 
+  /** Retry retained images only after a QC service failure; content QC still runs. */
+  app.post('/tasks/:id/retry-qc', async (c) => {
+    const outcome = await service.retryQcTask(c.get('tenantId'), c.req.param('id'));
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json({ success: false, error: outcome.error,
+          ...(outcome.data !== undefined ? { data: outcome.data } : {}) }, outcome.status);
+  });
+
   /** POST /api/petgen/tasks/:id/restart — 不满意：改 spec 重出概念图 */
   app.post('/tasks/:id/restart', async (c) => {
     let body: unknown;

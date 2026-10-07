@@ -62,6 +62,8 @@ export interface PetGenTaskView {
   /** 概念图 URL（awaiting_confirmation 起存在） */
   conceptUrl: string | null;
   error: string | null;
+  /** CP-derived eligibility: infrastructure failure can recheck existing images. */
+  canRetryQc: boolean;
   qcResult: Partial<Record<PetStateId, StateQcResult>> | null;
   conceptAttempts: number;
   createdAt: number;
