@@ -93,6 +93,7 @@ describe('旧文章与分享标题审阅及原子补全', () => {
     expect(await readFile(todayPath, 'utf8')).toBe(`${before}${JSON.stringify(appended)}\n`);
     const overlay = JSON.parse(await readFile(join(dataDir, 'history', 'title-overrides.json'), 'utf8'));
     expect(overlay.entries[id]).toMatchObject({ title: '小黑猫撞见 AI 新研究',
+      sourceType: 'share', oldTitle: first.title, titleSourceAbsent: true,
       timestamp: first.timestamp });
   });
 
@@ -115,8 +116,23 @@ describe('旧文章与分享标题审阅及原子补全', () => {
       async () => ['小黑猫发现新研究']);
     const changed = `${JSON.stringify({ ...item, content: '喵！发现了另一篇研究。' })}\n`;
     await writeFile(todayPath, changed);
-    await expect(applyOverlayTitlePlan(dataDir, 'tenant-a', plan)).rejects.toThrow(/来源不一致/);
+    await expect(applyOverlayTitlePlan(dataDir, 'tenant-a', plan)).rejects.toThrow(/前缀/);
     expect(await readFile(todayPath, 'utf8')).toBe(changed);
+    await expect(readFile(join(dataDir, 'history', 'title-overrides.json'), 'utf8'))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('仅允许源文件后追加；非目标旧行变化也拒绝覆盖计划', async () => {
+    const todayFile = 'speaks-2026-10-07.jsonl';
+    const todayPath = join(dataDir, 'history', todayFile);
+    const target = { contentId: 'aaaaaaaa-0000-4000-8000-000000000001', type: 'share',
+      content: '喵！发现了新研究。', title: '喵！发现了新研究。', timestamp: '2026-10-07T08:00:00Z' };
+    const other = { type: 'nonsense', content: '喵。', timestamp: '2026-10-07T08:05:00Z' };
+    await writeFile(todayPath, `${JSON.stringify(target)}\n${JSON.stringify(other)}\n`);
+    const plan = await createOverlayTitlePlan(dataDir, 'tenant-a', todayFile,
+      async () => ['小黑猫发现新研究']);
+    await writeFile(todayPath, `${JSON.stringify(target)}\n${JSON.stringify({ ...other, content: '汪。' })}\n`);
+    await expect(applyOverlayTitlePlan(dataDir, 'tenant-a', plan)).rejects.toThrow(/前缀/);
     await expect(readFile(join(dataDir, 'history', 'title-overrides.json'), 'utf8'))
       .rejects.toMatchObject({ code: 'ENOENT' });
   });

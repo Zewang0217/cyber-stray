@@ -31,8 +31,10 @@ const PlanSchema = z.object({
 });
 const OverlayPlanSchema = PlanSchema.omit({ changes: true }).extend({
   mode: z.literal('overlay'),
+  sourceLength: z.number().int().nonnegative(),
   changes: z.array(z.object({
     line: z.number().int().nonnegative(), contentId: z.uuid(),
+    sourceType: z.enum(['article', 'share']),
     timestamp: z.string().min(1), contentSha256: z.string().regex(/^[0-9a-f]{64}$/),
     oldTitle: z.string(), excerpt: z.string().min(1), title: TitleSchema,
   })).max(MAX_RECORDS),
@@ -79,7 +81,7 @@ function candidatesFromLines(lines: string[]): Candidate[] {
     const raw: unknown = JSON.parse(text);
     if (typeof raw !== 'object' || raw === null) throw new Error(`历史第 ${line + 1} 行不是对象`);
     const item = raw as Record<string, unknown>;
-    if (!needsIndependentTitle(item.type) || item.diary || item.meme || item.titleSource) continue;
+    if (!needsIndependentTitle(item.type) || item.diary || item.meme || item.titleSource !== undefined) continue;
     if (typeof item.content !== 'string' || !item.content.trim()) continue;
     const oldTitle = typeof item.title === 'string' ? item.title : '';
     if (oldTitle && oldTitle !== deriveTitle(item.content, item.type)) continue;
@@ -136,12 +138,13 @@ export async function createOverlayTitlePlan(
     const titles = await generateTitles(batch);
     if (titles.length !== batch.length) throw new Error('模型返回标题数与候选数不一致');
     for (const [index, candidate] of batch.entries()) {
-      changes.push({ line: candidate!.line, ...identities[start + index]!,
+      changes.push({ line: candidate!.line, sourceType: candidate!.type, ...identities[start + index]!,
         oldTitle: candidate!.oldTitle, excerpt: [...candidate!.content].slice(0, 160).join(''),
         title: TitleSchema.parse(titles[index]) });
     }
   }
-  return { mode: 'overlay', tenantId, historyFile, sourceSha256: sha256(source), changes };
+  return { mode: 'overlay', tenantId, historyFile, sourceSha256: sha256(source),
+    sourceLength: source.length, changes };
 }
 
 async function writeAtomically(path: string, content: string): Promise<void> {
@@ -187,6 +190,10 @@ export async function applyOverlayTitlePlan(
   const plan = OverlayPlanSchema.parse(rawPlan);
   if (plan.tenantId !== tenantId) throw new Error('标题计划的租户不匹配');
   const source = await readFile(currentHistoryPath(dataDir, plan.historyFile), 'utf8');
+  if (source.length < plan.sourceLength ||
+      sha256(source.slice(0, plan.sourceLength)) !== plan.sourceSha256) {
+    throw new Error('当天历史前缀自 dry-run 后已变化，仅允许追加新记录');
+  }
   const records = new Map<string, Record<string, unknown>>();
   const seen = new Set<string>();
   for (const line of source.split('\n').filter(Boolean)) {
@@ -202,15 +209,17 @@ export async function applyOverlayTitlePlan(
     if (seen.has(change.contentId)) throw new Error(`标题计划 contentId 重复: ${change.contentId}`);
     seen.add(change.contentId);
     const item = records.get(change.contentId);
-    if (!item || !needsIndependentTitle(item.type) || item.diary || item.meme || item.titleSource ||
+    if (!item || item.type !== change.sourceType || item.diary || item.meme ||
+        item.titleSource !== undefined ||
         typeof item.content !== 'string' || item.timestamp !== change.timestamp ||
         sha256(item.content) !== change.contentSha256 ||
         (typeof item.title === 'string' ? item.title : '') !== change.oldTitle ||
-        (change.oldTitle && change.oldTitle !== deriveTitle(item.content, item.type)) ||
+        (change.oldTitle && change.oldTitle !== deriveTitle(item.content, change.sourceType)) ||
         [...item.content].slice(0, 160).join('') !== change.excerpt) {
       throw new Error(`标题覆盖来源不一致: ${change.contentId}`);
     }
-    const next = { title: change.title, timestamp: change.timestamp,
+    const next = { title: change.title, sourceType: change.sourceType,
+      oldTitle: change.oldTitle, titleSourceAbsent: true as const, timestamp: change.timestamp,
       contentSha256: change.contentSha256 };
     const previous = entries[change.contentId];
     if (previous && JSON.stringify(previous) !== JSON.stringify(next)) {

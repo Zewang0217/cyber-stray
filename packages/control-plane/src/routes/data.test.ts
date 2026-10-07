@@ -147,6 +147,7 @@ describe('data 路由（租户数据 + 鉴权）', () => {
       `${JSON.stringify(record)}\n${JSON.stringify({ type: 'nonsense', content: '新来的喵。', timestamp: '2026-10-07T09:00:00Z' })}\n`);
     writeFileSync(join(historyDir, 'title-overrides.json'), JSON.stringify({ version: 1,
       entries: { [id]: { title: '小黑猫撞见 AI 新研究', timestamp: record.timestamp,
+        sourceType: 'share', oldTitle: record.title, titleSourceAbsent: true,
         contentSha256: createHash('sha256').update(record.content).digest('hex') } } }));
     const res = await app.request(await authedAsync('http://x/api/history'));
     expect(res.status).toBe(200);
@@ -155,6 +156,15 @@ describe('data 路由（租户数据 + 鉴权）', () => {
       expect.objectContaining({ title: '小黑猫撞见 AI 新研究', message: record.content }),
       expect.objectContaining({ message: '新来的喵。' }),
     ]));
+    writeFileSync(join(historyDir, 'speaks-2026-10-07.jsonl'),
+      `${JSON.stringify({ ...record, title: '后来写好的正确标题' })}\n`);
+    expect((await app.request(await authedAsync('http://x/api/history'))).status).toBe(500);
+    writeFileSync(join(historyDir, 'speaks-2026-10-07.jsonl'),
+      `${JSON.stringify({ ...record, titleSource: 'react' })}\n`);
+    expect((await app.request(await authedAsync('http://x/api/history'))).status).toBe(500);
+    writeFileSync(join(historyDir, 'speaks-2026-10-07.jsonl'),
+      `${JSON.stringify({ ...record, type: 'article' })}\n`);
+    expect((await app.request(await authedAsync('http://x/api/history'))).status).toBe(500);
     writeFileSync(join(historyDir, 'speaks-2026-10-07.jsonl'),
       `${JSON.stringify({ ...record, content: '正文已经变化' })}\n`);
     expect((await app.request(await authedAsync('http://x/api/history'))).status).toBe(500);

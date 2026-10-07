@@ -7,6 +7,9 @@ export const IndependentTitleSchema = z.string().trim().min(4).max(24)
 
 export const TitleOverrideEntrySchema = z.object({
   title: IndependentTitleSchema,
+  sourceType: z.enum(['article', 'share']),
+  oldTitle: z.string(),
+  titleSourceAbsent: z.literal(true),
   timestamp: z.string().min(1),
   contentSha256: z.string().regex(/^[0-9a-f]{64}$/),
 });

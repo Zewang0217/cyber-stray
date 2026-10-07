@@ -91,6 +91,9 @@ export function parseHistoryJsonl(
       const contentHash = typeof raw.content === 'string'
         ? createHash('sha256').update(raw.content).digest('hex') : '';
       if (raw.timestamp !== override.timestamp || contentHash !== override.contentSha256 ||
+          raw.type !== override.sourceType ||
+          (typeof raw.title === 'string' ? raw.title : '') !== override.oldTitle ||
+          raw.titleSource !== undefined ||
           applied?.has(id as string)) throw new Error(`标题覆盖来源不一致: ${id}`);
       applied?.add(id as string);
       raw = { ...raw, title: override.title, titleSource: 'backfill' };
