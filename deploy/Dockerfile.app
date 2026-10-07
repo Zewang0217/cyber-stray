@@ -40,7 +40,7 @@ COPY scripts ./scripts
 FROM node:22-bookworm-slim
 WORKDIR /app
 RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 python3-numpy python3-pil ca-certificates \
+ && apt-get install -y --no-install-recommends python3 python3-numpy python3-pil fonts-noto-cjk ca-certificates \
  && npm install -g agent-browser@0.27.0 \
  && agent-browser install --with-deps \
  && rm -rf /var/lib/apt/lists/*
@@ -52,6 +52,8 @@ COPY --from=builder /repo/packages ./packages
 COPY --from=builder /repo/scripts ./scripts
 # 只导入契约，不启动 CP 或接触数据库；缺少 workspace 依赖时在构建期失败。
 RUN bun -e 'await import("./packages/shared/src/usage.ts")'
+# 实际加载叠字管线的中文字体，避免先完成付费生图才发现中文无法渲染。
+RUN python3 -c 'import runpy; from PIL import ImageFont; overlay = runpy.run_path("packages/agent/scripts/meme-overlay.py"); ImageFont.truetype(overlay["find_font"](None), 32).getbbox("赛博小黑猫")'
 # 数据目录由 compose bind mount 注入（/opt/cyber-stray/data → /data）
 ENV CP_DATA_DIR=/data
 EXPOSE 8787
