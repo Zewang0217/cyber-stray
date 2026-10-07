@@ -20,7 +20,7 @@ import { runMigrations } from '../db/migrate.js';
 import { pets, pushSubscriptions } from '../db/schema.js';
 import { getOrCreateTenant, tenantDataDir } from '../infra/tenant.js';
 import { createEventBus, type TenantEvent } from '../events/bus.js';
-import { attachPushGateway, type PushSendFn } from './push-gateway.js';
+import { attachPushGateway, latestNotifiableSpeak, type PushSendFn } from './push-gateway.js';
 import webpush from 'web-push';
 
 describe('push-gateway（Web Push 分发）', () => {
@@ -243,6 +243,21 @@ describe('push-gateway（Web Push 分发）', () => {
 
     bus.publish('alice', ev('worker_succeeded', 'alice'));
     await new Promise((r) => setTimeout(r, 50));
+    expect(sent).toHaveLength(0);
+  });
+
+  it('手动验收墙卡 notify:false 在后续事件中不可通知', async () => {
+    const bus = createEventBus();
+    unsub = attachPushGateway({ dataDir, bus, sendFn, getKeys: async () => {
+      const keys = webpush.generateVAPIDKeys();
+      return { publicKey: keys.publicKey, privateKey: keys.privateKey };
+    } });
+    await seedSubscription('alice', 'https://push.example/a1');
+    await seedSpeaks('alice', { content: '黑猫表情包', type: 'article', pushed: false,
+      timestamp: '2026-08-15T12:00:00.000Z', title: '黑猫表情包', notify: false });
+    expect(await latestNotifiableSpeak(dataDir, 'alice')).toBeNull();
+    bus.publish('alice', ev('worker_succeeded', 'alice'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     expect(sent).toHaveLength(0);
   });
 

@@ -50,7 +50,7 @@ export interface PushPayload {
   timestamp: string;
 }
 
-/** 最新一条可通知记录（gated/planLimited 跳过；按 speaks-*.jsonl 倒序扫）。
+/** 最新一条可通知记录（gated/planLimited/notify:false 跳过；按 speaks-*.jsonl 倒序扫）。
  * 导出供微信推送网关复用同一"可通知"判定（#97：内容先在 speak 侧过门控，
  * 各通道各自投递，不重复判定） */
 export async function latestNotifiableSpeak(
@@ -88,6 +88,7 @@ export async function latestNotifiableSpeak(
       if (
         record.gated !== true &&
         record.planLimited !== true &&
+        record.notify !== false &&
         typeof record.timestamp === 'string'
       ) {
         return record;

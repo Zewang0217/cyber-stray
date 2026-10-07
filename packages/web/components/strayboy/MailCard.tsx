@@ -1,7 +1,9 @@
 "use client";
 
 import { isUnread, pickStamp, stampLabel } from "@/lib/strayboy/mail";
-import type { SpeakHistoryItem } from "@cyber-stray/shared/push";
+import { getSpeakSourceUrl, SPEAK_TYPE_LABELS, type SpeakHistoryItem } from "@cyber-stray/shared/push";
+import { PostcardMarkdown } from "./PostcardMarkdown";
+import { PostcardMeme } from "./PostcardMeme";
 
 /** 邮票 4 款（16×16 像素画语法：小方格拼绘，禁平滑图标）。 */
 function Stamp({ kind }: { kind: string }) {
@@ -30,7 +32,7 @@ function Stamp({ kind }: { kind: string }) {
 /**
  * 明信片（docs/design-v3/DESIGN.md §6 / components.md §MailCard #205 修订）：paper 底 4px 墨描边 +
  * 实色落影、右上像素邮票、左上 mono 竖排日期签、未读 NEW! 黄徽章 steps 闪烁、
- * 卡片只显像素标题（点开 = PostcardDetail 读全文）、👍/👎 + 顶话题。
+ * 卡片展示完整标题与摘要，点开 PostcardDetail 读全文。
  */
 export function MailCard({
   card,
@@ -47,17 +49,17 @@ export function MailCard({
   onFeedback: (type: "like" | "dislike", card: SpeakHistoryItem) => void;
   onPin: (card: SpeakHistoryItem) => void;
   pending: boolean;
-  /** #205：墙上卡片只显标题，点卡片进详情读全文 */
+  /** 点卡片标题或打开全文进详情 */
   onOpen: (card: SpeakHistoryItem) => void;
 }) {
   const { day, hhmm } = stampLabel(card.timestamp, adoptedAt);
   const unread = isUnread(card.timestamp, seenMs);
-  const title = card.title.length > 18 ? `${card.title.slice(0, 17)}…` : card.title;
   const stamp = pickStamp(card.timestamp);
   const pinTopic = card.matchedTopics?.[0];
+  const sourceUrl = getSpeakSourceUrl(card.url);
 
   return (
-    <article className="relative border-4 border-[var(--ink)] bg-[var(--paper)] p-4 pt-6 shadow-[6px_6px_0_#000] lg:mb-5 lg:break-inside-avoid">
+    <article className="relative min-w-0 border-4 border-[var(--ink)] bg-[var(--paper)] p-4 pt-6 shadow-[6px_6px_0_#000]">
       {/* 左上 mono 竖排日期签 */}
       <span
         aria-hidden
@@ -76,17 +78,29 @@ export function MailCard({
           NEW!
         </span>
       )}
-      {/* #205：卡片只显标题（摘要/正文进详情）；标题本身是打开详情的按钮 */}
-      <h3 className="mb-1.5 pl-5 pr-10">
+      {(card.type || pinTopic) && <div className="mb-3 flex flex-wrap gap-2 pl-5 pr-10 font-mono text-[11px] text-[var(--curb)]">
+        {card.type && <span>{SPEAK_TYPE_LABELS[card.type]}</span>}
+        {pinTopic && <span>#{pinTopic}</span>}
+      </div>}
+      <h3 className="mb-3 min-w-0 pl-5 pr-10">
         <button
           type="button"
           onClick={() => onOpen(card)}
-          className="sb text-left text-[15px] leading-[1.5] text-[var(--ink)] underline decoration-dotted decoration-[var(--curb)] underline-offset-4"
+          className="font-noto block w-full break-words text-balance text-left text-[17px] font-bold leading-[1.55] text-[var(--ink)] underline decoration-dotted decoration-[var(--curb)] underline-offset-4"
         >
-          {title}
+          {card.title}
         </button>
       </h3>
-      <div className="flex items-center gap-2 pl-5">
+      <div aria-label="正文预览" className="font-noto mb-4 max-h-28 overflow-hidden break-words pl-5 text-[14px] leading-[1.7] text-[var(--ink-soft)]">
+        <PostcardMarkdown text={card.message} />
+      </div>
+      {card.memeImageUrl && <PostcardMeme imageUrl={card.memeImageUrl} />}
+      <div className="mb-4 flex flex-wrap items-center gap-3 border-t-2 border-[var(--curb)] pt-3 pl-5 text-[13px]">
+        <button type="button" onClick={() => onOpen(card)} className="font-noto font-bold text-[var(--act)] underline underline-offset-4">打开全文 →</button>
+        {sourceUrl && <a href={sourceUrl} target="_blank" rel="noopener noreferrer"
+          className="font-noto text-[var(--act)] underline underline-offset-4">阅读原文 ↗</a>}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 pl-5">
         <button
           type="button"
           disabled={pending || !card.messageId}

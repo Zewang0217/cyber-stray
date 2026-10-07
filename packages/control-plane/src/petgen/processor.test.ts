@@ -5,8 +5,8 @@
  * - 概念图：spec_submitted → concept_generating → awaiting_confirmation（conceptPath 落盘）
  * - 确认后：generating_states（四宫格 2x2×3，参考图=概念图）→ qc（两层）→ done
  *   （pet-assets 落 9 状态 PNG + concept.png + manifest.json，frames=1）
- * - 单状态质检失败：重试 + 策略升级（quad→nine→per），maxQcRetries 后整体失败
- * - 批次失败：计数 → 升级策略；阶梯到顶 → failed
+ * - 单状态质检失败：保留通过状态，逐状态重生成 + 增量复检；超限整体失败
+ * - 批次失败：计数 → quad→nine→per 升级；阶梯到顶 → failed
  * - 空格不顺从（2x2 画满 4 格）→ 放弃 2x2 升级九宫格
  * - 租户隔离：同租户在飞任务互斥；概念图失败 → failed 带明确原因；崩溃恢复
  */
@@ -276,7 +276,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
     expect(entries.filter((entry) => entry.kind === 'vision_qc').every((entry) => entry.model === 'glm-4.5v')).toBe(true);
   });
 
-  it('质检记账故障当轮失败，不走普通 infra 重试且不再质检其他状态', async () => {
+  it('质检记账故障当轮失败，只等待两个已在飞调用且不再派发', async () => {
     const task = await insertTask();
     await tickUntil(task.id, ['awaiting_confirmation']);
     await confirm(task.id);
@@ -286,10 +286,10 @@ describe('PetGenProcessor（#94 状态机）', () => {
     deps.usage = createPetUsageRecorder(dataDir);
     await processor.tick();
     expect((await getTask(task.id))?.status).toBe('failed');
-    expect(inspectMock).toHaveBeenCalledOnce();
+    expect(inspectMock).toHaveBeenCalledTimes(2);
     expect(existsSync(join(tenantDir, 'usage-accounting-block.json'))).toBe(true);
     await new PetGenProcessor(deps).tick();
-    expect(inspectMock).toHaveBeenCalledOnce();
+    expect(inspectMock).toHaveBeenCalledTimes(2);
   });
 
   /** 连续 tick 直到任务到达某状态或达上限 */
@@ -365,7 +365,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
     expect(quota.used).toBe(1);
   });
 
-  it('单状态质检失败：重试 + 升级九宫格，二次全过 → done', async () => {
+  it('单状态质检失败：保留已通过八态，逐态重生失败态后二次验收 → done', async () => {
     const task = await insertTask();
     await tickUntil(task.id, ['awaiting_confirmation']);
     await confirm(task.id);
@@ -373,17 +373,210 @@ describe('PetGenProcessor（#94 状态机）', () => {
     await tickUntil(task.id, ['qc']);
     const afterFail = await tickUntil(task.id, ['generating_states']);
     expect(afterFail.qcRetries).toBe(1);
-    expect(afterFail.strategy).toBe('nine'); // 升级九宫格（spike 回退条件）
+    expect(afterFail.strategy).toBe('per');
     expect(afterFail.pendingStates).toContain('joy');
 
     qcFailures = new Set();
     const done = await tickUntil(task.id, ['done']);
     expect(done.status).toBe('done');
-    expect(done.strategy).toBe('nine');
-    // 九宫格整张重生成：第 4 次 grid 调用是 3x3
+    expect(done.strategy).toBe('per');
+    expect(inspectMock).toHaveBeenCalledTimes(10); // 首轮九态 + 变化的 joy
     const gridCalls = generateMock.mock.calls.filter(([r]) => r.kind === 'grid');
     expect(gridCalls).toHaveLength(4);
-    expect(gridCalls[3]?.[0].prompt).toContain('3x3');
+    expect(gridCalls[3]?.[0].outPath).toContain('g-per-joy.png');
+  });
+
+  it('per 单态重生后仅重查变化状态，保留其余八态已通过的质检', async () => {
+    const previousQc = Object.fromEntries(ALL_STATES.map((state) => [
+      state, state === 'joy'
+        ? { pass: false, issues: ['动作不符'] }
+        : { pass: true, issues: [] },
+    ]));
+    const task = await insertTask({
+      status: 'generating_states', strategy: 'per', qcRetries: 2,
+      pendingStates: JSON.stringify(['joy']), qcResult: JSON.stringify(previousQc),
+    });
+    const taskDir = join(dataDir, 'tenants', 'alice', 'pet-assets', 'tasks', task.id);
+    mkdirSync(join(taskDir, 'states'), { recursive: true });
+    writeFileSync(join(taskDir, 'concept.png'), PNG);
+    for (const state of ALL_STATES) writeFileSync(join(taskDir, 'states', `${state}.png`), PNG);
+    const originalGenerate = generateMock.getMockImplementation()!;
+    generateMock.mockImplementation(async (req) => {
+      clock += 60_000;
+      return originalGenerate(req);
+    });
+    const originalInspect = inspectMock.getMockImplementation()!;
+    inspectMock.mockImplementation(async (req) => {
+      clock += 20_000;
+      return originalInspect(req);
+    });
+    const started = clock;
+
+    await processor.tick();
+    expect((await getTask(task.id))?.status).toBe('qc');
+    await processor.tick();
+
+    expect(generateMock).toHaveBeenCalledTimes(1);
+    expect(inspectMock).toHaveBeenCalledTimes(1);
+    expect(clock - started).toBe(80_000);
+    expect((await getTask(task.id))?.status).toBe('done');
+  });
+
+  it('quad 重生成批内三态必须全部重查，批外六态可复用已通过结果', async () => {
+    const previousQc = Object.fromEntries(ALL_STATES.map((state) => [
+      state, state === 'joy'
+        ? { pass: false, issues: ['动作不符'] }
+        : { pass: true, issues: [] },
+    ]));
+    const task = await insertTask({
+      status: 'generating_states', strategy: 'quad', qcRetries: 1,
+      pendingStates: JSON.stringify(['joy']), qcResult: JSON.stringify(previousQc),
+    });
+    const taskDir = join(dataDir, 'tenants', 'alice', 'pet-assets', 'tasks', task.id);
+    mkdirSync(join(taskDir, 'states'), { recursive: true });
+    writeFileSync(join(taskDir, 'concept.png'), PNG);
+    for (const state of ALL_STATES) writeFileSync(join(taskDir, 'states', `${state}.png`), PNG);
+
+    await processor.tick();
+    await processor.tick();
+
+    expect(generateMock).toHaveBeenCalledTimes(1);
+    expect(inspectMock.mock.calls.map(([req]) => req.state)).toEqual(['idle', 'walk', 'joy']);
+    expect((await getTask(task.id))?.status).toBe('done');
+  });
+
+  it('per 多态生成最多两个请求在飞，并缩短串行等待', async () => {
+    const task = await insertTask({
+      status: 'generating_states', strategy: 'per',
+      pendingStates: JSON.stringify(['idle', 'walk', 'joy', 'eat']),
+    });
+    const taskDir = join(dataDir, 'tenants', 'alice', 'pet-assets', 'tasks', task.id);
+    mkdirSync(join(taskDir, 'states'), { recursive: true });
+    writeFileSync(join(taskDir, 'concept.png'), PNG);
+    const originalGenerate = generateMock.getMockImplementation()!;
+    let active = 0;
+    let peak = 0;
+    generateMock.mockImplementation(async (req) => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const result = await originalGenerate(req);
+      active--;
+      return result;
+    });
+    deps.usage = createPetUsageRecorder(dataDir);
+
+    await processor.tick();
+
+    expect(generateMock).toHaveBeenCalledTimes(4);
+    expect((await readTenantUsage(dataDir, 'alice')).filter((entry) => entry.kind === 'image')).toHaveLength(4);
+    expect(peak).toBe(2);
+    expect(active).toBe(0);
+    expect((await getTask(task.id))?.status).toBe('qc');
+  });
+
+  it('并行生图首个失败后不派新请求，等待另一在飞调用记账后才收尾', async () => {
+    const task = await insertTask({
+      status: 'generating_states', strategy: 'per',
+      pendingStates: JSON.stringify(['idle', 'walk', 'joy', 'eat']),
+    });
+    const taskDir = join(dataDir, 'tenants', 'alice', 'pet-assets', 'tasks', task.id);
+    mkdirSync(join(taskDir, 'states'), { recursive: true });
+    writeFileSync(join(taskDir, 'concept.png'), PNG);
+    const originalGenerate = generateMock.getMockImplementation()!;
+    const recordImage = vi.fn(async () => {});
+    deps.usage = { recordImage, recordVision: vi.fn(async () => {}) };
+    let secondFinished = false;
+    generateMock.mockImplementation(async (req) => {
+      if (req.outPath.includes('g-per-idle.png')) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        throw new Error('首张生图失败');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const result = await originalGenerate(req);
+      secondFinished = true;
+      return result;
+    });
+
+    await processor.tick();
+
+    expect(generateMock).toHaveBeenCalledTimes(2);
+    expect(secondFinished).toBe(true);
+    expect(recordImage).toHaveBeenCalledOnce();
+    expect((await getTask(task.id))?.status).toBe('generating_states');
+  });
+
+  it('视觉质检最多两个请求在飞，仍完成九态全检', async () => {
+    const task = await insertTask({ status: 'qc' });
+    const taskDir = join(dataDir, 'tenants', 'alice', 'pet-assets', 'tasks', task.id);
+    mkdirSync(join(taskDir, 'states'), { recursive: true });
+    writeFileSync(join(taskDir, 'concept.png'), PNG);
+    for (const state of ALL_STATES) writeFileSync(join(taskDir, 'states', `${state}.png`), PNG);
+    const originalInspect = inspectMock.getMockImplementation()!;
+    let active = 0;
+    let peak = 0;
+    inspectMock.mockImplementation(async (req) => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const result = await originalInspect(req);
+      active--;
+      return result;
+    });
+    deps.usage = createPetUsageRecorder(dataDir);
+
+    await processor.tick();
+
+    expect(inspectMock).toHaveBeenCalledTimes(9);
+    expect((await readTenantUsage(dataDir, 'alice')).filter((entry) => entry.kind === 'vision_qc')).toHaveLength(9);
+    expect(peak).toBe(2);
+    expect(active).toBe(0);
+    expect((await getTask(task.id))?.status).toBe('done');
+  });
+
+  it('单态内容失败的完整处理器路径按两路请求与增量复检完成', async () => {
+    const task = await insertTask({ status: 'generating_states' });
+    const taskDir = join(dataDir, 'tenants', 'alice', 'pet-assets', 'tasks', task.id);
+    mkdirSync(taskDir, { recursive: true });
+    writeFileSync(join(taskDir, 'concept.png'), PNG);
+    const originalGenerate = generateMock.getMockImplementation()!;
+    const originalInspect = inspectMock.getMockImplementation()!;
+    generateMock.mockImplementation(async (req) => {
+      await new Promise((resolve) => setTimeout(resolve, 60_000));
+      return originalGenerate(req);
+    });
+    inspectMock.mockImplementation(async (req) => {
+      await new Promise((resolve) => setTimeout(resolve, 20_000));
+      return originalInspect(req);
+    });
+    qcFailures.add('joy');
+    const nativeSetTimeout = setTimeout;
+    vi.useFakeTimers();
+    const started = Date.now();
+    const timedTick = async () => {
+      let settled = false;
+      const pending = processor.tick().then((result) => { settled = true; return result; });
+      for (let i = 0; i < 500 && !settled; i++) {
+        await new Promise<void>((resolve) => nativeSetTimeout(resolve, 2));
+        await vi.runOnlyPendingTimersAsync();
+      }
+      expect(settled).toBe(true);
+      await pending;
+    };
+    try {
+      await timedTick(); // quad 三张图，两路调用
+      await timedTick(); // 首轮 QC 九态，两路调用
+      qcFailures.clear();
+      await timedTick(); // per 仅重生 joy
+      await timedTick(); // 仅复检 joy 并交付
+
+      expect(Date.now() - started).toBe(300_000);
+      expect(generateMock).toHaveBeenCalledTimes(4);
+      expect(inspectMock).toHaveBeenCalledTimes(10);
+      expect((await getTask(task.id))?.status).toBe('done');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('质检重试超限 → failed 带失败状态明细（失败不占配额）', async () => {

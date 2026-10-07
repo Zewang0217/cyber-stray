@@ -13,16 +13,8 @@ import { extname } from 'path';
 import type { VisionQc, VisionQcRequest } from './types.js';
 import { buildAnimQcPrompt, buildQcPrompt } from './prompt.js';
 import { requireModelPrice } from '../domain/pricing.js';
-
-export const DEFAULT_VISION_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4';
-
-/** ECNU OpenAI 兼容网关（ecnu 系视觉模型的配套端点） */
-export const ECNU_VISION_BASE_URL = 'https://chat.ecnu.edu.cn/open/api/v1';
-
-/** 模型感知的端点缺省：ecnu 系 → ECNU 网关，其余 → 智谱（防模型/端点错配打 404） */
-export function resolveVisionBaseUrl(model: string): string {
-  return model.startsWith('ecnu') ? ECNU_VISION_BASE_URL : DEFAULT_VISION_BASE_URL;
-}
+import { DEFAULT_VISION_BASE_URL } from '@cyber-stray/shared/vision-config';
+export { DEFAULT_VISION_BASE_URL, ECNU_VISION_BASE_URL, resolveVisionBaseUrl } from '@cyber-stray/shared/vision-config';
 
 export interface VisionOptions {
   /** 质检模型（支持 getter：与 ark 同款热更新——admin 改面板后下次质检即生效，

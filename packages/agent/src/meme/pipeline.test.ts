@@ -19,7 +19,10 @@ import { memeManifestPath, memeAssetsDir, loadManifest } from './storage.js';
 import type { ImageGenerator, MemePipelineDeps } from './types.js';
 import type { MemeCopy } from './types.js';
 
-const COPY: MemeCopy = { text: '量子纠缠人生纠缠', emotion: '自嘲', topic: '量子计算' };
+const COPY: MemeCopy = {
+  text: '量子纠缠人生纠缠', emotion: '自嘲', topic: '量子计算',
+  scene: '橘猫同时追逐两只发光粒子，尾巴打成结，露出无奈表情',
+};
 
 function fakeImageGen(captured: { prompts: string[]; refs: string[] }): ImageGenerator {
   return {
@@ -93,7 +96,18 @@ describe('runMemePipeline（端到端 mock）', () => {
     await runMemePipeline(deps, { topic: '量子计算', mode: 'abstract' }, copyGen);
     expect(captured.prompts).toHaveLength(1);
     expect(captured.prompts[0]).not.toContain('量子纠缠');
+    expect(captured.prompts[0]).toContain(COPY.scene);
     expect(captured.prompts[0]).toMatch(/不要任何文字/);
+  });
+
+  it('画面场景混入叠字文案时拒绝生图', async () => {
+    const { deps, captured } = fakeDeps({ dataDir: dir });
+    const result = await runMemePipeline(
+      deps, { topic: '量子计算', mode: 'abstract' },
+      async () => ({ ...COPY, scene: `猫举牌写着${COPY.text}` }),
+    );
+    expect(result).toMatchObject({ status: 'failed', error: expect.stringContaining('不能包含叠字文案原文') });
+    expect(captured.prompts).toHaveLength(0);
   });
 
   it('IP 模式：参考图传给 imageGen', async () => {
@@ -105,6 +119,29 @@ describe('runMemePipeline（端到端 mock）', () => {
       copyGen,
     );
     expect(captured.refs).toEqual([join(dir, 'ref.jpg')]);
+    expect(captured.prompts[0]).toContain(COPY.scene);
+  });
+
+  it('IP 模式：同一参考图传给生图与语义质检', async () => {
+    const inspected: string[] = [];
+    const { deps } = fakeDeps({
+      dataDir: dir,
+      qc: { async inspect(req) {
+        if (req.referencePath) inspected.push(req.referencePath);
+        return { pass: true, issues: [] };
+      } },
+    });
+    const referencePath = join(dir, 'ref.jpg');
+    writeFileSync(referencePath, Buffer.from('REF'));
+    await runMemePipeline(deps, { topic: '量子计算', mode: 'ip', referencePath }, copyGen);
+    expect(inspected).toEqual([referencePath]);
+  });
+
+  it('IP 模式缺角色参考图时拒绝，且不调用文案与生图', async () => {
+    const { deps, captured } = fakeDeps({ dataDir: dir });
+    await expect(runMemePipeline(deps, { topic: '量子计算', mode: 'ip' }, copyGen))
+      .rejects.toThrow(/必须提供.*参考图/);
+    expect(captured.prompts).toHaveLength(0);
   });
 
   it('质检不过 → rejected（不进 manifest）', async () => {

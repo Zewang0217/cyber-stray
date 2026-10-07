@@ -25,6 +25,7 @@ export interface ImageGenRequest extends UsageTrackedRequest {
   outPath: string;
   /** 参考图（IP 模式 = 宠物概念图；abstract 缺省） */
   reference?: string;
+  abortSignal?: AbortSignal;
 }
 
 export interface ArkImageOptions {
@@ -74,7 +75,9 @@ export function createImageGenerator(apiKey: string, opts: ArkImageOptions): Ima
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(requestTimeoutMs),
+        signal: req.abortSignal
+          ? AbortSignal.any([req.abortSignal, AbortSignal.timeout(requestTimeoutMs)])
+          : AbortSignal.timeout(requestTimeoutMs),
       });
       if (!res.ok) {
         throw new Error(`表情包生图失败: HTTP ${res.status} ${await res.text()}`);

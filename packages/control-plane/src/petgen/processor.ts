@@ -37,6 +37,7 @@ import {
   type PetPresetId,
   type PetStateId,
 } from '@cyber-stray/shared/pet';
+import { parseStoredQcResult } from '@cyber-stray/shared/petgen';
 import { petGenTasks, type PetGenTask } from '../db/schema.js';
 import { findPetByTenant } from '../infra/pets-repo.js';
 import { tenantDataDir } from '../infra/tenant.js';
@@ -52,8 +53,30 @@ import {
   strategyLadder,
 } from './types.js';
 
-/** 改造屋经典路径的策略阶梯（既有 quad→nine→per，spike 结论） */
+/** 改造屋布局/切分失败的策略阶梯（quad→nine→per） */
 const STRATEGY_ORDER = CLASSIC_STRATEGY_LADDER;
+const PROVIDER_CONCURRENCY = 2;
+
+/** Bound independent provider requests; stop scheduling on error and drain in-flight calls. */
+async function forEachProviderBounded<T>(items: readonly T[], run: (item: T) => Promise<void>): Promise<void> {
+  let cursor = 0;
+  let failed = false;
+  let firstError: unknown;
+  const worker = async () => {
+    while (!failed && cursor < items.length) {
+      const item = items[cursor++]!;
+      try { await run(item); }
+      catch (error) {
+        if (!failed || (error instanceof UsageAccountingError && !(firstError instanceof UsageAccountingError))) {
+          firstError = error;
+        }
+        failed = true;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(PROVIDER_CONCURRENCY, items.length) }, worker));
+  if (failed) throw firstError;
+}
 
 /**
  * 街角展示基准（px）：内置猫 idle 内容高 28px × 3 倍。自定义精灵帧画布 64px、
@@ -338,6 +361,13 @@ export class PetGenProcessor {
     return [[...PET_STATE_IDS]];
   }
 
+  /** Only states whose image bytes were replaced need semantic QC again. */
+  private regeneratedStates(task: PetGenTask, pending: PetStateId[]): PetStateId[] {
+    if (task.strategy === 'sheet') return this.animsOfTask(task);
+    if (task.strategy === 'strip' || task.strategy === 'per') return pending;
+    return [...new Set(this.batchesFor(task.strategy, pending).flat())];
+  }
+
   /** 参考图（概念图 → 白底 JPEG；同概念图只压平一次；领养上传参考在概念阶段已就位） */
   private async ensureReference(taskDir: string, task: PetGenTask): Promise<string> {
     const refPath = join(taskDir, 'reference.jpg');
@@ -455,7 +485,7 @@ export class PetGenProcessor {
     const reference = await this.ensureReference(taskDir, task);
     const statesDir = join(taskDir, 'states');
     await mkdir(statesDir, { recursive: true });
-    for (const batch of this.batchesFor(strategy, pending)) {
+    await forEachProviderBounded(this.batchesFor(strategy, pending), async (batch) => {
       const cols = strategy === 'quad' ? 2 : strategy === 'nine' ? 3 : 1;
       const layout = strategy === 'quad' ? '2x2' : strategy === 'nine' ? '3x3' : '1x1';
       const gridPath = join(taskDir, 'grids', `g-${strategy}-${batch.join('-')}.png`);
@@ -483,7 +513,7 @@ export class PetGenProcessor {
           throw new Error(`切分产物缺失: ${file}`);
         }
       }
-    }
+    });
   }
 
   private async advanceGenerating(task: PetGenTask): Promise<void> {
@@ -494,7 +524,9 @@ export class PetGenProcessor {
       // 全部状态就绪 → 进入质检
       await this.patch(task.id, {
         status: 'qc',
-        pendingStates: null,
+        // Keep the exact write set across ticks/restarts. A previous pass is
+        // reusable only when its image was not regenerated.
+        pendingStates: JSON.stringify(this.regeneratedStates(task, pending)),
         batchRetries: 0,
         updatedAt: now,
       });
@@ -562,33 +594,31 @@ export class PetGenProcessor {
     }
     try {
       const structural = await this.deps.structureQc.inspect(statesDir, [...PET_STATE_IDS]);
+      const previous = task.qcResult ? parseStoredQcResult(task.qcResult) : null;
+      const changed = new Set(task.pendingStates ? this.pendingStatesOf(task) : PET_STATE_IDS);
       const semantic: Record<PetStateId, StateQcResult> = {} as Record<PetStateId, StateQcResult>;
-      let infraError: unknown = null;
-      for (const state of PET_STATE_IDS) {
-        const s = structural[state];
-        if (!s.pass) {
-          // 结构不过不浪费视觉调用；原因并入 issues
-          semantic[state] = { pass: false, issues: [`结构质检：${s.issues.join('；')}`] };
-          continue;
-        }
-        try {
-          const r = await this.deps.visionQc.inspect({
+      try {
+        await forEachProviderBounded(PET_STATE_IDS, async (state) => {
+          const s = structural[state];
+          if (!s.pass) {
+            semantic[state] = { pass: false, issues: [`结构质检：${s.issues.join('；')}`] };
+            return;
+          }
+          if (!changed.has(state) && previous?.[state]?.pass === true) {
+            semantic[state] = previous[state];
+            return;
+          }
+          semantic[state] = await this.deps.visionQc.inspect({
             referencePath: join(taskDir, 'concept.png'),
             statePath: join(statesDir, `${state}.png`),
             state,
             spec,
             onUsage: this.usageCallback(task, 'vision_qc'),
           });
-          semantic[state] = r;
-        } catch (error) {
-          // 基础设施/格式错误 ≠ 内容不合格：本轮作废（旧实现转成 pass:false
-          // 会触发重新生图 + 误导性文案，供应商故障期间每轮白烧全套生图）
-          infraError = error;
-          break; // 供应商级故障时后续调用大概率同挂，剩余调用留到下轮
-        }
-      }
-      if (infraError !== null) {
-        await this.handleQcInfraError(task, infraError);
+        });
+      } catch (error) {
+        // Infra failure invalidates this QC round; all in-flight usage is settled first.
+        await this.handleQcInfraError(task, error);
         return;
       }
       this.qcInfraFails.delete(task.id);
@@ -621,6 +651,8 @@ export class PetGenProcessor {
         frame: PET_SHEET_FRAME,
         frames,
       });
+      const previous = task.qcResult ? parseStoredQcResult(task.qcResult) : null;
+      const changed = new Set(task.pendingStates ? this.pendingStatesOf(task) : anims);
       // 语义锚点：上传参考图（无 concept 的领养路径）或概念图
       let referencePath = join(taskDir, 'concept.png');
       try {
@@ -637,6 +669,10 @@ export class PetGenProcessor {
         const s = structural[anim];
         if (!s.pass) {
           semantic[anim] = { pass: false, issues: [`结构质检：${s.issues.join('；')}`] };
+          continue;
+        }
+        if (!changed.has(anim) && previous?.[anim]?.pass === true) {
+          semantic[anim] = previous[anim];
           continue;
         }
         const upscaleFactor = Math.max(1, Math.round(256 / PET_SHEET_FRAME));
@@ -677,7 +713,7 @@ export class PetGenProcessor {
     }
   }
 
-  /** QC 失败收尾（两条路径共用）：重试上限内 → 升级策略 + 只重生成失败动画；超限 → 整体失败 */
+  /** QC 失败收尾：只重生成失败态；批次/切分故障仍按策略阶梯升级。 */
   private async handleQcFailure(
     task: PetGenTask,
     failed: PetStateId[],
@@ -697,11 +733,12 @@ export class PetGenProcessor {
       });
       return;
     }
-    // 单状态重试：升级策略（阶梯回退条件）+ 只重生成失败状态
+    // 内容不合格与布局/切分故障不同。经典九宫格会重画已过的八态，
+    // 违背 ADR-0001 单状态失败重试；逐态参考同一概念图并保留逐态 QC。
     const ladder = strategyLadder(task.strategy);
     const strategyIdx = ladder.indexOf(task.strategy);
     const nextStrategy =
-      strategyIdx < ladder.length - 1 ? ladder[strategyIdx + 1] : task.strategy;
+      this.isSheetTask(task) ? (ladder[strategyIdx + 1] ?? task.strategy) : 'per';
     await this.patch(task.id, {
       status: 'generating_states',
       strategy: nextStrategy,

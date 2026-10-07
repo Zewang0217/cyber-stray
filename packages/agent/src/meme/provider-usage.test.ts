@@ -38,7 +38,7 @@ describe('表情包实际付费响应计量', () => {
     const vision = withVisionUsageTracking(createVisionQc('test-key', {
       model: visionModel, fetchFn: fetchFn as unknown as typeof fetch,
     }), dataDir, visionModel);
-    const req = { imagePath, copy: { text: 'test', emotion: 'happy', topic: 'test' }, mode: 'abstract' as const };
+    const req = { imagePath, copy: { text: 'test', emotion: 'happy', topic: 'test', scene: '猫抱着一台电脑滑行' }, mode: 'abstract' as const };
     await expect(vision(req)).rejects.toThrow('非 JSON');
     expect(await rows()).toMatchObject([{ kind: 'vision_qc', images: 1 }]);
   });
@@ -56,7 +56,7 @@ describe('表情包实际付费响应计量', () => {
     }), dataDir, visionModel);
     const invoke = () => kind === 'image'
       ? generator.generate({ prompt: 'test', outPath: join(dataDir, 'out.png') })
-      : vision({ imagePath, copy: { text: 'test', emotion: 'happy', topic: 'test' }, mode: 'abstract' });
+      : vision({ imagePath, copy: { text: 'test', emotion: 'happy', topic: 'test', scene: '猫抱着一台电脑滑行' }, mode: 'abstract' });
     await expect(invoke()).rejects.toThrow('用量记账失败');
     await expect(invoke()).rejects.toThrow('用量记账失败');
     expect(fetchFn).toHaveBeenCalledOnce();

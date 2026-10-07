@@ -2,10 +2,12 @@
 
 import { useEffect } from "react";
 import { stampLabel } from "@/lib/strayboy/mail";
-import type { SpeakHistoryItem } from "@cyber-stray/shared/push";
+import { getSpeakSourceUrl, type SpeakHistoryItem } from "@cyber-stray/shared/push";
+import { PostcardMarkdown } from "./PostcardMarkdown";
+import { PostcardMeme } from "./PostcardMeme";
 
 /**
- * 明信片详情（#205）：墙上卡片只显标题，完整 message 正文在这里读。
+ * 明信片详情：完整标题与安全 Markdown 正文在这里读。
  * 像素纸面语法与 MailCard 同源（paper 底墨描边 + 落影 + 邮票 + 日期签），
  * ESC / 点背景 / 返回键均可回墙上。
  */
@@ -35,6 +37,7 @@ export function PostcardDetail({
 
   const { day, hhmm } = stampLabel(card.timestamp, adoptedAt);
   const pinTopic = card.matchedTopics?.[0];
+  const sourceUrl = getSpeakSourceUrl(card.url);
 
   return (
     <div
@@ -56,14 +59,14 @@ export function PostcardDetail({
         >
           {`DAY ${day} · ${hhmm}`}
         </span>
-        <h2 className="sb mb-3 pl-5 pr-10 text-[16px] leading-[1.6] text-[var(--ink)]">{card.title}</h2>
-        {/* 完整正文（Noto 长文；墙上卡片不再露摘要，这里读全量） */}
-        <p className="font-noto mb-4 whitespace-pre-wrap pl-5 text-[14px] leading-[1.8] text-[var(--ink-soft)]">
-          {card.message}
-        </p>
-        {card.url && (
+        <h2 className="font-noto mb-4 break-words text-balance pl-5 pr-10 text-[20px] font-bold leading-[1.55] text-[var(--ink)]">{card.title}</h2>
+        <div className="font-noto mb-4 min-w-0 break-words pl-5 text-[15px] leading-[1.8] text-[var(--ink-soft)]">
+          <PostcardMarkdown text={card.message} />
+        </div>
+        {card.memeImageUrl && <PostcardMeme imageUrl={card.memeImageUrl} />}
+        {sourceUrl && (
           <p className="mb-4 pl-5 text-[14px]">
-            <a href={card.url} target="_blank" rel="noopener noreferrer"
+            <a href={sourceUrl} target="_blank" rel="noopener noreferrer"
               className="text-[var(--act)] underline underline-offset-4">阅读原文 ↗</a>
           </p>
         )}
@@ -100,7 +103,7 @@ export function PostcardDetail({
           <button
             type="button"
             onClick={onClose}
-            className="ml-auto border-2 border-[var(--ink)] bg-[var(--panel)] px-2 py-1 font-ps2p text-xs text-[var(--ink)]"
+            className="ml-auto border-2 border-[var(--ink)] bg-[var(--panel)] px-2 py-1 font-ps2p text-xs text-[var(--paper)]"
           >
             ◀ 返回墙上
           </button>

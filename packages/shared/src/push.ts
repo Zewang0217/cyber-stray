@@ -8,6 +8,15 @@ import type { PetMood } from './pet-stats';
 /** speak 内容类型 */
 export type SpeakType = 'share' | 'nonsense' | 'article';
 
+const MEME_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** 表情包图鉴 ID 的唯一校验与鉴权图片路径构造。 */
+export function getMemeImageUrl(value: unknown): string | undefined {
+  return typeof value === 'string' && MEME_ID_RE.test(value)
+    ? `/api/meme/${value}/image.png`
+    : undefined;
+}
+
 const SPEAK_TYPES: readonly string[] = ['share', 'nonsense', 'article'];
 
 export function isSpeakType(value: unknown): value is SpeakType {
@@ -33,8 +42,14 @@ export interface SpeakRecord {
   messageId?: string;
   /** 各渠道返回的消息 ID，兼容从飞书/Telegram 发起的反馈。 */
   channelMessageIds?: { feishu?: string; telegram?: string };
-  /** 卡片标题，从 content 派生 */
+  /** 卡片标题；新文章由 ReAct 独立撰写，旧记录可待 agent 补全 */
   title: string;
+  /** 新标题来源：ReAct 或经审阅的历史补全；旧记录缺省。 */
+  titleSource?: 'react' | 'backfill';
+  /** 已通过质检、属于同租户的表情包图鉴 ID。 */
+  memeId?: string;
+  /** false = 只展示于历史/墙；通知网关不得后续补发。缺省保持旧通知语义。 */
+  notify?: boolean;
   /** 内容中的第一个链接，无则省略 */
   url?: string;
   /** 卡片摘要，从 content 派生 */
@@ -66,6 +81,8 @@ export interface SpeakHistoryItem {
   message: string;
   timestamp: string;
   title: string;
+  /** CP 从 memeId 投影的鉴权图片路径；缺省则无配图。 */
+  memeImageUrl?: string;
   summary: string;
   url?: string;
   mood?: PetMood;

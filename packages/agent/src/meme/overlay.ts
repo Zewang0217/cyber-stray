@@ -28,20 +28,20 @@ export interface OverlaySpawnLike {
   (
     cmd: string,
     args: string[],
-    opts: { timeoutMs: number },
+    opts: { timeoutMs: number; abortSignal?: AbortSignal },
   ): Promise<{ exitCode: number; stdout: string; stderr: string }>;
 }
 
 /** stderr 累积上限（防无界增长，只留排障尾巴） */
 const STDERR_CAP_BYTES = 64 * 1024;
 
-const realSpawn: OverlaySpawnLike = (cmd, args, { timeoutMs }) => {
+const realSpawn: OverlaySpawnLike = (cmd, args, { timeoutMs, abortSignal }) => {
   const { promise, resolve, reject } = Promise.withResolvers<{
     exitCode: number;
     stdout: string;
     stderr: string;
   }>();
-  const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], signal: abortSignal });
   let stdout = '';
   let stderr = '';
   child.stdout.setEncoding('utf-8');
@@ -123,11 +123,11 @@ export function createOverlay(opts: OverlayOptions = {}): Overlay {
   const spawnFn = opts.spawnFn ?? realSpawn;
 
   return {
-    async apply(imagePath: string, text: string, outPath: string): Promise<string> {
+    async apply(imagePath: string, text: string, outPath: string, abortSignal?: AbortSignal): Promise<string> {
       const { exitCode, stderr, stdout } = await spawnFn(
         pythonCmd,
         [MEME_OVERLAY_PY, imagePath, '--text', text, '--out', outPath],
-        { timeoutMs },
+        { timeoutMs, abortSignal },
       );
       if (exitCode !== 0) {
         const tail = (stderr || stdout).trim().slice(-500);

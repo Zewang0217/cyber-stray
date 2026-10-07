@@ -37,7 +37,7 @@ async function denySpeak(
   content: string,
   type: SpeakType,
   reason: string,
-  recordMeta: { gated?: boolean; planLimited?: boolean; gateReasons?: string[] },
+  recordMeta: { title?: string; gated?: boolean; planLimited?: boolean; gateReasons?: string[] },
 ): Promise<{ action: 'deny'; reason: string }> {
   logger.info(`[${ctx.traceId}] speak 被护栏拦截: ${reason}`);
 
@@ -50,6 +50,7 @@ async function denySpeak(
   });
 
   await recordGatedSpeak(content, type, {
+    title: recordMeta.title,
     mood: ctx.toolCtx.state.mood,
     gateReasons: recordMeta.gateReasons,
     ...(recordMeta.gated ? { gated: true } : {}),
@@ -77,7 +78,7 @@ export const qualityHook = {
     const pg = { ...DEFAULT_PUSH_GATE_CONFIG, ...ctx.config.pushGate };
     if (!pg.enabled) return { action: 'allow' };
 
-    const { content, type } = params as { content: string; type: string };
+    const { content, type, title } = params as { content: string; type: string; title?: string };
 
     // 先清上一轮残留：护栏走 deny 时，不能把上个内容的归因/理由透传给本次
     ctx.toolCtx.gateReasons = undefined;
@@ -87,6 +88,7 @@ export const qualityHook = {
     const scan = scanContentWarnings(content, pg.contentScan);
     if (scan.hasInjection) {
       return denySpeak(ctx, content, type as SpeakType, '检测到 prompt injection 特征', {
+        title,
         gated: true,
         gateReasons: scan.warnings,
       });
@@ -100,6 +102,7 @@ export const qualityHook = {
         type as SpeakType,
         `本次游荡 speak 已达上限 ${pg.maxSpeaksPerWander} 条`,
         {
+          title,
           planLimited: true,
           gateReasons: [`每游荡推送上限 ${pg.maxSpeaksPerWander} 条已用完`],
         },
@@ -110,6 +113,7 @@ export const qualityHook = {
     const url = extractUrl(content);
     if (url && (await isInCooldown(url, ctx.config.urlCooldownDays))) {
       return denySpeak(ctx, content, type as SpeakType, 'URL 在冷却期内（已推送过）', {
+        title,
         planLimited: true,
         gateReasons: [`URL 冷却中：${ctx.config.urlCooldownDays} 天内已推送过`],
       });

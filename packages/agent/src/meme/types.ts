@@ -14,12 +14,14 @@ import type { ImageGenRequest } from './ark.js';
 /** 表情包模式：abstract=通用风格抽象梗图 / ip=宠物概念图参考（IP 一致性） */
 export type MemeMode = 'abstract' | 'ip';
 
-/** LLM 出文案的产物（话题 → 梗文案 + 情绪） */
+/** 同一次 LLM 调用产出文案与无字画面场景。 */
 export interface MemeCopy {
   /** 梗文案（将程序叠加到画面上，用户可见） */
   text: string;
   /** 情绪标签（图鉴元数据） */
   emotion: string;
+  /** 与话题和文案呼应的具体无字画面；只送生图，不落旧图鉴元数据。 */
+  scene: string;
   /** 话题（图鉴元数据；通常 = 触发话题） */
   topic: string;
 }
@@ -47,7 +49,7 @@ export interface ImageGenerator {
 /** 文字叠加服务（PIL 服务器端；测试注入 fake） */
 export interface Overlay {
   /** 把梗文案叠加到画面 → 输出成品图路径 */
-  apply(imagePath: string, text: string, outPath: string): Promise<string>;
+  apply(imagePath: string, text: string, outPath: string, abortSignal?: AbortSignal): Promise<string>;
 }
 
 /** 质检服务（结构 + 语义；测试注入 fake） */
@@ -56,7 +58,7 @@ export interface MemeQc {
    * 校验成品图。pass=false → 不收录（不进图鉴）。
    * 结构：文件存在/有效；语义：无 AI 画字残留/无畸形/与话题情绪一致。
    */
-  inspect(req: { imagePath: string; copy: MemeCopy; mode: MemeMode }): Promise<{
+  inspect(req: { imagePath: string; referencePath?: string; copy: MemeCopy; mode: MemeMode; abortSignal?: AbortSignal }): Promise<{
     pass: boolean;
     issues: string[];
   }>;
