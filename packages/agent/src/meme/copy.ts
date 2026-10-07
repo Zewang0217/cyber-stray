@@ -66,9 +66,10 @@ export function parseMemeCopy(raw: string, expectedTopic: string): MemeCopy {
 export async function generateMemeCopy(
   prompt: string,
   model: Parameters<typeof generateText>[0]['model'],
+  abortSignal?: AbortSignal,
 ): Promise<string> {
   assertUsageReady(getDataRoot(), modelIdOf(model), 'llm');
-  const result = await generateText({ model, temperature: 0.9, prompt: sanitizeForLLM(prompt) });
+  const result = await generateText({ model, temperature: 0.9, prompt: sanitizeForLLM(prompt), abortSignal });
   // 付费调用完成后记账；故障上抛，由 CP 停止后续派发。
   await recordUsage(getDataRoot(), {
     kind: 'llm',

@@ -107,6 +107,28 @@ describe('runMemePipeline（端到端 mock）', () => {
     expect(captured.refs).toEqual([join(dir, 'ref.jpg')]);
   });
 
+  it('IP 模式：同一参考图传给生图与语义质检', async () => {
+    const inspected: string[] = [];
+    const { deps } = fakeDeps({
+      dataDir: dir,
+      qc: { async inspect(req) {
+        if (req.referencePath) inspected.push(req.referencePath);
+        return { pass: true, issues: [] };
+      } },
+    });
+    const referencePath = join(dir, 'ref.jpg');
+    writeFileSync(referencePath, Buffer.from('REF'));
+    await runMemePipeline(deps, { topic: '量子计算', mode: 'ip', referencePath }, copyGen);
+    expect(inspected).toEqual([referencePath]);
+  });
+
+  it('IP 模式缺角色参考图时拒绝，且不调用文案与生图', async () => {
+    const { deps, captured } = fakeDeps({ dataDir: dir });
+    await expect(runMemePipeline(deps, { topic: '量子计算', mode: 'ip' }, copyGen))
+      .rejects.toThrow(/必须提供.*参考图/);
+    expect(captured.prompts).toHaveLength(0);
+  });
+
   it('质检不过 → rejected（不进 manifest）', async () => {
     const { deps } = fakeDeps({
       dataDir: dir,

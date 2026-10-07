@@ -19,7 +19,11 @@ function buildSpeakDescription(): string {
 **内容类型：**
 - share：分享链接/资源。**必须包含原始 URL**（http/https 开头），附带简要说明。没有 URL 就不要用 share 类型。
 - nonsense：无厘头碎碎念，可以是短句或感叹
-- article：正经文章/评论，可以是长篇分析或观点表达。如果引用了具体来源，也应附带 URL。`;
+- article：正经文章/评论，可以是长篇分析或观点表达。如果引用了具体来源，也应附带 URL。
+
+**标题：** article 必须单独写 4-24 字短标题，准确但有吸引力；提炼最有意思的真实事实，不得截取正文首句、夸大或编造。
+
+**配图：** 遇到有画面感、值得给主人看的话题，且当前宠物有已交付的专属形象时，可先调用 image_meme，再把它返回的 id 作为 memeId 附在这条内容上。每天配额有限，只挑最值得画的内容；不要编造 memeId。`;
 }
 
 /** 发言工具定义 */
@@ -33,6 +37,9 @@ export const speakToolDef: ToolDefinition = {
     description: buildSpeakDescription(),
     inputSchema: z.object({
       content: z.string().describe('你要说的话、分享的内容或者碎碎念'),
+      title: z.string().trim().min(4).max(24).refine((value) => !/[\r\n]/.test(value), '标题必须为单行').optional()
+        .describe('article 必填：独立短标题，不截正文首句，事实准确且有吸引力'),
+      memeId: z.uuid().optional().describe('可选：先调用 image_meme 后，将已过质检的表情包 id 附在本条'),
       type: z.enum(['share', 'nonsense', 'article']).describe(
         'share=分享链接/资源, nonsense=无厘头碎碎念, article=正经文章/评论',
       ),
@@ -40,7 +47,8 @@ export const speakToolDef: ToolDefinition = {
         '一句话说明为什么这条值得推给主人（相关性/新奇/有用），会随记录落盘展示',
       ),
     }),
-    execute: async ({ content, type, reason }) => {
+    execute: async ({ content, title, memeId, type, reason }) => {
+      if (type === 'article' && !title) throw new Error('article 必须提供独立短标题');
       ctx.stepCount++;
       const stepStart = Date.now();
 
@@ -52,6 +60,8 @@ export const speakToolDef: ToolDefinition = {
         ...(ctx.gateReasons ?? []),
       ];
       const result = await speak(content, type, {
+        title,
+        memeId,
         mood: ctx.state.mood,
         ...(gateReasons.length > 0 ? { gateReasons } : {}),
         matchedTopics: ctx.matchedTopics,

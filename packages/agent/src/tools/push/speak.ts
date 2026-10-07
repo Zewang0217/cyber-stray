@@ -1,4 +1,4 @@
-import type { SpeakType } from '@cyber-stray/shared/push';
+import { getMemeImageUrl, type SpeakType } from '@cyber-stray/shared/push';
 import { appendFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { consola } from '../../logger.js';
@@ -9,6 +9,7 @@ import { registerSpeakTopics } from '../../memory/feedback-pipeline.js';
 import { buildSpeakRecord, type SpeakRecord, type SpeakRecordMeta } from './history-record.js';
 import type { Mood } from '../../types.js';
 import { randomUUID } from 'node:crypto';
+import { loadManifest } from '../../meme/storage.js';
 
 const logger = consola.withTag('speak');
 
@@ -19,6 +20,8 @@ export type { SpeakType };
 export interface SpeakInput {
   content: string;
   type: SpeakType;
+  title?: string;
+  memeId?: string;
 }
 
 /** speak 工具返回值 */
@@ -127,6 +130,8 @@ export async function speak(
   content: string,
   type: SpeakType,
   meta: {
+    title?: string;
+    memeId?: string;
     mood?: Mood;
     gateScore?: number;
     gateReasons?: string[];
@@ -152,6 +157,13 @@ export async function speak(
   // share 类型建议包含 URL（软检查，不强制）
   if (type === 'share' && !content.includes('http')) {
     logger.warn('share 类型的内容不包含 URL', { content: content.slice(0, 50) });
+  }
+  if (meta.memeId !== undefined) {
+    if (!getMemeImageUrl(meta.memeId)) throw new Error('表情包 ID 非法');
+    const manifest = await loadManifest(getDataPath(''));
+    if (!manifest.some((m) => m.id === meta.memeId && m.qcPass)) {
+      throw new Error(`表情包不属于当前租户或未通过质检: ${meta.memeId}`);
+    }
   }
   const cfg = getConfig();
   // S11 套餐门控：日预算 + 推送窗口（控制面注入 plan；未注入 = 单用户
@@ -252,6 +264,8 @@ export async function speak(
   await appendSpeakHistory(
     buildSpeakRecord(content, type, pushed, timestamp, {
       contentId,
+      title: meta.title,
+      memeId: meta.memeId,
       channelMessageIds,
       messageId,
       mood: meta.mood,

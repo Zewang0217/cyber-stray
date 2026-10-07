@@ -37,7 +37,8 @@ export interface MemeQcDeps {
 /** 创建表情包质检（真实实现；vision 缺省 = 只用结构层，仍可 mock） */
 export function createMemeQc(deps: MemeQcDeps = {}): MemeQc {
   return {
-    async inspect({ imagePath, copy, mode }) {
+    async inspect({ imagePath, referencePath, copy, mode, abortSignal }) {
+      abortSignal?.throwIfAborted();
       const structural = await checkStructure(imagePath);
       if (!structural.pass) return structural;
 
@@ -45,16 +46,8 @@ export function createMemeQc(deps: MemeQcDeps = {}): MemeQc {
         // 无视觉能力：结构过即收（部署无 ARK 视觉模型权限时仍可用，文档注明）
         return { pass: true, issues: [] };
       }
-      try {
-        const semantic = await deps.vision({ imagePath, copy, mode });
-        return semantic;
-      } catch (error) {
-        // 视觉调用失败 ≠ 图不合格：显式 fail（禁兜底——不猜，宁可少收不误收）
-        return {
-          pass: false,
-          issues: [`语义质检执行失败: ${error instanceof Error ? error.message : String(error)}`],
-        };
-      }
+      // 服务/配置/取消错误直接交给调用方；仅模型明确判 fail 才算画质不合格。
+      return deps.vision({ imagePath, referencePath, copy, mode, abortSignal });
     },
   };
 }

@@ -37,7 +37,7 @@ import {
 import { createMemePipelineDeps } from '../meme/factory.js';
 import { createMemeCopyRunner } from '../meme/copy-runner.js';
 import { runMemePipeline } from '../meme/pipeline.js';
-import { conceptExists, conceptPath, createFlattenReference } from '../meme/reference.js';
+import { preparePetMemeReference } from '../meme/reference.js';
 import { recordMemeForPush } from '../meme/push.js';
 
 /** runDiaryWorker 入参 */
@@ -169,35 +169,33 @@ export async function runDiaryWorker(options: DiaryWorkerOptions): Promise<Diary
     let meme: DiaryWorkerResult['meme'];
     if (options.memeEnabled && data.interests.length > 0) {
       try {
-        const memeDeps = createMemePipelineDeps(options.dataDir);
-        const copyGenerator = createMemeCopyRunner({
-          petName: options.petName,
-          personalityName: personality.name,
-          model,
-        });
-        const topic = data.interests[0] ?? '';
-        let referencePath: string | undefined;
-        if (await conceptExists(options.dataDir)) {
-          const flatten = createFlattenReference();
-          referencePath = await flatten(conceptPath(options.dataDir), getDataPath('meme-assets/.ref'));
+        const reference = await preparePetMemeReference(options.dataDir);
+        if (!reference) {
+          meme = { status: 'skipped', reason: '当前租户没有已交付的宠物形象' };
+        } else {
+          const memeDeps = createMemePipelineDeps(options.dataDir);
+          const copyGenerator = createMemeCopyRunner({
+            petName: options.petName,
+            personalityName: personality.name,
+            model,
+          });
+          const topic = data.interests[0] ?? '';
+          const result = await runMemePipeline(memeDeps, {
+            topic, mode: 'ip', referencePath: reference.path, petSpecText: reference.specText,
+          }, copyGenerator);
+          // 推送补发：过质检且推送开启 → 写 notifiable speak（Web Push 送达）
+          if (result.status === 'recorded' && options.pushEnabled) {
+            await recordMemeForPush(result.meta);
+          }
+          meme =
+            result.status === 'recorded'
+              ? { status: 'recorded', file: result.meta.file }
+              : result.status === 'rejected'
+                ? { status: 'rejected', reason: result.issues.join('；') || '质检未通过' }
+                : result.status === 'skipped'
+                  ? { status: 'skipped', reason: result.reason }
+                  : { status: 'failed', reason: result.error };
         }
-        const result = await runMemePipeline(
-          memeDeps,
-          { topic, mode: referencePath ? 'ip' : 'abstract', referencePath },
-          copyGenerator,
-        );
-        // 推送补发：过质检且推送开启 → 写 notifiable speak（Web Push 送达）
-        if (result.status === 'recorded' && options.pushEnabled) {
-          await recordMemeForPush(result.meta);
-        }
-        meme =
-          result.status === 'recorded'
-            ? { status: 'recorded', file: result.meta.file }
-            : result.status === 'rejected'
-              ? { status: 'rejected', reason: result.issues.join('；') || '质检未通过' }
-              : result.status === 'skipped'
-                ? { status: 'skipped', reason: result.reason }
-                : { status: 'failed', reason: result.error };
       } catch (error) {
         meme = {
           status: 'failed',

@@ -16,4 +16,12 @@ describe('明信片展示与反馈 ID', () => {
       expect(normalizeRecord({ ...base, url })?.url).toBeUndefined();
     }
   });
+
+  it('文章标题原样透传，合法图鉴 ID 投影为同租户鉴权图片路径', () => {
+    const memeId = 'aaaaaaaa-0000-0000-0000-000000000001';
+    expect(normalizeRecord({ ...base, title: '独立短标题', memeId })).toMatchObject({
+      title: '独立短标题', memeImageUrl: `/api/meme/${memeId}/image.png`,
+    });
+    expect(normalizeRecord({ ...base, memeId: '../other-tenant' })?.memeImageUrl).toBeUndefined();
+  });
 });

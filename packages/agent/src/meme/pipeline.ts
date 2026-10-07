@@ -21,7 +21,7 @@ import { appendManifest, buildMemeMeta, memeAssetsDir } from './storage.js';
 import type { MemeCopy, MemeMeta, MemeMode, MemePipelineDeps } from './types.js';
 
 /** 文案生成器（LLM；返回已解析的 MemeCopy，测试可 mock 注入固定值） */
-export type MemeCopyGenerator = (input: { topic: string }) => Promise<MemeCopy>;
+export type MemeCopyGenerator = (input: { topic: string; abortSignal?: AbortSignal }) => Promise<MemeCopy>;
 
 /** 管线执行入参 */
 export interface MemePipelineInput {
@@ -33,6 +33,8 @@ export interface MemePipelineInput {
   referencePath?: string;
   /** 宠物 spec 文本（IP 模式画面描述，可选） */
   petSpecText?: string;
+  /** ReAct/worker 取消信号，贯穿付费调用与后处理。 */
+  abortSignal?: AbortSignal;
 }
 
 /** 管线结果 */
@@ -57,6 +59,10 @@ export async function runMemePipeline(
   copyGenerator: MemeCopyGenerator,
 ): Promise<MemePipelineResult> {
   const now = deps.now?.() ?? Date.now();
+  input.abortSignal?.throwIfAborted();
+  if (input.mode === 'ip' && !input.referencePath) {
+    throw new Error('IP 表情包必须提供当前宠物角色参考图');
+  }
   const date = localDateKey(new Date(now));
 
   // 1. 配额（失败/质检不过不占配额，先查——超限直接跳过）
@@ -67,7 +73,7 @@ export async function runMemePipeline(
 
   let copy: MemeCopy;
   try {
-    copy = await copyGenerator({ topic: input.topic });
+    copy = await copyGenerator({ topic: input.topic, abortSignal: input.abortSignal });
   } catch (error) {
     return {
       status: 'failed',
@@ -99,9 +105,11 @@ export async function runMemePipeline(
   }
   const prompt = buildMemeImagePrompt(copy, input.mode, input.petSpecText);
   try {
+    input.abortSignal?.throwIfAborted();
     await deps.imageGen.generate({
       prompt,
       outPath: rawPath,
+      abortSignal: input.abortSignal,
       ...(input.mode === 'ip' && input.referencePath
         ? { reference: input.referencePath }
         : {}),
@@ -115,7 +123,8 @@ export async function runMemePipeline(
 
   // 4. 程序叠加文字（图文分离核心：梗文字经 PIL 叠加，模型不画字）
   try {
-    await deps.overlay.apply(rawPath, copy.text, finalPath);
+    input.abortSignal?.throwIfAborted();
+    await deps.overlay.apply(rawPath, copy.text, finalPath, input.abortSignal);
   } catch (error) {
     return {
       status: 'failed',
@@ -124,12 +133,17 @@ export async function runMemePipeline(
   }
 
   // 5. 质检：不过 → 不收录（qcPass 保持 false）
-  const qc = await deps.qc.inspect({ imagePath: finalPath, copy, mode: input.mode });
+  input.abortSignal?.throwIfAborted();
+  const qc = await deps.qc.inspect({
+    imagePath: finalPath, copy, mode: input.mode, abortSignal: input.abortSignal,
+    ...(input.referencePath ? { referencePath: input.referencePath } : {}),
+  });
   if (!qc.pass) {
     return { status: 'rejected', meta, issues: qc.issues };
   }
 
   // 6. 收录（manifest 记录 qcPass=true，图已落盘）
+  input.abortSignal?.throwIfAborted();
   try {
     await appendManifest(deps.dataDir, { ...meta, qcPass: true });
   } catch (error) {

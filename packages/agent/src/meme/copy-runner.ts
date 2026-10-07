@@ -16,13 +16,13 @@ export function createMemeCopyRunner(input: {
   personalityName?: string;
   model: Parameters<typeof generateMemeCopy>[1];
 }): MemeCopyGenerator {
-  return async ({ topic }: { topic: string }): Promise<MemeCopy> => {
+  return async ({ topic, abortSignal }: { topic: string; abortSignal?: AbortSignal }): Promise<MemeCopy> => {
     const prompt = buildMemeCopyPrompt({
       topic,
       petName: input.petName,
       personalityName: input.personalityName,
     });
-    const raw = await generateMemeCopy(prompt, input.model);
+    const raw = await generateMemeCopy(prompt, input.model, abortSignal);
     return parseMemeCopy(raw, topic);
   };
 }

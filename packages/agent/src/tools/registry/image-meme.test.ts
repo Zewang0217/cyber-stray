@@ -5,13 +5,13 @@
  * - 成功路径：recorded → 返回 ok:true + imageUrl
  * - 质检不过：rejected → ok:false + 原因
  * - 配额超限：skipped → ok:false + 配额原因
- * - IP 模式无概念图 → 显式拒绝（提示用 abstract）
+ * - 无租户角色 manifest → 显式拒绝
  * - 生图失败：failed → ok:false
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { Tool } from 'ai';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { setImageMemeToolDeps, imageMemeToolDef } from './image-meme.js';
@@ -31,8 +31,8 @@ async function runTool(
   tool: Tool,
   input: Record<string, unknown>,
 ): Promise<unknown> {
-  const exec = (tool as unknown as { execute: (i: unknown) => Promise<unknown> }).execute;
-  return exec(input);
+  const exec = (tool as unknown as { execute: (i: unknown, opts: { toolCallId: string; messages: [] }) => Promise<unknown> }).execute;
+  return exec(input, { toolCallId: 'test-call', messages: [] });
 }
 
 function makeCtx(): ToolContext {
@@ -77,7 +77,13 @@ describe('image_meme 工具', () => {
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'meme-tool-'));
+    process.env.DATA_DIR = dir;
     mkdirSync(join(dir, 'meme-assets'), { recursive: true });
+    mkdirSync(join(dir, 'pet-assets'), { recursive: true });
+    writeFileSync(join(dir, 'pet-assets', 'manifest.json'), JSON.stringify({
+      version: 2, spec: { specText: '蓝色小狗，白耳朵' },
+    }));
+    writeFileSync(join(dir, 'pet-assets', 'adopt-reference.jpg'), Buffer.from('REFERENCE'));
     setImageMemeToolDeps({
       buildDeps: () => makeDeps({ dataDir: dir }),
       buildCopy: () => COPY_GEN,
@@ -86,16 +92,22 @@ describe('image_meme 工具', () => {
 
   afterEach(() => {
     setImageMemeToolDeps({});
+    delete process.env.DATA_DIR;
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('abstract 成功 → ok:true + imageUrl', async () => {
+  it('租户专属形象成功 → ok:true + imageUrl', async () => {
     const tool = imageMemeToolDef.createTool(makeCtx());
     // AI SDK tool：直接调用 execute（input 已 zod 校验）
-    const result = (await runTool(tool, { topic: '量子计算', mode: 'abstract' })) as { ok: boolean; id?: string; imageUrl?: string };
+    const result = (await runTool(tool, { topic: '量子计算' })) as { ok: boolean; id?: string; imageUrl?: string };
     expect(result.ok).toBe(true);
     expect(result.id).toBeTruthy();
     expect(result.imageUrl).toMatch(/\/api\/meme\/.*\/image\.png/);
+    const historyFile = readdirSync(join(dir, 'history')).find((file) => file.startsWith('speaks-'));
+    expect(historyFile).toBeTruthy();
+    const history = JSON.parse(readFileSync(join(dir, 'history', historyFile!), 'utf8').trim()) as Record<string, unknown>;
+    expect(history.memeId).toBe(result.id);
+    expect(history.meme).toBe(true);
   });
 
   it('质检不过 → ok:false + 原因（不进图鉴）', async () => {
@@ -108,7 +120,7 @@ describe('image_meme 工具', () => {
       buildCopy: () => COPY_GEN,
     });
     const tool = imageMemeToolDef.createTool(makeCtx());
-    const result = (await runTool(tool, { topic: 't', mode: 'abstract' })) as { ok: boolean; reason?: string };
+    const result = (await runTool(tool, { topic: 't' })) as { ok: boolean; reason?: string };
     expect(result.ok).toBe(false);
     expect(result.reason).toContain('质检');
   });
@@ -128,16 +140,18 @@ describe('image_meme 工具', () => {
       buildCopy: () => COPY_GEN,
     });
     const tool = imageMemeToolDef.createTool(makeCtx());
-    const result = (await runTool(tool, { topic: 't', mode: 'abstract' })) as { ok: boolean; reason?: string };
+    const result = (await runTool(tool, { topic: 't' })) as { ok: boolean; reason?: string };
     expect(result.ok).toBe(false);
     expect(result.reason).toMatch(/配额/);
   });
 
-  it('IP 模式无概念图 → 显式拒绝（提示用 abstract）', async () => {
+  it('无当前租户角色 manifest → 显式拒绝，不尝试生图', async () => {
+    const { unlinkSync } = await import('fs');
+    unlinkSync(join(dir, 'pet-assets', 'manifest.json'));
     const tool = imageMemeToolDef.createTool(makeCtx());
-    const result = (await runTool(tool, { topic: 't', mode: 'ip' })) as { ok: boolean; reason?: string };
+    const result = (await runTool(tool, { topic: 't' })) as { ok: boolean; reason?: string };
     expect(result.ok).toBe(false);
-    expect(result.reason).toContain('abstract');
+    expect(result.reason).toContain('没有已交付');
   });
 
   it('生图失败 → ok:false', async () => {
@@ -154,7 +168,7 @@ describe('image_meme 工具', () => {
       buildCopy: () => COPY_GEN,
     });
     const tool = imageMemeToolDef.createTool(makeCtx());
-    const result = (await runTool(tool, { topic: 't', mode: 'abstract' })) as { ok: boolean; reason?: string };
+    const result = (await runTool(tool, { topic: 't' })) as { ok: boolean; reason?: string };
     expect(result.ok).toBe(false);
     expect(result.reason).toContain('生图失败');
   });

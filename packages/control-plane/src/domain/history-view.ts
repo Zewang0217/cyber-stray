@@ -7,7 +7,7 @@
  */
 
 import { isPetMood } from '@cyber-stray/shared/pet-stats';
-import { getSpeakFeedbackIdentity, getSpeakSourceUrl, isSpeakType, SPEAK_TYPE_LABELS, type SpeakHistoryItem } from '@cyber-stray/shared/push';
+import { getMemeImageUrl, getSpeakFeedbackIdentity, getSpeakSourceUrl, isSpeakType, SPEAK_TYPE_LABELS, type SpeakHistoryItem } from '@cyber-stray/shared/push';
 
 const TITLE_MAX_CHARS = 40;
 const SUMMARY_MAX_CHARS = 120;
@@ -36,6 +36,7 @@ export function normalizeRecord(raw: Record<string, unknown>): SpeakHistoryItem 
   const fallbackTitle = type ? SPEAK_TYPE_LABELS[type] : '推送';
   const { contentId, messageId } = getSpeakFeedbackIdentity(raw);
   const url = getSpeakSourceUrl(raw.url);
+  const memeImageUrl = getMemeImageUrl(raw.memeId);
 
   return {
     message,
@@ -48,6 +49,7 @@ export function normalizeRecord(raw: Record<string, unknown>): SpeakHistoryItem 
           : fallbackTitle,
     summary:
       typeof raw.summary === 'string' ? raw.summary : truncate(stripped, SUMMARY_MAX_CHARS),
+    ...(memeImageUrl ? { memeImageUrl } : {}),
     ...(url ? { url } : {}),
     ...(isPetMood(raw.mood) ? { mood: raw.mood } : {}),
     ...(type ? { type } : {}),
