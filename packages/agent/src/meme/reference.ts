@@ -11,28 +11,66 @@
 
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import { access, mkdir } from 'fs/promises';
+import { access, mkdir, readFile } from 'fs/promises';
 import { basename, join } from 'path';
+import { z } from 'zod';
 
 /** pet-sheet.py 绝对路径（仓库根 scripts/；与 CP splitter 同一脚本） */
 const PET_SHEET_PY = fileURLToPath(
   new URL('../../../../scripts/pet-sheet.py', import.meta.url),
 );
 
+const PetReferenceManifestSchema = z.object({
+  version: z.union([z.literal(1), z.literal(2)]),
+  spec: z.object({ specText: z.string().min(1) }),
+  concept: z.literal('concept.png').optional(),
+});
+
+/** 当前租户已交付角色的参考图；无 manifest 表示尚无定制形象。 */
+export async function resolvePetReference(dataDir: string): Promise<{ path: string; specText: string } | null> {
+  const assetsDir = join(dataDir, 'pet-assets');
+  let raw: string;
+  try {
+    raw = await readFile(join(assetsDir, 'manifest.json'), 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+  const manifest = PetReferenceManifestSchema.parse(JSON.parse(raw) as unknown);
+  const file = manifest.concept ?? (manifest.version === 2 ? 'adopt-reference.jpg' : undefined);
+  if (!file) throw new Error('宠物 manifest 缺角色参考图');
+  const path = join(assetsDir, file);
+  await access(path);
+  return { path, specText: manifest.spec.specText };
+}
+
+/** PNG 概念图沿用白底压平链路；领养 JPG 已经是可用参考图。 */
+export async function preparePetMemeReference(
+  dataDir: string,
+  abortSignal?: AbortSignal,
+): Promise<{ path: string; specText: string } | null> {
+  abortSignal?.throwIfAborted();
+  const reference = await resolvePetReference(dataDir);
+  if (!reference) return null;
+  if (!reference.path.endsWith('.png')) return reference;
+  const flatten = createFlattenReference();
+  return { ...reference, path: await flatten(reference.path, join(dataDir, 'meme-assets', '.ref'), abortSignal) };
+}
+
 /** 注入式 spawn（测试 fake） */
 export type RefSpawnLike = (
   cmd: string,
   args: string[],
-  opts: { timeoutMs: number },
+  opts: { timeoutMs: number; abortSignal?: AbortSignal },
 ) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
 
-const realSpawn: RefSpawnLike = (cmd, args, { timeoutMs }) => {
+const realSpawn: RefSpawnLike = (cmd, args, { timeoutMs, abortSignal }) => {
   const { promise, resolve, reject } = Promise.withResolvers<{
     exitCode: number;
     stdout: string;
     stderr: string;
   }>();
-  const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], signal: abortSignal });
   let stdout = '';
   let stderr = '';
   child.stdout.setEncoding('utf-8');
@@ -90,12 +128,12 @@ export function createFlattenReference(opts: FlattenReferenceOptions = {}) {
   const spawnFn = opts.spawnFn ?? realSpawn;
   const frame = opts.frame ?? 384;
 
-  return async (srcPath: string, outDir: string): Promise<string> => {
+  return async (srcPath: string, outDir: string, abortSignal?: AbortSignal): Promise<string> => {
     await mkdir(outDir, { recursive: true });
     const { exitCode, stderr, stdout } = await spawnFn(
       pythonCmd,
       [PET_SHEET_PY, srcPath, '--flatten', '--frame', String(frame), '--out', outDir],
-      { timeoutMs },
+      { timeoutMs, abortSignal },
     );
     if (exitCode !== 0) {
       const tail = (stderr || stdout).trim().slice(-500);

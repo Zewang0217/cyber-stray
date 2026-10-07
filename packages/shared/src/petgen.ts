@@ -2,7 +2,8 @@
  * 宠物 IP 定制（petgen）跨包契约：CP 状态机 / DB 列 / API 视图，web 表单与轮询渲染。
  */
 
-import type { PetPresetId, PetStateId } from './pet';
+import { z } from 'zod';
+import { PET_STATE_IDS, type PetPresetId, type PetStateId } from './pet';
 
 /**
  * 任务状态机：spec_submitted → concept_generating → awaiting_confirmation →
@@ -25,6 +26,16 @@ export type PetGenTaskStatus = (typeof PET_GEN_TASK_STATUSES)[number];
 export interface StateQcResult {
   pass: boolean;
   issues: string[];
+}
+
+const StoredQcResultSchema = z.partialRecord(
+  z.enum(PET_STATE_IDS),
+  z.object({ pass: z.boolean(), issues: z.array(z.string()) }),
+);
+
+/** Decode persisted QC results shared by the processor and API projection. */
+export function parseStoredQcResult(raw: string): Partial<Record<PetStateId, StateQcResult>> {
+  return StoredQcResultSchema.parse(JSON.parse(raw));
 }
 
 /** 用户提交的 spec（web 表单 → CP POST /api/petgen/tasks） */
@@ -51,7 +62,7 @@ export interface PetGenTaskView {
   /** 概念图 URL（awaiting_confirmation 起存在） */
   conceptUrl: string | null;
   error: string | null;
-  qcResult: Record<PetStateId, StateQcResult> | null;
+  qcResult: Partial<Record<PetStateId, StateQcResult>> | null;
   conceptAttempts: number;
   createdAt: number;
   updatedAt: number;

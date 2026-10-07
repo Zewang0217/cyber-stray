@@ -46,6 +46,7 @@ describe('recordMemeForPush', () => {
     expect(record.pushed).toBe(false); // 交给 push-gateway 送达
     expect(record.url).toBe(MEME_GALLERY_URL);
     expect(record.title).toContain('自嘲');
+    expect(record.memeId).toBe(meta.id);
     expect(record.content).toContain('量子计算');
   });
 });

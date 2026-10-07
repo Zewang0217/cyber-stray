@@ -11,6 +11,7 @@
 
 import { appendFile, mkdir } from 'fs/promises';
 import { join } from 'path';
+import { randomUUID } from 'node:crypto';
 import { getDataPath } from '../config.js';
 import { todaySpeaksFile } from '../tools/push/push-budget.js';
 import type { MemeMeta } from './types.js';
@@ -22,12 +23,15 @@ export const MEME_GALLERY_URL = '/meme';
  * 写一条可通知的表情包记录（pushed=false，交给 push-gateway Web Push 送达）。
  * 失败显式抛错（禁兜底——推送补发是表情包交付的一部分）。
  */
-export async function recordMemeForPush(meta: MemeMeta): Promise<{ title: string; file: string }> {
+export async function recordMemeForPush(
+  meta: MemeMeta, options: { notify?: boolean } = {},
+): Promise<{ title: string; file: string }> {
   const historyDir = getDataPath('history');
   await mkdir(historyDir, { recursive: true });
   const file = join(historyDir, todaySpeaksFile());
   const title = `表情包 · ${meta.emotion} · ${meta.topic}`;
   const record = {
+    contentId: randomUUID(),
     content: `给「${meta.topic}」做了张表情包：${meta.emotion}。图鉴见：/meme`,
     type: 'article',
     pushed: false,
@@ -35,6 +39,8 @@ export async function recordMemeForPush(meta: MemeMeta): Promise<{ title: string
     title,
     url: MEME_GALLERY_URL,
     summary: `${meta.topic} · ${meta.emotion} · 图鉴 ${meta.file}`,
+    memeId: meta.id,
+    ...(options.notify === false ? { notify: false } : {}),
     gated: false,
     planLimited: false,
     meme: true,

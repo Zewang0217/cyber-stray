@@ -71,6 +71,26 @@ describe('内容交付与反馈', () => {
     expect(sendFeishuMessage).toHaveBeenCalledWith('发送到租户飞书');
   });
 
+  test('文章标题与本租户质检通过的图鉴 ID 一同落盘，反馈 ID 不变', async () => {
+    const memeId = 'aaaaaaaa-0000-0000-0000-000000000001';
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(join(dataDir, 'meme-assets'));
+    await writeFile(join(dataDir, 'meme-assets', 'manifest.json'), JSON.stringify([
+      { id: memeId, qcPass: true },
+    ]));
+    const result = await speak('这里是完整正文，标题不能截首句。', 'article', {
+      title: '一条值得细看的发现', memeId,
+    });
+    const raw = JSON.parse((await readFile(join(dataDir, 'history', todaySpeaksFile()), 'utf8')).trim());
+    expect(raw).toMatchObject({ contentId: result.contentId, title: '一条值得细看的发现', memeId });
+    expect(await findSpeakRecord(dataDir, result.contentId!)).not.toBeNull();
+  });
+
+  test('其他租户或未过质检的图鉴 ID 不能附到文章', async () => {
+    const memeId = 'aaaaaaaa-0000-0000-0000-000000000001';
+    await expect(speak('正文', 'article', { title: '独立文章标题', memeId })).rejects.toThrow(/不属于当前租户/);
+  });
+
   test('明确配置的飞书渠道发送失败时返回错误并保留历史', async () => {
     setTenantContext({ tenantId: 'delivery-test', dataDir,
       config: loadConfig(dataDir, { larkAppId: 'tenant-app', larkAppSecret: 'tenant-secret' }) });

@@ -23,6 +23,8 @@
     "./plan": "./src/plan.ts",
     "./usage": "./src/usage.ts",
     "./pricing": "./src/pricing.ts",
+    "./vision-config": "./src/vision-config.ts",
+    "./title-overrides": "./src/title-overrides.ts",
     "./invite": "./src/invite.ts"
   },
   "scripts": {

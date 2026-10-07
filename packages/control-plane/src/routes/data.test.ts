@@ -15,6 +15,7 @@ import { rmDataDir } from '../test/rm-data-dir.js';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync, readFileSync, statSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { createHash } from 'node:crypto';
 import { Hono } from 'hono';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
@@ -135,6 +136,40 @@ describe('data 路由（租户数据 + 鉴权）', () => {
     const body = (await res.json()) as { data: { message: string; timestamp: string }[] };
     expect(body.data).toHaveLength(1);
     expect(body.data[0]!.message).toBe('hi');
+  });
+
+  it('history 当天标题 sidecar 按 contentId、时间戳与正文 hash 覆盖，JSONL 新增不丢', async () => {
+    const historyDir = join(dataDir, 'tenants', 'alice', 'history');
+    const id = 'aaaaaaaa-0000-4000-8000-000000000001';
+    const record = { contentId: id, type: 'share', content: '喵！今天在 AI 巷子发现新研究。',
+      title: '喵！今天在 AI 巷子发现新研究。', timestamp: '2026-10-07T08:00:00Z' };
+    writeFileSync(join(historyDir, 'speaks-2026-10-07.jsonl'),
+      `${JSON.stringify(record)}\n${JSON.stringify({ type: 'nonsense', content: '新来的喵。', timestamp: '2026-10-07T09:00:00Z' })}\n`);
+    writeFileSync(join(historyDir, 'title-overrides.json'), JSON.stringify({ version: 1,
+      entries: { [id]: { title: '小黑猫撞见 AI 新研究', timestamp: record.timestamp,
+        sourceType: 'share', oldTitle: record.title, titleSourceAbsent: true,
+        contentSha256: createHash('sha256').update(record.content).digest('hex') } } }));
+    const res = await app.request(await authedAsync('http://x/api/history'));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: Array<{ title: string; message: string }> };
+    expect(body.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: '小黑猫撞见 AI 新研究', message: record.content }),
+      expect.objectContaining({ message: '新来的喵。' }),
+    ]));
+    writeFileSync(join(historyDir, 'speaks-2026-10-07.jsonl'),
+      `${JSON.stringify({ ...record, title: '后来写好的正确标题' })}\n`);
+    expect((await app.request(await authedAsync('http://x/api/history'))).status).toBe(500);
+    writeFileSync(join(historyDir, 'speaks-2026-10-07.jsonl'),
+      `${JSON.stringify({ ...record, titleSource: 'react' })}\n`);
+    expect((await app.request(await authedAsync('http://x/api/history'))).status).toBe(500);
+    writeFileSync(join(historyDir, 'speaks-2026-10-07.jsonl'),
+      `${JSON.stringify({ ...record, type: 'article' })}\n`);
+    expect((await app.request(await authedAsync('http://x/api/history'))).status).toBe(500);
+    writeFileSync(join(historyDir, 'speaks-2026-10-07.jsonl'),
+      `${JSON.stringify({ ...record, content: '正文已经变化' })}\n`);
+    expect((await app.request(await authedAsync('http://x/api/history'))).status).toBe(500);
+    writeFileSync(join(historyDir, 'title-overrides.json'), '{broken');
+    expect((await app.request(await authedAsync('http://x/api/history'))).status).toBe(500);
   });
 
   it('history 分页（#123）：limit/offset 切片 + hasMore + total', async () => {

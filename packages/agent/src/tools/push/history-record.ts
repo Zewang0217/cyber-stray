@@ -23,6 +23,8 @@ export type { SpeakRecord };
 /** 构建记录时的附加信息 */
 export interface SpeakRecordMeta {
   contentId?: string;
+  title?: string;
+  memeId?: string;
   channelMessageIds?: SpeakRecord['channelMessageIds'];
   mood?: Mood;
   messageId?: string;
@@ -91,7 +93,9 @@ export function buildSpeakRecord(
     type,
     pushed,
     timestamp,
-    title: deriveTitle(content, type),
+    title: meta.title ?? deriveTitle(content, type),
+    ...(meta.title ? { titleSource: 'react' as const } : {}),
+    ...(meta.memeId ? { memeId: meta.memeId } : {}),
     summary: deriveSummary(content),
     ...(url ? { url } : {}),
     ...(meta.messageId ? { messageId: meta.messageId } : {}),

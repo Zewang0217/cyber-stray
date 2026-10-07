@@ -1,5 +1,5 @@
 /**
- * OpenAI 兼容视觉质检客户端（表情包专用）—— 智谱 GLM-4V-Flash（免费）
+ * OpenAI 兼容视觉质检客户端（表情包专用）
  *
  * 与 petgen/vision.ts 同构：baseUrl 可配（供应商切换只改配置）；成品图 +
  * IP 参考图双图输入 → JSON 解析（容忍 markdown 围栏）。
@@ -11,13 +11,14 @@ import { readFile } from 'fs/promises';
 import { extname } from 'path';
 import type { MemeCopy, MemeMode } from './types.js';
 import type { UsageTrackedRequest } from '../usage/usage.js';
-
-export const DEFAULT_VISION_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4';
+import { DEFAULT_VISION_BASE_URL } from '@cyber-stray/shared/vision-config';
 
 export interface VisionOptions {
   model: string;
-  /** OpenAI 兼容端点根（不含 /chat/completions；默认智谱） */
+  /** OpenAI 兼容端点根（不含 /chat/completions） */
   baseUrl?: string;
+  thinking?: boolean;
+  temperature?: number;
   fetchFn?: typeof fetch;
 }
 
@@ -68,9 +69,10 @@ export interface MemeVisionQcRequest extends UsageTrackedRequest {
   referencePath?: string;
   copy: MemeCopy;
   mode: MemeMode;
+  abortSignal?: AbortSignal;
 }
 
-/** 语义质检 prompt（GLM-4V）：画面完整/无文字糊块/与情绪一致/IP 一致 */
+/** 语义质检 prompt：画面完整/无文字糊块/与情绪一致/IP 一致 */
 export function buildMemeQcPrompt(req: {
   copy: MemeCopy;
   mode: MemeMode;
@@ -99,7 +101,7 @@ export function createVisionQc(
 
   return async (req: MemeVisionQcRequest) => {
     if (!apiKey) {
-      throw new Error('缺少视觉质检 API key（环境变量 ZHIPU_API_KEY）');
+      throw new Error('缺少视觉质检 API key（环境变量 CP_VISION_API_KEY / ZHIPU_API_KEY）');
     }
     const content: Array<Record<string, unknown>> = [];
     if (req.referencePath) {
@@ -115,9 +117,13 @@ export function createVisionQc(
       },
       body: JSON.stringify({
         model: opts.model,
+        ...(opts.thinking ? { thinking: { type: 'enabled' }, reasoning_effort: 'medium' } : {}),
+        ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
         messages: [{ role: 'user', content }],
       }),
-      signal: AbortSignal.timeout(60_000),
+      signal: req.abortSignal
+        ? AbortSignal.any([req.abortSignal, AbortSignal.timeout(opts.thinking ? 90_000 : 60_000)])
+        : AbortSignal.timeout(opts.thinking ? 90_000 : 60_000),
     });
     if (!res.ok) {
       throw new Error(`表情包质检调用失败: HTTP ${res.status} ${await res.text()}`);

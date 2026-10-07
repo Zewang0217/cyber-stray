@@ -16,7 +16,7 @@ import type { ToolContext } from './context.js';
 
 /** ai SDK tool() 包装后的可执行形态（同 browse-page.test 的解包模式） */
 interface ExecutableTool {
-  execute: (args: { content: string; type: string; reason?: string }) => Promise<{
+  execute: (args: { content: string; type: string; title?: string; reason?: string }) => Promise<{
     success: boolean;
     pushed: boolean;
   }>;
@@ -68,6 +68,7 @@ describe('speak 工具 reason 落盘（#152）', () => {
     const result = await tool.execute({
       content: '移动互联网的下半场，内容视角很新',
       type: 'article',
+      title: '移动互联网的下半场',
       reason: '命中主人中兴趣且视角新颖',
     });
 
@@ -75,6 +76,7 @@ describe('speak 工具 reason 落盘（#152）', () => {
     const record = await lastRecord();
     expect(record.gateReasons).toEqual(['命中主人中兴趣且视角新颖', 'URL 数量异常 (6 > 5)']);
     expect(record.matchedTopics).toEqual(['互联网']);
+    expect(record.title).toBe('移动互联网的下半场');
   });
 
   test('无 reason 且无 hook 警告时 gateReasons 不落盘（字段缺省）', async () => {
@@ -85,5 +87,15 @@ describe('speak 工具 reason 落盘（#152）', () => {
     expect(result.success).toBe(true);
     const record = await lastRecord();
     expect(record.gateReasons).toBeUndefined();
+  });
+
+  test('share 也必须有独立标题，nonsense 可保持短句', async () => {
+    const tool = speakToolDef.createTool(makeToolCtx()) as unknown as ExecutableTool;
+    await expect(tool.execute({ content: '喵！新论文 https://example.com', type: 'share' }))
+      .rejects.toThrow(/share 必须提供独立短标题/);
+    const result = await tool.execute({ content: '喵！新论文 https://example.com',
+      type: 'share', title: '这篇新论文藏着惊喜' });
+    expect(result.success).toBe(true);
+    expect(await lastRecord()).toMatchObject({ title: '这篇新论文藏着惊喜', titleSource: 'react' });
   });
 });
