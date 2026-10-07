@@ -22,6 +22,8 @@ const ArgsSchema = z.object({
   topic: z.string().trim().min(1).max(60).optional(),
   petName: z.string().trim().min(1).optional(),
 });
+// 文案 60s + Seedream 120s + 叠字 60s + 思考视觉 QC 90s，留 30s 落盘余量。
+const MEME_GENERATE_TIMEOUT_MS = 360_000;
 
 function arg(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
@@ -100,14 +102,16 @@ async function main(): Promise<void> {
     if (!prepared) throw new Error('宠物角色参考图在生成前消失');
     const model = createDeepSeek({ apiKey }).chat(config.llmModel);
     const copy = createMemeCopyRunner({ petName: args.petName, personalityName: config.personality, model });
+    const startedAt = Date.now();
     const result = await runMemePipeline(deps, {
       topic: args.topic, mode: 'ip', referencePath: prepared.path, petSpecText: prepared.specText,
-      abortSignal: AbortSignal.timeout(180_000),
+      abortSignal: AbortSignal.timeout(MEME_GENERATE_TIMEOUT_MS),
     }, copy);
     assertUsageHealthy(args.dataDir);
     process.stdout.write(`${JSON.stringify(result.status === 'recorded'
-      ? { status: 'recorded', id: result.meta.id, imageUrl: getMemeImageUrl(result.meta.id) }
-      : result)}\n`);
+      ? { status: 'recorded', id: result.meta.id, imageUrl: getMemeImageUrl(result.meta.id),
+        elapsedMs: Date.now() - startedAt }
+      : { ...result, elapsedMs: Date.now() - startedAt })}\n`);
     if (result.status !== 'recorded') process.exitCode = 1;
     if (publish && result.status === 'recorded') {
       const status = await publishRecordedMeme(args.dataDir, result.meta.id);
