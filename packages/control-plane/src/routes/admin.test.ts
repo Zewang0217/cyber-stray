@@ -160,6 +160,43 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     expect((await db.select().from(pets).where(eq(pets.tenantId, 'tenant-b')).get())?.status).toBe('paused');
   });
 
+  it('配额覆盖：写入 / 整体替换 / 清空，listUsers 回显；非法值与未知键拒绝', async () => {
+    const put = await app.request(await authed('http://x/api/admin/users/tenant-a/quota-overrides', {
+      method: 'PUT', body: JSON.stringify({ llmBudgetYuan: 5, petgenWeeklyLimit: 2 }),
+    }));
+    expect(put.status).toBe(200);
+    expect(((await put.json()) as { data: { quotaOverrides: unknown } }).data.quotaOverrides)
+      .toEqual({ llmBudgetYuan: 5, petgenWeeklyLimit: 2 });
+    const db = await getDb(dataDir);
+    expect((await db.select().from(tenants).where(eq(tenants.id, 'tenant-a')).get())?.quotaOverrides)
+      .toBe('{"llmBudgetYuan":5,"petgenWeeklyLimit":2}');
+
+    // 整体替换语义：只提交一个键 → 旧键被清除
+    await app.request(await authed('http://x/api/admin/users/tenant-a/quota-overrides', {
+      method: 'PUT', body: JSON.stringify({ petgenWeeklyLimit: 0 }),
+    }));
+    const list = await app.request(await authed('http://x/api/admin/users'));
+    const row = ((await list.json()) as { data: Array<{ tenantId: string; quotaOverrides: unknown }> }).data
+      .find((r) => r.tenantId === 'tenant-a');
+    expect(row?.quotaOverrides).toEqual({ petgenWeeklyLimit: 0 });
+
+    expect((await app.request(await authed('http://x/api/admin/users/tenant-a/quota-overrides', {
+      method: 'PUT', body: JSON.stringify({ llmBudgetYuan: 9999 }),
+    }))).status).toBe(400);
+    expect((await app.request(await authed('http://x/api/admin/users/tenant-a/quota-overrides', {
+      method: 'PUT', body: JSON.stringify({ unknownKey: 1 }),
+    }))).status).toBe(400);
+    expect((await app.request(await authed('http://x/api/admin/users/ghost/quota-overrides', {
+      method: 'PUT', body: JSON.stringify({ llmBudgetYuan: 1 }),
+    }))).status).toBe(404);
+
+    // 全空对象 = 清空回套餐默认
+    await app.request(await authed('http://x/api/admin/users/tenant-a/quota-overrides', {
+      method: 'PUT', body: JSON.stringify({}),
+    }));
+    expect((await db.select().from(tenants).where(eq(tenants.id, 'tenant-a')).get())?.quotaOverrides).toBeNull();
+  });
+
   it('管理员生成的邀请保留根路径链接及共享契约令牌，供 Web 首次登录透传', async () => {
     const res = await app.request(await authed('http://x/api/admin/invites', {
       method: 'POST', body: JSON.stringify({ label: '首次领养邀请' }),

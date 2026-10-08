@@ -28,8 +28,9 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { IN_FLIGHT, taskDirOf } from '../petgen/processor.js';
 import * as petgenRepo from '../infra/petgen-repo.js';
 import { readTenantAsset } from '../infra/tenant-data-reader.js';
-import { findTenantPlan } from '../infra/tenant-access.js';
+import { findTenantById, findTenantPlan } from '../infra/tenant-access.js';
 import { petGenWeeklyQuota } from '../petgen/quota.js';
+import { parseTenantQuotaOverrides } from '@cyber-stray/shared/quota';
 import { isAdminSub } from '../infra/admin-repo.js';
 import type { PetSpec } from '../petgen/types.js';
 import { createSplitter } from '../petgen/splitter.js';
@@ -114,10 +115,15 @@ function toTaskView(task: PetGenTask): PetGenTaskView {
 }
 
 export function createPetGenService({ config, principalSub }: PetGenServiceDeps) {
-  /** 所有生成入口共享配额；admin 例外以 RBAC 身份为准。 */
+  /** 所有生成入口共享配额；admin 例外以 RBAC 身份为准，租户覆盖 0 = 不限与其同效。 */
   async function generationQuota(db: ControlDb, tenantId: string) {
-    const unlimited = await isAdminSub(config.dataDir, principalSub, config.adminSubs ?? []);
-    return petGenWeeklyQuota(db, tenantId, unlimited);
+    const overrides = parseTenantQuotaOverrides(
+      (await findTenantById(config.dataDir, tenantId))?.quotaOverrides,
+    );
+    const limit = overrides?.petgenWeeklyLimit ?? 1;
+    const unlimited = limit === 0
+      || (await isAdminSub(config.dataDir, principalSub, config.adminSubs ?? []));
+    return petGenWeeklyQuota(db, tenantId, unlimited, Date.now(), limit);
   }
 
   /** 租户套餐是否可用 IP 定制（Pro/BYOK 专属；免费无入口） */

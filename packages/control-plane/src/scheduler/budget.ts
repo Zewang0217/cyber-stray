@@ -33,6 +33,19 @@ export function planBudgetYuan(config: LlmBudgetConfig, plan: string): number | 
   return yuan > 0 ? yuan : null;
 }
 
+/**
+ * 生效的每日 LLM 预算（¥）：租户覆盖优先（0 = 不限，与 yuanPerPlan 同语义），
+ * 无覆盖回落套餐默认。null = 不设闸。覆盖契约见 @cyber-stray/shared/quota。
+ */
+export function effectiveBudgetYuan(
+  config: LlmBudgetConfig,
+  plan: string,
+  overrideYuan?: number,
+): number | null {
+  if (overrideYuan !== undefined) return overrideYuan > 0 ? overrideYuan : null;
+  return planBudgetYuan(config, plan);
+}
+
 /** 租户今日 LLM 成本（¥）。读失败抛错（含日期键；ENOENT=空态返回 0） */
 export async function todayLlmCostYuan(
   dataDir: string,
