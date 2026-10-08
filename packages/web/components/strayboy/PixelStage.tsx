@@ -1,268 +1,100 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { CafeFront, NeighborCat, Passerby, ShopFront } from "./StreetLife";
-import { AcUnit, LampPost, ParkCorner, ParkedCar, RoofKit, Wires, useStreetVariant } from "./StreetVariants";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { NeighborCat, Passerby } from "./StreetLife";
+import { useStreetVariant } from "./StreetVariants";
+import styles from "./StreetScene.module.css";
 
-/** 确定性伪随机（同 seed 同布局——避免每次渲染窗灯乱闪）。 */
-function seeded(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 9301 + 49297) % 233280;
-    return s / 233280;
-  };
+const MOON_CELLS = new Set([1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23]);
+const MOON_PHASES = [
+  { name: "满月", shadow: 0 }, { name: "亏凸月", shadow: 1 },
+  { name: "下弦月", shadow: 2 }, { name: "残月", shadow: 3 },
+  { name: "新月", shadow: 4 }, { name: "娥眉月", shadow: 3 },
+  { name: "上弦月", shadow: 2 }, { name: "盈凸月", shadow: 1 },
+] as const;
+const CORNERS = ["书店门口", "住民小巷", "街角花园"] as const;
+const GREET_INTERVAL_MS = 45_000;
+
+/** 美术底图上的可交互窗灯；只在用户操作后覆盖玻璃，保持原图的初始细节。 */
+function ShopWindow({ daytime }: { daytime: boolean }) {
+  const [override, setOverride] = useState<boolean | null>(null);
+  const lit = override ?? !daytime;
+  return <button type="button" aria-label={`书店窗灯，${lit ? "亮" : "灭"}，点按切换`} aria-pressed={lit}
+    onClick={() => setOverride(!lit)} className={`${styles.hotspot} ${styles.window}`}>
+    {override !== null && <span aria-hidden className={lit ? styles.windowLit : styles.windowShade}>
+      {!lit && Array.from({ length: 8 }, (_, i) => <b key={i} />)}
+    </span>}
+  </button>;
 }
 
-interface Building {
-  left: string;
-  width: number;
-  height: number;
-  near?: boolean;
-  /** #208：挂霓虹招牌的楼（招牌 hover 亮起） */
-  neon?: boolean;
+/** 透明生图小物件复用在每日街角布置中，与背景共享美术风格。 */
+function StreetPlanter({ second = false }: { second?: boolean }) {
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src="/scenes/street-v1/planter.webp" alt="" width={36} height={36}
+    className={`${styles.prop} ${styles.planter} ${second ? styles.secondPlanter : ""}`} />;
 }
 
-const BUILDINGS: Building[] = [
-  { left: "3%", width: 56, height: 116 },
-  { left: "20%", width: 76, height: 84, near: true },
-  { left: "55%", width: 64, height: 132, neon: true },
-  { left: "76%", width: 90, height: 96, near: true },
-];
+/** 两段热气与一次招牌暗闪共用慢周期，错开强调；不依赖宠物素材或定时器。 */
+function StreetAtmosphere({ daytime }: { daytime: boolean }) {
+  return <div aria-hidden data-scene-atmosphere className={styles.atmosphere}>
+    <span className={styles.coffeeCup} />
+    <span data-cafe-steam className={styles.cafeSteam}><b /><b /><b /></span>
+    {!daytime && <span data-cafe-sign className={styles.signDimmer} />}
+  </div>;
+}
 
-const STARS = Array.from({ length: 12 }, (_, i) => ({
-  left: `${(i * 83) % 97}%`,
-  top: `${(i * 37) % 46}%`,
-}));
-
-/** 白天云（宪法 §7 白天街区）：像素块云，静态（装饰不动，motion.md §5）。 */
-const CLOUDS = [
-  { left: "8%", top: "12%" },
-  { left: "44%", top: "7%" },
-  { left: "78%", top: "16%" },
-];
-
-/** 5×5 圆月格子（row, col）——像素语法月相的底盘。 */
-const MOON_CELLS: Array<[number, number]> = [
-  [0, 1], [0, 2], [0, 3],
-  [1, 0], [1, 1], [1, 2], [1, 3], [1, 4],
-  [2, 0], [2, 1], [2, 2], [2, 3], [2, 4],
-  [3, 0], [3, 1], [3, 2], [3, 3], [3, 4],
-  [4, 1], [4, 2], [4, 3],
-];
-
-/** 八相：左侧阴影宽度（格）——0=满月，4=娥眉；点击循环。 */
-const MOON_PHASES: Array<{ name: string; shadow: number }> = [
-  { name: "满月", shadow: 0 },
-  { name: "亏凸月", shadow: 1 },
-  { name: "下弦月", shadow: 2 },
-  { name: "残月", shadow: 3 },
-  { name: "新月", shadow: 4 },
-  { name: "娥眉月", shadow: 3 },
-  { name: "上弦月", shadow: 2 },
-  { name: "盈凸月", shadow: 1 },
-];
-
-/**
- * 像素夜城街景（docs/design-v3/DESIGN.md §1 主屏）：sky/楼/窗/星/月/路缘 + 猫的活动层。
- * #208 可交互装饰：点窗灯（亮/灭）、点月亮换相、点水沟盖冒蒸汽、霓虹招牌 hover 亮。
- * 动效纪律（motion.md §5）：装饰静态定位；新增动效仅水沟盖蒸汽一处一次性
- * transform/opacity（事件触发，reduced-motion 停帧），霓虹 hover 为静态 opacity 态。
- * 白天模式（§7，daytime = 宠物醒着）：近楼 --bld-far/远楼 --curb + 像素云 --star，
- * 窗灯点灯率降档，星/月/霓虹/湿地反光全部隐藏——只动配色与显隐，零新动效。
- */
-export function PixelStage({ children, onStreet, demo, daytime = false, onPasserbyGreet }: { children: ReactNode; onStreet: boolean; demo?: boolean; daytime?: boolean; onPasserbyGreet?: () => void }) {
-  const rand = seeded(20260906);
-  const [lamps, setLamps] = useState<Record<string, boolean>>({});
+/** 像素夜城：生成场景底图 + 同坐标交互层，宠物始终是独立的实时活体。 */
+export function PixelStage({ children, onStreet, demo, daytime = false, onPasserbyGreet }: {
+  children: ReactNode; onStreet: boolean; demo?: boolean; daytime?: boolean; onPasserbyGreet?: () => void;
+}) {
   const [phase, setPhase] = useState(0);
   const [steam, setSteam] = useState(0);
-  const variant = useStreetVariant(); // #219：店铺街/住宅巷/公园口 按自然日轮换
-  const toggleLamp = (key: string): void => {
-    setLamps((prev) => ({ ...prev, [key]: !(prev[key] ?? false) }));
-  };
-  const moon = MOON_PHASES[phase]; // phase 经 modulo 恒在界内
-
-  // 路人偶遇（#212）：约 45s 一次。门控 = 夜场景（路人出镜）且猫在家街上
-  //（onStreet prop = !away；猫出游不在场时不报「蹲得像个路灯」）。
-  // 注意勿混淆：这里用的是 prop（!away），非 StreetCornerMain 的局部 onStreet（!away && !sleeping）
+  const [artError, setArtError] = useState<string | null>(null);
+  const variant = useStreetVariant();
+  const light = daytime ? "day" : "night";
+  const moon = MOON_PHASES[phase];
+  // SSR 图片可能在 hydration 前就失败，挂载时补查真实解码状态，避免漏掉 error 事件。
+  const verifyArt = useCallback((img: HTMLImageElement | null) => {
+    if (img?.complete && img.naturalWidth === 0) setArtError(light);
+  }, [light]);
   useEffect(() => {
     if (!onPasserbyGreet) return;
-    const id = setInterval(() => {
-      if (onStreet && !daytime) onPasserbyGreet();
-    }, 45_000);
+    const id = setInterval(() => { if (onStreet && !daytime) onPasserbyGreet(); }, GREET_INTERVAL_MS);
     return () => clearInterval(id);
   }, [onPasserbyGreet, onStreet, daytime]);
-
   return (
-    <div
-      className="relative h-[300px] overflow-hidden border-2 border-black"
-      style={{ backgroundColor: daytime ? "#5C94FC" : "var(--sky)" }}
-      suppressHydrationWarning
-    >
-      {/* 云仅白天（宪法 §7：白天街区换装；夜空归星月） */}
-      {daytime && CLOUDS.map((c, i) => (
-        <span key={i} aria-hidden className="absolute" style={{ left: c.left, top: c.top }}>
-          <b className="absolute top-[4px] h-[6px] w-[44px] bg-[var(--star)]" />
-          <b className="absolute left-[10px] h-[6px] w-[24px] bg-[var(--star)]" />
-        </span>
-      ))}
-      {/* 星/月仅夜间（宪法 §7 白天：星月隐藏） */}
-      {!daytime && STARS.map((star, i) => (
-        <span
-          key={i}
-          aria-hidden
-          className="absolute h-[2px] w-[2px] bg-[var(--star)]"
-          style={{ left: star.left, top: star.top }}
-        />
-      ))}
-      {!daytime && (
-        /* 月亮：5×5 像素盘，点击循环八相（#208）；aria-label 报当前相位 */
-        <button
-          type="button"
-          aria-label={`月亮，当前${moon.name}，点按换相`}
-          onClick={() => setPhase((p) => (p + 1) % MOON_PHASES.length)}
-          className="absolute right-[8%] top-[10%] z-[2] grid h-6 w-6 cursor-pointer grid-cols-5"
-        >
-          {Array.from({ length: 25 }, (_, i) => {
-            const row = Math.floor(i / 5);
-            const col = i % 5;
-            const isDisc = MOON_CELLS.some(([r, c]) => r === row && c === col);
-            const shadowed = col < moon.shadow;
-            return (
-              <b
-                key={i}
-                className={isDisc && !shadowed ? "bg-[var(--star)]" : "bg-transparent"}
-              />
-            );
-          })}
-        </button>
-      )}
-      {demo && (
-        <span className="absolute right-1 top-1 z-10 border border-[var(--neon)] bg-[var(--sky)] px-1 py-0.5 font-ps2p text-xs leading-none text-[var(--neon)]">
-          DEMO
-        </span>
-      )}
-      {BUILDINGS.map((b, i) => (
-        <div
-          key={i}
-          className={`absolute bottom-10 ${b.near
-            ? daytime ? "bg-[var(--bld-far)]" : "bg-[var(--bld-near)]"
-            : daytime ? "bg-[var(--curb)]" : "bg-[var(--bld-far)]"}`}
-          style={{ left: b.left, width: b.width, height: b.height }}
-        >
-          {!daytime && b.neon && variant === 0 && (
-            /* 霓虹招牌（#208）：hover 亮起（静态 opacity 态，零动画）；白天灯牌熄灭（§7） */
-            <span
-              aria-hidden
-              className="neon-sign absolute -top-5 left-1/2 -translate-x-1/2 border border-[var(--neon)] bg-[var(--sky)] px-1 font-ps2p text-[8px] leading-[1.4] text-[var(--neon)]"
-            >
-              OPEN
-            </span>
-          )}
-          {variant === 0 && i === 1 && <ShopFront />}
-          {variant === 0 && i === 3 && <CafeFront />}
-          {/* 住宅巷：空调外机 + 天台物件（#219） */}
-          {variant === 1 && i === 2 && (
-            <>
-              <AcUnit top="28%" left="18%" />
-              <AcUnit top="52%" left="62%" />
-              <RoofKit left="30px" />
-            </>
-          )}
-          {variant === 1 && i === 3 && <AcUnit top="36%" left="30%" />}
-          {variant === 1 && i === 0 && <RoofKit left="14px" />}
-          {Array.from({ length: Math.floor(b.height / 34) }, (_, row) => (
-            <div key={row} className="flex gap-2 p-2">
-              {Array.from({ length: Math.max(1, Math.floor((b.width - 16) / 18)) }, (_, col) => {
-                const key = `${i}-${row}-${col}`;
-                // rand() 必须无条件消耗：?? 短路会让被 toggle 的格跳过消耗，
-                // 后续窗灯基态整体前移一位（评审 HIGH-1 实证）
-                // 白天点灯率降档（§7 白天：窗灯大半熄灭；rand 消耗顺序不受影响）
-                const base = rand() > (daytime ? 0.78 : 0.45);
-                const lit = lamps[key] ?? base;
-                return (
-                  /* 点窗亮灯（#208）：基态由 seed 决定，点按在亮/灭间切换 */
-                  <button
-                    key={col}
-                    type="button"
-                    aria-label={`窗灯 ${i + 1}-${row + 1}-${col + 1}，${lit ? "亮" : "灭"}，点按切换`}
-                    aria-pressed={lit}
-                    onClick={() => toggleLamp(key)}
-                    className={`h-2 w-2.5 cursor-pointer ${lit ? "bg-[var(--window)]" : "bg-[var(--window-off)]"}`}
-                  />
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      ))}
-      {/* 街角变体氛围层（#219）：全静态 + pointer-events-none（装饰不拦交互） */}
-      <div aria-hidden className="pointer-events-none absolute inset-0">
-      {variant === 0 && (
-        <>
-          {/* 远景电线（天空背景层，不锚接楼顶） */}
-          <Wires top="28%" left="12%" width="12%" />
-          <Wires top="22%" left="58%" width="16%" />
-          <LampPost left="70%" />
-          <ParkedCar left="40%" />
-          {/* 地面反光：橱窗/霓虹在湿路面上的低透明色条（夜景专属，白天隐藏） */}
-          {!daytime && (
-            <>
-              <span aria-hidden className="absolute bottom-[4px] left-[24%] h-[5px] w-[8px] bg-[var(--window)] opacity-20" />
-              <span aria-hidden className="absolute bottom-[6px] left-[59%] h-[6px] w-[6px] bg-[var(--neon)] opacity-20" />
-            </>
-          )}
-        </>
-      )}
-      {variant === 1 && (
-        <>
-          <Wires top="20%" left="6%" width="20%" />
-          <Wires top="32%" left="62%" width="14%" />
-          <LampPost left="88%" />
-          <ParkedCar left="30%" />
-        </>
-      )}
-      {variant === 2 && (
-        <>
-          <ParkCorner />
-          <LampPost left="86%" />
-          <Wires top="26%" left="55%" width="14%" />
-        </>
-      )}
+    <section role="region" aria-label="街角场景" data-light={light} className={styles.stage}>
+      <div className={styles.caption}>
+        <b aria-hidden /><span>{variant === null ? "街角" : CORNERS[variant]}</span>
+        <small>· {daytime ? "日光正好" : "夜灯还亮着"}</small>
       </div>
-      {/* 动物邻居：远处楼顶偶尔蹲一只剪影猫（#212，纯显隐无动画） */}
-      {!daytime && <NeighborCat />}
-      {/* 路人 NPC（#212）：剪影平移循环（transform 线性）；并发预算 = 2 路人 + 猫 = 3 */}
-      {!daytime && (
-        <>
+      {demo && <span className="absolute right-2 top-3 z-10 border border-[var(--neon)] bg-[var(--sky)] px-1 font-ps2p text-xs text-[var(--neon)]">DEMO</span>}
+      <div className={styles.world}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img ref={verifyArt} key={`art-${light}`} src={`/scenes/street-v1/${light}.webp`} alt="" data-scene-art={light}
+          width={768} height={512} className={styles.art} draggable={false} fetchPriority="high"
+          onError={() => setArtError(light)} onLoad={() => setArtError(null)} />
+        {artError !== light && <StreetAtmosphere key={`atmosphere-${light}`} daytime={daytime} />}
+        <ShopWindow key={`window-${light}`} daytime={daytime} />
+        {!daytime && <button type="button" aria-label={`月亮，当前${moon.name}，点按换相`}
+          onClick={() => setPhase((p) => (p + 1) % MOON_PHASES.length)} className={`${styles.hotspot} ${styles.moon}`}>
+          {Array.from({ length: 25 }, (_, i) => <b key={i} aria-hidden data-lit={MOON_CELLS.has(i) && i % 5 >= moon.shadow} />)}
+        </button>}
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          {variant === 0 && <span className={`${styles.prop} ${styles.notice}`}><b /><b /><b /></span>}
+          {variant === 1 && <StreetPlanter />}
+          {variant === 2 && <><StreetPlanter /><StreetPlanter second /></>}
+        </div>
+        {!daytime && <>
+          <NeighborCat style={{ left: "76%", bottom: "88%" }} />
           <Passerby delay="0s" duration="38s" />
-          <Passerby delay="19s" duration="52s" flip />
-        </>
-      )}
-      {/* 街道 + 路缘（猫站在路缘线上，components.md §游戏屏） */}
-      <div className="absolute inset-x-0 bottom-0 h-10 border-t-2 border-[var(--curb)] bg-[var(--street)]">
-        {/* 水沟盖（#208）：点按冒蒸汽（一次性事件动效） */}
-        <button
-          type="button"
-          aria-label="路缘水沟盖，点按冒蒸汽"
-          onClick={() => setSteam((n) => n + 1)}
-          className="absolute bottom-2 right-[12%] h-3 w-10 cursor-pointer border-y-2 border-[var(--curb)] bg-[var(--window-off)]"
-        />
-        {steam > 0 && (
-          <span key={steam} aria-hidden className="sb-steam absolute bottom-5 right-[13%]">
-            <b /><b /><b />
-          </span>
-        )}
+        </>}
+        <button type="button" aria-label="路缘水沟盖，点按冒蒸汽" onClick={() => setSteam((n) => n + 1)} className={`${styles.hotspot} ${styles.drain}`} />
+        {steam > 0 && <span key={steam} aria-hidden data-scene-steam className={`sb-steam ${styles.steam}`}><b /><b /><b /></span>}
+        <div className={styles.petLayer}>{children}</div>
+        {!onStreet && <div className={styles.away}>溜达中 · 去城里找货了</div>}
       </div>
-      {/* 猫的活动层：路缘上方 */}
-      <div className="absolute inset-x-0 bottom-[26px] flex justify-center">
-        {children}
-      </div>
-      {/* 「溜达中」状态牌（游荡进行中猫出屏，spec Decision 5 边缘态） */}
-      {!onStreet && (
-        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 border-2 border-[var(--ink)] bg-[var(--paper)] px-2 py-1 text-[12px] text-[var(--ink)] shadow-[4px_4px_0_#000]">
-          溜达中 · 去城里找货了
-        </div>
-      )}
-    </div>
+      {artError === light && <p role="alert" className={styles.error}>街景加载失败，请刷新页面重试。宠物与其他功能仍可使用。</p>}
+    </section>
   );
 }

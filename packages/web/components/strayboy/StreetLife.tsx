@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
 /**
  * 街区生活层（#212 内容密度第一批）：路人 NPC / 店铺内容 / 动物邻居。
  * 装饰静态为主，动效只有路人平移循环（motion.md §5 允许项；
- * 并发预算 = 2 路人 + 猫 = 3，招牌全部静态不闪）。
+ * 街角保留 1 路人，循环预算 = 路人 + 宠物 + 错开的环境动效三组）。
  * 14 色纪律：热闹靠内容密度，招牌色全走色板（act/ok）；霓虹招牌 ≤1（OPEN，
  * 变体层的低透明反光条不算招牌）。
  */
@@ -84,7 +84,7 @@ export function CafeFront() {
 }
 
 /** 动物邻居：远处楼顶剪影猫——12s 翻转显隐（约 24s 周期），纯静态无动画 */
-export function NeighborCat() {
+export function NeighborCat({ style }: { style?: CSSProperties } = {}) {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     // 出镜节奏：40s 周期里亮 12s（无动画，纯显隐；随机相位避免与路人同步）
@@ -99,7 +99,7 @@ export function NeighborCat() {
     <span
       aria-hidden
       className="absolute left-[4%] z-[1] flex flex-col items-center"
-      style={{ bottom: "146px" }}
+      style={{ bottom: "146px", ...style }}
     >
       {/* 耳朵/头/身体/尾巴：剪影 */}
       <span className="flex w-[6px] justify-between">

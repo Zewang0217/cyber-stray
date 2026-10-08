@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { SpriteContract } from "@cyber-stray/shared/sprite";
 import { deriveStreetView } from "@/lib/strayboy/pet-view";
+import { isStreetDaytime } from "@/lib/strayboy/street-lighting";
 import { useAgentState } from "@/hooks/useAgentState";
 import { usePetManifest } from "@/hooks/usePetManifest";
 import { usePets } from "@/hooks/usePets";
@@ -139,6 +140,9 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
   const [grumpyOn, setGrumpyOn] = useState(false);
   const [overrideAnim, setOverrideAnim] = useState<"pat" | "joy" | null>(null);
   const [now, setNow] = useState<Date>(() => new Date());
+  const [daytime, setDaytime] = useState(false);
+  // 挂载后读取本地时间，避免 SSR 的服务器时区和客户端时区不同导致首帧错位。
+  useEffect(() => { setDaytime(isStreetDaytime(now)); }, [now]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [theater, setTheater] = useState<(typeof THEATER)[number] | null>(null);
   const [lvFlash, setLvFlash] = useState(false);
@@ -237,6 +241,8 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
 
   // attract mode（delight B10）：5min 无交互进街机待机画面；任意交互退出
   useEffect(() => {
+    // 挂载就是观察的起点；从 0 计时会在首个 15s 检查时误判已闲置数十年。
+    lastActivityRef.current = Date.now();
     const idle = setInterval(() => {
       if (Date.now() - lastActivityRef.current > 300_000) setAttract(true);
     }, 15_000);
@@ -381,7 +387,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
       <PixelStage
         onStreet={!view.away}
         demo={demo}
-        daytime={!view.sleeping}
+        daytime={daytime}
         onPasserbyGreet={onPasserbyGreet}
       >
         {!view.away && (
