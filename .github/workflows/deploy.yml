@@ -1,7 +1,7 @@
 name: CD Deploy
 
 # main 合并 = 一次生产发布（ADR-0009）：构建推送在 GitHub runner 完成，
-# 部署 = runner 导出镜像包 + SSH 转运 + 生产校验导入 + 起容器（生产不访问 registry）。
+# 部署 = runner 导出镜像包 + Actions 产物 HTTPS 下载 + 生产校验导入 + 起容器（生产不访问 registry）。
 # 回滚：compose.yaml 的 IMAGE_TAG 占位改成旧 sha 合并 main 重发（跳过构建）。
 # 密钥（仓库不存值）：PROD_HOST / PROD_USER / PROD_SSH_PORT / PROD_SSH_KEY；
 # GHCR 推送用 GITHUB_TOKEN。fork PR 不会触达本流水线。
@@ -13,6 +13,7 @@ on:
 permissions:
   contents: read
   packages: write
+  actions: write # 创建并在发布结束后删除本次临时构建产物
 
 concurrency:
   group: deploy
@@ -131,6 +132,18 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: python3 -B deploy/image-bundle.py pack --tag "$TAG" --compose deploy/compose.yaml --bundle "$TMPDIR/bundle"
 
+      - name: Upload temporary deployment artifact
+        id: bundle-upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-images-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.TMPDIR }}/bundle/images.tar.gz
+            ${{ env.TMPDIR }}/bundle/release.json
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Sync deploy config to production
         run: |
           set -euo pipefail
@@ -173,21 +186,30 @@ jobs:
           PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
           PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
 
-      - name: Transfer image bundle over SSH
+      - name: Download image bundle from Actions over HTTPS
+        timeout-minutes: 22
         run: |
           set -euo pipefail
           remote_dir="/opt/cyber-stray/scratch/cd-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python3 -B deploy/image-bundle.py link --bundle "$TMPDIR/bundle" \
+            --artifact-id "$ARTIFACT_ID" --artifact-digest "$ARTIFACT_DIGEST" --download-proxy "$CD_DOWNLOAD_PROXY"
           ssh -o BatchMode=yes -o UserKnownHostsFile="$TMPDIR/ssh/known_hosts" -o StrictHostKeyChecking=yes \
             -p "$PROD_SSH_PORT" -i "$TMPDIR/ssh/deploy_key" "${PROD_USER}@${PROD_HOST}" \
             "sudo -n /opt/cyber-stray/deploy/container-update.sh --prepare-image-bundle 'cd-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}'"
           scp -o BatchMode=yes -o UserKnownHostsFile="$TMPDIR/ssh/known_hosts" -o StrictHostKeyChecking=yes \
             -P "$PROD_SSH_PORT" -i "$TMPDIR/ssh/deploy_key" \
-            "$TMPDIR/bundle/images.tar.gz" "$TMPDIR/bundle/release.json" \
-            "${PROD_USER}@${PROD_HOST}:$remote_dir/"
+            "$TMPDIR/bundle/download.json" "${PROD_USER}@${PROD_HOST}:$remote_dir/"
+          ssh -o BatchMode=yes -o UserKnownHostsFile="$TMPDIR/ssh/known_hosts" -o StrictHostKeyChecking=yes \
+            -p "$PROD_SSH_PORT" -i "$TMPDIR/ssh/deploy_key" "${PROD_USER}@${PROD_HOST}" \
+            "TMPDIR='$remote_dir' TMP='$remote_dir' TEMP='$remote_dir' python3 -B /opt/cyber-stray/deploy/image-bundle.py download --bundle '$remote_dir'"
         env:
           PROD_HOST: ${{ secrets.PROD_HOST }}
           PROD_USER: ${{ secrets.PROD_USER }}
           PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACT_ID: ${{ steps.bundle-upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.bundle-upload.outputs.artifact-digest }}
+          CD_DOWNLOAD_PROXY: ${{ vars.CD_DOWNLOAD_PROXY }}
 
       - name: Deployment (verify + load + start without pull + health check + image cleanup)
         run: |
@@ -221,7 +243,14 @@ jobs:
           remote_dir="/opt/cyber-stray/scratch/cd-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           ssh -o BatchMode=yes -o UserKnownHostsFile="$TMPDIR/ssh/known_hosts" -o StrictHostKeyChecking=yes \
             -p "$PROD_SSH_PORT" -i "$TMPDIR/ssh/deploy_key" "${PROD_USER}@${PROD_HOST}" \
-            "python3 -c \"from pathlib import Path; import shutil; p=Path('$remote_dir'); shutil.rmtree(p) if p.exists() else None\""
+            "sudo -n /opt/cyber-stray/deploy/container-update.sh --clean-image-bundle 'cd-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}'"
+
+      - name: Delete temporary deployment artifact
+        if: always() && steps.bundle-upload.outputs.artifact-id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACT_ID: ${{ steps.bundle-upload.outputs.artifact-id }}
+        run: gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID"
 
       - name: Clean repository temporary directory
         if: always()

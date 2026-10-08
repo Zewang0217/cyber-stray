@@ -3,7 +3,7 @@
 单机容器化部署（ADR-0008 / ADR-0015）：compose 编排五个容器——control-plane
 （控制面 + agent，worker 是短命子进程）、web（Next.js standalone）、site（官网
 静态镜像）、Casdoor（官方镜像 + SQLite）、nginx（HTTPS 模式的统一入口）。构建在
-GitHub Actions 完成，runner 导出五个服务的镜像包，通过 SSH 传送到生产机；
+GitHub Actions 完成，runner 导出五个服务的镜像包，上传为临时 Actions 产物，由生产机通过 HTTPS 下载；
 生产校验、导入后只用本地镜像启动，不访问 GHCR 或 Docker Hub。
 
 本目录是部署配置的权威版本，发布流水线每次同步到生产机 `/opt/cyber-stray/deploy/`。
@@ -92,7 +92,7 @@ SaaS 外部浏览器 CLI 暂停开放，搜索及安全网页阅读保持可用�
 ## 发布 / 回滚
 
 - 发布：develop → main 的 PR，merge 触发 `deploy.yml`：质量门 → 构建推送镜像
-  （tag = commit sha）→ runner 拉取并导出全部 Compose 服务镜像 → SSH 同步配置与镜像包 → `container-update.sh --image-bundle <目录>`。
+  （tag = commit sha）→ runner 拉取并导出全部 Compose 服务镜像 → SSH 同步配置与短期下载信息 → 生产 HTTPS 下载镜像包 → `container-update.sh --image-bundle <目录>`。
 - 镜像包包含 `images.tar.gz` 和 `release.json`；生产先验证环境，再验证发布 tag、
   Compose 镜像清单、整包 SHA256 和包内 tag 清单。`docker load` 成功且每个 tag 的
   平台为 linux/amd64 后才落位配置，使用 `compose up --pull never` 重建容器。
@@ -100,10 +100,19 @@ SaaS 外部浏览器 CLI 暂停开放，搜索及安全网页阅读保持可用�
 - GHCR 继续保存历史应用镜像；只有 Actions runner 访问 registry。
   Casdoor、nginx 镜像也由 runner 转运，生产无需全局 Docker 代理来完成发布。
   镜像包每次全量传送；单机阶段以减少生产外部依赖为优先。
+- GitHub Actions 构建产物通过官方短期 HTTPS 地址下载；ZIP SHA256 校验通过后，
+  只复制 `images.tar.gz` 和 `release.json`，再进行镜像包校验。GitHub token 留在 runner，
+  服务器只收到权限 600 的短期 URL 文件，下载结束立即删除；URL 不出现在日志或 shell 参数中。
+  8 路 HTTPS 分段下载，验证每段 Content-Range 和长度，合并后校验整包摘要；
+  下载最长 20 分钟，失败明确停止。SSH 只传配置和短期下载信息，不承担大文件跨境上传。
+- `CD_DOWNLOAD_PROXY` 仓库变量显式配置下载专用 HTTP(S) 代理；当前复用
+  `http://172.17.0.1:7890`。它仅作用于产物下载，不修改 Docker daemon 或 Bun 的代理设置。
+  Actions 临时产物保留上限 1 天，发布结束后主动删除；工作流需 `actions: write` 来清理该产物。
 - SSH 私钥、Docker 登录配置和镜像包只放 runner 的 `scratch/tmp/`；生产暂存于
   `/opt/cyber-stray/scratch/cd-<run-id>-<attempt>/`，成功或失败后均有清理步骤。
   暂存目录通过既有 sudo 入口 `container-update.sh --prepare-image-bundle cd-<run-id>-<attempt>`
   创建，仅接受数字任务名，属主取 sudo 调用者且权限为 700，无需扩展 sudoers。
+  清理同样经 sudo 入口 `--clean-image-bundle`，验证目录属主后删除，避免 root 父目录权限阻止 rmdir。
   若服务器失联导致远程清理失败，CD 明确报错，恢复连接后清理该次目录。
 - 手工不传 `--image-bundle` 时仍显式使用 registry 拉取路径；这不是自动 CD 的降级路径。
 - 回滚：把 `compose.yaml` 的 `IMAGE_TAG:-sha` 占位改成旧 sha，合并 main 重发；

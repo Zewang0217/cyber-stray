@@ -8,6 +8,8 @@ import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
+import urllib.error
+import zipfile
 
 spec = importlib.util.spec_from_file_location("image_bundle", Path(__file__).with_name("image-bundle.py"))
 bundle = importlib.util.module_from_spec(spec)
@@ -102,6 +104,68 @@ class ImageBundleTest(unittest.TestCase):
         for tag in ("", "sha", "x' ; command", "a" * 65):
             with self.subTest(tag=tag), self.assertRaises(ValueError):
                 bundle.compose_images(self.path / "compose.yaml", tag)
+
+    def artifact(self, names=(bundle.ARCHIVE, bundle.MANIFEST)):
+        value = io.BytesIO()
+        with zipfile.ZipFile(value, "w") as archive:
+            for name in names:
+                archive.writestr(name, b"fixture")
+        data = value.getvalue()
+        metadata = {"url": "https://example.blob.core.windows.net/artifact?sig=fixture",
+                    "sha256": bundle.hashlib.sha256(data).hexdigest(), "proxy": ""}
+        (self.path / bundle.DOWNLOAD).write_text(json.dumps(metadata))
+        return data
+
+    def artifact_response(self, data):
+        def response(request, **kwargs):
+            if request.get_method() == "HEAD":
+                result = io.BytesIO()
+                result.headers = {"Content-Length": str(len(data))}
+                return result
+            first, last = map(int, request.get_header("Range").removeprefix("bytes=").split("-"))
+            result = io.BytesIO(data[first:last + 1])
+            result.status = 206
+            result.headers = {"Content-Range": f"bytes {first}-{last}/{len(data)}"}
+            return result
+        return response
+
+    def test_download_verifies_zip_before_copying_only_expected_files_and_removes_secrets(self):
+        data = self.artifact()
+        with patch.object(bundle.urllib.request, "build_opener") as opener:
+            opener.return_value.open.side_effect = self.artifact_response(data)
+            bundle.download(self.path)
+        self.assertEqual((self.path / bundle.ARCHIVE).read_bytes(), b"fixture")
+        self.assertFalse((self.path / bundle.DOWNLOAD).exists())
+        self.assertFalse((self.path / "artifact.zip").exists())
+
+    def test_download_rejects_corruption_or_unexpected_files_and_cleans_partial_zip(self):
+        for names, corrupt in (((bundle.ARCHIVE, bundle.MANIFEST), True),
+                               ((bundle.ARCHIVE, "../../escape"), False)):
+            with self.subTest(names=names, corrupt=corrupt):
+                data = self.artifact(names)
+                with patch.object(bundle.urllib.request, "build_opener") as opener:
+                    opener.return_value.open.side_effect = self.artifact_response(data + b"changed" if corrupt else data)
+                    with self.assertRaises(ValueError):
+                        bundle.download(self.path)
+                self.assertFalse((self.path / bundle.DOWNLOAD).exists())
+                self.assertFalse((self.path / "artifact.zip").exists())
+
+    def test_link_keeps_github_token_on_runner_and_metadata_private(self):
+        url = "https://example.blob.core.windows.net/artifact?sig=fixture"
+        error = urllib.error.HTTPError("https://api.github.com", 302, "Found", {"Location": url}, None)
+        with patch.dict(bundle.os.environ, {"GITHUB_REPOSITORY": "owner/repo", "GH_TOKEN": "runner-only"}):
+            with patch.object(bundle.urllib.request, "build_opener") as opener:
+                opener.return_value.open.side_effect = error
+                bundle.link(self.path, 123, "a" * 64, "")
+        metadata = self.path / bundle.DOWNLOAD
+        self.assertEqual(metadata.stat().st_mode & 0o777, 0o600)
+        self.assertNotIn("runner-only", metadata.read_text())
+
+    def test_download_url_rejects_http_credentials_and_unexpected_hosts(self):
+        for url in ("http://example.blob.core.windows.net/a", "https://evil.example/a",
+                    "https://user:secret@example.blob.core.windows.net/a", "https://blob.core.windows.net.evil/a"):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                bundle.validate_download_url(url)
 
 
 if __name__ == "__main__":
