@@ -138,6 +138,25 @@ class ImageBundleTest(unittest.TestCase):
         self.assertFalse((self.path / bundle.DOWNLOAD).exists())
         self.assertFalse((self.path / "artifact.zip").exists())
 
+    def test_download_uses_bounded_ranges_and_reassembles_in_byte_order(self):
+        data = self.artifact()
+        ranges = []
+        original = self.artifact_response(data)
+        def response(request, **kwargs):
+            if request.get_method() != "HEAD":
+                first, last = map(int, request.get_header("Range").removeprefix("bytes=").split("-"))
+                ranges.append((first, last))
+            return original(request, **kwargs)
+        with patch.object(bundle, "DOWNLOAD_RANGE_BYTES", 32):
+            with patch.object(bundle.urllib.request, "build_opener") as opener:
+                opener.return_value.open.side_effect = response
+                bundle.download(self.path)
+        self.assertTrue(all(last - first + 1 <= 32 for first, last in ranges))
+        self.assertEqual(sorted(ranges), [(first, min(first + 32, len(data)) - 1)
+                                          for first in range(0, len(data), 32)])
+        self.assertEqual((self.path / bundle.ARCHIVE).read_bytes(), b"fixture")
+        self.assertEqual(list(self.path.glob("artifact.part-*")), [])
+
     def test_download_rejects_corruption_or_unexpected_files_and_cleans_partial_zip(self):
         for names, corrupt in (((bundle.ARCHIVE, bundle.MANIFEST), True),
                                ((bundle.ARCHIVE, "../../escape"), False)):
