@@ -17,12 +17,16 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ARCHIVE = "images.tar.gz"
 MANIFEST = "release.json"
 PLATFORM = ("linux", "amd64")
 DOWNLOAD = "download.json"
+DOWNLOAD_CONNECTIONS = 4
+DOWNLOAD_RANGE_BYTES = 4 * 1024 * 1024
+DOWNLOAD_TIMEOUT = 20 * 60
+DOWNLOAD_ATTEMPTS = 5
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -71,10 +75,10 @@ def validate_download_url(url: str) -> None:
 
 
 def download_part(url: str, proxy: str, start: int, end: int, path: Path, deadline: float) -> None:
-    """Require a precise byte range; all eight requests start before the signed URL expires."""
+    """Resume bounded short requests; never accept an incorrect Content-Range or length."""
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({"https": proxy} if proxy else {}))
     offset = start
-    for attempt in range(5):
+    for attempt in range(DOWNLOAD_ATTEMPTS):
         if time.monotonic() > deadline:
             raise ValueError("构建产物下载超过 20 分钟，停止发布")
         request = urllib.request.Request(url, headers={"Range": f"bytes={offset}-{end}"})
@@ -100,10 +104,10 @@ def download_part(url: str, proxy: str, start: int, end: int, path: Path, deadli
             return
         if offset > end + 1:
             raise ValueError("构建产物分段超过请求长度")
-        if attempt < 4:
-            print(f"分段 {start}-{end} {failure}：已收 {offset - start} bytes，续传 {attempt + 1}/4", flush=True)
+        if attempt < DOWNLOAD_ATTEMPTS - 1:
+            print(f"分段 {start}-{end} {failure}：已收 {offset - start} bytes，续传 {attempt + 1}/{DOWNLOAD_ATTEMPTS - 1}", flush=True)
             time.sleep(1)
-    raise ValueError(f"构建产物分段 {start}-{end} 在 5 次请求后仍不完整，已收 {offset - start} bytes")
+    raise ValueError(f"构建产物分段 {start}-{end} 在 {DOWNLOAD_ATTEMPTS} 次请求后仍不完整，已收 {offset - start} bytes")
 
 
 def download(bundle: Path) -> None:
@@ -126,17 +130,18 @@ def download(bundle: Path) -> None:
             size = int(response.headers["Content-Length"])
         if size <= 0:
             raise ValueError("构建产物大小不合法")
-        connections = min(8, size)
-        block = (size + connections - 1) // connections
-        with ThreadPoolExecutor(max_workers=connections) as pool:
+        pool = ThreadPoolExecutor(max_workers=DOWNLOAD_CONNECTIONS)
+        try:
             tasks = []
-            for index, first in enumerate(range(0, size, block)):
+            for index, first in enumerate(range(0, size, DOWNLOAD_RANGE_BYTES)):
                 path = bundle / f"artifact.part-{index}"
                 parts.append(path)
-                tasks.append(pool.submit(download_part, url, proxy, first, min(first + block, size) - 1,
-                                         path, start + 1200))
-            for task in tasks:
+                tasks.append(pool.submit(download_part, url, proxy, first, min(first + DOWNLOAD_RANGE_BYTES, size) - 1,
+                                         path, start + DOWNLOAD_TIMEOUT))
+            for task in as_completed(tasks):
                 task.result()
+        finally:
+            pool.shutdown(wait=True, cancel_futures=True)
         with archive.open("wb") as output:
             for part in parts:
                 with part.open("rb") as source:
