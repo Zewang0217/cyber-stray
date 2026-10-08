@@ -18,9 +18,9 @@ const fetchMock = vi.fn();
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fetchMock.mockReset();
-  fetchMock.mockImplementation(async (url: string) => ({ json: async () => ({
+  fetchMock.mockImplementation(async (url: string) => ({ ok: true, json: async () => ({
     success: true,
-    data: url === '/api/petgen/tasks' ? [failedTask] : { available: true, limit: 2, used: 0, remaining: 2 },
+    data: url === '/api/petgen/tasks' ? [failedTask] : { available: true, period: 'rolling_week', unlimited: false, limit: 1, used: 0, remaining: 1, resetAt: null },
   }) }));
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -39,7 +39,7 @@ describe('usePetGen 质检恢复 API', () => {
     expect(value.task?.status).toBe('failed');
 
     fetchMock.mockClear();
-    fetchMock.mockImplementation(async () => ({ json: async () => ({
+    fetchMock.mockImplementation(async () => ({ ok: true, json: async () => ({
       success: true, data: { ...failedTask, status: 'qc', canRetryQc: false, error: null },
     }) }));
     await act(async () => { expect(await value.retryQc('task-1')).toBe(true); });

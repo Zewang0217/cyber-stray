@@ -7,7 +7,8 @@
  *   spec_submitted → concept_generating → awaiting_confirmation →
  *   generating_states → qc → done | failed
  *
- * 两条路径：
+ * 新领养 adopt 自动确认后复用经典九态 256px；已有 sheet/strip 任务保持可完成。
+ * 兼容两条素材路径：
  * - 改造屋（经典）：概念图用户确认锚点（ADR-0001）→ quad/nine/per 阶梯 →
  *   9 状态单帧 256px（frames=1）。
  * - 领养精灵图（sheet/strip 阶梯）：一致性单图化——单张 n×n 承载全部动作
@@ -282,7 +283,11 @@ export class PetGenProcessor {
   private async advanceConcept(task: PetGenTask): Promise<void> {
     const taskDir = this.taskDir(task);
     await mkdir(taskDir, { recursive: true });
-    // 领养精灵图 + 已上传参考图：跳过概念图，上传图即角色锚点（领养不阻塞）
+    if (task.strategy === 'adopt') {
+      await this.advanceConceptForAdoption(task, taskDir);
+      return;
+    }
+    // 旧领养精灵图 + 已上传参考图：跳过概念图，上传图即角色锚点（领养不阻塞）
     if (this.isSheetTask(task)) {
       const adoptRef = this.adoptReferencePath(task.tenantId);
       try {
@@ -300,12 +305,13 @@ export class PetGenProcessor {
   }
 
   /** 概念图生成公共体（spec → 出图 → 归一 → concept.png）；失败抛错由调用方定论 */
-  private async generateConcept(task: PetGenTask, taskDir: string): Promise<void> {
+  private async generateConcept(task: PetGenTask, taskDir: string, reference?: string): Promise<void> {
     const spec = this.specFromTask(task);
     const preset = PET_STYLE_PRESETS[spec.stylePreset ?? DEFAULT_PET_PRESET];
     const rawPath = join(taskDir, 'concept-raw.png');
     await this.deps.imageGen.generate({
       kind: 'concept',
+      reference,
       prompt: buildConceptPrompt(spec, preset),
       outPath: rawPath,
       onUsage: this.usageCallback(task, 'image'),
@@ -315,6 +321,27 @@ export class PetGenProcessor {
       join(taskDir, 'concept.png'),
       this.deps.config.conceptFrame,
     );
+  }
+
+  /** 新领养复用九态画质；自动确认保持原领养仪式不阻塞，旧 sheet 任务照常完成。 */
+  private async advanceConceptForAdoption(task: PetGenTask, taskDir: string): Promise<void> {
+    await this.patch(task.id, { status: 'concept_generating', updatedAt: this.now() });
+    try {
+      const uploaded = this.adoptReferencePath(task.tenantId);
+      let reference: string | undefined;
+      try { await access(uploaded); reference = uploaded; }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      await this.generateConcept(task, taskDir, reference);
+      await this.patch(task.id, {
+        status: 'generating_states', strategy: 'quad',
+        conceptPath: `pet-assets/tasks/${task.id}/concept.png`,
+        conceptAttempts: task.conceptAttempts + 1, updatedAt: this.now(),
+      });
+    } catch (error) {
+      await this.fail(task, `概念图生成失败：${messageOf(error)}`);
+    }
   }
 
   /** 精灵图路径概念图（无上传时）：出图即锁角色，自动确认直落 generating_states */

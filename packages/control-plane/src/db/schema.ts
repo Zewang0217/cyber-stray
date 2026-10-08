@@ -209,9 +209,9 @@ export const petGenTasks = sqliteTable('pet_gen_tasks', {
   stylePreset: text('style_preset'),
   /** 概念图路径（相对租户数据目录；awaiting_confirmation 起存在） */
   conceptPath: text('concept_path'),
-  /** 当前生成策略（sheet/strip=领养精灵图；quad/nine/per=改造屋；失败沿各自阶梯回退）。
+  /** 当前生成策略（adopt=领养概念图自动确认，之后转 quad；sheet/strip=旧多帧任务；quad/nine/per=经典九态）。
    * SQLite 层就是 TEXT（enum 仅 TS 类型约束），扩枚举值无需迁移。 */
-  strategy: text('strategy', { enum: ['sheet', 'strip', 'quad', 'nine', 'per'] })
+  strategy: text('strategy', { enum: ['adopt', 'sheet', 'strip', 'quad', 'nine', 'per'] })
     .notNull()
     .default('quad'),
   /** 当前策略连续批次失败计数（≥ maxBatchRetries 且非末级 → 升级策略） */
@@ -226,7 +226,7 @@ export const petGenTasks = sqliteTable('pet_gen_tasks', {
   conceptAttempts: integer('concept_attempts').notNull().default(0),
   /** 明确失败/停止原因（用户可见） */
   error: text('error'),
-  /** 完成时间（unix ms；配额按自然月统计 done 任务的 completedAt） */
+  /** 完成时间（unix ms；配额按成功交付后的滚动七天计算） */
   completedAt: integer('completed_at'),
   createdAt: integer('created_at').notNull().$defaultFn(now),
   updatedAt: integer('updated_at').notNull().$defaultFn(now).$onUpdate(() => Date.now()),

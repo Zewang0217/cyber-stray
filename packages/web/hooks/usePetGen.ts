@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { PetGenQuota, PetGenTaskView, PetSpec } from "@cyber-stray/shared/petgen";
+import { PetGenQuotaSchema, type PetGenQuota, type PetGenTaskView, type PetSpec } from "@cyber-stray/shared/petgen";
 import type { ApiResponse } from "@/lib/types";
 
 /** 任务 / 配额 / spec 契约见 shared/petgen（CP 服务层视图构造同源） */
@@ -39,9 +39,10 @@ export function usePetGen(): UsePetGenReturn {
     try {
       const res = await fetch("/api/petgen/quota");
       const json = (await res.json()) as ApiResponse<PetGenQuota>;
-      if (json.success && json.data) setQuota(json.data);
-    } catch {
-      // 未登录等场景静默——页面级鉴权已兜
+      if (!res.ok || !json.success) throw new Error(json.error ?? '生成额度加载失败');
+      setQuota(PetGenQuotaSchema.parse(json.data));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '生成额度加载失败');
     }
   }, []);
 
@@ -74,9 +75,10 @@ export function usePetGen(): UsePetGenReturn {
     if (!busy) return;
     const id = window.setInterval(() => {
       void refresh();
+      void refreshQuota();
     }, 2000);
     return () => window.clearInterval(id);
-  }, [task, refresh]);
+  }, [task, refresh, refreshQuota]);
 
   const submit = useCallback(
     async (spec: PetSpec): Promise<PetGenTaskView | null> => {

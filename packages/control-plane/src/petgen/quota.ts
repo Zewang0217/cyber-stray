@@ -1,5 +1,5 @@
 /**
- * 宠物 IP 生成月度配额（#94）
+ * 宠物外观生成配额：当前为成功交付后的滚动七天；月度函数保留历史统计口径（#94）。
  *
  * 建议 2 套/月（CP_PETGEN_MONTHLY_QUOTA 可配）。计数口径：当前自然月内
  * 状态=done 的任务数（completedAt ≥ 本月 1 日）。失败任务不占配额——只有
@@ -9,7 +9,8 @@
  * 处理器不重复校验（任务一旦创建即按队列推进）。
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gt, lte } from 'drizzle-orm';
+import type { PetGenQuota } from '@cyber-stray/shared/petgen';
 import type { ControlDb } from '../db/client.js';
 import { petGenTasks } from '../db/schema.js';
 
@@ -46,4 +47,22 @@ export async function petGenQuota(
   // completedAt 可空；本月起点前完成的跨月任务不计（JS 过滤，规避 nullable 比较的类型噪音）
   const used = rows.filter((r) => r.completedAt !== null && r.completedAt >= start).length;
   return { used, remaining: Math.max(0, limit - used), limit };
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** 滚动七天只计算成功交付；数据库过滤日期，避免扫描整个生成历史。 */
+export async function petGenWeeklyQuota(
+  db: ControlDb, tenantId: string, unlimited = false, now = Date.now(),
+): Promise<Omit<PetGenQuota, 'available'>> {
+  const rows = await db.select({ completedAt: petGenTasks.completedAt }).from(petGenTasks)
+    .where(and(eq(petGenTasks.tenantId, tenantId), eq(petGenTasks.status, 'done'),
+      gt(petGenTasks.completedAt, now - WEEK_MS), lte(petGenTasks.completedAt, now))).all();
+  const latest = rows.reduce((max, row) => Math.max(max, row.completedAt!), 0);
+  return {
+    period: 'rolling_week', unlimited, used: rows.length,
+    limit: unlimited ? null : 1,
+    remaining: unlimited ? null : Math.max(0, 1 - rows.length),
+    resetAt: !unlimited && rows.length ? new Date(latest + WEEK_MS).toISOString() : null,
+  };
 }

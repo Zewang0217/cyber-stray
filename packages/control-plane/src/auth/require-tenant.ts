@@ -16,7 +16,7 @@ import { noteTenantActivity } from '../infra/tenant-activity.js';
 import { resolveTenantFromRequest } from './request-tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 
-export type TenantEnv = { Variables: { tenantId: string } };
+export type TenantEnv = { Variables: { tenantId: string; userSub: string } };
 
 export function requireTenant(config: Pick<ControlPlaneConfig, 'dataDir' | 'sessionSecret'>) {
   return async (c: Context<TenantEnv>, next: Next): Promise<Response | void> => {
@@ -30,6 +30,7 @@ export function requireTenant(config: Pick<ControlPlaneConfig, 'dataDir' | 'sess
     }
 
     c.set('tenantId', session.tenantId);
+    c.set('userSub', session.sub);
     // X1「回访」信号（#272）：每个鉴权请求记一行活跃，no-throw 不影响业务
     noteTenantActivity(config.dataDir, session.tenantId);
     await next();

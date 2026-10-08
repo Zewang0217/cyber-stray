@@ -323,6 +323,24 @@ describe('PetGenProcessor（#94 状态机）', () => {
     expect(await processor.tick()).toBe(false);
   });
 
+  it.each([false, true])('新领养自动确认并交付九态 256px，参考图上传=%s', async (uploaded) => {
+    if (uploaded) {
+      const assets = join(dataDir, 'tenants', 'alice', 'pet-assets');
+      mkdirSync(assets, { recursive: true });
+      writeFileSync(join(assets, 'adopt-reference.jpg'), 'uploaded reference');
+    }
+    const task = await insertTask({ strategy: 'adopt' });
+    const generated = await tickUntil(task.id, ['generating_states']);
+    expect(generated.strategy).toBe('quad');
+    const concept = generateMock.mock.calls.find(([req]) => req.kind === 'concept')?.[0];
+    expect(concept?.reference).toBe(uploaded ? join(dataDir, 'tenants', 'alice', 'pet-assets', 'adopt-reference.jpg') : undefined);
+    await tickUntil(task.id, ['done']);
+    const manifest = JSON.parse(readFileSync(join(dataDir, 'tenants', 'alice', 'pet-assets', 'manifest.json'), 'utf8'));
+    expect(manifest.version).toBe(1);
+    expect(Object.keys(manifest.states)).toHaveLength(9);
+    expect(manifest.states.idle.frames).toBe(1);
+  });
+
   it('完整流程：spec → 概念图 → 确认 → 四宫格生成 → 两层质检 → done 落盘', async () => {
     const task = await insertTask();
     const awaiting = await tickUntil(task.id, ['awaiting_confirmation']);
@@ -375,7 +393,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
     inspectMock.mockRejectedValue(new Error('provider HTTP 500'));
     await tickUntil(task.id, ['failed']);
     const generated = generateMock.mock.calls.length;
-    const service = createPetGenService({ config: { dataDir, productMode: 'invite_beta', petGenMonthlyQuota: 2 } });
+    const service = createPetGenService({ principalSub: 'alice', config: { dataDir, productMode: 'invite_beta', petGenMonthlyQuota: 2 } });
     const retried = await service.retryQcTask('alice', task.id);
     expect(retried.ok).toBe(true);
     inspectMock.mockImplementation(inspect);

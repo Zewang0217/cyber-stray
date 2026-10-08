@@ -4,14 +4,14 @@
  * 宠物 IP 自定义生成（Pro/BYOK 专属）的用户面：
  * - POST /api/petgen/tasks：提交 spec → 异步任务（PetGenProcessor tick 推进）
  * - GET  /api/petgen/tasks[/turbo/:id]：列表 / 详情 / 概念图 / 确认 / 重启
- * - GET  /api/petgen/quota：本月配额；GET /api/petgen/assets/:file：成品素材
+ * - GET  /api/petgen/quota：七天生成额度；GET /api/petgen/assets/:file：成品素材
  *
  * 约束：租户隔离走 requireTenant 中间件；免费用户无入口（403）；配额超限
  * 429；失败任务不占配额（只统计 done）。用例在 services/petgen-service，
  * 存储在 infra/petgen-repo；spec/文件名校验留本层（边界校验）。
  */
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { isPetPresetId, type PetPresetId } from '@cyber-stray/shared/pet';
 import type { ControlPlaneConfig } from '../config.js';
 import { requireTenant, type TenantEnv } from '../auth/require-tenant.js';
@@ -22,7 +22,7 @@ export interface PetGenDeps {
   config: Pick<
     ControlPlaneConfig,
     'dataDir' | 'productMode' | 'sessionSecret' | 'petGenMonthlyQuota'
-  >;
+  > & Partial<Pick<ControlPlaneConfig, 'adminSubs'>>;
 }
 
 const jsonError = (message: string) => ({ success: false, error: message });
@@ -86,7 +86,7 @@ function parseSpecBody(body: unknown):
 const ASSET_FILE_RE = /^[a-z0-9][a-z0-9.-]*\.(png|json)$/;
 
 export function createPetGenRoutes({ config }: PetGenDeps): Hono<TenantEnv> {
-  const service = createPetGenService({ config });
+  const service = (c: Context<TenantEnv>) => createPetGenService({ config, principalSub: c.get('userSub') });
   const app = new Hono<TenantEnv>();
 
   app.use('*', requireTenant(config));
@@ -94,7 +94,7 @@ export function createPetGenRoutes({ config }: PetGenDeps): Hono<TenantEnv> {
   /** POST /api/petgen/tasks — 提交 spec（Pro/BYOK 专属 + 配额拦截） */
   app.post('/tasks', async (c) => {
     // 套餐闸先于请求体校验（旧实现顺序）：免费用户 403，不泄露参数校验细节
-    const planGate = await service.ensureProPlan(c.get('tenantId'));
+    const planGate = await service(c).ensureProPlan(c.get('tenantId'));
     if (planGate) {
       return c.json(jsonError(planGate.error), planGate.status);
     }
@@ -108,7 +108,7 @@ export function createPetGenRoutes({ config }: PetGenDeps): Hono<TenantEnv> {
     if ('invalid' in parsed) {
       return c.json(jsonError(parsed.invalid), 400);
     }
-    const outcome = await service.submitTask(c.get('tenantId'), parsed.spec);
+    const outcome = await service(c).submitTask(c.get('tenantId'), parsed.spec);
     return outcome.ok
       ? c.json({ success: true, data: outcome.data }, 201)
       : c.json(
@@ -119,18 +119,18 @@ export function createPetGenRoutes({ config }: PetGenDeps): Hono<TenantEnv> {
 
   /** GET /api/petgen/tasks — 当前租户任务列表（新→旧） */
   app.get('/tasks', async (c) => {
-    return c.json({ success: true, data: await service.listTasks(c.get('tenantId')) });
+    return c.json({ success: true, data: await service(c).listTasks(c.get('tenantId')) });
   });
 
   /** GET /api/petgen/tasks/:id — 任务详情（租户隔离：他人任务 404） */
   app.get('/tasks/:id', async (c) => {
-    const task = await service.getTask(c.get('tenantId'), c.req.param('id'));
+    const task = await service(c).getTask(c.get('tenantId'), c.req.param('id'));
     return task ? c.json({ success: true, data: task }) : c.json(jsonError('任务不存在'), 404);
   });
 
   /** POST /api/petgen/tasks/:id/confirm — 确认概念图 → 多状态生成 */
   app.post('/tasks/:id/confirm', async (c) => {
-    const outcome = await service.confirmTask(c.get('tenantId'), c.req.param('id'));
+    const outcome = await service(c).confirmTask(c.get('tenantId'), c.req.param('id'));
     return outcome.ok
       ? c.json({ success: true, data: outcome.data })
       : c.json(jsonError(outcome.error), outcome.status);
@@ -138,7 +138,7 @@ export function createPetGenRoutes({ config }: PetGenDeps): Hono<TenantEnv> {
 
   /** Retry retained images only after a QC service failure; content QC still runs. */
   app.post('/tasks/:id/retry-qc', async (c) => {
-    const outcome = await service.retryQcTask(c.get('tenantId'), c.req.param('id'));
+    const outcome = await service(c).retryQcTask(c.get('tenantId'), c.req.param('id'));
     return outcome.ok
       ? c.json({ success: true, data: outcome.data })
       : c.json({ success: false, error: outcome.error,
@@ -157,7 +157,7 @@ export function createPetGenRoutes({ config }: PetGenDeps): Hono<TenantEnv> {
     if ('invalid' in parsed) {
       return c.json(jsonError(parsed.invalid), 400);
     }
-    const outcome = await service.restartTask(c.get('tenantId'), c.req.param('id'), parsed.spec);
+    const outcome = await service(c).restartTask(c.get('tenantId'), c.req.param('id'), parsed.spec);
     return outcome.ok
       ? c.json({ success: true, data: outcome.data })
       : c.json(
@@ -168,15 +168,15 @@ export function createPetGenRoutes({ config }: PetGenDeps): Hono<TenantEnv> {
 
   /** GET /api/petgen/tasks/:id/concept.png — 概念图草稿（确认流展示） */
   app.get('/tasks/:id/concept.png', async (c) => {
-    const bytes = await service.getConceptPng(c.get('tenantId'), c.req.param('id'));
+    const bytes = await service(c).getConceptPng(c.get('tenantId'), c.req.param('id'));
     return bytes
       ? c.body(new Uint8Array(bytes), 200, { 'content-type': 'image/png' })
       : c.json(jsonError('概念图不存在'), 404);
   });
 
-  /** GET /api/petgen/quota — 本月配额（剩余量展示） */
+  /** GET /api/petgen/quota — 七天生成额度（剩余量展示） */
   app.get('/quota', async (c) => {
-    return c.json({ success: true, data: await service.getQuota(c.get('tenantId')) });
+    return c.json({ success: true, data: await service(c).getQuota(c.get('tenantId')) });
   });
 
   /** GET /api/petgen/assets/:file — 成品素材（manifest + 状态 PNG，租户私有） */
@@ -185,7 +185,7 @@ export function createPetGenRoutes({ config }: PetGenDeps): Hono<TenantEnv> {
     if (!ASSET_FILE_RE.test(file)) {
       return c.json(jsonError('非法文件名'), 400);
     }
-    const asset = await service.getAsset(c.get('tenantId'), file);
+    const asset = await service(c).getAsset(c.get('tenantId'), file);
     return asset
       ? c.body(new Uint8Array(asset.bytes), 200, { 'content-type': asset.contentType })
       : c.json(jsonError('素材不存在'), 404);
