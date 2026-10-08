@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { PetGenQuota, PetGenTaskView, PetSpec } from "@cyber-stray/shared/petgen";
+import { PetGenQuotaSchema, type PetGenQuota, type PetGenTaskView, type PetSpec } from "@cyber-stray/shared/petgen";
 import type { ApiResponse } from "@/lib/types";
 
 /** 任务 / 配额 / spec 契约见 shared/petgen（CP 服务层视图构造同源） */
@@ -20,7 +20,7 @@ interface UsePetGenReturn {
   restart: (taskId: string, spec: PetSpec) => Promise<boolean>;
   /** 仅在 CP 显式允许时复用现有素材重试质检。 */
   retryQc: (taskId: string) => Promise<boolean>;
-  /** 手动刷新任务 */
+  /** 手动刷新任务与额度 */
   refresh: () => Promise<void>;
 }
 
@@ -34,14 +34,18 @@ export function usePetGen(): UsePetGenReturn {
   const [quota, setQuota] = useState<PetGenQuota | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [quotaError, setQuotaError] = useState<string | null>(null);
 
   const refreshQuota = useCallback(async () => {
     try {
       const res = await fetch("/api/petgen/quota");
       const json = (await res.json()) as ApiResponse<PetGenQuota>;
-      if (json.success && json.data) setQuota(json.data);
-    } catch {
-      // 未登录等场景静默——页面级鉴权已兜
+      if (!res.ok || !json.success) throw new Error(json.error ?? '生成额度加载失败');
+      setQuota(PetGenQuotaSchema.parse(json.data));
+      setQuotaError(null);
+    } catch (err) {
+      setQuota(null);
+      setQuotaError(err instanceof Error ? err.message : '生成额度加载失败');
     }
   }, []);
 
@@ -58,10 +62,22 @@ export function usePetGen(): UsePetGenReturn {
     }
   }, []);
 
-  useEffect(() => {
-    void refresh();
-    void refreshQuota();
+  const refreshAll = useCallback(async () => {
+    await Promise.all([refresh(), refreshQuota()]);
   }, [refresh, refreshQuota]);
+
+  useEffect(() => {
+    void refreshAll();
+    const onFocus = () => { void refreshAll(); };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refreshAll]);
+
+  useEffect(() => {
+    if (!quota?.resetAt || quota.unlimited || quota.remaining !== 0) return;
+    const id = window.setTimeout(() => { void refreshQuota(); }, Math.max(1000, Date.parse(quota.resetAt) - Date.now()));
+    return () => window.clearTimeout(id);
+  }, [quota, refreshQuota]);
 
   /** 轮询任务直到离开进行中状态（确认流展示用） */
   useEffect(() => {
@@ -74,9 +90,10 @@ export function usePetGen(): UsePetGenReturn {
     if (!busy) return;
     const id = window.setInterval(() => {
       void refresh();
+      void refreshQuota();
     }, 2000);
     return () => window.clearInterval(id);
-  }, [task, refresh]);
+  }, [task, refresh, refreshQuota]);
 
   const submit = useCallback(
     async (spec: PetSpec): Promise<PetGenTaskView | null> => {
@@ -172,5 +189,5 @@ export function usePetGen(): UsePetGenReturn {
     }
   }, []);
 
-  return { task, quota, loading, error, submit, confirm, restart, retryQc, refresh };
+  return { task, quota, loading, error: error ?? quotaError, submit, confirm, restart, retryQc, refresh: refreshAll };
 }

@@ -15,7 +15,7 @@
 import { Hono } from 'hono';
 import type { ControlPlaneConfig } from '../config.js';
 import { validateModelId } from '../infra/app-config.js';
-import { findAdminBySub } from '../infra/admin-repo.js';
+import { isAdminSub } from '../infra/admin-repo.js';
 import { PLAN_VALUES, type PlanValue } from '../plan/limits.js';
 import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
@@ -45,9 +45,7 @@ export async function adminSession(
 ): Promise<{ sub: string } | { error: 401 | 403 }> {
   const session = await resolveTenantFromRequest(req, config.sessionSecret);
   if (!session) return { error: 401 };
-  if (config.adminSubs.includes(session.sub)) return { sub: session.sub };
-  const row = await findAdminBySub(config.dataDir, session.sub);
-  if (!row) return { error: 403 };
+  if (!(await isAdminSub(config.dataDir, session.sub, config.adminSubs))) return { error: 403 };
   return { sub: session.sub };
 }
 

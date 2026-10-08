@@ -73,12 +73,15 @@ export interface PetGenTaskView {
   assetBase: string | null;
 }
 
-/** 月度配额视图（GET /api/petgen/quota）；非 Pro/BYOK → available:false 全 0 */
-export interface PetGenQuota {
-  available: boolean;
-  limit: number;
-  used: number;
-  remaining: number;
-  /** 重置月（YYYY-MM）；available:false 时缺省 */
-  resetAt?: string;
-}
+/** 每次成功交付后等待七天；管理员不限次，null 表示没有数量上限。 */
+export const PetGenQuotaSchema = z.object({
+  available: z.boolean(),
+  period: z.literal('rolling_week'),
+  unlimited: z.boolean(),
+  limit: z.number().int().nonnegative().nullable(),
+  used: z.number().int().nonnegative(),
+  remaining: z.number().int().nonnegative().nullable(),
+  /** 下次可生成时间（ISO 8601）；当前可用或不限次时为 null。 */
+  resetAt: z.iso.datetime().nullable(),
+});
+export type PetGenQuota = z.infer<typeof PetGenQuotaSchema>;

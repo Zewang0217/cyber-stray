@@ -259,7 +259,7 @@ describe('pets 路由（领养）', () => {
     expect(emptyInterest.status).toBe(400);
   });
 
-  it('adopt 自动建领养精灵图任务：strategy=sheet + pixel 预设 + spec 拼领养属性', async () => {
+  it('adopt 自动建经典九态任务：strategy=adopt + pixel 预设 + spec 拼领养属性', async () => {
     await app.request(
       await authed('http://x/api/pets/adopt', {
         method: 'POST',
@@ -269,7 +269,7 @@ describe('pets 路由（领养）', () => {
     const db = await getDb(dataDir);
     const rows = await db.select().from(petGenTasks).all();
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.strategy).toBe('sheet');
+    expect(rows[0]?.strategy).toBe('adopt');
     expect(rows[0]?.stylePreset).toBe('pixel');
     expect(rows[0]?.specText).toContain('阿橘');
     expect(rows[0]?.specText).toContain('小鱼干');

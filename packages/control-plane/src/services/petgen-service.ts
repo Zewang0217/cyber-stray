@@ -29,7 +29,8 @@ import { IN_FLIGHT, taskDirOf } from '../petgen/processor.js';
 import * as petgenRepo from '../infra/petgen-repo.js';
 import { readTenantAsset } from '../infra/tenant-data-reader.js';
 import { findTenantPlan } from '../infra/tenant-access.js';
-import { nextMonthStart, petGenQuota } from '../petgen/quota.js';
+import { petGenWeeklyQuota } from '../petgen/quota.js';
+import { isAdminSub } from '../infra/admin-repo.js';
 import type { PetSpec } from '../petgen/types.js';
 import { createSplitter } from '../petgen/splitter.js';
 import { tenantDataDir } from '../infra/tenant.js';
@@ -37,7 +38,9 @@ import { canRetryPetGenQc } from '../domain/petgen-failure.js';
 import { resolveEntitlements } from '../plan/entitlements.js';
 
 export interface PetGenServiceDeps {
-  config: Pick<ControlPlaneConfig, 'dataDir' | 'productMode' | 'petGenMonthlyQuota'>;
+  /** 经过 session 验证的用户身份；管理员权限不从 tenantId 推断。 */
+  principalSub: string;
+  config: Pick<ControlPlaneConfig, 'dataDir' | 'productMode' | 'petGenMonthlyQuota'> & Partial<Pick<ControlPlaneConfig, 'adminSubs'>>;
 }
 
 export type PetGenOutcome<T> =
@@ -69,22 +72,22 @@ function serializedSubmit<T>(tenantId: string, submit: () => Promise<T>): Promis
 /** 领养参考图压平边长（与管线 referenceFrame 同水位；白底 JPEG 供 Seedream img2img） */
 const ADOPT_REFERENCE_FRAME = 384;
 
-/** 领养精灵图的已校验入参（领养路由的 AdoptInput 原语子集，避免跨 service 类型耦合） */
-export interface AdoptSheetInput {
+/** 领养外观的已校验入参（领养路由的 AdoptInput 原语子集，避免跨 service 类型耦合） */
+export interface AdoptAppearanceInput {
   name: string;
   interests: string[];
   personality: string;
 }
 
 /**
- * 领养属性 → 精灵图 spec（确定性模板；风格锁 pixel——街角是像素宇宙，
- * 用户参考图经 img2img 转绘为像素精灵）。
+ * 领养属性 → 九态形象 spec（确定性模板；风格锁 pixel——街角是像素宇宙，
+ * 用户参考图作为角色锚点转绘为像素角色）。
  */
-export function buildAdoptSheetSpec(input: AdoptSheetInput): PetSpec {
+export function buildAdoptAppearanceSpec(input: AdoptAppearanceInput): PetSpec {
   const personality = getPersonality(input.personality as PersonalityId);
   return {
     specText:
-      `主人领养的宠物「${input.name}」,性格${personality.name}(${personality.description}),` +
+      `精致可爱的游戏吉祥物，完整全身，无文字、边框或背景道具。参考图优先保留角色外观；无参考图时是一只圆头短腿的小猫。主人领养的宠物「${input.name}」,性格${personality.name}(${personality.description}),` +
       `对${input.interests.join('、')}感兴趣`,
     stylePreset: 'pixel',
   };
@@ -110,7 +113,13 @@ function toTaskView(task: PetGenTask): PetGenTaskView {
   };
 }
 
-export function createPetGenService({ config }: PetGenServiceDeps) {
+export function createPetGenService({ config, principalSub }: PetGenServiceDeps) {
+  /** 所有生成入口共享配额；admin 例外以 RBAC 身份为准。 */
+  async function generationQuota(db: ControlDb, tenantId: string) {
+    const unlimited = await isAdminSub(config.dataDir, principalSub, config.adminSubs ?? []);
+    return petGenWeeklyQuota(db, tenantId, unlimited);
+  }
+
   /** 租户套餐是否可用 IP 定制（Pro/BYOK 专属；免费无入口） */
   async function planAllowed(db: ControlDb, tenantId: string): Promise<boolean> {
     const { plan } = resolveEntitlements(await findTenantPlan(config.dataDir, tenantId), config.productMode);
@@ -127,11 +136,11 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
   }
 
   /** 租户是否有在飞生成任务（并发提交拒绝用——在飞集合与推进器同源 IN_FLIGHT） */
-  async function hasInFlightTask(db: ControlDb, tenantId: string): Promise<boolean> {
+  async function hasInFlightTask(db: ControlDb, tenantId: string, includeConfirmation = false): Promise<boolean> {
     const rows = await db
       .select({ id: petGenTasks.id })
       .from(petGenTasks)
-      .where(and(eq(petGenTasks.tenantId, tenantId), inArray(petGenTasks.status, IN_FLIGHT)))
+      .where(and(eq(petGenTasks.tenantId, tenantId), inArray(petGenTasks.status, includeConfirmation ? [...IN_FLIGHT, 'awaiting_confirmation'] : IN_FLIGHT)))
       .limit(1);
     return rows.length > 0;
   }
@@ -147,16 +156,16 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     }
     // 在飞检查 + 插入必须串行（见 serializedSubmit 注释：并发双插入 = 队列互卡）
     return serializedSubmit(tenantId, async () => {
-      if (await hasInFlightTask(db, tenantId)) {
+      if (await hasInFlightTask(db, tenantId, true)) {
         return { ok: false, status: 409, error: '已有生成任务进行中，完成后再提交' };
       }
-      const quota = await petGenQuota(db, tenantId, config.petGenMonthlyQuota);
-      if (quota.remaining <= 0) {
+      const quota = await generationQuota(db, tenantId);
+      if (quota.remaining === 0) {
         return {
           ok: false,
           status: 429,
-          error: `本月配额已用完（${quota.limit} 套/月），下月 ${new Date(nextMonthStart(Date.now())).toISOString().slice(0, 7)} 重置`,
-          data: { ...quota, resetAt: new Date(nextMonthStart(Date.now())).toISOString().slice(0, 7) },
+          error: '每七天可生成一套外观，请在下次可用时间后重试',
+          data: quota,
         };
       }
       const task: PetGenTask = {
@@ -184,20 +193,20 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
   }
 
   /**
-   * 领养精灵图任务（sheet 策略；首测放开套餐门——领养是全员首跑体验，
-   * 但仍占同一份月度配额：配额耗尽 = 不建任务，领养以内置猫上岗）。
+   * 领养九态任务（adopt 自动确认后复用改造屋经典管线；首测放开套餐门——领养是全员首跑体验，
+   * 但仍占同一份七天生成额度：配额耗尽 = 不建任务，生成开始前显示内置猫）。
    * 调用方（领养路由）best-effort 提交，失败不阻塞领养。
    */
-  async function submitAdoptSheetTask(
+  async function submitAdoptTask(
     tenantId: string,
     spec: PetSpec,
   ): Promise<{ ok: true; taskId: string } | { ok: false; reason: 'quota' | 'busy' }> {
     const db = await getDb(config.dataDir);
     // 并发拒绝 + 插入串行化（同 submitTask）：改造屋任务在飞时领养不叠任务，防互卡
     return serializedSubmit(tenantId, async () => {
-      if (await hasInFlightTask(db, tenantId)) return { ok: false, reason: 'busy' };
-      const quota = await petGenQuota(db, tenantId, config.petGenMonthlyQuota);
-      if (quota.remaining <= 0) return { ok: false, reason: 'quota' };
+      if (await hasInFlightTask(db, tenantId, true)) return { ok: false, reason: 'busy' };
+      const quota = await generationQuota(db, tenantId);
+      if (quota.remaining === 0) return { ok: false, reason: 'quota' };
       const task: PetGenTask = {
         id: randomUUID(),
         tenantId,
@@ -206,7 +215,7 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
         options: spec.options ? JSON.stringify(spec.options) : null,
         stylePreset: spec.stylePreset ?? 'pixel',
         conceptPath: null,
-        strategy: 'sheet',
+        strategy: 'adopt',
         batchRetries: 0,
         qcRetries: 0,
         qcResult: null,
@@ -250,8 +259,8 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     if (!view.canRetryQc) return view;
     const sheet = task.strategy === 'sheet' || task.strategy === 'strip';
     const allowed = sheet || await planAllowed(db, task.tenantId);
-    const quota = await petGenQuota(db, task.tenantId, config.petGenMonthlyQuota);
-    view.canRetryQc = allowed && quota.remaining > 0 &&
+    const quota = await generationQuota(db, task.tenantId);
+    view.canRetryQc = allowed && (quota.unlimited || quota.remaining === 1) &&
       !(await hasInFlightTask(db, task.tenantId)) && await hasQcAssets(task);
     return view;
   }
@@ -283,6 +292,10 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
       }
       if (await hasInFlightTask(db, tenantId)) {
         return { ok: false, status: 409, error: '已有生成任务进行中，完成后再确认' };
+      }
+      const quota = await generationQuota(db, tenantId);
+      if (quota.remaining === 0) {
+        return { ok: false, status: 429, error: '每七天可生成一套外观，请在下次可用时间后重试', data: quota };
       }
       const confirmed = { ...task, status: 'generating_states' as const, updatedAt: Date.now() };
       await petgenRepo.updateTask(db, task.id, { status: confirmed.status, updatedAt: confirmed.updatedAt });
@@ -324,9 +337,9 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
       if (await hasInFlightTask(db, tenantId)) {
         return { ok: false, status: 409, error: '已有生成任务进行中，完成后再重试' };
       }
-      const quota = await petGenQuota(db, tenantId, config.petGenMonthlyQuota);
-      if (quota.remaining <= 0) {
-        return { ok: false, status: 429, error: '本月配额已用完', data: quota };
+      const quota = await generationQuota(db, tenantId);
+      if (quota.remaining === 0) {
+        return { ok: false, status: 429, error: '每七天可生成一套外观，请在下次可用时间后重试', data: quota };
       }
       if (!(await hasQcAssets(task))) {
         return { ok: false, status: 409, error: '已生成素材不完整，无法仅重试质检' };
@@ -347,8 +360,8 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
       const task = await petgenRepo.findTaskByIdAndTenant(db, id, tenantId);
       if (!task) return { ok: false, status: 404, error: '任务不存在' };
       if (task.strategy === 'sheet' || task.strategy === 'strip') {
-        // 领养精灵图任务不在改造屋 UI 出现，误触 restart 会把策略打回 quad 破坏素材形状
-        return { ok: false, status: 409, error: '领养精灵图任务不支持改 spec 重来' };
+        // 领养外观任务不在改造屋 UI 出现，误触 restart 会把策略打回 quad 破坏素材形状
+        return { ok: false, status: 409, error: '领养外观任务不支持改 spec 重来' };
       }
       if (task.status !== 'awaiting_confirmation' && task.status !== 'failed') {
         return {
@@ -360,9 +373,9 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
       if (await hasInFlightTask(db, tenantId)) {
         return { ok: false, status: 409, error: '已有生成任务进行中，完成后再重来' };
       }
-      const quota = await petGenQuota(db, tenantId, config.petGenMonthlyQuota);
-      if (quota.remaining <= 0) {
-        return { ok: false, status: 429, error: '本月配额已用完', data: quota };
+      const quota = await generationQuota(db, tenantId);
+      if (quota.remaining === 0) {
+        return { ok: false, status: 429, error: '每七天可生成一套外观，请在下次可用时间后重试', data: quota };
       }
       const restarted = {
         specText: spec.specText,
@@ -397,17 +410,16 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
     }
   }
 
-  /** 本月配额（非 Pro/BYOK → available:false 全 0） */
+  /** 每七天一次；管理员不限次。 */
   async function getQuota(tenantId: string): Promise<PetGenQuota> {
     const db = await getDb(config.dataDir);
     if (!(await planAllowed(db, tenantId))) {
-      return { limit: 0, used: 0, remaining: 0, available: false };
+      return { period: 'rolling_week', unlimited: false, limit: 0, used: 0, remaining: 0, resetAt: null, available: false };
     }
-    const quota = await petGenQuota(db, tenantId, config.petGenMonthlyQuota);
+    const quota = await generationQuota(db, tenantId);
     return {
       ...quota,
       available: true,
-      resetAt: new Date(nextMonthStart(Date.now())).toISOString().slice(0, 7),
     };
   }
 
@@ -423,23 +435,23 @@ export function createPetGenService({ config }: PetGenServiceDeps) {
    * 配额耗尽/提交失败只记日志，调用方（路由）await 一次毫秒级 DB 写，
    * 真正的生图在 petgen 异步队列推进。
    */
-  async function adoptSheetSideEffect(tenantId: string, input: AdoptSheetInput): Promise<void> {
+  async function adoptAppearanceSideEffect(tenantId: string, input: AdoptAppearanceInput): Promise<void> {
     try {
-      const outcome = await submitAdoptSheetTask(tenantId, buildAdoptSheetSpec(input));
+      const outcome = await submitAdoptTask(tenantId, buildAdoptAppearanceSpec(input));
       if (!outcome.ok) {
         const why = outcome.reason === 'busy' ? '已有生成任务在飞' : '配额耗尽';
-        console.warn(`[pets] 领养精灵图跳过生成：${why}（租户 ${tenantId}）`);
+        console.warn(`[pets] 领养外观跳过生成：${why}（租户 ${tenantId}）`);
       }
     } catch (error) {
-      console.error(`[pets] 领养精灵图任务提交失败（租户 ${tenantId}）：`, error);
+      console.error(`[pets] 领养外观任务提交失败（租户 ${tenantId}）：`, error);
     }
   }
 
   return {
     submitTask,
-    submitAdoptSheetTask,
+    submitAdoptTask,
     saveAdoptReference,
-    adoptSheetSideEffect,
+    adoptAppearanceSideEffect,
     ensureProPlan,
     listTasks,
     getTask,

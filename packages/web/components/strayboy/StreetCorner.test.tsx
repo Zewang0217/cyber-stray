@@ -83,7 +83,7 @@ describe('StreetCorner 自定义素材接线（真实 hooks / 状态机 / 播放
     expect(container.querySelectorAll('[data-scene-art]')).toHaveLength(1);
     expect(petImage()?.src).toContain('/sleep.png?');
   });
-  it('拍拍播放经典 joy，低精力播放 sleep，睡眠期拍拍不打断；待机画面也用自定义 walk', async () => {
+  it('拍拍播放经典 joy，低精力播放 sleep，预算休息仍可互动；待机画面也用自定义 walk', async () => {
     window.localStorage.setItem('sb_coat', 'black');
     await act(async () => root.render(<StreetCorner contract={contract} />));
     expect(petImage()?.src).toContain('/api/pet-assets/idle.png?');
@@ -96,13 +96,33 @@ describe('StreetCorner 自定义素材接线（真实 hooks / 状态机 / 播放
     expect(container.textContent).toContain('zZ');
     await event('budget_exhausted', 2);
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="拍拍年糕"]')!.click());
-    expect(petImage()?.src).toContain('/sleep.png?');
-    expect(container.textContent).toContain('没醒');
+    expect(petImage()?.src).toContain('/joy.png?');
     await act(async () => vi.advanceTimersByTime(315_000));
     const attract = Array.from(container.querySelectorAll('p')).find((p) => p.textContent === 'STREET MODE')?.parentElement;
     expect(attract?.querySelector('img')?.src).toContain('/api/pet-assets/walk.png?');
     expect(attract?.innerHTML).not.toContain('/pet/strayboy/');
     expect(petImage()?.style.filter).toBe('');
+  });
+
+  it('白天预算休息仍可拍拍，作息睡眠不被叫醒', async () => {
+    await act(async () => root.render(<StreetCorner contract={contract} />));
+    await event('budget_exhausted', 20);
+    expect(container.textContent).toContain('今天的探索已结束');
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="拍拍年糕"]')!.click());
+    expect(petImage()?.src).toContain('/joy.png?');
+  });
+
+  it('北京时间作息睡眠优先于预算休息，拍拍不叫醒', async () => {
+    vi.setSystemTime(new Date('2026-10-08T22:00:00+08:00'));
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string) => url === '/api/pets'
+      ? Response.json({ success: true, data: [{ ...DEMO_PET, sleepStart: 22, sleepEnd: 7, budgetPaused: true }] })
+      : original(url));
+    await act(async () => root.render(<StreetCorner contract={contract} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="拍拍年糕"]')!.click());
+    expect(petImage()?.src).toContain('/sleep.png?');
+    expect(container.textContent).toContain('没醒');
+    expect(container.textContent).not.toContain('今天的探索已结束');
   });
 
   it('pet_assets_ready 将内置猫热切换成经典素材，随后普通事件不反复重取 manifest', async () => {

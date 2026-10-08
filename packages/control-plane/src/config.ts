@@ -57,6 +57,7 @@ export interface ControlPlaneConfig {
   /** 领养候选 LLM 模型（起名/口头禅 3 候选；env CP_ADOPT_LLM_MODEL——DeepSeek 端点内切换） */
   adoptLlmModel: string;
   /** 宠物 IP 生成月度配额（套/自然月；env CP_PETGEN_MONTHLY_QUOTA，默认 2） */
+  /** 历史月度配置保留兼容；当前生成门控使用固定滚动七天与 RBAC 管理员例外。 */
   petGenMonthlyQuota: number;
   /** 生成任务处理器 tick 间隔 ms（0 = 关闭；#94） */
   petGenIntervalMs: number;

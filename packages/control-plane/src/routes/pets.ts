@@ -50,7 +50,7 @@ export interface PetsDeps {
     | 'llmBudgetYuan'
     | 'petGenMonthlyQuota'
     | 'adoptLlmModel'
-  >;
+  > & Partial<Pick<ControlPlaneConfig, 'adminSubs'>>;
 }
 
 const jsonError = (message: string) => ({ success: false, error: message });
@@ -62,7 +62,7 @@ const ADOPT_REFERENCE_MIME_SET = new Set(ADOPT_REFERENCE_MIME);
 async function scopedTenantId(
   req: Request,
   config: PetsDeps['config'],
-): Promise<{ tenantId: string } | { error: 401 | 403 }> {
+): Promise<{ tenantId: string; sub: string } | { error: 401 | 403 }> {
   const session = await resolveTenantFromRequest(req, config.sessionSecret);
   if (!session) return { error: 401 };
 
@@ -72,7 +72,7 @@ async function scopedTenantId(
 
   // X1「回访」埋点（与 requireTenant 同款；领养旅程主端点走本路由组）
   noteTenantActivity(config.dataDir, session.tenantId);
-  return { tenantId: session.tenantId };
+  return { tenantId: session.tenantId, sub: session.sub };
 }
 
 /** 有效小时（0-23 整数；作息与 pushWindow 同为本地小时） */
@@ -129,7 +129,7 @@ function parseAdoptBody(body: AdoptBody): AdoptInput | { invalid: string } {
 
 export function createPetsRoutes({ config }: PetsDeps): Hono {
   const service = createPetsService({ config });
-  const petGenService = createPetGenService({ config });
+  const petGenService = (principalSub: string) => createPetGenService({ config, principalSub });
   const app = new Hono();
 
   /** GET /api/pets — 当前租户宠物列表（含 budgetPaused 初始态） */
@@ -162,10 +162,10 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
 
     const outcome = await service.adopt(scoped.tenantId, parsed);
     if (outcome.ok) {
-      // 领养精灵图（领养不阻塞）：内部 try/catch 吞失败只记日志；await 只覆盖
+      // 领养九态外观（领养不阻塞）：内部 try/catch 吞失败只记日志；await 只覆盖
       // 建行（毫秒级 DB 写），真正的生图在 petgen 异步队列推进，素材就绪后经
       // pet_assets_ready 事件热替换形象
-      await petGenService.adoptSheetSideEffect(scoped.tenantId, parsed);
+      await petGenService(scoped.sub).adoptAppearanceSideEffect(scoped.tenantId, parsed);
     }
     return outcome.ok
       ? c.json({ success: true, data: outcome.data }, 201)
@@ -203,7 +203,7 @@ export function createPetsRoutes({ config }: PetsDeps): Hono {
       return c.json(jsonError('图片须 ≤ 8MB'), 400);
     }
     try {
-      await petGenService.saveAdoptReference(
+      await petGenService(scoped.sub).saveAdoptReference(
         scoped.tenantId,
         Buffer.from(await file.arrayBuffer()),
       );

@@ -114,7 +114,7 @@ export default function SettingsPage() {
           ) : (
             <>
               <section className="mb-4 border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
-                <h3 className="mb-1 text-[14px] text-[var(--paper)]">作息</h3>
+                <h3 className="mb-1 text-[14px] text-[var(--paper)]">作息 · 北京时间（UTC+8）</h3>
                 <p className="mb-2 text-[12px] leading-[1.6] text-[var(--curb)]">睡眠期宠物停止游荡，前端展示睡觉状态</p>
                 <form className="flex items-center gap-2" onSubmit={(e) => {
                   e.preventDefault();
@@ -166,6 +166,9 @@ export default function SettingsPage() {
                 </div>
               </section>
 
+              <a href="/pet/customize" className="mb-4 block border-2 border-[var(--curb)] bg-[var(--panel)] p-3 text-[14px] text-[var(--hi)]">
+                改造屋 · 外观与动作预览 →
+              </a>
               <CatchphraseEditor pet={sleepPet} onSave={(list) => setCatchphrases(list)} />
               {petsError ? <p className="mt-2 text-[13px] text-[var(--bad)]">{petsError}</p> : null}
             </>

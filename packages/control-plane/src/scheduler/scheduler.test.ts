@@ -28,6 +28,7 @@ import {
 } from './scheduler.js';
 import type { DiaryJob, DiaryWorkerResult, DiaryRunner } from './diary-runner.js';
 import type { LlmBudgetConfig } from './budget.js';
+import { sleepScheduleHour } from '@cyber-stray/shared/sleep';
 import { localDateKey } from '../infra/usage.js';
 import { attachPushGateway } from '../push/push-gateway.js';
 import webpush from 'web-push';
@@ -657,7 +658,7 @@ describe('调度器', () => {
 
   describe('真实作息（#91）：睡眠期不拉 worker', () => {
     /** 当前本地小时（与调度器判定同源，测试时区无关） */
-    const localHour = () => new Date(clock.now).getHours();
+    const localHour = () => sleepScheduleHour(new Date(clock.now));
 
     it('未设置作息（默认兼容）：行为与现状一致，照常拉起', async () => {
       await addPet('p1', 't1');
@@ -710,7 +711,7 @@ describe('调度器', () => {
   describe('睡前任务触发（#92 日记）', () => {
     // 以显式本地时间推进时钟，绕开机器 TZ 差异（new Date('...T21:00:00') 本地解析）
     function setLocal(hhmm: string): void {
-      clock.now = new Date(`2026-08-20T${hhmm}:00`).getTime();
+      clock.now = new Date(`2026-08-20T${hhmm}:00+08:00`).getTime();
     }
 
     it('日记记账失败持久暂停，下一天也不自动重试', async () => {
@@ -791,7 +792,7 @@ describe('调度器', () => {
       // 同日再 tick 到 23 点不重复（lastDiaryDate === today）
       await tick(60 * 60 * 1000); // 00:00（次日，但 lastDiaryDate 还是 20 号）
       // 直接跳到次日晚 23 点
-      clock.now = new Date('2026-08-21T23:00:00').getTime();
+      clock.now = new Date('2026-08-21T23:00:00+08:00').getTime();
       await tick();
       expect(diaryRunner).toHaveBeenCalledTimes(2);
       const pet2 = await getPet('pd3');
@@ -842,7 +843,7 @@ describe('调度器', () => {
       // 模拟重启：新建 Scheduler（wasSleeping 内存清零），当前 01:00 仍在睡
       sched.stop();
       sched = makeScheduler();
-      clock.now = new Date('2026-08-21T01:00:00').getTime();
+      clock.now = new Date('2026-08-21T01:00:00+08:00').getTime();
       await tick(); // 首次观测播种（跨午夜尾部 → 不补触发）
       await tick(60 * 60 * 1000); // 02:00 仍在睡，无跳变 → 不触发
       expect(diaryRunner).toHaveBeenCalledTimes(1);

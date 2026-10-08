@@ -1,7 +1,7 @@
 "use client";
 
 import { usePetGen } from "@/hooks/usePetGen";
-import { PET_STATE_IDS, type PetStateId } from "@cyber-stray/shared/pet";
+import { PetAppearancePreview } from "@/components/strayboy/PetAppearancePreview";
 import { BootFrame } from "@/components/strayboy/BootFrame";
 
 /**
@@ -10,7 +10,7 @@ import { BootFrame } from "@/components/strayboy/BootFrame";
  * 字段与流程对齐 #169 混合管线结论（spec Decision 5/8）。
  */
 export default function CustomizePage() {
-  const { task, quota, loading, error, submit, confirm, restart, retryQc } = usePetGen();
+  const { task, quota, loading, error, submit, confirm, restart, retryQc, refresh } = usePetGen();
 
   // 分段墨条进度：按任务状态映射阶段
   const stages: Array<{ label: string; on: boolean }> = [
@@ -26,13 +26,20 @@ export default function CustomizePage() {
       <BootFrame />
       <div className="mx-auto max-w-2xl">
         <h1 className="font-ps2p mb-1 text-xs text-[var(--hi)]">CUSTOMIZE · 改造屋</h1>
+        <a href="/street" className="mb-3 inline-block text-[13px] text-[var(--hi)] underline">← 回到街角</a>
         <p className="mb-5 text-[13px] leading-[1.7] text-[var(--curb)]">
           描述你的专属街溜子，生成完整像素素材。受邀内测用户均可使用，生成次数以当前额度为准。
-          {quota ? `本月配额 ${quota.used}/${quota.limit} 套。` : ""}
+          {quota?.unlimited ? "管理员不限生成次数。" : "每七天可成功生成一套外观，失败不扣次数。"}
+          {quota?.resetAt ? `下次可用：${new Date(quota.resetAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })}（北京时间）。` : ""}
         </p>
 
+        <PetAppearancePreview refreshToken={task?.completedAt ?? 0} />
+
         {error && (
-          <p className="mb-4 border-2 border-[var(--bad)] bg-[var(--panel)] p-2.5 text-[13px] text-[var(--bad)]">{error}</p>
+          <div className="mb-4 border-2 border-[var(--bad)] bg-[var(--panel)] p-2.5 text-[13px] text-[var(--bad)]">
+            <p>{error}</p>
+            <button type="button" className="mt-2 underline" onClick={() => void refresh()}>重新加载</button>
+          </div>
         )}
 
         {/* failed：显式呈现失败原因 + 重试引导（禁静默） */}
@@ -80,12 +87,12 @@ export default function CustomizePage() {
                 {quota === null
                   ? "配额加载中……"
                   : quota.available
-                    ? `剩余 ${quota.remaining}/${quota.limit} 套`
+                    ? quota.unlimited ? "管理员不限次" : `当前可生成 ${quota.remaining} 套`
                     : "当前账号暂不支持自助生成，可使用平台预置形象"}
               </span>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !quota?.available || (!quota.unlimited && quota.remaining === 0)}
                 className="border-2 border-black bg-[var(--act)] px-4 py-2 text-[13px] text-[var(--sky)] shadow-[3px_3px_0_#000] disabled:opacity-40"
               >
                 {loading ? "提交中……" : "生成概念图 ▶"}
@@ -142,21 +149,6 @@ export default function CustomizePage() {
           </section>
         )}
 
-        {/* 素材网格预览（done） */}
-        {task?.status === "done" && task.assetBase && (
-          <section className="border-2 border-[var(--ink)] bg-[var(--paper)] p-4 shadow-[5px_5px_0_#000]">
-            <h2 className="font-ps2p mb-3 text-xs text-[var(--ink)]">ASSETS · 素材网格</h2>
-            <div className="grid grid-cols-3 gap-3">
-              {PET_STATE_IDS.map((s: PetStateId) => (
-                <figure key={s} className="border-2 border-[var(--curb)] bg-[var(--sky)] p-1.5 text-center">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`${task.assetBase}/${s}.png`} alt={`${s} 状态素材`} className="pixelated w-full" />
-                  <figcaption className="mt-1 text-[12px] text-[var(--ink)]">{s}</figcaption>
-                </figure>
-              ))}
-            </div>
-          </section>
-        )}
       </div>
     </div>
   );

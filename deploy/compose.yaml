@@ -21,6 +21,7 @@ services:
     environment:
       # 容器内数据根；bind mount 回宿主原路径（覆盖 .env 里的 CP_DATA_DIR）
       CP_DATA_DIR: /data
+      TZ: Asia/Shanghai
     volumes:
       - /opt/cyber-stray/data:/data
     ports:
