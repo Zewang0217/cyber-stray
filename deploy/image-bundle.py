@@ -3,6 +3,7 @@
 import argparse
 import gzip
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -72,18 +73,37 @@ def validate_download_url(url: str) -> None:
 def download_part(url: str, proxy: str, start: int, end: int, path: Path, deadline: float) -> None:
     """Require a precise byte range; all eight requests start before the signed URL expires."""
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({"https": proxy} if proxy else {}))
-    request = urllib.request.Request(url, headers={"Range": f"bytes={start}-{end}"})
-    received = 0
-    with opener.open(request, timeout=30) as source, path.open("wb") as output:
-        if source.status != 206 or source.headers.get("Content-Range", "").split("/", 1)[0] != f"bytes {start}-{end}":
-            raise ValueError("构建产物服务器未返回请求的完整分段")
-        while chunk := source.read(1024 * 1024):
-            if time.monotonic() > deadline:
-                raise ValueError("构建产物下载超过 20 分钟，停止发布")
-            output.write(chunk)
-            received += len(chunk)
-    if received != end - start + 1:
-        raise ValueError("构建产物分段下载不完整")
+    offset = start
+    for attempt in range(5):
+        if time.monotonic() > deadline:
+            raise ValueError("构建产物下载超过 20 分钟，停止发布")
+        request = urllib.request.Request(url, headers={"Range": f"bytes={offset}-{end}"})
+        failure = "提前 EOF"
+        try:
+            with opener.open(request, timeout=30) as source, path.open("ab") as output:
+                expected = f"bytes {offset}-{end}"
+                if source.status != 206 or source.headers.get("Content-Range", "").split("/", 1)[0] != expected:
+                    raise ValueError("构建产物服务器未返回请求的完整分段")
+                while chunk := source.read(1024 * 1024):
+                    if time.monotonic() > deadline:
+                        raise ValueError("构建产物下载超过 20 分钟，停止发布")
+                    output.write(chunk)
+                    offset += len(chunk)
+        except urllib.error.HTTPError as error:
+            if error.code not in (429, 500, 502, 503, 504):
+                raise
+            failure = f"HTTP {error.code}"
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as error:
+            # Offset counts only bytes written; interrupted reads are requested again.
+            failure = type(error).__name__
+        if offset == end + 1:
+            return
+        if offset > end + 1:
+            raise ValueError("构建产物分段超过请求长度")
+        if attempt < 4:
+            print(f"分段 {start}-{end} {failure}：已收 {offset - start} bytes，续传 {attempt + 1}/4", flush=True)
+            time.sleep(1)
+    raise ValueError(f"构建产物分段 {start}-{end} 在 5 次请求后仍不完整，已收 {offset - start} bytes")
 
 
 def download(bundle: Path) -> None:
