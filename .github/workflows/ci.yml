@@ -2,8 +2,7 @@ name: CI
 
 # #138 / ADR-0009：develop 是唯一集成区——push/PR 只跑质量门
 # （typecheck / test / lint + web 构建验证），不产镜像不推仓库。
-# 发布 PR（develop→main，ADR-0009）不重复跑质量门：其 head 就是 develop，
-# 同一 commit 已由 push:develop 触发过；PR 事件只对 base 为 develop 的 PR 生效。
+# 功能 PR（→develop）和发布 PR（develop→main，ADR-0009）均跑质量门。
 on:
   push:
     branches: [develop]
