@@ -127,6 +127,20 @@
       "when": 1790263815760,
       "tag": "0017_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1791458008295,
+      "tag": "0018_account_deletion",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1791458647425,
+      "tag": "0019_tenant_quota_overrides",
+      "breakpoints": true
     }
   ]
 }

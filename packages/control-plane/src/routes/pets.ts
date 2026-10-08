@@ -48,7 +48,6 @@ export interface PetsDeps {
     | 'sessionSecret'
     | 'llmBudgetEnabled'
     | 'llmBudgetYuan'
-    | 'petGenMonthlyQuota'
     | 'adoptLlmModel'
   > & Partial<Pick<ControlPlaneConfig, 'adminSubs'>>;
 }

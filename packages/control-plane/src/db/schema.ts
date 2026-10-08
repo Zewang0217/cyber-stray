@@ -25,6 +25,16 @@ export const tenants = sqliteTable('tenants', {
   name: text('name').notNull(),
   /** 套餐（S14：账号级——迁移自 pets.plan，1 租户 1 宠物下等价） */
   plan: text('plan', { enum: ['free', 'pro', 'byok'] }).notNull().default('free'),
+  /** 注销时刻（unix ms；null = 未注销）。软删：行保留作审计，鉴权拒绝、宠物停派 */
+  deletedAt: integer('deleted_at'),
+  /** 注销方式（self = 用户自助 / admin = 管理员操作） */
+  deletionMode: text('deletion_mode', { enum: ['self', 'admin'] }),
+  /** 注销理由（admin 必填；self 可选的退出原因） */
+  deletionReason: text('deletion_reason'),
+  /** 执行注销的操作者 sub（self 时 = 本人） */
+  deletedBy: text('deleted_by'),
+  /** 租户级配额覆盖（JSON 文本 TenantQuotaOverrides；null = 跟随套餐默认，契约见 @cyber-stray/shared/quota） */
+  quotaOverrides: text('quota_overrides'),
   createdAt: integer('created_at').notNull().$defaultFn(now),
   updatedAt: integer('updated_at').notNull().$defaultFn(now).$onUpdate(() => Date.now()),
 });
@@ -189,8 +199,8 @@ export const vapidKeys = sqliteTable('vapid_keys', {
  *   generating_states；不满意改 spec → restart（回到 spec_submitted 重出概念图）。
  * - 生成素材落 data/tenants/<sub>/pet-assets/（manifest + 状态 PNG），
  *   任务工作目录 data/tenants/<sub>/pet-assets/tasks/<taskId>/ 存中间产物。
- * - 配额（建议 2 套/月，CP_PETGEN_MONTHLY_QUOTA 可配）：统计当前自然月
- *   状态=done 的任务数；失败任务不占配额。
+ * - 配额（滚动七天 1 套；管理员 RBAC 例外）：按最近 7×24h 内 status=done
+ *   的 completedAt 计数；失败任务不占配额。
  */
 export const petGenTasks = sqliteTable('pet_gen_tasks', {
   id: text('id').primaryKey(),

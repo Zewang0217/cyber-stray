@@ -45,7 +45,6 @@ describe('pets 路由（领养）', () => {
       sessionSecret: SECRET,
       llmBudgetEnabled: true,
       llmBudgetYuan: { free: 0.5, pro: 2, byok: 2 },
-      petGenMonthlyQuota: 2,
     } as Parameters<
       typeof createPetsRoutes
     >[0]['config'];
@@ -536,7 +535,6 @@ describe('adopt 口头禅（#114 切片 2）', () => {
       sessionSecret: SECRET,
       llmBudgetEnabled: true,
       llmBudgetYuan: { free: 0.5, pro: 2, byok: 2 },
-      petGenMonthlyQuota: 2,
     } as Parameters<
       typeof createPetsRoutes
     >[0]['config'];

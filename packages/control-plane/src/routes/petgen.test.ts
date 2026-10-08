@@ -43,7 +43,6 @@ describe('petgen 路由（#94）', () => {
     const config = {
       dataDir,
       sessionSecret: SECRET,
-      petGenMonthlyQuota: 2,
       productMode: 'paid',
     } as Parameters<typeof createPetGenRoutes>[0]['config'];
     app.route('/api/petgen', createPetGenRoutes({ config }));
@@ -94,7 +93,7 @@ describe('petgen 路由（#94）', () => {
 
   it('邀请内测存量 free 可以定制宠物，使用七天生成额度', async () => {
     const beta = new Hono().route('/api/petgen', createPetGenRoutes({
-      config: { dataDir, sessionSecret: SECRET, petGenMonthlyQuota: 2, productMode: 'invite_beta' },
+      config: { dataDir, sessionSecret: SECRET, productMode: 'invite_beta' },
     }));
     const res = await beta.request(await authed('http://x/api/petgen/tasks', { method: 'POST', body: JSON.stringify(SPEC) }));
     expect(res.status).toBe(201);
@@ -294,13 +293,30 @@ describe('petgen 路由（#94）', () => {
     expect(ok.status).toBe(201);
   });
 
+  it('租户配额覆盖 petgenWeeklyLimit 生效于额度视图与提交门', async () => {
+    await setPlan('alice', 'pro');
+    const db = await getDb(dataDir);
+    await db.update(tenants)
+      .set({ quotaOverrides: '{"petgenWeeklyLimit":2}' })
+      .where(eq(tenants.id, 'alice'))
+      .run();
+    await db.insert(petGenTasks).values({
+      id: 'ov-done', tenantId: 'alice', specText: '猫', status: 'done', completedAt: Date.now(),
+    }).run();
+    // 默认 1 已耗尽；覆盖 2 → remaining 1，可再提交
+    const quota = await app.request(await authed('http://x/api/petgen/quota'));
+    expect((await quota.json()).data).toMatchObject({ limit: 2, used: 1, remaining: 1 });
+    const res = await app.request(await authed('http://x/api/petgen/tasks', { method: 'POST', body: JSON.stringify(SPEC) }));
+    expect(res.status).toBe(201);
+  });
+
   it.each(['bootstrap', 'rbac'])('管理员 %s 不受周额度限制，普通账号仍不能绕过', async (source) => {
     await setPlan('alice', 'pro');
     const db = await getDb(dataDir);
     if (source === 'rbac') await db.insert(admins).values({ sub: 'alice', grantedBy: 'test' }).run();
     await db.insert(petGenTasks).values({ id: 'admin-done', tenantId: 'alice', specText: '猫', status: 'done', completedAt: Date.now() }).run();
     const adminApp = new Hono().route('/api/petgen', createPetGenRoutes({
-      config: { dataDir, sessionSecret: SECRET, productMode: 'invite_beta', petGenMonthlyQuota: 2,
+      config: { dataDir, sessionSecret: SECRET, productMode: 'invite_beta',
         adminSubs: source === 'bootstrap' ? ['alice'] : [] },
     }));
     const quota = await adminApp.request(await authed('http://x/api/petgen/quota'));
@@ -312,7 +328,7 @@ describe('petgen 路由（#94）', () => {
     const db = await getDb(dataDir);
     await db.insert(userTenants).values({ userId: 'bob', tenantId: 'alice', role: 'owner' }).run();
     const scoped = new Hono().route('/api/petgen', createPetGenRoutes({
-      config: { dataDir, sessionSecret: SECRET, productMode: 'invite_beta', petGenMonthlyQuota: 2, adminSubs: ['alice'] },
+      config: { dataDir, sessionSecret: SECRET, productMode: 'invite_beta', adminSubs: ['alice'] },
     }));
     const quota = await scoped.request(await authed('http://x/api/petgen/quota', {}, { sub: 'bob', tenantId: 'alice' }));
     expect((await quota.json()).data).toMatchObject({ unlimited: false, limit: 1 });

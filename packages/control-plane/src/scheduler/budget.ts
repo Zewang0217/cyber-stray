@@ -6,7 +6,7 @@
  * 次轮停派发，租户侧语义「宠物在睡觉」，次日（日期键文件归零）自动恢复。
  *
  * 读取复用 usage.jsonl 当日累计 + 既有单价表（costOf），不新增存储、
- * 不另建并行索引。只计 kind=llm（生图/质检另有 petGenMonthlyQuota 月配额）。
+ * 不另建并行索引。只计 kind=llm（生图/质检另有 petgen 滚动七天配额）。
  * 读失败向上抛错——闸的调用方（scheduler）fail-closed 停派，绝不把
  * 「判定不了」当「没花钱」。
  */
@@ -31,6 +31,19 @@ export function planBudgetYuan(config: LlmBudgetConfig, plan: string): number | 
   const key = plan === 'pro' || plan === 'byok' ? plan : 'free';
   const yuan = config.yuanPerPlan[key];
   return yuan > 0 ? yuan : null;
+}
+
+/**
+ * 生效的每日 LLM 预算（¥）：租户覆盖优先（0 = 不限，与 yuanPerPlan 同语义），
+ * 无覆盖回落套餐默认。null = 不设闸。覆盖契约见 @cyber-stray/shared/quota。
+ */
+export function effectiveBudgetYuan(
+  config: LlmBudgetConfig,
+  plan: string,
+  overrideYuan?: number,
+): number | null {
+  if (overrideYuan !== undefined) return overrideYuan > 0 ? overrideYuan : null;
+  return planBudgetYuan(config, plan);
 }
 
 /** 租户今日 LLM 成本（¥）。读失败抛错（含日期键；ENOENT=空态返回 0） */

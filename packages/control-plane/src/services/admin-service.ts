@@ -26,7 +26,9 @@ import {
   findTenantById,
   listTenants,
   updateTenantPlan,
+  updateTenantQuotaOverrides,
 } from '../infra/tenant-access.js';
+import { parseTenantQuotaOverrides, type TenantQuotaOverrides } from '@cyber-stray/shared/quota';
 import { readTenantWanderStats } from '../infra/tenant-data-reader.js';
 import { costOf, requireModelPrice } from '../domain/pricing.js';
 import { resolveEntitlements } from '../plan/entitlements.js';
@@ -80,6 +82,10 @@ export function createAdminService({ config }: AdminServiceDeps) {
           tenantName: t.name,
           ...resolveEntitlements(t.plan, config.productMode),
           createdAt: t.createdAt,
+          deletedAt: t.deletedAt,
+          deletionMode: t.deletionMode,
+          deletionReason: t.deletionReason,
+          quotaOverrides: parseTenantQuotaOverrides(t.quotaOverrides),
           petId: pet?.id ?? null,
           petName: pet?.name ?? null,
           petStatus: pet?.status ?? null,
@@ -113,6 +119,21 @@ export function createAdminService({ config }: AdminServiceDeps) {
     if (!dbPet) return { ok: false, status: 404, error: '该用户无宠物' };
     await petsRepo.updatePetStatus(db, tenantId, status);
     return { ok: true, data: { tenantId, status } };
+  }
+
+  /** 租户配额覆盖（运维调额）：入参已过 shared/quota 守卫；null = 清空回套餐默认 */
+  async function setQuotaOverrides(
+    tenantId: string,
+    overrides: TenantQuotaOverrides | null,
+  ): Promise<AdminOutcome<{ tenantId: string; quotaOverrides: TenantQuotaOverrides | null }>> {
+    const tenant = await findTenantById(config.dataDir, tenantId);
+    if (!tenant) return { ok: false, status: 404, error: '用户不存在' };
+    await updateTenantQuotaOverrides(
+      config.dataDir,
+      tenantId,
+      overrides ? JSON.stringify(overrides) : null,
+    );
+    return { ok: true, data: { tenantId, quotaOverrides: overrides } };
   }
 
   /** 管理员列表（env bootstrap 的也展示，来源标注 env） */
@@ -221,6 +242,7 @@ export function createAdminService({ config }: AdminServiceDeps) {
     listUsers,
     updatePlan,
     setPetStatus,
+    setQuotaOverrides,
     listAdmins,
     grantAdmin,
     revokeAdmin,

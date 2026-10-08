@@ -1,8 +1,8 @@
 /**
- * 配额逻辑测试（#94）
+ * 配额逻辑测试（#94；8e8307c 收紧为滚动七天口径）
  *
- * 契约：monthStart/nextMonthStart 为本地自然月边界；petGenQuota 只统计
- * 当前自然月 status=done 的任务（completedAt ≥ 本月 1 日），失败任务不占配额。
+ * 契约：petGenWeeklyQuota 只统计最近 7×24h 内 status=done 的任务，
+ * 失败任务不占配额，满七天立即恢复。
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -13,28 +13,9 @@ import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { getOrCreateTenant } from '../infra/tenant.js';
 import { petGenTasks } from '../db/schema.js';
-import { monthStart, nextMonthStart, petGenQuota, petGenWeeklyQuota } from './quota.js';
+import { petGenWeeklyQuota } from './quota.js';
 
-describe('quota 月边界', () => {
-  it('monthStart：当月 1 日 00:00（本地时区）', () => {
-    const ts = new Date(2026, 7, 20, 15, 30).getTime(); // 2026-08-20
-    const start = monthStart(ts);
-    const d = new Date(start);
-    expect(d.getFullYear()).toBe(2026);
-    expect(d.getMonth()).toBe(7);
-    expect(d.getDate()).toBe(1);
-    expect(d.getHours()).toBe(0);
-  });
-
-  it('nextMonthStart：跨年正确', () => {
-    const d = new Date(nextMonthStart(new Date(2026, 11, 15).getTime()));
-    expect(d.getFullYear()).toBe(2027);
-    expect(d.getMonth()).toBe(0);
-    expect(d.getDate()).toBe(1);
-  });
-});
-
-describe('petGenQuota（DB 计数）', () => {
+describe('petGenWeeklyQuota（DB 计数）', () => {
   let dataDir: string;
 
   beforeEach(async () => {
@@ -50,38 +31,12 @@ describe('petGenQuota（DB 计数）', () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  it('无任务 → used 0 / remaining = limit', async () => {
+  it('无任务 → used 0 / remaining 1', async () => {
     const db = await getDb(dataDir);
-    const q = await petGenQuota(db, 'alice', 2, new Date(2026, 7, 10).getTime());
-    expect(q).toEqual({ used: 0, remaining: 2, limit: 2 });
+    const q = await petGenWeeklyQuota(db, 'alice', false, new Date(2026, 7, 10).getTime());
+    expect(q).toMatchObject({ used: 0, remaining: 1, limit: 1, unlimited: false, resetAt: null });
   });
 
-  it('只统计本月 done；失败任务不占配额；跨租户隔离', async () => {
-    const db = await getDb(dataDir);
-    const now = new Date(2026, 7, 10).getTime();
-    const doneThisMonth = new Date(2026, 7, 5).getTime();
-    const doneLastMonth = new Date(2026, 6, 30).getTime();
-    await db.insert(petGenTasks).values([
-      { id: 't1', tenantId: 'alice', specText: '猫', status: 'done', completedAt: doneThisMonth },
-      { id: 't2', tenantId: 'alice', specText: '猫', status: 'done', completedAt: doneLastMonth },
-      { id: 't3', tenantId: 'alice', specText: '猫', status: 'failed', completedAt: doneThisMonth },
-      { id: 't4', tenantId: 'bob', specText: '猫', status: 'done', completedAt: doneThisMonth },
-    ]).run();
-    const q = await petGenQuota(db, 'alice', 2, now);
-    expect(q.used).toBe(1); // t1 本月 done；t2 上月不计；t3 失败不计；t4 他人不计
-    expect(q.remaining).toBe(1);
-  });
-
-  it('超限 → remaining 0', async () => {
-    const db = await getDb(dataDir);
-    const now = new Date(2026, 7, 10).getTime();
-    await db.insert(petGenTasks).values([
-      { id: 'a', tenantId: 'alice', specText: '猫', status: 'done', completedAt: now },
-      { id: 'b', tenantId: 'alice', specText: '猫', status: 'done', completedAt: now },
-    ]).run();
-    const q = await petGenQuota(db, 'alice', 2, now);
-    expect(q.remaining).toBe(0);
-  });
   it('滚动七天：失败不占次数，满七天立即恢复；月底不会提前恢复', async () => {
     const db = await getDb(dataDir);
     const completed = Date.parse('2026-09-30T15:00:00Z');
@@ -97,6 +52,17 @@ describe('petGenQuota（DB 计数）', () => {
     expect(await petGenWeeklyQuota(db, 'alice', false, reset)).toMatchObject({ used: 0, remaining: 1, resetAt: null });
     expect(await petGenWeeklyQuota(db, 'alice', true, reset - 1)).toMatchObject({
       unlimited: true, limit: null, remaining: null, resetAt: null,
+    });
+  });
+
+  it('租户覆盖 limit（shared/quota）：按覆盖值计算剩余', async () => {
+    const db = await getDb(dataDir);
+    const now = Date.now();
+    await db.insert(petGenTasks).values([
+      { id: 'ov1', tenantId: 'alice', specText: '猫', status: 'done', completedAt: now },
+    ]).run();
+    expect(await petGenWeeklyQuota(db, 'alice', false, now, 3)).toMatchObject({
+      used: 1, limit: 3, remaining: 2,
     });
   });
 

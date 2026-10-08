@@ -48,7 +48,8 @@ import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
 import { isSleeping, sleepScheduleHour } from '@cyber-stray/shared/sleep';
 import { DIARY_FALLBACK_HOUR, shouldGenerateDiary } from './diary-schedule.js';
 import type { DiaryRunner } from './diary-runner.js';
-import { planBudgetYuan, todayLlmCostYuan, type LlmBudgetConfig } from './budget.js';
+import { todayLlmCostYuan, effectiveBudgetYuan, type LlmBudgetConfig } from './budget.js';
+import { parseTenantQuotaOverrides, type TenantQuotaOverrides } from '@cyber-stray/shared/quota';
 import { assertUsageHealthy, localDateKey, markUsageAccountingFailure } from '../infra/usage.js';
 
 export { MINUTE_MS } from './propagate.js';
@@ -197,6 +198,8 @@ export class Scheduler {
   private readonly budgetCheckFailed = new Set<string>();
   /** #275 首推 24h 告警：已告警/已送达的宠物（进程内去重，防分钟级刷屏） */
   private readonly firstPushAlerted = new Set<string>();
+  /** 租户配额覆盖（每 tick 从 tenants 行刷新；budgetAllows / planArgsFor 读取） */
+  private quotaOverridesByTenant = new Map<string, TenantQuotaOverrides | null>();
   private timer?: ReturnType<typeof setInterval>;
   private activeTick?: Promise<void>;
 
@@ -279,6 +282,8 @@ export class Scheduler {
     // S14：套餐在账号层（tenants.plan）——一次拉租户 plan 映射，避免 N+1
     const tenantRows = await dbh.select().from(tenants).all();
     const planByTenant = new Map(tenantRows.map((t) => [t.id, resolveEntitlements(t.plan, config.productMode).plan]));
+    // 配额覆盖同拍刷新（管理面板改值后下个 tick 生效，无需重启）
+    this.quotaOverridesByTenant = new Map(tenantRows.map((t) => [t.id, parseTenantQuotaOverrides(t.quotaOverrides)]));
     // 作息与前端统一北京时间，不依赖生产容器的 UTC 默认时区。
     const localHour = sleepScheduleHour(new Date(nowMs));
     // Due diaries take the shared slots before new wandering, so a busy 23:00 tick cannot starve them.
@@ -653,7 +658,11 @@ export class Scheduler {
     nowMs: number,
   ): Promise<boolean> {
     const { dataDir, bus } = this.deps;
-    const limit = planBudgetYuan(this.deps.config.llmBudget, plan);
+    const limit = effectiveBudgetYuan(
+      this.deps.config.llmBudget,
+      plan,
+      this.quotaOverridesByTenant.get(tenantId)?.llmBudgetYuan,
+    );
     let cost: number;
     try {
       await assertUsageHealthy(tenantDataDir(dataDir, tenantId));
@@ -691,6 +700,7 @@ export class Scheduler {
 
   /** 套餐执行参数（S11：scheduler 是策略点，runner 机械透传） */
   private planArgsFor(pet: {
+    tenantId: string;
     plan: string;
     lastRunAt: number | null;
     pushWindowStart: number | null;
@@ -698,7 +708,8 @@ export class Scheduler {
   }): PlanJobArgs {
     return {
       plan: (pet.plan === 'pro' || pet.plan === 'byok' ? pet.plan : 'free') as PlanJobArgs['plan'],
-      pushesPerDay: planLimits(pet.plan).pushesPerDay,
+      pushesPerDay:
+        this.quotaOverridesByTenant.get(pet.tenantId)?.pushesPerDay ?? planLimits(pet.plan).pushesPerDay,
       pushWindowStart: pet.pushWindowStart,
       pushWindowEnd: pet.pushWindowEnd,
       // #275：首推模式 = 该宠第一次游荡（lastRunAt 从未写回）。经 plan-args

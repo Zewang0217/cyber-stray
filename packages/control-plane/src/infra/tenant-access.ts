@@ -6,10 +6,10 @@
  * 落地后鉴权查询收敛为单一调用方。
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { PlanValue } from '../plan/limits.js';
 import { getDb } from '../db/client.js';
-import { tenants, userTenants } from '../db/schema.js';
+import { pets, tenants, userTenants } from '../db/schema.js';
 
 /** 会话用户与租户的关系行；不存在返回 undefined */
 export async function findUserTenantRelation(dataDir: string, userId: string, tenantId: string) {
@@ -44,4 +44,45 @@ export async function findTenantById(dataDir: string, tenantId: string) {
 export async function updateTenantPlan(dataDir: string, tenantId: string, plan: PlanValue) {
   const db = await getDb(dataDir);
   await db.update(tenants).set({ plan }).where(eq(tenants.id, tenantId)).run();
+}
+
+/**
+ * 写/清租户配额覆盖（JSON 文本；null = 清空回套餐默认）。键值校验在应用层
+ * （admin 路由经 shared/quota 守卫），本层只落库。
+ */
+export async function updateTenantQuotaOverrides(
+  dataDir: string,
+  tenantId: string,
+  stored: string | null,
+): Promise<void> {
+  const db = await getDb(dataDir);
+  await db.update(tenants).set({ quotaOverrides: stored }).where(eq(tenants.id, tenantId)).run();
+}
+
+/**
+ * 注销租户（软删）：置注销审计字段 + 宠物置 paused（调度器现有跳过机制停探索），
+ * 同一事务。条件更新防并发双注销——已注销（deleted_at 非空）返回 null。
+ */
+export async function markTenantDeleted(
+  dataDir: string,
+  tenantId: string,
+  info: { mode: 'self' | 'admin'; reason: string | null; operatorSub: string },
+): Promise<number | null> {
+  const db = await getDb(dataDir);
+  const deletedAt = Date.now();
+  return db.transaction(async (tx) => {
+    const marked = await tx
+      .update(tenants)
+      .set({
+        deletedAt,
+        deletionMode: info.mode,
+        deletionReason: info.reason,
+        deletedBy: info.operatorSub,
+      })
+      .where(and(eq(tenants.id, tenantId), isNull(tenants.deletedAt)))
+      .run();
+    if (marked.rowsAffected === 0) return null;
+    await tx.update(pets).set({ status: 'paused' }).where(eq(pets.tenantId, tenantId)).run();
+    return deletedAt;
+  });
 }

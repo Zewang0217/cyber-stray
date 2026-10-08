@@ -32,7 +32,7 @@ describe('候选 API 的服务端额度与持久计量', () => {
     app = new Hono();
     app.route('/api', createPetsRoutes({ config: {
       dataDir, sessionSecret: SECRET, productMode: 'invite_beta', adoptLlmModel: 'deepseek-chat',
-      llmBudgetEnabled: true, llmBudgetYuan: { free: 0.5, pro: 2, byok: 2 }, petGenMonthlyQuota: 2,
+      llmBudgetEnabled: true, llmBudgetYuan: { free: 0.5, pro: 2, byok: 2 },
     } }));
     cookie = `${SESSION_COOKIE}=${await signSession({ sub: 'alice', tenantId: 'alice' }, SECRET)}`;
   });

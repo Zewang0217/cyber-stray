@@ -56,9 +56,6 @@ export interface ControlPlaneConfig {
   visionThinking: boolean;
   /** 领养候选 LLM 模型（起名/口头禅 3 候选；env CP_ADOPT_LLM_MODEL——DeepSeek 端点内切换） */
   adoptLlmModel: string;
-  /** 宠物 IP 生成月度配额（套/自然月；env CP_PETGEN_MONTHLY_QUOTA，默认 2） */
-  /** 历史月度配置保留兼容；当前生成门控使用固定滚动七天与 RBAC 管理员例外。 */
-  petGenMonthlyQuota: number;
   /** 生成任务处理器 tick 间隔 ms（0 = 关闭；#94） */
   petGenIntervalMs: number;
   /** 是否日记写完触发表情包生成（#96；env CP_MEME_ENABLED，缺省 true） */
@@ -97,7 +94,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     ['workerTimeoutMs', Number(env.CP_WORKER_TIMEOUT_MS ?? 10 * 60_000)],
     ['workerRetryBackoffMs', Number(env.CP_SCHEDULER_RETRY_BACKOFF_MS ?? 60_000)],
     ['workerMaxRetries', Number(env.CP_SCHEDULER_MAX_RETRIES ?? 2)],
-    ['petGenMonthlyQuota', Number(env.CP_PETGEN_MONTHLY_QUOTA ?? 2)],
     ['petGenIntervalMs', Number(env.CP_PETGEN_INTERVAL_MS ?? 5_000)],
     ['shutdownBudgetMs', Number(env.CP_SHUTDOWN_BUDGET_MS ?? 90_000)],
   ];
@@ -144,7 +140,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     visionBaseUrl: env.CP_VISION_BASE_URL ?? resolveVisionBaseUrl(visionModel),
     visionThinking: env.CP_VISION_THINKING !== 'false',
     adoptLlmModel: env.CP_ADOPT_LLM_MODEL ?? 'deepseek-chat',
-    petGenMonthlyQuota: Number(env.CP_PETGEN_MONTHLY_QUOTA ?? 2),
     petGenIntervalMs: Number(env.CP_PETGEN_INTERVAL_MS ?? 5_000),
     shutdownBudgetMs: Number(env.CP_SHUTDOWN_BUDGET_MS ?? 90_000),
     memeEnabled: env.CP_MEME_ENABLED !== 'false',
