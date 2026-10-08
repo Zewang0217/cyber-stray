@@ -29,6 +29,39 @@ DOWNLOAD_TIMEOUT = 20 * 60
 DOWNLOAD_ATTEMPTS = 5
 
 
+def network_reason(error: Exception) -> str:
+    """Describe transport failures without exposing signed URLs or their query credentials."""
+    if isinstance(error, urllib.error.HTTPError):
+        return f"HTTP {error.code}"
+    reason = str(error.reason) if isinstance(error, urllib.error.URLError) else type(error).__name__
+    reason = re.sub(r"https?://\S+", "[下载地址已隐藏]", reason)
+    return re.sub(r"(?i)(sig|token|access_token)=[^&\s]+", r"\1=[已隐藏]", reason)
+
+
+def download_size(opener, url: str, deadline: float) -> int:
+    """Retry transient bootstrap failures with the same authenticated artifact and trust checks."""
+    for attempt in range(DOWNLOAD_ATTEMPTS):
+        if time.monotonic() > deadline:
+            raise ValueError("构建产物下载超过 20 分钟，停止发布")
+        try:
+            with opener.open(urllib.request.Request(url, method="HEAD"), timeout=30) as response:
+                size = int(response.headers["Content-Length"])
+            if size <= 0:
+                raise ValueError("构建产物大小不合法")
+            return size
+        except urllib.error.HTTPError as error:
+            if error.code not in (429, 500, 502, 503, 504) or attempt == DOWNLOAD_ATTEMPTS - 1:
+                raise
+            reason = network_reason(error)
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as error:
+            if attempt == DOWNLOAD_ATTEMPTS - 1:
+                raise
+            reason = network_reason(error)
+        print(f"下载连接建立失败：{reason}，重试 {attempt + 1}/{DOWNLOAD_ATTEMPTS - 1}", flush=True)
+        time.sleep(1)
+    raise RuntimeError("下载连接重试未返回结果")
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     """Keep the GitHub token on api.github.com; only the signed URL reaches production."""
 
@@ -99,7 +132,7 @@ def download_part(url: str, proxy: str, start: int, end: int, path: Path, deadli
             failure = f"HTTP {error.code}"
         except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as error:
             # Offset counts only bytes written; interrupted reads are requested again.
-            failure = type(error).__name__
+            failure = network_reason(error)
         if offset == end + 1:
             return
         if offset > end + 1:
@@ -126,10 +159,7 @@ def download(bundle: Path) -> None:
     start = time.monotonic()
     parts = []
     try:
-        with opener.open(urllib.request.Request(url, method="HEAD"), timeout=30) as response:
-            size = int(response.headers["Content-Length"])
-        if size <= 0:
-            raise ValueError("构建产物大小不合法")
+        size = download_size(opener, url, start + DOWNLOAD_TIMEOUT)
         pool = ThreadPoolExecutor(max_workers=DOWNLOAD_CONNECTIONS)
         try:
             tasks = []
@@ -280,7 +310,7 @@ def main() -> int:
             (pack if args.action == "pack" else load)(args.bundle, refs, args.tag)
     except (ValueError, OSError, KeyError, tarfile.TarError, zipfile.BadZipFile, subprocess.SubprocessError) as error:
         if args.action in ("link", "download"):
-            detail = str(error) if isinstance(error, (ValueError, KeyError)) else type(error).__name__
+            detail = str(error) if isinstance(error, (ValueError, KeyError)) else network_reason(error)
             if isinstance(error, urllib.error.HTTPError):
                 detail = f"HTTP {error.code}"
             print(f"构建产物传输失败：{detail}（不记录短期下载凭据）", file=sys.stderr)
