@@ -102,6 +102,14 @@ if 'ps' in args:
             rejected = subprocess.run(["bash", script, "--prepare-image-bundle", name],
                                       env=env, capture_output=True, text=True)
             self.assertNotEqual(rejected.returncode, 0)
+        destination.joinpath("partial-upload").write_text("fixture")
+        wrong_owner = subprocess.run(["bash", script, "--clean-image-bundle", "cd-123-1"],
+                                     env={**env, "SUDO_UID": str(os.getuid() + 1)}, capture_output=True, text=True)
+        self.assertNotEqual(wrong_owner.returncode, 0)
+        cleaned = subprocess.run(["bash", script, "--clean-image-bundle", "cd-123-1"],
+                                 env=env, capture_output=True, text=True)
+        self.assertEqual(cleaned.returncode, 0, cleaned.stderr)
+        self.assertFalse(destination.exists())
         self.assertFalse(self.log.exists())
 
     def bundle(self):
