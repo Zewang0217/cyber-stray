@@ -11,10 +11,130 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import zipfile
+from concurrent.futures import ThreadPoolExecutor
 
 ARCHIVE = "images.tar.gz"
 MANIFEST = "release.json"
 PLATFORM = ("linux", "amd64")
+DOWNLOAD = "download.json"
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Keep the GitHub token on api.github.com; only the signed URL reaches production."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def link(bundle: Path, artifact_id: int, digest: str, proxy: str) -> None:
+    """Create private, short-lived download metadata on the runner, never exporting its token."""
+    if artifact_id <= 0 or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise ValueError("构建产物 ID 或 SHA256 不合法")
+    repository = os.environ["GITHUB_REPOSITORY"]
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("GitHub 仓库名不合法")
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repository}/actions/artifacts/{artifact_id}/zip",
+        headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                 "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+    )
+    try:
+        urllib.request.build_opener(NoRedirect()).open(request, timeout=30)
+    except urllib.error.HTTPError as error:
+        if error.code != 302:
+            raise ValueError(f"获取构建产物下载地址失败：HTTP {error.code}") from None
+        url = error.headers["Location"]
+    else:
+        raise ValueError("GitHub 未返回构建产物下载跳转")
+    validate_download_url(url)
+    print(f"::add-mask::{url}", flush=True)
+    descriptor = os.open(bundle / DOWNLOAD, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with os.fdopen(descriptor, "w") as output:
+        json.dump({"url": url, "sha256": digest, "proxy": proxy}, output)
+
+
+def validate_download_url(url: str) -> None:
+    """Only accept HTTPS artifact storage URLs; credentials are not logged or passed to a shell."""
+    if not isinstance(url, str) or any(c.isspace() for c in url):
+        raise ValueError("构建产物下载地址不合法")
+    parsed = urllib.parse.urlsplit(url)
+    host = parsed.hostname or ""
+    if (parsed.scheme != "https" or parsed.username or parsed.password or parsed.fragment
+            or not host.endswith((".blob.core.windows.net", ".actions.githubusercontent.com"))):
+        raise ValueError("构建产物下载地址必须来自 GitHub Actions 的 HTTPS 存储")
+
+
+def download_part(url: str, proxy: str, start: int, end: int, path: Path, deadline: float) -> None:
+    """Require a precise byte range; all eight requests start before the signed URL expires."""
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({"https": proxy} if proxy else {}))
+    request = urllib.request.Request(url, headers={"Range": f"bytes={start}-{end}"})
+    received = 0
+    with opener.open(request, timeout=30) as source, path.open("wb") as output:
+        if source.status != 206 or source.headers.get("Content-Range", "").split("/", 1)[0] != f"bytes {start}-{end}":
+            raise ValueError("构建产物服务器未返回请求的完整分段")
+        while chunk := source.read(1024 * 1024):
+            if time.monotonic() > deadline:
+                raise ValueError("构建产物下载超过 20 分钟，停止发布")
+            output.write(chunk)
+            received += len(chunk)
+    if received != end - start + 1:
+        raise ValueError("构建产物分段下载不完整")
+
+
+def download(bundle: Path) -> None:
+    """Fetch and verify the Actions zip, then copy only the two expected files, without extractall."""
+    metadata = json.loads((bundle / DOWNLOAD).read_text())
+    if not isinstance(metadata, dict) or set(metadata) != {"url", "sha256", "proxy"}:
+        raise ValueError("构建产物下载信息不合法")
+    url, digest, proxy = metadata["url"], metadata["sha256"], metadata["proxy"]
+    validate_download_url(url)
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise ValueError("构建产物 SHA256 不合法")
+    if not isinstance(proxy, str) or (proxy and urllib.parse.urlsplit(proxy).scheme not in ("http", "https")):
+        raise ValueError("构建产物下载代理不合法")
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({"https": proxy} if proxy else {}))
+    archive = bundle / "artifact.zip"
+    start = time.monotonic()
+    parts = []
+    try:
+        with opener.open(urllib.request.Request(url, method="HEAD"), timeout=30) as response:
+            size = int(response.headers["Content-Length"])
+        if size <= 0:
+            raise ValueError("构建产物大小不合法")
+        connections = min(8, size)
+        block = (size + connections - 1) // connections
+        with ThreadPoolExecutor(max_workers=connections) as pool:
+            tasks = []
+            for index, first in enumerate(range(0, size, block)):
+                path = bundle / f"artifact.part-{index}"
+                parts.append(path)
+                tasks.append(pool.submit(download_part, url, proxy, first, min(first + block, size) - 1,
+                                         path, start + 1200))
+            for task in tasks:
+                task.result()
+        with archive.open("wb") as output:
+            for part in parts:
+                with part.open("rb") as source:
+                    shutil.copyfileobj(source, output, length=1024 * 1024)
+        if sha256(archive) != digest:
+            raise ValueError("构建产物 ZIP SHA256 校验失败")
+        with zipfile.ZipFile(archive) as zipped:
+            if sorted(zipped.namelist()) != sorted((ARCHIVE, MANIFEST)):
+                raise ValueError("构建产物 ZIP 文件清单不合法")
+            for name in (ARCHIVE, MANIFEST):
+                with zipped.open(name) as source, (bundle / name).open("wb") as output:
+                    shutil.copyfileobj(source, output, length=1024 * 1024)
+        print(f"HTTPS 下载及 ZIP 校验完成：{size} bytes，{time.monotonic() - start:.1f}s", flush=True)
+    finally:
+        for part in parts:
+            part.unlink(missing_ok=True)
+        archive.unlink(missing_ok=True)
+        (bundle / DOWNLOAD).unlink(missing_ok=True)
 
 
 def compose_images(compose: Path, tag: str) -> list[str]:
@@ -113,18 +233,36 @@ def load(bundle: Path, refs: list[str], tag: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("pack", "load"))
+    parser.add_argument("action", choices=("pack", "load", "link", "download"))
     parser.add_argument("--bundle", type=Path, required=True)
-    parser.add_argument("--compose", type=Path, required=True)
-    parser.add_argument("--tag", required=True)
+    parser.add_argument("--compose", type=Path)
+    parser.add_argument("--tag")
+    parser.add_argument("--artifact-id", type=int)
+    parser.add_argument("--artifact-digest")
+    parser.add_argument("--download-proxy", default="")
     args = parser.parse_args()
     try:
-        refs = compose_images(args.compose, args.tag)
-        (pack if args.action == "pack" else load)(args.bundle, refs, args.tag)
-    except (ValueError, OSError, KeyError, tarfile.TarError, subprocess.SubprocessError) as error:
+        if args.action == "link":
+            if args.artifact_id is None or args.artifact_digest is None:
+                parser.error("link 必须提供 --artifact-id / --artifact-digest")
+            link(args.bundle, args.artifact_id, args.artifact_digest, args.download_proxy)
+        elif args.action == "download":
+            download(args.bundle)
+        else:
+            if args.compose is None or args.tag is None:
+                parser.error("pack/load 必须提供 --compose / --tag")
+            refs = compose_images(args.compose, args.tag)
+            (pack if args.action == "pack" else load)(args.bundle, refs, args.tag)
+    except (ValueError, OSError, KeyError, tarfile.TarError, zipfile.BadZipFile, subprocess.SubprocessError) as error:
+        if args.action in ("link", "download"):
+            detail = str(error) if isinstance(error, (ValueError, KeyError)) else type(error).__name__
+            if isinstance(error, urllib.error.HTTPError):
+                detail = f"HTTP {error.code}"
+            print(f"构建产物传输失败：{detail}（不记录短期下载凭据）", file=sys.stderr)
+            return 1
         print(f"镜像转运失败：{error}", file=sys.stderr)
         return 1
-    print(f"镜像转运 {args.action} 完成：tag={args.tag}，{len(refs)} 个镜像")
+    print(f"镜像转运 {args.action} 完成")
     return 0
 
 

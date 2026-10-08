@@ -29,11 +29,26 @@ IMAGE_BUNDLE=""
 UP_PULL_ARGS=()
 
 # 沿用现有 sudoers 唯一入口；不要求部署用户获得 install/chown 的额外 root 权限。
-if [ "${1:-}" = --prepare-image-bundle ]; then
+if [ "${1:-}" = --prepare-image-bundle ] || [ "${1:-}" = --clean-image-bundle ]; then
   [ "$#" -eq 2 ] && [[ "$2" =~ ^cd-[0-9]+-[0-9]+$ ]] || { echo "非法镜像暂存任务名" >&2; exit 2; }
   [[ "${SUDO_UID:-}" =~ ^[0-9]+$ && "${SUDO_GID:-}" =~ ^[0-9]+$ ]] || { echo "必须通过 sudo 准备镜像暂存目录" >&2; exit 2; }
   bundle_dir="/opt/cyber-stray/scratch/$2"
-  [ ! -e "$bundle_dir" ] || { echo "镜像暂存目录已存在：$bundle_dir" >&2; exit 1; }
+  if [ "$1" = --clean-image-bundle ]; then
+    python3 - "$bundle_dir" "$SUDO_UID" <<'CLEAN_BUNDLE'
+from pathlib import Path
+import shutil
+import sys
+path = Path(sys.argv[1])
+if path.is_symlink():
+    raise ValueError("镜像暂存目录不能是符号链接")
+if path.exists():
+    if path.stat().st_uid != int(sys.argv[2]):
+        raise ValueError("拒绝清理其他部署用户的镜像暂存目录")
+    shutil.rmtree(path)
+CLEAN_BUNDLE
+    exit 0
+  fi
+  [ ! -e "$bundle_dir" ] && [ ! -L "$bundle_dir" ] || { echo "镜像暂存目录已存在：$bundle_dir" >&2; exit 1; }
   install -d /opt/cyber-stray/scratch
   install -d -m 700 -o "$SUDO_UID" -g "$SUDO_GID" "$bundle_dir"
   exit 0
