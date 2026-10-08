@@ -51,7 +51,7 @@ describe("deriveStreetView", () => {
     expect(nap.anim).toBe("sleep");
     // 睡眠期优先于打盹（作息窗口内）
     const pet = { ...PET, sleepStart: 0, sleepEnd: 23 };
-    const nightNap = deriveStreetView(state({ energy: 10 }), pet, new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 2), false);
+    const nightNap = deriveStreetView(state({ energy: 10 }), pet, new Date('2026-10-08T02:00:00+08:00'), false);
     expect(nightNap.sleeping).toBe(true);
     expect(nightNap.napping).toBe(false);
   });
@@ -64,9 +64,8 @@ describe("deriveStreetView", () => {
 
   it("精力低于阈值 → 饿演出；睡眠窗口 → sleep", () => {
     expect(deriveStreetView(state({ energy: HUNGRY_ENERGY_THRESHOLD - 1 }), PET, new Date(), false).hungry).toBe(true);
-    const night = new Date();
     const pet = { ...PET, sleepStart: 0, sleepEnd: 23 };
-    const v = deriveStreetView(state({}), pet, new Date(night.getFullYear(), night.getMonth(), night.getDate(), 2), false);
+    const v = deriveStreetView(state({}), pet, new Date('2026-10-08T02:00:00+08:00'), false);
     expect(v.sleeping).toBe(true);
     expect(v.anim).toBe("sleep");
     expect(v.away).toBe(false);

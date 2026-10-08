@@ -3,7 +3,7 @@
  * 为什么独立：状态→动画/墨条的映射是街角的全部逻辑，纯函数可表驱动测试；
  * 页面只做 SSE→输入的接线。
  */
-import { isSleeping } from "@cyber-stray/shared/sleep";
+import { isSleeping, sleepScheduleHour } from "@cyber-stray/shared/sleep";
 import type { AgentStateSnapshot } from "@cyber-stray/shared/agent-state";
 import type { PetMood } from "@cyber-stray/shared/pet-stats";
 
@@ -27,6 +27,8 @@ export interface StreetView {
   away: boolean;
   hungry: boolean;
   sleeping: boolean;
+  /** 今日预算休息与作息睡眠分别展示；预算不禁止轻互动。 */
+  budgetResting: boolean;
   /** 数值联动（注入值为真相源；null 不联动）：无聊 ≥ 80 的 grumpy 常态演出
    * （失败态是瞬时覆盖，见 StreetCorner） */
   bored: boolean;
@@ -58,7 +60,7 @@ export function deriveStreetView(
   const temper = state?.temper ?? null;
   // 预算耗尽 = 租户侧「宠物在睡觉」，共用睡眠演出（夜幕 + sleep 帧 +
   // 拍睡台词），不造第二种睡觉视觉；作息睡眠同样源于「这轮不出门」
-  const sleeping = isSleeping(now.getHours(), pet.sleepStart, pet.sleepEnd) || pet.budgetPaused === true;
+  const sleeping = isSleeping(sleepScheduleHour(now), pet.sleepStart, pet.sleepEnd) || pet.budgetPaused === true;
   // state 缺失 = 未知，不触发饿演出（拿 null 冒充健康/饥饿都是编造）
   const hungry = energy !== null && energy < HUNGRY_ENERGY_THRESHOLD;
   // 数值常态演出优先级：游荡 > 睡眠 > 打盹 > 无聊 grumpy > idle；
@@ -85,6 +87,7 @@ export function deriveStreetView(
     away: wandering,
     hungry,
     sleeping,
+    budgetResting: pet.budgetPaused === true && !isSleeping(sleepScheduleHour(now), pet.sleepStart, pet.sleepEnd),
     bars: { energy, boredom, temper },
     mood: state?.mood ?? null,
     bored,

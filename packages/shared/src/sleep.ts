@@ -5,8 +5,8 @@
  * 跨午夜（start > end）= [start, 24) ∪ [0, end)；
  * 任一端 null = 未设置作息 = 永不睡眠；start === end = 空区间（API 层已拒绝，此处防御）。
  *
- * 时区语义：输入是调用方本地小时——调度器传服务器时区（调度口径），
- * 前端传浏览器时区（展示口径）。多时区部署下两者可能不一致，属有意取舍。
+ * 作息统一使用北京时间；调用方通过 sleepScheduleHour 取得小时，避免容器
+ * UTC 与浏览器本地时区造成同一只宠物在前后端的睡眠状态不同。
  */
 export function isSleeping(
   localHour: number,
@@ -17,4 +17,14 @@ export function isSleeping(
   if (sleepStart <= sleepEnd) return localHour >= sleepStart && localHour < sleepEnd;
   // 跨午夜：[start, 24) ∪ [0, end)
   return localHour >= sleepStart || localHour < sleepEnd;
+}
+
+export const PET_SLEEP_TIME_ZONE = 'Asia/Shanghai';
+const sleepHourFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: PET_SLEEP_TIME_ZONE, hour: '2-digit', hourCycle: 'h23',
+});
+
+/** 返回统一作息时区的小时，不依赖进程 TZ 或浏览器所在地。 */
+export function sleepScheduleHour(now: Date): number {
+  return Number(sleepHourFormatter.format(now));
 }
