@@ -9,7 +9,7 @@ export interface TenantQuotaOverrides {
   llmBudgetYuan?: number;
   /** petgen 滚动七天套数（0 = 不限） */
   petgenWeeklyLimit?: number;
-  /** 每日推送上限（0 = 不再推送） */
+  /** 每日推送上限（0 = 不限；agent speak.ts 日限分支为 > 0 才检查，与其余键同语义） */
   pushesPerDay?: number;
 }
 
