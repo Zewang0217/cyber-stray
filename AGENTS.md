@@ -78,9 +78,10 @@ agent 内核（`packages/agent/src/`）= 三层 + hook：
 
 ## Git
 
-- **一切改动先进 develop**：功能 / 修复 / hotfix / 发版收口一律从 develop 切分支 → PR 目标 **develop**（CI 只对 base=develop 的 PR 跑质量门）。**禁止直推任何远端分支**——尤其发版 PR 存续期的 release 分支（#306 期间直推的提交差点被 `-s ours` 收口静默回滚）。
-- `main` 只接受 **develop**（或自 develop 切出的 release 分支）的发布 PR，squash 合并（ADR-0009）。
-- **发版收口（必做）**：发布 PR 合并进 main 后，立即在 develop 侧 `git merge -s ours origin/main`——main 的 squash 提交与 develop 无共同祖先，不收口则下次发版 PR 全量冲突（#306 实例：162 文件）。校验：`git diff origin/main origin/develop --stat` 应只剩 develop 的领先内容。
+- **一切改动先进 develop**：功能 / 修复 / hotfix 一律从最新 develop 切短期分支 → PR 目标 **develop**，用 **squash** 合并，一个 PR 对应一个逻辑单元；合并后停止复用该分支。CI 对 develop / main 的 PR 跑质量门。**禁止直推任何远端分支**。
+- **发布保留历史**：`main` 只接受 **develop**（或自 develop 切出的 release 分支）的发布 PR，用普通 **merge commit** 合并；main / develop 之间不 squash、不 rebase。原因与首次切换说明见 [ADR-0009](docs/adr/0009-develop-integration-pr-release.md)。
+- **发布校验与同步**：合并后确认 `git merge-base --is-ancestor <本次发布的 develop SHA> origin/main` 成功，`git diff origin/main origin/develop --stat` 只剩 develop 的领先内容。main 有独有改动时，经 PR 普通 merge 回 develop；只有发布 merge commit 时无需反向同步。停用 `git merge -s ours` 收口，不改写已发布历史。
+- **合并说明**：标题采用 PR 标题，正文采用 PR 描述，只写本次改动、验证与必要的发布说明，不拼接全部历史提交信息。
 - 开发前必拉：`git fetch origin`；develop 有新改动则 `git pull --ff-only origin develop`（或 rebase 到最新 develop）。
 - Commit 用**中文** + Conventional Commits（`feat` / `fix` / `refactor` / `chore` / `docs`）；一个提交 = 一个逻辑单元（按功能点，不按文件拆）。
 - 分支命名：`feat/xxx` / `fix/xxx` / `refactor/xxx` / `chore/xxx`。

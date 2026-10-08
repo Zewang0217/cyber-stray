@@ -10,6 +10,11 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { admins } from '../db/schema.js';
 
+/** 管理员权限统一来源：环境引导名单与持久化 RBAC，不根据用户名推断。 */
+export async function isAdminSub(dataDir: string, sub: string, bootstrapSubs: readonly string[]): Promise<boolean> {
+  return bootstrapSubs.includes(sub) || Boolean(await findAdminBySub(dataDir, sub));
+}
+
 export async function findAdminBySub(dataDir: string, sub: string) {
   const db = await getDb(dataDir);
   return db.select().from(admins).where(eq(admins.sub, sub)).get();

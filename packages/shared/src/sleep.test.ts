@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isSleeping } from './sleep';
+import { isSleeping, sleepScheduleHour } from './sleep';
 
 describe('isSleeping（作息睡眠判定）', () => {
   it('未设置作息（null）= 永不睡眠', () => {
@@ -44,4 +44,9 @@ describe('isSleeping（作息睡眠判定）', () => {
     expect(isSleeping(9, 9, 9)).toBe(false);
     expect(isSleeping(0, 0, 0)).toBe(false);
   });
+});
+
+it('作息固定北京时间，不受服务器或浏览器所在时区影响', () => {
+  expect(sleepScheduleHour(new Date('2026-10-08T14:00:00Z'))).toBe(22);
+  expect(sleepScheduleHour(new Date('2026-10-08T23:00:00Z'))).toBe(7);
 });

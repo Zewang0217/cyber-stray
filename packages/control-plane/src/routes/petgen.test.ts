@@ -22,7 +22,7 @@ import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { getOrCreateTenant } from '../infra/tenant.js';
 import { signSession, SESSION_COOKIE } from '../auth/session.js';
-import { petGenTasks, tenants } from '../db/schema.js';
+import { admins, petGenTasks, tenants, userTenants } from '../db/schema.js';
 import { PET_STATE_IDS } from '@cyber-stray/shared/pet';
 import { qcInfraFailureMessage } from '../domain/petgen-failure.js';
 import { createPetGenRoutes } from './petgen.js';
@@ -92,7 +92,7 @@ describe('petgen 路由（#94）', () => {
     expect(quotaBody.data.available).toBe(false);
   });
 
-  it('邀请内测存量 free 可以定制宠物，保留原 Pro 月度配额', async () => {
+  it('邀请内测存量 free 可以定制宠物，使用七天生成额度', async () => {
     const beta = new Hono().route('/api/petgen', createPetGenRoutes({
       config: { dataDir, sessionSecret: SECRET, petGenMonthlyQuota: 2, productMode: 'invite_beta' },
     }));
@@ -119,8 +119,8 @@ describe('petgen 路由（#94）', () => {
     expect(row?.status).toBe('spec_submitted');
     const quota = await app.request(await authed('http://x/api/petgen/quota'));
     const quotaBody = (await quota.json()) as { data: { used: number; remaining: number; available: boolean; resetAt: string } };
-    expect(quotaBody.data).toMatchObject({ used: 0, remaining: 2, available: true });
-    expect(quotaBody.data.resetAt).toMatch(/^\d{4}-\d{2}$/);
+    expect(quotaBody.data).toMatchObject({ used: 0, remaining: 1, available: true });
+    expect(quotaBody.data.resetAt).toBeNull();
   });
 
   it('并发拒绝：租户已有在飞任务 → 提交 409（防 nextDueTask 永久互卡）', async () => {
@@ -275,7 +275,7 @@ describe('petgen 路由（#94）', () => {
     }
   });
 
-  it('配额超限：2 套 done 后提交 429 + 剩余 0；失败任务不占配额', async () => {
+  it('七天内一套成功即限额；失败不占次数', async () => {
     await setPlan('alice', 'pro');
     const db = await getDb(dataDir);
     const now = Date.now();
@@ -286,12 +286,45 @@ describe('petgen 路由（#94）', () => {
     const res = await app.request(await authed('http://x/api/petgen/tasks', { method: 'POST', body: JSON.stringify(SPEC) }));
     expect(res.status).toBe(429);
     const body = (await res.json()) as { error: string; data: { remaining: number; limit: number } };
-    expect(body.error).toContain('配额');
+    expect(body.error).toContain('每七天');
     expect(body.data.remaining).toBe(0);
-    // 失败任务不占配额：1 done + 1 failed → 仍可提交
-    await db.update(petGenTasks).set({ status: 'failed' }).where(eq(petGenTasks.id, 'd2')).run();
+    // 改为两条失败记录后可提交；只有成功交付扣次数
+    await db.update(petGenTasks).set({ status: 'failed' }).where(eq(petGenTasks.tenantId, 'alice')).run();
     const ok = await app.request(await authed('http://x/api/petgen/tasks', { method: 'POST', body: JSON.stringify(SPEC) }));
     expect(ok.status).toBe(201);
+  });
+
+  it.each(['bootstrap', 'rbac'])('管理员 %s 不受周额度限制，普通账号仍不能绕过', async (source) => {
+    await setPlan('alice', 'pro');
+    const db = await getDb(dataDir);
+    if (source === 'rbac') await db.insert(admins).values({ sub: 'alice', grantedBy: 'test' }).run();
+    await db.insert(petGenTasks).values({ id: 'admin-done', tenantId: 'alice', specText: '猫', status: 'done', completedAt: Date.now() }).run();
+    const adminApp = new Hono().route('/api/petgen', createPetGenRoutes({
+      config: { dataDir, sessionSecret: SECRET, productMode: 'invite_beta', petGenMonthlyQuota: 2,
+        adminSubs: source === 'bootstrap' ? ['alice'] : [] },
+    }));
+    const quota = await adminApp.request(await authed('http://x/api/petgen/quota'));
+    expect((await quota.json()).data).toMatchObject({ unlimited: true, limit: null, remaining: null, resetAt: null });
+    expect((await adminApp.request(await authed('http://x/api/petgen/tasks', { method: 'POST', body: JSON.stringify(SPEC) }))).status).toBe(201);
+  });
+
+  it('管理员例外取登录用户身份，不能由租户所有者身份冒领', async () => {
+    const db = await getDb(dataDir);
+    await db.insert(userTenants).values({ userId: 'bob', tenantId: 'alice', role: 'owner' }).run();
+    const scoped = new Hono().route('/api/petgen', createPetGenRoutes({
+      config: { dataDir, sessionSecret: SECRET, productMode: 'invite_beta', petGenMonthlyQuota: 2, adminSubs: ['alice'] },
+    }));
+    const quota = await scoped.request(await authed('http://x/api/petgen/quota', {}, { sub: 'bob', tenantId: 'alice' }));
+    expect((await quota.json()).data).toMatchObject({ unlimited: false, limit: 1 });
+  });
+
+  it('旧待确认任务不能绕过七天限制；新提交也不能堆积待确认概念图', async () => {
+    await setPlan('alice', 'pro');
+    const db = await getDb(dataDir);
+    await db.insert(petGenTasks).values({ id: 'old-concept', tenantId: 'alice', specText: '猫', status: 'awaiting_confirmation' }).run();
+    expect((await app.request(await authed('http://x/api/petgen/tasks', { method: 'POST', body: JSON.stringify(SPEC) }))).status).toBe(409);
+    await db.insert(petGenTasks).values({ id: 'recent-done', tenantId: 'alice', specText: '猫', status: 'done', completedAt: Date.now() }).run();
+    expect((await app.request(await authed('http://x/api/petgen/tasks/old-concept/confirm', { method: 'POST' }))).status).toBe(429);
   });
 
   it('列表 + 租户隔离：alice 看不到 bob 的任务；他人任务 404', async () => {

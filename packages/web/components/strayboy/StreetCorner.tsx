@@ -313,7 +313,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
     setAttract(false);
     setTheater(null);
     vibrate(15);
-    if (view.sleeping) {
+    if (view.sleeping && !view.budgetResting) {
       setDialog(SLEEP_LINE);
       return;
     }
@@ -332,9 +332,9 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
     }
     setOverrideAnim(reaction);
     setTimeout(() => setOverrideAnim(null), PAT_ANIM_MS);
-  }, [view.sleeping, onPat, reset]);
+  }, [view.sleeping, view.budgetResting, onPat, reset]);
 
-  const onStreet = !view.away && !view.sleeping;
+  const onStreet = !view.away && (!view.sleeping || view.budgetResting);
 
   // #218 失败态 = 瞬时覆盖：连续失败 ≥3 触发一段 grumpy（数值态 bored 才是常态，
   // 二者分离——失败过几天不等于从此臭脸）
@@ -408,6 +408,12 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
           </span>
         )}
       </PixelStage>
+      {view.budgetResting && (
+        <p role="status" className="mt-2 text-[12px] leading-relaxed text-[var(--curb)]">
+          今天的探索已结束，明天继续。休息时也可以拍拍我。
+        </p>
+      )}
+      <a href="/pet/customize" className="mt-2 inline-block text-[12px] text-[var(--hi)] underline">改造屋 · 查看全部动作</a>
       </div>
       {/* 霓虹换牌（delight B13）：图鉴 No.1 更替时短暂换文案 */}
       {neonTopic && (

@@ -45,7 +45,7 @@ import {
 import type { PetStats, WanderStatsReport } from '@cyber-stray/shared/pet-stats';
 import type { PersonalityId } from '@cyber-stray/shared';
 import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
-import { isSleeping } from '@cyber-stray/shared/sleep';
+import { isSleeping, sleepScheduleHour } from '@cyber-stray/shared/sleep';
 import { DIARY_FALLBACK_HOUR, shouldGenerateDiary } from './diary-schedule.js';
 import type { DiaryRunner } from './diary-runner.js';
 import { planBudgetYuan, todayLlmCostYuan, type LlmBudgetConfig } from './budget.js';
@@ -279,9 +279,8 @@ export class Scheduler {
     // S14：套餐在账号层（tenants.plan）——一次拉租户 plan 映射，避免 N+1
     const tenantRows = await dbh.select().from(tenants).all();
     const planByTenant = new Map(tenantRows.map((t) => [t.id, resolveEntitlements(t.plan, config.productMode).plan]));
-    // #91 真实作息：服务器本地小时（与 pushWindow 语义对齐——窗口小时在
-    // 消费进程本地时区判定）；睡眠中不拉 worker，醒来后下一 tick 自动恢复
-    const localHour = new Date(nowMs).getHours();
+    // 作息与前端统一北京时间，不依赖生产容器的 UTC 默认时区。
+    const localHour = sleepScheduleHour(new Date(nowMs));
     // Due diaries take the shared slots before new wandering, so a busy 23:00 tick cannot starve them.
     this.diaryClaimedThisTick.clear();
     await this.runDiaryTriggers(rows, planByTenant, dataDir, nowMs, localHour, todayFor(nowMs));

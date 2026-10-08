@@ -7,6 +7,7 @@ import CustomizePage from './page';
 
 const usePetGenMock = vi.hoisted(() => vi.fn());
 vi.mock('@/hooks/usePetGen', () => ({ usePetGen: usePetGenMock }));
+vi.mock('@/components/strayboy/PetAppearancePreview', () => ({ PetAppearancePreview: () => null }));
 vi.mock('@/components/strayboy/BootFrame', () => ({ BootFrame: () => null }));
 
 const failedTask: PetGenTaskView = {

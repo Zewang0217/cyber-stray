@@ -23,7 +23,7 @@ export type { PetGenTaskStatus, PetSpec, StateQcResult };
  * - 改造屋经典路径：布局/切分失败按 quad(2x2×3) → nine(3x3) → per(逐状态单帧)
  *   降级；内容 QC 失败直接逐态修复，保留已通过的图。
  */
-export type GenStrategy = 'sheet' | 'strip' | 'quad' | 'nine' | 'per';
+export type GenStrategy = 'adopt' | 'sheet' | 'strip' | 'quad' | 'nine' | 'per';
 
 /** 领养精灵图策略阶梯（sheet 失败降级 strip：行内一致性仍在单图内保证） */
 export const SHEET_STRATEGY_LADDER: readonly GenStrategy[] = ['sheet', 'strip'];

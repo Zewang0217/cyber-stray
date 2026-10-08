@@ -13,7 +13,7 @@ import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { getOrCreateTenant } from '../infra/tenant.js';
 import { petGenTasks } from '../db/schema.js';
-import { monthStart, nextMonthStart, petGenQuota } from './quota.js';
+import { monthStart, nextMonthStart, petGenQuota, petGenWeeklyQuota } from './quota.js';
 
 describe('quota 月边界', () => {
   it('monthStart：当月 1 日 00:00（本地时区）', () => {
@@ -82,4 +82,22 @@ describe('petGenQuota（DB 计数）', () => {
     const q = await petGenQuota(db, 'alice', 2, now);
     expect(q.remaining).toBe(0);
   });
+  it('滚动七天：失败不占次数，满七天立即恢复；月底不会提前恢复', async () => {
+    const db = await getDb(dataDir);
+    const completed = Date.parse('2026-09-30T15:00:00Z');
+    await db.insert(petGenTasks).values([
+      { id: 'weekly', tenantId: 'alice', specText: '猫', status: 'done', completedAt: completed },
+      { id: 'failed-weekly', tenantId: 'alice', specText: '猫', status: 'failed', completedAt: completed + 1 },
+      { id: 'other-weekly', tenantId: 'bob', specText: '猫', status: 'done', completedAt: completed + 1 },
+    ]).run();
+    const reset = completed + 7 * 86_400_000;
+    expect(await petGenWeeklyQuota(db, 'alice', false, reset - 1)).toMatchObject({
+      used: 1, limit: 1, remaining: 0, unlimited: false, resetAt: new Date(reset).toISOString(),
+    });
+    expect(await petGenWeeklyQuota(db, 'alice', false, reset)).toMatchObject({ used: 0, remaining: 1, resetAt: null });
+    expect(await petGenWeeklyQuota(db, 'alice', true, reset - 1)).toMatchObject({
+      unlimited: true, limit: null, remaining: null, resetAt: null,
+    });
+  });
+
 });
