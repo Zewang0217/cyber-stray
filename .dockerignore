@@ -10,3 +10,5 @@ data
 *.tar.gz
 packages/web/.next
 packages/web/dist
+scratch
+artifacts

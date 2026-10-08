@@ -3,7 +3,8 @@
 单机容器化部署（ADR-0008 / ADR-0015）：compose 编排五个容器——control-plane
 （控制面 + agent，worker 是短命子进程）、web（Next.js standalone）、site（官网
 静态镜像）、Casdoor（官方镜像 + SQLite）、nginx（HTTPS 模式的统一入口）。构建在
-GitHub Actions 完成，生产机只拉镜像、跑容器。
+GitHub Actions 完成，runner 导出五个服务的镜像包，通过 SSH 传送到生产机；
+生产校验、导入后只用本地镜像启动，不访问 GHCR 或 Docker Hub。
 
 本目录是部署配置的权威版本，发布流水线每次同步到生产机 `/opt/cyber-stray/deploy/`。
 
@@ -12,7 +13,8 @@ GitHub Actions 完成，生产机只拉镜像、跑容器。
 | `compose.yaml` | 全栈编排（镜像 tag `${IMAGE_TAG:-sha}`） |
 | `Dockerfile.app` / `Dockerfile.web` | 应用镜像 / web 镜像 |
 | `Dockerfile.site` / `nginx.site.conf` | 官网镜像（静态导出 + nginx）/ 容器内 nginx；CTA 地址构建期 `NEXT_PUBLIC_APP_URL` 注入（流水线取仓库 variable `APP_URL`） |
-| `container-update.sh` | 生产机更新：拉镜像 → 起容器 → 同步 casdoor 配置 → 健康门 → 镜像清理 |
+| `container-update.sh` | 生产机更新：预检 → 校验导入镜像包 → 起容器 → 健康门 → 镜像清理 |
+| `image-bundle.py` | runner 打包 / 生产导入的共用校验器：绑定 tag、Compose 镜像清单、SHA256 与 linux/amd64 |
 | `casdoor/app.conf` | Casdoor 服务配置；`container-update.sh` 比对内容，有变化才覆盖到 `/opt/cyber-stray/casdoor/conf/` 并重启 |
 | `backup.sh` / `restore.sh` | 备份 / 恢复 |
 | `nginx/cyber-stray.conf` | 生产 HTTPS ingress：HTTP 跳转、apex 官网、app 伴侣端、auth 登录 |
@@ -73,7 +75,7 @@ GitHub 仓库变量：`DEPLOY_MODE=http_ip`、`PUBLIC_IP=117.72.100.212`、`APP_
 
 ```bash
 python3 check-production.py --mode http_ip --public-ip 117.72.100.212
-sudo ./container-update.sh --tag <commit-sha> --mode http_ip --public-ip 117.72.100.212
+sudo ./container-update.sh --tag <commit-sha> --mode http_ip --public-ip 117.72.100.212 --image-bundle /opt/cyber-stray/scratch/cd-<run-id>-<attempt>
 docker compose -f compose.yaml -f compose.http-ip.yaml ps
 ```
 
@@ -90,9 +92,22 @@ SaaS 外部浏览器 CLI 暂停开放，搜索及安全网页阅读保持可用�
 ## 发布 / 回滚
 
 - 发布：develop → main 的 PR，merge 触发 `deploy.yml`：质量门 → 构建推送镜像
-  （tag = commit sha）→ 同步本目录到生产机 → `container-update.sh`。
+  （tag = commit sha）→ runner 拉取并导出全部 Compose 服务镜像 → SSH 同步配置与镜像包 → `container-update.sh --image-bundle <目录>`。
+- 镜像包包含 `images.tar.gz` 和 `release.json`；生产先验证环境，再验证发布 tag、
+  Compose 镜像清单、整包 SHA256 和包内 tag 清单。`docker load` 成功且每个 tag 的
+  平台为 linux/amd64 后才落位配置，使用 `compose up --pull never` 重建容器。
+  缺包、损坏、版本不符或导入失败均明确失败，不切换到 registry 路径。
+- GHCR 继续保存历史应用镜像；只有 Actions runner 访问 registry。
+  Casdoor、nginx 镜像也由 runner 转运，生产无需全局 Docker 代理来完成发布。
+  镜像包每次全量传送；单机阶段以减少生产外部依赖为优先。
+- SSH 私钥、Docker 登录配置和镜像包只放 runner 的 `scratch/tmp/`；生产暂存于
+  `/opt/cyber-stray/scratch/cd-<run-id>-<attempt>/`，成功或失败后均有清理步骤。
+  暂存目录通过既有 sudo 入口 `container-update.sh --prepare-image-bundle cd-<run-id>-<attempt>`
+  创建，仅接受数字任务名，属主取 sudo 调用者且权限为 700，无需扩展 sudoers。
+  若服务器失联导致远程清理失败，CD 明确报错，恢复连接后清理该次目录。
+- 手工不传 `--image-bundle` 时仍显式使用 registry 拉取路径；这不是自动 CD 的降级路径。
 - 回滚：把 `compose.yaml` 的 `IMAGE_TAG:-sha` 占位改成旧 sha，合并 main 重发；
-  流水线检测到非占位 tag 时跳过构建、只拉取部署。
+  流水线检测到非占位 tag 时跳过构建，由 runner 拉取该版本，再打包转运、校验部署。
 - 部署成功判定：容器 healthcheck 全绿 + 内部服务及所选模式的入口可达；HTTPS 模式验证三个域名，IP 模式验证 IP Host 的登录入口；
   任一不健康则部署失败并保留现场。
 
