@@ -410,6 +410,37 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     expect(json.data.summary.totalLlmTokens).toBe(200); // 20 日的文件被排除
   });
 
+  it('GET /api/admin/usage：单租户账本闩锁不炸全表，故障行显式标记且不计入汇总', async () => {
+    const dir = join(tenantDataDir(dataDir, 'tenant-a'), 'usage');
+    mkdirSync(dir, { recursive: true });
+    const today = new Date();
+    const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    writeFileSync(
+      join(dir, `usage-${date}.jsonl`),
+      JSON.stringify({ timestamp: '2026-08-25T01:00:00.000Z', tenantId: 'tenant-a', kind: 'llm', model: 'deepseek-chat', inputTokens: 1_000_000, outputTokens: 0 }) + '\n',
+    );
+    // tenant-b 落记账闩锁（历史记账故障未清）——修复前会让整个报表 500
+    writeFileSync(
+      join(tenantDataDir(dataDir, 'tenant-b'), 'usage-accounting-block.json'),
+      JSON.stringify({ at: '2026-10-08T00:00:00.000Z', reason: '记账故障' }),
+    );
+
+    const res = await app.request(await authed('http://x/api/admin/usage'));
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      data: {
+        summary: { totalLlmTokens: number; ledgerErrors: number };
+        perTenant: Array<{ tenantId: string; ledgerError: string | null }>;
+        recent: Array<Record<string, unknown>>;
+      };
+    };
+    expect(json.data.summary.totalLlmTokens).toBe(1_000_000); // 只计健康的 tenant-a
+    expect(json.data.summary.ledgerErrors).toBe(1);
+    const b = json.data.perTenant.find((p) => p.tenantId === 'tenant-b');
+    expect(b?.ledgerError).toContain('记账故障');
+    expect(json.data.recent).toHaveLength(1); // 故障租户明细不进入 recent
+  });
+
   it('GET /api/admin/usage：非法日期 → 400；非管理员 → 403', async () => {
     const bad = await app.request(await authed('http://x/api/admin/usage?from=abc'));
     expect(bad.status).toBe(400);

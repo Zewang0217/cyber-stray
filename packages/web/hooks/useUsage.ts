@@ -8,6 +8,8 @@ export interface UsageSummary {
   totalLlmTokens: number;
   totalImages: number;
   totalVisionQc: number;
+  /** 账本故障租户数（闩锁/脏行/未知模型单价；其用量未计入汇总，行内有标记） */
+  ledgerErrors: number;
 }
 
 export interface TenantUsage extends EffectiveEntitlements {
@@ -21,6 +23,8 @@ export interface TenantUsage extends EffectiveEntitlements {
   llmCostToday: number;
   /** #265 每日预算上限（¥）；null = 未启用/该套餐不限 */
   llmBudgetYuan: number | null;
+  /** 非空 = 该租户账本故障（数值列无效，未计入汇总） */
+  ledgerError: string | null;
   lastActive: string | null;
 }
 
