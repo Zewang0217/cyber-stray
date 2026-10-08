@@ -31,6 +31,14 @@ function matcherRe(): RegExp {
 }
 
 describe('proxy 登录墙（函数体：cookie 判定 + 素材直通）', () => {
+  it('街景静态图片可匿名读取，相邻非素材路径仍受登录墙保护', () => {
+    for (const file of ['day', 'night', 'planter']) {
+      expect(proxy(req(`/scenes/street-v1/${file}.webp`)).headers.get('location')).toBeNull();
+    }
+    for (const path of ['/scenes/street-v1/editor', '/scenes/street-v1/private.json', '/scenes/street-v1/night.webp/secret']) {
+      expect(new URL(proxy(req(path)).headers.get('location')!).pathname).toBe('/login');
+    }
+  });
   it('访客打开管理员根路径邀请链接，首次登录仍携带原令牌', () => {
     // CP admin 路由测试验证生产端生成此格式；Web 消费方保持独立构建。
     const token = '0123456789abcdef'.repeat(2);

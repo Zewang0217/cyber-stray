@@ -63,6 +63,26 @@ afterEach(async () => {
 });
 
 describe('StreetCorner 自定义素材接线（真实 hooks / 状态机 / 播放器）', () => {
+  it('首次进入不会在 15 秒后误入待机；超过 5 分钟无交互才进入', async () => {
+    await act(async () => root.render(<StreetCorner contract={contract} />));
+    await act(async () => vi.advanceTimersByTime(15_000));
+    expect(container.textContent).not.toContain('STREET MODE');
+    await act(async () => vi.advanceTimersByTime(300_000));
+    expect(container.textContent).toContain('STREET MODE');
+  });
+
+  it('夜晚清醒时显示夜街，白天预算休息时仍是日景，光照不改变真实宠物状态', async () => {
+    vi.setSystemTime(new Date('2026-10-08T22:00:00'));
+    await act(async () => root.render(<StreetCorner contract={contract} />));
+    expect(container.querySelector('[aria-label="街角场景"]')?.getAttribute('data-light')).toBe('night');
+    expect(petImage()?.src).toContain('/idle.png?');
+    vi.setSystemTime(new Date('2026-10-09T12:00:00'));
+    await act(async () => vi.advanceTimersByTime(30_000));
+    await event('budget_exhausted', 100);
+    expect(container.querySelector('[aria-label="街角场景"]')?.getAttribute('data-light')).toBe('day');
+    expect(container.querySelectorAll('[data-scene-art]')).toHaveLength(1);
+    expect(petImage()?.src).toContain('/sleep.png?');
+  });
   it('拍拍播放经典 joy，低精力播放 sleep，睡眠期拍拍不打断；待机画面也用自定义 walk', async () => {
     window.localStorage.setItem('sb_coat', 'black');
     await act(async () => root.render(<StreetCorner contract={contract} />));
