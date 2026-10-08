@@ -150,6 +150,36 @@ class ImageBundleTest(unittest.TestCase):
                 self.assertFalse((self.path / bundle.DOWNLOAD).exists())
                 self.assertFalse((self.path / "artifact.zip").exists())
 
+    def test_interrupted_range_resumes_at_last_written_byte(self):
+        requests = []
+        def response(request, **kwargs):
+            first, last = map(int, request.get_header("Range").removeprefix("bytes=").split("-"))
+            requests.append((first, last))
+            result = io.BytesIO(b"abc" if first == 0 else b"def")
+            result.status = 206
+            result.headers = {"Content-Range": f"bytes {first}-{last}/6"}
+            return result
+        part = self.path / "part"
+        with patch.object(bundle.urllib.request, "build_opener") as opener, patch.object(bundle.time, "sleep"):
+            opener.return_value.open.side_effect = response
+            bundle.download_part("https://example.blob.core.windows.net/a", "", 0, 5, part, float("inf"))
+        self.assertEqual(requests, [(0, 5), (3, 5)])
+        self.assertEqual(part.read_bytes(), b"abcdef")
+
+    def test_range_retry_is_bounded_and_authorization_failures_are_not_retried(self):
+        with patch.object(bundle.urllib.request, "build_opener") as opener, patch.object(bundle.time, "sleep"):
+            opener.return_value.open.side_effect = TimeoutError()
+            with self.assertRaisesRegex(ValueError, "5 次"):
+                bundle.download_part("https://example.blob.core.windows.net/a", "", 0, 5,
+                                     self.path / "part", float("inf"))
+            self.assertEqual(opener.return_value.open.call_count, 5)
+            opener.return_value.open.reset_mock()
+            opener.return_value.open.side_effect = urllib.error.HTTPError("private-url", 403, "expired", {}, None)
+            with self.assertRaises(urllib.error.HTTPError):
+                bundle.download_part("https://example.blob.core.windows.net/a", "", 0, 5,
+                                     self.path / "part", float("inf"))
+            self.assertEqual(opener.return_value.open.call_count, 1)
+
     def test_link_keeps_github_token_on_runner_and_metadata_private(self):
         url = "https://example.blob.core.windows.net/artifact?sig=fixture"
         error = urllib.error.HTTPError("https://api.github.com", 302, "Found", {"Location": url}, None)
