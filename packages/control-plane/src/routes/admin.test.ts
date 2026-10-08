@@ -87,6 +87,21 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     expect(c?.plan).toBe('free');
   });
 
+  it('GET /api/admin/whoami：管理员 true / 已登录普通用户 200 false / 未登录 401', async () => {
+    const admin = await app.request(await authed('http://x/api/admin/whoami'));
+    expect(admin.status).toBe(200);
+    expect(((await admin.json()) as { data: { admin: boolean } }).data.admin).toBe(true);
+
+    const plain = await app.request(
+      await authed('http://x/api/admin/whoami', {}, { sub: 'tenant-a', tenantId: 'tenant-a' }),
+    );
+    expect(plain.status).toBe(200);
+    expect(((await plain.json()) as { data: { admin: boolean } }).data.admin).toBe(false);
+
+    const anon = await app.request('http://x/api/admin/whoami');
+    expect(anon.status).toBe(401);
+  });
+
   it('PUT /api/admin/users/:id/plan：改用户套餐（账号层，非宠物层）', async () => {
     const res = await app.request(
       await authed('http://x/api/admin/users/tenant-a/plan', {

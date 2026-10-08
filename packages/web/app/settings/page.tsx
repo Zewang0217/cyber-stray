@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useWebPush } from "@/hooks/useWebPush";
 import { Switch } from "@/components/ui/Switch";
 import { useChannels } from "@/hooks/useChannels";
@@ -27,6 +27,24 @@ const DIARY_STYLES = [
 /** 设置（/settings，#170 T2）：游戏系统菜单——单列菜单行 → 子屏；功能全保留（旧页功能移植 + 新皮肤）。 */
 export default function SettingsPage() {
   const [view, setView] = useState<View>("root");
+  // 维修口入口只对管理员渲染（whoami 见 admin.ts：非管理员 200 admin:false，不制造 403 噪音）。
+  // 判定失败时静默不渲染入口即可——/admin 页自身的 403 提示仍是权威兜底。
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/admin/whoami");
+        if (!res.ok) return;
+        const json = (await res.json()) as { success: boolean; data?: { admin: boolean } };
+        if (json.success && json.data?.admin) setIsAdmin(true);
+      } catch {
+        // 网络异常 = 不渲染入口，不打断设置页
+      }
+    })();
+  }, []);
+  const rows: Array<[View, string, string]> = isAdmin
+    ? [...ROWS, ["admin", "维修口", "管理员功能"]]
+    : ROWS;
   const { state: pushState, error: pushError, enable, disable } = useWebPush();
   const { channels, bindFeishu, unbindFeishu, error: channelError } = useChannels();
   const { plan, error: planError, setPushWindow, clearPushWindow, bindByokKey } = usePlan();
@@ -41,7 +59,7 @@ export default function SettingsPage() {
 
       {view === "root" && (
         <div className="flex flex-col gap-2">
-          {ROWS.map(([id, label, desc]) => (
+          {rows.map(([id, label, desc]) => (
             <button key={id} type="button" onClick={() => setView(id)}
               className="flex items-center justify-between border-2 border-[var(--curb)] bg-[var(--panel)] px-4 py-3 text-left shadow-[3px_3px_0_#000] hover:border-[var(--act)]">
               <span className="text-[15px] text-[var(--paper)]">{label}</span>
