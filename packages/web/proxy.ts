@@ -13,10 +13,12 @@ import { isInviteToken } from "@cyber-stray/shared/invite";
 /** public/pet/ 内置素材扩展名直通（不拦登录；/pet/customize 页面仍走登录墙）。
  *  允许一层子目录：内置精灵图在 /pet/strayboy/、候选图在 /pet/candidates/ */
 const PET_ASSET_RE = /^\/pet\/[^/]+(?:\/[^/]+)?\.(png|jpe?g|webp|glb|gif)$/;
+/** 平台街景美术是公共静态素材；仅放行已知资源，不豁免整个 scenes 命名空间。 */
+const SCENE_ASSET_RE = /^\/scenes\/street-v1\/(?:day|night|planter)\.webp$/;
 
 export function proxy(request: NextRequest) {
   // 静态素材直接放行（middleware 对 public 文件同样生效，需先于登录墙判断）
-  if (PET_ASSET_RE.test(request.nextUrl.pathname)) {
+  if (PET_ASSET_RE.test(request.nextUrl.pathname) || SCENE_ASSET_RE.test(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
   const hasSession = request.cookies.has(SESSION_COOKIE);

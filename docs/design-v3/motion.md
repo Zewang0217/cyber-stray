@@ -74,7 +74,7 @@ Aseprite 导出：`cat.png`（spritesheet）+ `frames.json`。CSS 里每个动�
 ## 5. 性能预算（PWA 移动端，硬性）
 
 - 只动 `transform` / `opacity` / `background-position`（sprite 帧切换）；禁 box-shadow/width 逐帧动画。
-- 场景装饰（星、窗、霓虹）全部静态定位，只有招牌和窗灯允许闪烁。
+- 场景装饰静态定位，招牌和窗灯允许闪烁；咖啡热气允许小幅 `steps()` 上浮，禁止移动整张背景。街景环境动效共用 16 秒慢周期：热气两段出现，夜间灯箱在后半段仅短暂暗闪一次；热气与暗闪错开。街角保留一名路人，为「宠物 + 路人 + 环境」三组循环动效留出预算；减少动态效果时关闭热气与暗闪，灯箱保持底图常亮。
 - 单屏并发动效 ≤ 3 组；sprite sheet 单图 ≤ 8KB（1x 网格猫约 2-4KB）。
 - 页面不可见时移除所有 infinite animation（`document.visibilitychange`）。
 - 全站遵守 `prefers-reduced-motion`：无限动画停帧于第 1 帧，帧切换保留但降为事件触发。
