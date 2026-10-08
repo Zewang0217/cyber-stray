@@ -7,6 +7,10 @@ export interface UserRow extends EffectiveEntitlements {
   tenantId: string;
   tenantName: string;
   createdAt: number;
+  /** 软删时刻（null = 未注销）：注销后宠物停派、账号停用 */
+  deletedAt: number | null;
+  deletionMode: "self" | "admin" | null;
+  deletionReason: string | null;
   petId: string | null;
   petName: string | null;
   petStatus: "active" | "paused" | null;
@@ -23,6 +27,13 @@ export interface AdminRow {
   createdAt: number;
 }
 
+/** 批量注销的单项结果（逐项独立成败） */
+export interface BatchDeletionResult {
+  tenantId: string;
+  ok: boolean;
+  error?: string;
+}
+
 interface UseAdminReturn {
   users: UserRow[] | null;
   admins: AdminRow[] | null;
@@ -33,6 +44,8 @@ interface UseAdminReturn {
   setPetStatus: (tenantId: string, status: "active" | "paused") => Promise<boolean>;
   grantAdmin: (sub: string) => Promise<boolean>;
   revokeAdmin: (sub: string) => Promise<boolean>;
+  deleteAccount: (tenantId: string, reason: string) => Promise<boolean>;
+  batchDeleteAccounts: (tenantIds: string[], reason: string) => Promise<BatchDeletionResult[] | null>;
 }
 
 /**
@@ -126,6 +139,40 @@ export function useAdmin(): UseAdminReturn {
       mutate(`/api/admin/admins/${sub}`, { method: "DELETE" }, "撤销失败"),
     [mutate],
   );
+  const deleteAccount = useCallback(
+    (tenantId: string, reason: string): Promise<boolean> =>
+      mutate(`/api/admin/users/${tenantId}/account-deletion`, {
+        method: "POST", body: JSON.stringify({ reason }),
+      }, "注销失败"),
+    [mutate],
+  );
+  const batchDeleteAccounts = useCallback(
+    async (tenantIds: string[], reason: string): Promise<BatchDeletionResult[] | null> => {
+      try {
+        const res = await fetch("/api/admin/account-deletions", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ tenantIds, reason }),
+        });
+        const json = (await res.json()) as {
+          success: boolean;
+          error?: string;
+          data?: { results: BatchDeletionResult[] };
+        };
+        if (!json.success || !json.data) {
+          setError(json.error ?? "批量注销失败");
+          return null;
+        }
+        setError(null);
+        await refresh();
+        return json.data.results;
+      } catch {
+        setError("网络错误");
+        return null;
+      }
+    },
+    [refresh],
+  );
 
-  return { users, admins, error, isAdmin, refresh, setPlan, setPetStatus, grantAdmin, revokeAdmin };
+  return { users, admins, error, isAdmin, refresh, setPlan, setPetStatus, grantAdmin, revokeAdmin, deleteAccount, batchDeleteAccounts };
 }

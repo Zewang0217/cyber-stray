@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useAdmin } from "@/hooks/useAdmin";
+import { useAdmin, type BatchDeletionResult } from "@/hooks/useAdmin";
 import UsagePanel from "./usage-panel";
 import InvitesPanel from "./invites-panel";
 
@@ -11,10 +11,50 @@ import InvitesPanel from "./invites-panel";
  * 非管理员（403）显示无权限提示。
  */
 export default function AdminPage(): React.ReactElement {
-  const { users, admins, error, isAdmin, setPlan, setPetStatus, grantAdmin, revokeAdmin } =
+  const { users, admins, error, isAdmin, setPlan, setPetStatus, grantAdmin, revokeAdmin, deleteAccount, batchDeleteAccounts } =
     useAdmin();
   const [grantSub, setGrantSub] = useState("");
   const [tab, setTab] = useState<"users" | "usage" | "invites">("users");
+  // 注销流：勾选集 + 弹窗（单个 / 批量共用，理由必填；批量逐项回显结果）
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleteTarget, setDeleteTarget] = useState<
+    { mode: "single"; tenantId: string; tenantName: string } | { mode: "batch" } | null
+  >(null);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteResults, setDeleteResults] = useState<BatchDeletionResult[] | null>(null);
+
+  function toggleSelected(tenantId: string): void {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(tenantId)) next.delete(tenantId);
+      else next.add(tenantId);
+      return next;
+    });
+  }
+
+  function closeDeleteModal(): void {
+    setDeleteTarget(null);
+    setDeleteReason("");
+    setDeleteResults(null);
+    setSelected(new Set());
+  }
+
+  async function submitDeletion(): Promise<void> {
+    if (!deleteTarget || deleteBusy) return;
+    setDeleteBusy(true);
+    try {
+      if (deleteTarget.mode === "single") {
+        await deleteAccount(deleteTarget.tenantId, deleteReason.trim());
+        closeDeleteModal();
+      } else {
+        const results = await batchDeleteAccounts([...selected], deleteReason.trim());
+        if (results) setDeleteResults(results); // 明细留在弹窗逐项回显，关闭时一并清理
+      }
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
 
   if (isAdmin === false) {
     return (
@@ -35,11 +75,14 @@ export default function AdminPage(): React.ReactElement {
     );
   }
 
+  const deletedCount = users.filter((u) => u.deletedAt !== null).length;
+
   return (
     <div className="sb mx-auto max-w-6xl p-4">
       <h1 className="font-ps2p mb-1 text-xs text-[var(--hi)]">MAINTENANCE · 维修口</h1>
       <p className="mb-4 text-[13px] text-[var(--curb)]">
         全部用户 · 共 {users.length} 人 · {users.filter((u) => u.petId).length} 只有宠物
+        {deletedCount > 0 ? ` · ${deletedCount} 已注销` : ""}
       </p>
 
       {/* 子面板切换：像素按钮（非游戏 tab chrome） */}
@@ -61,11 +104,26 @@ export default function AdminPage(): React.ReactElement {
 
       {tab === "users" && (
         <>
+          {/* 批量操作栏：勾选后出现 */}
+          {selected.size > 0 ? (
+            <div className="mb-2 flex items-center gap-3 border-2 border-[var(--curb)] bg-[var(--panel)] px-3 py-2 text-[13px]">
+              <span className="text-[var(--paper)]">已选 {selected.size} 项</span>
+              <button type="button" onClick={() => setDeleteTarget({ mode: "batch" })}
+                className="border-2 border-[var(--bad)] px-2 py-1 text-[12px] text-[var(--bad)]">
+                批量注销…
+              </button>
+              <button type="button" onClick={() => setSelected(new Set())} className="text-[var(--curb)] underline">
+                清除选择
+              </button>
+            </div>
+          ) : null}
+
           {/* 用户表：桌面宽表格（维修口无游戏 chrome） */}
           <div className="overflow-x-auto border-2 border-black bg-[var(--panel)] shadow-[5px_5px_0_#000]">
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b-2 border-black text-left text-[var(--hi)]">
+                  <th className="px-3 py-2.5"></th>
                   <th className="px-3 py-2.5">用户</th>
                   <th className="px-3 py-2.5">权益</th>
                   <th className="px-3 py-2.5">宠物</th>
@@ -75,65 +133,91 @@ export default function AdminPage(): React.ReactElement {
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
-                  <tr key={u.tenantId} className="border-t border-[var(--street)]">
-                    <td className="px-3 py-2.5">
-                      <div className="text-[var(--paper)]">{u.tenantName}</div>
-                      <div className="font-vt323 text-[14px] text-[var(--curb)]">{u.tenantId.slice(0, 8)}</div>
-                      {!u.petId ? <div className="text-[12px] text-[var(--curb)]">（无宠物）</div> : null}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {u.mode === "invite_beta" ? (
-                        <span className="text-[var(--ok)]">内测 Pro</span>
-                      ) : <select
-                        value={u.plan}
-                        onChange={(e) => void setPlan(u.tenantId, e.target.value as typeof u.plan)}
-                        className="border-2 border-[var(--curb)] bg-[var(--sky)] px-1.5 py-1 text-[13px] text-[var(--paper)]"
-                      >
-                        <option value="free">free</option>
-                        <option value="pro">pro</option>
-                        <option value="byok">byok</option>
-                      </select>}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {u.petId ? (
-                        <div>
-                          <div className="text-[var(--paper)]">{u.petName}</div>
-                          <div className="text-[12px] text-[var(--curb)]">
-                            无聊 {u.petBoredom} / 精力 {u.petEnergy}
+                {users.map((u) => {
+                  const deleted = u.deletedAt !== null;
+                  return (
+                    <tr key={u.tenantId} className={`border-t border-[var(--street)] ${deleted ? "opacity-60" : ""}`}>
+                      <td className="px-3 py-2.5">
+                        <input type="checkbox" checked={selected.has(u.tenantId)} disabled={deleted}
+                          onChange={() => toggleSelected(u.tenantId)} aria-label={`选择 ${u.tenantName}`} />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="text-[var(--paper)]">{u.tenantName}</div>
+                        <div className="font-vt323 text-[14px] text-[var(--curb)]">{u.tenantId.slice(0, 8)}</div>
+                        {deleted && u.deletionReason ? (
+                          <div className="text-[12px] text-[var(--bad)]" title={u.deletionReason}>
+                            已注销（{u.deletionMode === "self" ? "自助" : "管理员"}）：{u.deletionReason}
                           </div>
-                        </div>
-                      ) : (
-                        <span className="text-[var(--curb)]">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className={u.petStatus === "active" ? "text-[var(--ok)]" : "text-[var(--curb)]"}>
-                        {u.petStatus ?? "—"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 font-vt323 text-[16px]">
-                      {u.totalWanders} / {u.totalPushes}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {u.petId ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void setPetStatus(u.tenantId, u.petStatus === "active" ? "paused" : "active")
-                          }
-                          className={`border-2 px-2 py-1 text-[12px] ${
-                            u.petStatus === "active"
-                              ? "border-[var(--bad)] text-[var(--bad)]"
-                              : "border-[var(--ok)] text-[var(--ok)]"
-                          }`}
+                        ) : null}
+                        {!u.petId ? <div className="text-[12px] text-[var(--curb)]">（无宠物）</div> : null}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {u.mode === "invite_beta" ? (
+                          <span className="text-[var(--ok)]">内测 Pro</span>
+                        ) : <select
+                          value={u.plan}
+                          onChange={(e) => void setPlan(u.tenantId, e.target.value as typeof u.plan)}
+                          className="border-2 border-[var(--curb)] bg-[var(--sky)] px-1.5 py-1 text-[13px] text-[var(--paper)]"
                         >
-                          {u.petStatus === "active" ? "暂停" : "恢复"}
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
+                          <option value="free">free</option>
+                          <option value="pro">pro</option>
+                          <option value="byok">byok</option>
+                        </select>}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {u.petId ? (
+                          <div>
+                            <div className="text-[var(--paper)]">{u.petName}</div>
+                            <div className="text-[12px] text-[var(--curb)]">
+                              无聊 {u.petBoredom} / 精力 {u.petEnergy}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-[var(--curb)]">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {deleted ? (
+                          <span className="text-[var(--bad)]">已注销</span>
+                        ) : (
+                          <span className={u.petStatus === "active" ? "text-[var(--ok)]" : "text-[var(--curb)]"}>
+                            {u.petStatus ?? "—"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 font-vt323 text-[16px]">
+                        {u.totalWanders} / {u.totalPushes}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {deleted ? (
+                          <span className="text-[12px] text-[var(--curb)]">—</span>
+                        ) : (
+                          <div className="flex gap-2">
+                            {u.petId ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void setPetStatus(u.tenantId, u.petStatus === "active" ? "paused" : "active")
+                                }
+                                className={`border-2 px-2 py-1 text-[12px] ${
+                                  u.petStatus === "active"
+                                    ? "border-[var(--bad)] text-[var(--bad)]"
+                                    : "border-[var(--ok)] text-[var(--ok)]"
+                                }`}
+                              >
+                                {u.petStatus === "active" ? "暂停" : "恢复"}
+                              </button>
+                            ) : null}
+                            <button type="button" onClick={() => setDeleteTarget({ mode: "single", tenantId: u.tenantId, tenantName: u.tenantName })}
+                              className="border-2 border-[var(--bad)] px-2 py-1 text-[12px] text-[var(--bad)]">
+                              注销
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -143,6 +227,7 @@ export default function AdminPage(): React.ReactElement {
             <h2 className="mb-1 text-[14px] text-[var(--paper)]">管理员</h2>
             <p className="mb-3 text-[12px] leading-[1.7] text-[var(--curb)]">
               管理员可查看用户与运行状态、发放邀请、授权他人。邀请内测期间，所有账号统一享有 Pro 权益。
+              管理员账号不可被注销（防锁死管理面）。
             </p>
             <div className="mb-3 flex flex-wrap gap-2">
               {admins?.map((a) => (
@@ -172,6 +257,55 @@ export default function AdminPage(): React.ReactElement {
             </form>
             {error ? <p className="mt-2 text-[13px] text-[var(--bad)]">{error}</p> : null}
           </div>
+
+          {/* 注销弹窗：单个 / 批量共用；理由必填留档，批量逐项回显结果 */}
+          {deleteTarget ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+              <div className="w-full max-w-md border-4 border-black bg-[var(--panel)] p-4 shadow-[8px_8px_0_#000]">
+                <h2 className="font-ps2p mb-2 text-xs text-[var(--bad)]">ACCOUNT DELETION · 注销账户</h2>
+                {deleteResults ? (
+                  <>
+                    <p className="mb-3 text-[13px] text-[var(--paper)]">
+                      批量注销完成：成功 {deleteResults.filter((r) => r.ok).length} · 失败 {deleteResults.filter((r) => !r.ok).length}
+                    </p>
+                    <ul className="mb-3 max-h-64 overflow-y-auto text-[12px] leading-[1.8]">
+                      {deleteResults.map((r) => (
+                        <li key={r.tenantId}>
+                          <span className={r.ok ? "text-[var(--ok)]" : "text-[var(--bad)]"}>{r.ok ? "OK" : "ERR"}</span>{" "}
+                          <span className="font-vt323 text-[14px] text-[var(--paper)]">{r.tenantId.slice(0, 12)}</span>
+                          {!r.ok ? <span className="text-[var(--bad)]"> — {r.error}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                    <button type="button" onClick={closeDeleteModal} className="border-2 border-[var(--curb)] px-3 py-1.5 text-[13px] text-[var(--paper)]">
+                      关闭
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="mb-3 text-[13px] leading-[1.8] text-[var(--paper)]">
+                      {deleteTarget.mode === "single"
+                        ? `确认注销「${deleteTarget.tenantName}」？宠物将永久停止探索，账号停用；理由必填留档。`
+                        : `确认批量注销 ${selected.size} 个账号？宠物将永久停止探索；理由必填留档。`}
+                    </p>
+                    <textarea value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)}
+                      aria-label="注销理由（必填）" rows={3}
+                      placeholder="注销理由（必填，留档审计）"
+                      className="mb-3 w-full border-2 border-[var(--bad)] bg-[var(--sky)] px-2 py-1.5 text-[13px] text-[var(--paper)]" />
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => void submitDeletion()} disabled={deleteBusy || !deleteReason.trim()}
+                        className="border-2 border-[var(--bad)] px-3 py-1.5 text-[13px] text-[var(--bad)] disabled:opacity-50">
+                        {deleteBusy ? "注销中…" : "确认注销"}
+                      </button>
+                      <button type="button" onClick={closeDeleteModal} className="border-2 border-[var(--curb)] px-3 py-1.5 text-[13px] text-[var(--paper)]">
+                        取消
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
         </>
       )}
     </div>

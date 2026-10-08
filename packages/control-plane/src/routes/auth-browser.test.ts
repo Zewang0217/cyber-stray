@@ -3,7 +3,10 @@ import { createAuthRoutes } from './auth.js';
 import { StateStore } from '../auth/state-store.js';
 import { loadConfig } from '../config.js';
 
-vi.mock('../infra/tenant-access.js', () => ({ findUserTenantRelation: vi.fn(async () => ({})) }));
+vi.mock('../infra/tenant-access.js', () => ({
+  findUserTenantRelation: vi.fn(async () => ({})),
+  findTenantById: vi.fn(async () => ({ deletedAt: null })),
+}));
 vi.mock('../infra/tenant.js', () => ({ getOrCreateTenant: vi.fn() }));
 vi.mock('../infra/invites-repo.js', () => ({ validateInvite: vi.fn(), consumeInvite: vi.fn() }));
 

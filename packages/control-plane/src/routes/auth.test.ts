@@ -16,7 +16,7 @@ import { createApp, type AppDeps } from '../app.js';
 import { createEventBus } from '../events/bus.js';
 import { loadConfig } from '../config.js';
 import type { OidcProvider, OidcUser } from '../auth/oidc.js';
-import { tenantDataDir } from '../infra/tenant.js';
+import { getOrCreateTenant, tenantDataDir } from '../infra/tenant.js';
 import { getDb, _resetDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { tenants, invites } from '../db/schema.js';
@@ -226,5 +226,23 @@ describe('auth 路由', () => {
     // 二次登录后租户表仍只有一条
     const db = await getDb(dataDir);
     expect((await db.select().from(tenants).all()).length).toBe(1);
+  });
+
+  it('软删账号重登：不签发 session，跳登录页带 deleted 标记', async () => {
+    await getOrCreateTenant(dataDir, 'casdoor-user-42');
+    const db = await getDb(dataDir);
+    await db.update(tenants)
+      .set({ deletedAt: Date.now(), deletionMode: 'self' })
+      .where(eq(tenants.id, 'casdoor-user-42'))
+      .run();
+
+    const loginRes = await app.request('/api/auth/login');
+    const state = extractState(loginRes.headers.get('location')!);
+    const res = await app.request(`/api/auth/callback?code=mock-code&state=${state}`, {
+      headers: { cookie: loginRes.headers.get('set-cookie')!.split(';')[0]! },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('http://localhost:3000/login?deleted=1');
+    expect(res.headers.get('set-cookie') ?? '').not.toMatch(/cs_session=[^;]/);
   });
 });

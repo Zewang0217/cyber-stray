@@ -14,7 +14,7 @@ import type { OidcProvider } from '../auth/oidc.js';
 import { StateStore, STATE_TTL_SECONDS } from '../auth/state-store.js';
 import { signSession, SESSION_COOKIE } from '../auth/session.js';
 import { getOrCreateTenant } from '../infra/tenant.js';
-import { findUserTenantRelation } from '../infra/tenant-access.js';
+import { findTenantById, findUserTenantRelation } from '../infra/tenant-access.js';
 import { validateInvite, consumeInvite } from '../infra/invites-repo.js';
 import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 
@@ -70,6 +70,11 @@ export function createAuthRoutes({ config, oidc, states }: AuthDeps): Hono {
     // 租户键 = sub；幂等；name 取 OIDC display name。
     let tenantId: string;
     if (await findUserTenantRelation(config.dataDir, user.sub, user.sub)) {
+      // 软删账号不再签发 session（同 sub 不可经重登复活刷配额；恢复需管理员手工）
+      const tenant = await findTenantById(config.dataDir, user.sub);
+      if (tenant?.deletedAt) {
+        return c.redirect(`${config.webOrigin}/login?deleted=1`, 302);
+      }
       tenantId = user.sub;
     } else {
       const invite = entry.inviteToken

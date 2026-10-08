@@ -23,6 +23,7 @@ import { createPushRoutes } from './routes/push.js';
 import { createChannelsRoutes } from './routes/channels.js';
 import { createPlanRoutes } from './routes/plan.js';
 import { createAdminRoutes } from './routes/admin.js';
+import { createAccountRoutes } from './routes/account.js';
 import { createEvolutionRoutes } from './routes/evolution.js';
 import { createFootprintRoutes } from './routes/footprint.js';
 import { createDiaryRoutes } from './routes/diary.js';
@@ -100,6 +101,9 @@ export function createApp({ config, oidc, bus }: AppDeps): Hono {
 
   // S13：运营管理面板（CP_ADMIN_SUBS 白名单）
   app.route('/api/admin', createAdminRoutes({ config }));
+
+  // 账户自助注销（软删：宠物停派 + 鉴权拒绝；成功即清 session）
+  app.route('/api/account', createAccountRoutes({ config }));
 
   // S13：进化可视化 + 回滚（快照序列/反馈事件/游荡摘要）
   app.route('/api/evolution', createEvolutionRoutes({ config }));
