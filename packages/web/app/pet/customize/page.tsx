@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePetGen } from "@/hooks/usePetGen";
 import { PetAppearancePreview } from "@/components/strayboy/PetAppearancePreview";
 import { BootFrame } from "@/components/strayboy/BootFrame";
@@ -26,7 +27,7 @@ export default function CustomizePage() {
       <BootFrame />
       <div className="mx-auto max-w-2xl">
         <h1 className="font-ps2p mb-1 text-xs text-[var(--hi)]">CUSTOMIZE · 改造屋</h1>
-        <a href="/street" className="mb-3 inline-block text-[13px] text-[var(--hi)] underline">← 回到街角</a>
+        <Link href="/" className="mb-3 inline-block text-[13px] text-[var(--hi)] underline">← 回到街角</Link>
         <p className="mb-5 text-[13px] leading-[1.7] text-[var(--curb)]">
           描述你的专属街溜子，生成完整像素素材。受邀内测用户均可使用，生成次数以当前额度为准。
           {quota?.unlimited ? "管理员不限生成次数。" : "每七天可成功生成一套外观，失败不扣次数。"}
