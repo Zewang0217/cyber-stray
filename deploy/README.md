@@ -107,8 +107,9 @@ SaaS 外部浏览器 CLI 暂停开放，搜索及安全网页阅读保持可用�
   下载前 HEAD 连接失败也做最多 5 次有界重试，错误原因会脱敏记录。
   单段传输中断时从已写入字节处续传，最多 5 次请求；鉴权失败不重试。
   下载最长 20 分钟，失败明确停止。SSH 只传配置和短期下载信息，不承担大文件跨境上传。
-- `CD_DOWNLOAD_PROXY` 仓库变量显式配置下载专用 HTTP(S) 代理；当前复用
-  `http://172.17.0.1:7890`。它仅作用于产物下载，不修改 Docker daemon 或 Bun 的代理设置。
+- `CD_DOWNLOAD_PROXY` 仓库变量显式配置下载专用 HTTP(S) 代理；当前为
+  `http://127.0.0.1:17890`，由生产独立的 `cyber-stray-cd-proxy` 提供。
+  它仅作用于产物下载，不修改共享代理、Docker daemon 或 Bun 的代理设置。
   Actions 临时产物保留上限 1 天，发布结束后主动删除；工作流需 `actions: write` 来清理该产物。
 - SSH 私钥、Docker 登录配置和镜像包只放 runner 的 `scratch/tmp/`；生产暂存于
   `/opt/cyber-stray/scratch/cd-<run-id>-<attempt>/`，成功或失败后均有清理步骤。
@@ -121,6 +122,25 @@ SaaS 外部浏览器 CLI 暂停开放，搜索及安全网页阅读保持可用�
   流水线检测到非占位 tag 时跳过构建，由 runner 拉取该版本，再打包转运、校验部署。
 - 部署成功判定：容器 healthcheck 全绿 + 内部服务及所选模式的入口可达；HTTPS 模式验证三个域名，IP 模式验证 IP Host 的登录入口；
   任一不健康则部署失败并保留现场。
+
+### 下载代理运维
+
+生产共享 Mihomo 的自动选择曾选中新加坡节点：同一 GHCR 镜像层在该节点反复
+TLS EOF，日本、香港节点则完成下载。因此产物下载使用独立实例固定到已验证的
+`🇯🇵 日本Z01 | IEPL`，不依赖共享实例的自动选择。节点状况会变化，连接失败仍明确
+停止发布；不能只凭延迟测试成功判断大文件下载正常。
+
+- 独立容器 `cyber-stray-cd-proxy` 只监听 `127.0.0.1:17890`，无控制 API、DNS 或 TUN，
+  使用已有 Mihomo 的本地镜像 ID，禁止启动时拉镜像，重启策略为 `unless-stopped`。
+- 配置与运行缓存位于 `/opt/cyber-stray/cd-proxy/`，目录权限 700、配置权限 600。
+  这是持续使用的基础设施目录；发布临时文件仍按前述流程创建和清理。
+- `file` 类型 provider 只读挂载现有 `/opt/mihomo-docker/config/providers/`，
+  过滤完整日本节点名称，300 秒刷新；不另存订阅凭据、不修改共享配置或节点选择。
+  镜像根文件系统只读、移除全部 capabilities、禁止提权，资源上限 128 MiB / 0.5 CPU。
+- 排障先检查 `sudo docker inspect cyber-stray-cd-proxy --format '{{.State.Status}}'`
+  和 `sudo ss -lntp 'sport = :17890'`。更换节点时先做同一镜像层的实际下载对照，
+  再修改专用配置的 provider 过滤条件并重启该容器；同步核对仓库变量指向专用端口。
+  不切换共享实例的全局模式或选择器来修复本项目 CD。
 
 ## 备份 / 恢复
 
