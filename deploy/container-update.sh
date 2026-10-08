@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 生产机容器更新：拉镜像 → 重建容器 → 同步 casdoor/nginx 配置 → 健康门 → 镜像清理。
+# 生产机容器更新：校验导入镜像包（手工可显式拉取）→ 重建容器 → 同步 casdoor/nginx 配置 → 健康门 → 镜像清理。
 # 由 deploy.yml 在同步仓库 deploy/ 到 /opt/cyber-stray/deploy/ 后调用。
 #
-# 用法: sudo ./container-update.sh --tag <commit-sha> [--mode https_domains|http_ip] [--public-ip <IPv4>]
+# 用法: sudo ./container-update.sh --tag <commit-sha> [--mode https_domains|http_ip] [--public-ip <IPv4>] [--image-bundle <目录>]
 # 失败: 非零退出并保留现场（不自动回滚）。
 # 回滚: compose.yaml 的 IMAGE_TAG 占位改成旧 sha，合并 main 重发（跳过构建）。
 set -euo pipefail
@@ -25,6 +25,19 @@ HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-120}
 TAG=""
 MODE=https_domains
 PUBLIC_IP=""
+IMAGE_BUNDLE=""
+UP_PULL_ARGS=()
+
+# 沿用现有 sudoers 唯一入口；不要求部署用户获得 install/chown 的额外 root 权限。
+if [ "${1:-}" = --prepare-image-bundle ]; then
+  [ "$#" -eq 2 ] && [[ "$2" =~ ^cd-[0-9]+-[0-9]+$ ]] || { echo "非法镜像暂存任务名" >&2; exit 2; }
+  [[ "${SUDO_UID:-}" =~ ^[0-9]+$ && "${SUDO_GID:-}" =~ ^[0-9]+$ ]] || { echo "必须通过 sudo 准备镜像暂存目录" >&2; exit 2; }
+  bundle_dir="/opt/cyber-stray/scratch/$2"
+  [ ! -e "$bundle_dir" ] || { echo "镜像暂存目录已存在：$bundle_dir" >&2; exit 1; }
+  install -d /opt/cyber-stray/scratch
+  install -d -m 700 -o "$SUDO_UID" -g "$SUDO_GID" "$bundle_dir"
+  exit 0
+fi
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -36,18 +49,26 @@ while [ "$#" -gt 0 ]; do
       MODE="${2:-}"
       shift 2
       ;;
+    --image-bundle)
+      IMAGE_BUNDLE="${2:-}"
+      [ -n "$IMAGE_BUNDLE" ] || { echo "缺少 --image-bundle 目录" >&2; exit 2; }
+      shift 2
+      ;;
     --public-ip)
       PUBLIC_IP="${2:-}"
       shift 2
       ;;
     *)
-      echo "未知参数: $1（用法: container-update.sh --tag <commit-sha> [--mode https_domains|http_ip] [--public-ip <IPv4>]）" >&2
+      echo "未知参数: $1（用法: container-update.sh --tag <commit-sha> [--mode https_domains|http_ip] [--public-ip <IPv4>] [--image-bundle <目录>]）" >&2
       exit 2
       ;;
   esac
 done
 [ -n "$TAG" ] || { echo "缺少 --tag <commit-sha>" >&2; exit 2; }
 [ -f "$DEPLOY_DIR/compose.yaml" ] || { echo "缺少 $DEPLOY_DIR/compose.yaml（先同步仓库 deploy/ 目录）" >&2; exit 1; }
+mkdir -p /opt/cyber-stray/scratch
+RENDER_DIR=$(mktemp -d /opt/cyber-stray/scratch/render.XXXXXX)
+export TMPDIR="$RENDER_DIR" TMP="$RENDER_DIR" TEMP="$RENDER_DIR"
 command -v docker >/dev/null 2>&1 || { echo "缺失 docker" >&2; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "docker compose 插件缺失" >&2; exit 1; }
 
@@ -73,8 +94,12 @@ fi
 for required in "$CASDOOR_STAGED" "$NGINX_STAGED"; do
   [ -f "$required" ] || { echo "缺少本次发布的 $MODE 配置：$required" >&2; exit 1; }
 done
+# 镜像包失败必须在任何生效配置复制和容器重建之前停止。
+if [ -n "$IMAGE_BUNDLE" ]; then
+  python3 "$DEPLOY_DIR/image-bundle.py" load --tag "$TAG" --compose "$DEPLOY_DIR/compose.yaml" --bundle "$IMAGE_BUNDLE"
+  UP_PULL_ARGS=(--pull never)
+fi
 if [ "$MODE" = http_ip ]; then
-  RENDER_DIR=$(mktemp -d "$DEPLOY_DIR/.render.XXXXXX")
   sed "s/__PUBLIC_IP__/$PUBLIC_IP/g" "$CASDOOR_STAGED" > "$RENDER_DIR/app.conf"
   sed "s/__PUBLIC_IP__/$PUBLIC_IP/g" "$NGINX_STAGED" > "$RENDER_DIR/nginx.conf"
   CASDOOR_STAGED=$RENDER_DIR/app.conf
@@ -126,18 +151,22 @@ if [ -f /opt/cyber-stray/.env ] && [ -f /opt/cyber-stray/.env.example ]; then
   [ -z "$missing" ] || echo "警告: .env 缺少键（对照 .env.example）: $(echo "$missing" | tr '\n' ' ')"
 fi
 
-echo "==> [1/4] 拉取镜像（IMAGE_TAG=$TAG）"
-# GHCR 偶发瞬态网络中断，重试比整场部署回滚便宜
-attempt=0
-until "${COMPOSE[@]}" pull; do
-  attempt=$((attempt + 1))
-  [ "$attempt" -ge 3 ] && { echo "错误: 连续 ${attempt} 次拉取失败" >&2; exit 1; }
-  echo "    第 ${attempt} 次拉取失败，5s 后重试…" >&2
-  sleep 5
-done
+if [ -n "$IMAGE_BUNDLE" ]; then
+  echo "==> [1/4] 镜像包校验及导入完成（IMAGE_TAG=$TAG；生产禁止拉取镜像）"
+else
+  echo "==> [1/4] 拉取镜像（IMAGE_TAG=$TAG）"
+  # 手工显式 registry 路径；自动 CD 使用已校验镜像包，不在失败后静默切换。
+  attempt=0
+  until "${COMPOSE[@]}" pull; do
+    attempt=$((attempt + 1))
+    [ "$attempt" -ge 3 ] && { echo "错误: 连续 ${attempt} 次拉取失败" >&2; exit 1; }
+    echo "    第 ${attempt} 次拉取失败，5s 后重试…" >&2
+    sleep 5
+  done
+fi
 
 echo "==> [2/4] 重建容器"
-"${COMPOSE[@]}" up -d --remove-orphans
+"${COMPOSE[@]}" up -d --remove-orphans "${UP_PULL_ARGS[@]}"
 
 # 文件已落位不代表进程已加载：pull/up 失败后的重试也必须完成重启。
 # 仅在 restart 成功后记录生效内容，常规同配置发布不打扰 IdP。
