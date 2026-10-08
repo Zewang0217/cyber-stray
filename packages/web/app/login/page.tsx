@@ -15,9 +15,9 @@ export const metadata: Metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ invite?: string }>;
+  searchParams: Promise<{ invite?: string; deleted?: string }>;
 }) {
-  const { invite } = await searchParams;
+  const { invite, deleted } = await searchParams;
   const loginHref = invite ? `/api/auth/login?invite=${encodeURIComponent(invite)}` : "/api/auth/login";
   return (
     <div className="sb flex min-h-screen flex-col items-center justify-center bg-[var(--sky)] p-6">
@@ -41,6 +41,11 @@ export default async function LoginPage({
           <span aria-hidden className="inline-block h-3 w-3 rounded-full border-2 border-[var(--ok)]" />
           <span className="font-ps2p text-xs text-[var(--ok)]">POWER ON · 登录</span>
         </a>
+        {deleted === "1" ? (
+          <p className="mb-4 border-2 border-[var(--bad)] bg-[var(--panel)] px-3 py-2 text-center text-[12px] leading-[1.7] text-[var(--bad)]">
+            该账号已注销，无法登录。
+          </p>
+        ) : null}
         <p className="mt-4 text-center text-[12px] leading-[1.7] text-[var(--curb)]">
           {invite ? "带着邀请函，来认识你的街溜子。" : "已有账号可直接登录，新用户需要邀请函。"}
           <br />

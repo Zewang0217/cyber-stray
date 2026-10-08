@@ -20,6 +20,7 @@ import { PLAN_VALUES, type PlanValue } from '../plan/limits.js';
 import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { createAdminService } from '../services/admin-service.js';
+import { createAccountDeletionService } from '../services/account-deletion-service.js';
 
 export interface AdminDeps {
   config: Pick<
@@ -51,6 +52,7 @@ export async function adminSession(
 
 export function createAdminRoutes({ config }: AdminDeps): Hono {
   const service = createAdminService({ config });
+  const deletionService = createAccountDeletionService({ config });
   const app = new Hono();
 
   /** GET /api/admin/users — 全部用户（tenants 主表，含无宠物）+ 宠物摘要 + 统计 */
@@ -110,6 +112,72 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
     return outcome.ok
       ? c.json({ success: true, data: outcome.data })
       : c.json(jsonError(outcome.error), outcome.status);
+  });
+
+  /** POST /api/admin/users/:tenantId/account-deletion — 管理员注销（理由必填；软删 + 停派） */
+  app.post('/users/:tenantId/account-deletion', async (c) => {
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) {
+      return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
+    }
+    const tenantId = c.req.param('tenantId');
+    if (!TENANT_ID_RE.test(tenantId)) return c.json(jsonError('非法租户 id'), 400);
+
+    let body: { reason?: unknown };
+    try {
+      body = (await c.req.json()) as { reason?: unknown };
+    } catch {
+      return c.json(jsonError('请求体须为 JSON'), 400);
+    }
+    if (typeof body.reason !== 'string' || !body.reason.trim()) {
+      return c.json(jsonError('管理员注销必须填写理由'), 400);
+    }
+
+    const outcome = await deletionService.deleteAccount({
+      tenantId,
+      mode: 'admin',
+      reason: body.reason.trim(),
+      operatorSub: auth.sub,
+    });
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
+  });
+
+  /** POST /api/admin/account-deletions — 批量注销（逐项独立成败，返回明细） */
+  app.post('/account-deletions', async (c) => {
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) {
+      return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
+    }
+
+    let body: { tenantIds?: unknown; reason?: unknown };
+    try {
+      body = (await c.req.json()) as { tenantIds?: unknown; reason?: unknown };
+    } catch {
+      return c.json(jsonError('请求体须为 JSON'), 400);
+    }
+    const BATCH_LIMIT = 200;
+    if (
+      !Array.isArray(body.tenantIds) ||
+      body.tenantIds.length === 0 ||
+      body.tenantIds.length > BATCH_LIMIT ||
+      !body.tenantIds.every((id): id is string => typeof id === 'string' && TENANT_ID_RE.test(id))
+    ) {
+      return c.json(jsonError(`tenantIds 须为 1-${BATCH_LIMIT} 个合法租户 id 数组`), 400);
+    }
+    if (typeof body.reason !== 'string' || !body.reason.trim()) {
+      return c.json(jsonError('管理员注销必须填写理由'), 400);
+    }
+
+    // 去重保序（重复 id 第二次必然撞「已注销」，去掉更干净）
+    const tenantIds = [...new Set(body.tenantIds)];
+    const results = await deletionService.batchDelete({
+      tenantIds,
+      reason: body.reason.trim(),
+      operatorSub: auth.sub,
+    });
+    return c.json({ success: true, data: { results } });
   });
 
   /** GET /api/admin/admins — 管理员列表（env bootstrap + admins 表） */

@@ -31,9 +31,39 @@ export default function SettingsPage() {
   const { channels, bindFeishu, unbindFeishu, error: channelError } = useChannels();
   const { plan, error: planError, setPushWindow, clearPushWindow, bindByokKey } = usePlan();
   const [sleepSaved, setSleepSaved] = useState(false);
+  // 注销确认流：两步防误触（先点按钮，再输宠物名确认；未领养 = 输「注销」）
+  const [deleteConfirming, setDeleteConfirming] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const { pets, isLoaded: petsLoaded, loadError: petsLoadError, refresh: refreshPets, setSleepSchedule, clearSleepSchedule, setDiaryStyle, setDiaryPush, setCatchphrases, error: petsError } = usePets();
   const sleepPet = pets[0] ?? null;
   const hasSleepSchedule = sleepPet !== null && sleepPet.sleepStart !== null && sleepPet.sleepEnd !== null;
+
+  const confirmHint = sleepPet ? `输入宠物名「${sleepPet.name}」确认注销` : "尚未领养宠物：输入「注销」二字确认";
+
+  async function submitAccountDeletion(): Promise<void> {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch("/api/account", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirmPetName: deleteConfirm.trim(), reason: deleteReason.trim() || undefined }),
+      });
+      const json = (await res.json()) as { success: boolean; error?: string };
+      if (!json.success) {
+        setDeleteError(json.error ?? "注销失败");
+        return;
+      }
+      window.location.href = "/login?deleted=1";
+    } catch {
+      setDeleteError("网络错误");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <div className="sb mx-auto max-w-2xl p-4">
@@ -182,8 +212,9 @@ export default function SettingsPage() {
           <section className="mb-4 border-2 border-[var(--curb)] bg-[var(--panel)] p-3">
             <h3 className="mb-1 text-[14px] text-[var(--paper)]">账号是怎么工作的</h3>
             <p className="text-[12px] leading-[1.7] text-[var(--curb)]">
-              你的宠物、记忆和兴趣图谱都属于这个账号。退出后宠物仍会按自己的作息探索，
-              重新登录就能接回。内测需要邀请链接，已有账号可以直接登录。
+              你的宠物、记忆和兴趣图谱都属于这个账号。「退出登录」只是离开，宠物仍会按自己的作息探索，
+              重新登录就能接回；「注销账户」是告别——宠物永久停止探索，账号无法再登录。
+              内测需要邀请链接，已有账号可以直接登录。
             </p>
           </section>
 
@@ -245,6 +276,48 @@ export default function SettingsPage() {
                 退出登录
               </button>
             </form>
+          </section>
+
+          {/* 危险区：注销（软删——宠物停派、账号停用；与退出登录语义相反） */}
+          <section className="mt-4 border-2 border-[var(--bad)] bg-[var(--panel)] p-3">
+            <h3 className="mb-1 text-[14px] text-[var(--paper)]">注销账户</h3>
+            <p className="mb-2 text-[12px] leading-[1.7] text-[var(--curb)]">
+              注销后宠物永久停止探索，账号无法再登录，也无法自助恢复。如确定要告别，请先确认。
+            </p>
+            {!deleteConfirming ? (
+              <button type="button" onClick={() => { setDeleteConfirming(true); setDeleteError(null); }}
+                className="border-2 border-[var(--bad)] bg-[var(--panel)] px-3 py-1.5 text-[13px] text-[var(--bad)]">
+                注销账户…
+              </button>
+            ) : (
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                if (!deleting) void submitAccountDeletion();
+              }}>
+                <p className="mb-2 text-[13px] text-[var(--bad)]">{confirmHint}</p>
+                <div className="mb-2 flex flex-col gap-2">
+                  <input value={deleteConfirm} onChange={(e) => setDeleteConfirm(e.target.value)}
+                    aria-label="注销确认输入"
+                    placeholder={sleepPet ? sleepPet.name : "注销"}
+                    className="border-2 border-[var(--bad)] bg-[var(--sky)] px-2 py-1.5 text-[13px] text-[var(--paper)]" />
+                  <input value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)}
+                    aria-label="注销原因（可选）"
+                    placeholder="注销原因（可选，帮助我们改进）"
+                    className="border-2 border-[var(--curb)] bg-[var(--sky)] px-2 py-1.5 text-[13px] text-[var(--paper)]" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button type="submit" disabled={deleting || !deleteConfirm.trim()}
+                    className="border-2 border-[var(--bad)] bg-[var(--panel)] px-3 py-1.5 text-[13px] text-[var(--bad)] disabled:opacity-50">
+                    {deleting ? "注销中…" : "确认注销（不可恢复）"}
+                  </button>
+                  <button type="button" onClick={() => { setDeleteConfirming(false); setDeleteConfirm(""); setDeleteReason(""); setDeleteError(null); }}
+                    className="border-2 border-[var(--curb)] bg-[var(--panel)] px-3 py-1.5 text-[13px] text-[var(--paper)]">
+                    取消
+                  </button>
+                </div>
+                {deleteError ? <p className="mt-2 text-[13px] text-[var(--bad)]">{deleteError}</p> : null}
+              </form>
+            )}
           </section>
         </SubView>
       )}

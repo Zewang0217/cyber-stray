@@ -102,6 +102,64 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     expect(pet?.plan).toBe('free');
   });
 
+  it('管理员注销：理由必填；成功软删 + 宠物停派 + 列表可见注销状态', async () => {
+    const noReason = await app.request(await authed('http://x/api/admin/users/tenant-a/account-deletion', {
+      method: 'POST', body: JSON.stringify({ reason: '   ' }),
+    }));
+    expect(noReason.status).toBe(400);
+
+    const res = await app.request(await authed('http://x/api/admin/users/tenant-a/account-deletion', {
+      method: 'POST', body: JSON.stringify({ reason: '测试清理' }),
+    }));
+    expect(res.status).toBe(200);
+    const db = await getDb(dataDir);
+    const t = await db.select().from(tenants).where(eq(tenants.id, 'tenant-a')).get();
+    expect(t?.deletedAt).not.toBeNull();
+    expect(t?.deletionMode).toBe('admin');
+    expect(t?.deletionReason).toBe('测试清理');
+    expect(t?.deletedBy).toBe('admin-1');
+    expect((await db.select().from(pets).where(eq(pets.tenantId, 'tenant-a')).get())?.status).toBe('paused');
+
+    const list = await app.request(await authed('http://x/api/admin/users'));
+    const rows = ((await list.json()) as {
+      data: Array<{ tenantId: string; deletedAt: number | null; deletionMode: string | null }>;
+    }).data;
+    expect(rows.find((r) => r.tenantId === 'tenant-a')?.deletedAt).not.toBeNull();
+    expect(rows.find((r) => r.tenantId === 'tenant-a')?.deletionMode).toBe('admin');
+    expect(rows.find((r) => r.tenantId === 'tenant-b')?.deletedAt).toBeNull();
+  });
+
+  it('管理员账号不可注销：先撤销其管理员身份', async () => {
+    await getOrCreateTenant(dataDir, 'admin-1');
+    const res = await app.request(await authed('http://x/api/admin/users/admin-1/account-deletion', {
+      method: 'POST', body: JSON.stringify({ reason: '误操作' }),
+    }));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain('管理员账号不可注销');
+    const db = await getDb(dataDir);
+    expect((await db.select().from(tenants).where(eq(tenants.id, 'admin-1')).get())?.deletedAt).toBeNull();
+  });
+
+  it('批量注销：逐项独立成败（不存在的记入明细，不影响其余）', async () => {
+    const bad = await app.request(await authed('http://x/api/admin/account-deletions', {
+      method: 'POST', body: JSON.stringify({ tenantIds: [], reason: '批量清理' }),
+    }));
+    expect(bad.status).toBe(400);
+
+    const res = await app.request(await authed('http://x/api/admin/account-deletions', {
+      method: 'POST', body: JSON.stringify({ tenantIds: ['tenant-a', 'ghost', 'tenant-b'], reason: '批量清理' }),
+    }));
+    expect(res.status).toBe(200);
+    const { data } = (await res.json()) as { data: { results: Array<{ tenantId: string; ok: boolean }> } };
+    expect(data.results).toEqual([
+      { tenantId: 'tenant-a', ok: true },
+      expect.objectContaining({ tenantId: 'ghost', ok: false }),
+      { tenantId: 'tenant-b', ok: true },
+    ]);
+    const db = await getDb(dataDir);
+    expect((await db.select().from(pets).where(eq(pets.tenantId, 'tenant-b')).get())?.status).toBe('paused');
+  });
+
   it('管理员生成的邀请保留根路径链接及共享契约令牌，供 Web 首次登录透传', async () => {
     const res = await app.request(await authed('http://x/api/admin/invites', {
       method: 'POST', body: JSON.stringify({ label: '首次领养邀请' }),
