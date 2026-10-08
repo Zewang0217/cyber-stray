@@ -16,9 +16,10 @@ import { petGenTasks } from '../db/schema.js';
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** 滚动七天只计算成功交付；数据库过滤日期，避免扫描整个生成历史。 */
+/** 滚动七天只计算成功交付；数据库过滤日期，避免扫描整个生成历史。
+ * limit 可被租户配额覆盖（@cyber-stray/shared/quota；默认 1）。 */
 export async function petGenWeeklyQuota(
-  db: ControlDb, tenantId: string, unlimited = false, now = Date.now(),
+  db: ControlDb, tenantId: string, unlimited = false, now = Date.now(), limit = 1,
 ): Promise<Omit<PetGenQuota, 'available'>> {
   const rows = await db.select({ completedAt: petGenTasks.completedAt }).from(petGenTasks)
     .where(and(eq(petGenTasks.tenantId, tenantId), eq(petGenTasks.status, 'done'),
@@ -26,8 +27,8 @@ export async function petGenWeeklyQuota(
   const latest = rows.reduce((max, row) => Math.max(max, row.completedAt!), 0);
   return {
     period: 'rolling_week', unlimited, used: rows.length,
-    limit: unlimited ? null : 1,
-    remaining: unlimited ? null : Math.max(0, 1 - rows.length),
+    limit: unlimited ? null : limit,
+    remaining: unlimited ? null : Math.max(0, limit - rows.length),
     resetAt: !unlimited && rows.length ? new Date(latest + WEEK_MS).toISOString() : null,
   };
 }

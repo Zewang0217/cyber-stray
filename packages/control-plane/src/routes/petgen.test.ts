@@ -293,6 +293,23 @@ describe('petgen 路由（#94）', () => {
     expect(ok.status).toBe(201);
   });
 
+  it('租户配额覆盖 petgenWeeklyLimit 生效于额度视图与提交门', async () => {
+    await setPlan('alice', 'pro');
+    const db = await getDb(dataDir);
+    await db.update(tenants)
+      .set({ quotaOverrides: '{"petgenWeeklyLimit":2}' })
+      .where(eq(tenants.id, 'alice'))
+      .run();
+    await db.insert(petGenTasks).values({
+      id: 'ov-done', tenantId: 'alice', specText: '猫', status: 'done', completedAt: Date.now(),
+    }).run();
+    // 默认 1 已耗尽；覆盖 2 → remaining 1，可再提交
+    const quota = await app.request(await authed('http://x/api/petgen/quota'));
+    expect((await quota.json()).data).toMatchObject({ limit: 2, used: 1, remaining: 1 });
+    const res = await app.request(await authed('http://x/api/petgen/tasks', { method: 'POST', body: JSON.stringify(SPEC) }));
+    expect(res.status).toBe(201);
+  });
+
   it.each(['bootstrap', 'rbac'])('管理员 %s 不受周额度限制，普通账号仍不能绕过', async (source) => {
     await setPlan('alice', 'pro');
     const db = await getDb(dataDir);

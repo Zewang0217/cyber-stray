@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useAdmin, type BatchDeletionResult } from "@/hooks/useAdmin";
+import { useAdmin, type BatchDeletionResult, type UserRow } from "@/hooks/useAdmin";
+import type { TenantQuotaOverrides } from "@cyber-stray/shared/quota";
 import UsagePanel from "./usage-panel";
 import InvitesPanel from "./invites-panel";
 
@@ -11,7 +12,7 @@ import InvitesPanel from "./invites-panel";
  * 非管理员（403）显示无权限提示。
  */
 export default function AdminPage(): React.ReactElement {
-  const { users, admins, error, isAdmin, setPlan, setPetStatus, grantAdmin, revokeAdmin, deleteAccount, batchDeleteAccounts } =
+  const { users, admins, error, isAdmin, setPlan, setPetStatus, grantAdmin, revokeAdmin, deleteAccount, batchDeleteAccounts, setQuotaOverrides } =
     useAdmin();
   const [grantSub, setGrantSub] = useState("");
   const [tab, setTab] = useState<"users" | "usage" | "invites">("users");
@@ -23,6 +24,12 @@ export default function AdminPage(): React.ReactElement {
   const [deleteReason, setDeleteReason] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteResults, setDeleteResults] = useState<BatchDeletionResult[] | null>(null);
+  // 配额覆盖弹窗（空输入 = 清除该项，全空 = 清空回套餐默认）
+  const [quotaTarget, setQuotaTarget] = useState<UserRow | null>(null);
+  const [quotaLlm, setQuotaLlm] = useState("");
+  const [quotaPetgen, setQuotaPetgen] = useState("");
+  const [quotaPushes, setQuotaPushes] = useState("");
+  const [quotaBusy, setQuotaBusy] = useState(false);
 
   function toggleSelected(tenantId: string): void {
     setSelected((prev) => {
@@ -38,6 +45,31 @@ export default function AdminPage(): React.ReactElement {
     setDeleteReason("");
     setDeleteResults(null);
     setSelected(new Set());
+  }
+
+  function openQuotaModal(u: UserRow): void {
+    setQuotaTarget(u);
+    setQuotaLlm(u.quotaOverrides?.llmBudgetYuan != null ? String(u.quotaOverrides.llmBudgetYuan) : "");
+    setQuotaPetgen(u.quotaOverrides?.petgenWeeklyLimit != null ? String(u.quotaOverrides.petgenWeeklyLimit) : "");
+    setQuotaPushes(u.quotaOverrides?.pushesPerDay != null ? String(u.quotaOverrides.pushesPerDay) : "");
+  }
+
+  async function submitQuotaOverrides(): Promise<void> {
+    if (!quotaTarget || quotaBusy) return;
+    const overrides: TenantQuotaOverrides = {};
+    if (quotaLlm.trim() !== "") overrides.llmBudgetYuan = Number(quotaLlm);
+    if (quotaPetgen.trim() !== "") overrides.petgenWeeklyLimit = Number(quotaPetgen);
+    if (quotaPushes.trim() !== "") overrides.pushesPerDay = Number(quotaPushes);
+    setQuotaBusy(true);
+    try {
+      const ok = await setQuotaOverrides(
+        quotaTarget.tenantId,
+        Object.keys(overrides).length > 0 ? overrides : null,
+      );
+      if (ok) setQuotaTarget(null);
+    } finally {
+      setQuotaBusy(false);
+    }
   }
 
   async function submitDeletion(): Promise<void> {
@@ -149,6 +181,9 @@ export default function AdminPage(): React.ReactElement {
                             已注销（{u.deletionMode === "self" ? "自助" : "管理员"}）：{u.deletionReason}
                           </div>
                         ) : null}
+                        {u.quotaOverrides ? (
+                          <div className="text-[12px] text-[var(--act)]">配额已覆盖</div>
+                        ) : null}
                         {!u.petId ? <div className="text-[12px] text-[var(--curb)]">（无宠物）</div> : null}
                       </td>
                       <td className="px-3 py-2.5">
@@ -193,6 +228,10 @@ export default function AdminPage(): React.ReactElement {
                           <span className="text-[12px] text-[var(--curb)]">—</span>
                         ) : (
                           <div className="flex gap-2">
+                            <button type="button" onClick={() => openQuotaModal(u)}
+                              className="border-2 border-[var(--act)] px-2 py-1 text-[12px] text-[var(--act)]">
+                              配额
+                            </button>
                             {u.petId ? (
                               <button
                                 type="button"
@@ -303,6 +342,49 @@ export default function AdminPage(): React.ReactElement {
                     </div>
                   </>
                 )}
+              </div>
+            </div>
+          ) : null}
+
+          {/* 配额覆盖弹窗：空输入 = 清除该项；全空 = 清空回套餐默认；0 = 不限 */}
+          {quotaTarget ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+              <div className="w-full max-w-md border-4 border-black bg-[var(--panel)] p-4 shadow-[8px_8px_0_#000]">
+                <h2 className="font-ps2p mb-2 text-xs text-[var(--act)]">QUOTA · 配额覆盖</h2>
+                <p className="mb-3 text-[13px] leading-[1.8] text-[var(--paper)]">
+                  「{quotaTarget.tenantName}」的租户级配额。留空 = 跟随套餐默认；0 = 不限；
+                  保存后 LLM 预算与外观额度下个调度周期生效，推送上限下轮游荡生效。
+                </p>
+                <div className="mb-3 flex flex-col gap-2 text-[13px]">
+                  <label className="flex items-center gap-2">
+                    <span className="w-28 shrink-0 text-[var(--curb)]">LLM 日预算（¥）</span>
+                    <input value={quotaLlm} onChange={(e) => setQuotaLlm(e.target.value)} inputMode="decimal"
+                      placeholder="默认（free 0.5 / pro 2）"
+                      className="flex-1 border-2 border-[var(--curb)] bg-[var(--sky)] px-2 py-1.5 text-[13px] text-[var(--paper)]" />
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="w-28 shrink-0 text-[var(--curb)]">外观七天套数</span>
+                    <input value={quotaPetgen} onChange={(e) => setQuotaPetgen(e.target.value)} inputMode="numeric"
+                      placeholder="默认 1"
+                      className="flex-1 border-2 border-[var(--curb)] bg-[var(--sky)] px-2 py-1.5 text-[13px] text-[var(--paper)]" />
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="w-28 shrink-0 text-[var(--curb)]">每日推送上限</span>
+                    <input value={quotaPushes} onChange={(e) => setQuotaPushes(e.target.value)} inputMode="numeric"
+                      placeholder="默认（free 5 / pro 20）"
+                      className="flex-1 border-2 border-[var(--curb)] bg-[var(--sky)] px-2 py-1.5 text-[13px] text-[var(--paper)]" />
+                  </label>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => void submitQuotaOverrides()} disabled={quotaBusy}
+                    className="border-2 border-[var(--act)] px-3 py-1.5 text-[13px] text-[var(--act)] disabled:opacity-50">
+                    {quotaBusy ? "保存中…" : "保存"}
+                  </button>
+                  <button type="button" onClick={() => setQuotaTarget(null)} className="border-2 border-[var(--curb)] px-3 py-1.5 text-[13px] text-[var(--paper)]">
+                    取消
+                  </button>
+                </div>
+                {error ? <p className="mt-2 text-[13px] text-[var(--bad)]">{error}</p> : null}
               </div>
             </div>
           ) : null}

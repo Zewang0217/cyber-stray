@@ -55,4 +55,15 @@ describe('petGenWeeklyQuota（DB 计数）', () => {
     });
   });
 
+  it('租户覆盖 limit（shared/quota）：按覆盖值计算剩余', async () => {
+    const db = await getDb(dataDir);
+    const now = Date.now();
+    await db.insert(petGenTasks).values([
+      { id: 'ov1', tenantId: 'alice', specText: '猫', status: 'done', completedAt: now },
+    ]).run();
+    expect(await petGenWeeklyQuota(db, 'alice', false, now, 3)).toMatchObject({
+      used: 1, limit: 3, remaining: 2,
+    });
+  });
+
 });

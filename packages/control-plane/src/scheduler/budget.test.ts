@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { planBudgetYuan, todayLlmCostYuan } from './budget.js';
+import { effectiveBudgetYuan, planBudgetYuan, todayLlmCostYuan } from './budget.js';
 
 describe('预算闸（#265）', () => {
   let dataDir: string;
@@ -38,6 +38,18 @@ describe('预算闸（#265）', () => {
       expect(
         planBudgetYuan({ enabled: false, yuanPerPlan: { free: 0.5, pro: 2, byok: 2 } }, 'free'),
       ).toBe(null);
+    });
+  });
+
+  describe('effectiveBudgetYuan（租户覆盖优先）', () => {
+    const config = { enabled: true, yuanPerPlan: { free: 0.5, pro: 2, byok: 2 } };
+
+    it('无覆盖 = 套餐默认；覆盖 0 = 不限；覆盖正值 = 直接生效', () => {
+      expect(effectiveBudgetYuan(config, 'pro', undefined)).toBe(2);
+      expect(effectiveBudgetYuan(config, 'pro', 0)).toBe(null);
+      expect(effectiveBudgetYuan(config, 'free', 10)).toBe(10);
+      // 覆盖优先于总开关外的套餐差异：free 租户也能提到 pro 级
+      expect(effectiveBudgetYuan(config, 'free', 2)).toBe(2);
     });
   });
 

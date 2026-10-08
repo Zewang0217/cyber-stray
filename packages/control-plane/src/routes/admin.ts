@@ -17,6 +17,12 @@ import type { ControlPlaneConfig } from '../config.js';
 import { validateModelId } from '../infra/app-config.js';
 import { isAdminSub } from '../infra/admin-repo.js';
 import { PLAN_VALUES, type PlanValue } from '../plan/limits.js';
+import {
+  TENANT_QUOTA_KEYS,
+  isValidQuotaValue,
+  type TenantQuotaKey,
+  type TenantQuotaOverrides,
+} from '@cyber-stray/shared/quota';
 import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { createAdminService } from '../services/admin-service.js';
@@ -199,6 +205,46 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
       return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
     }
     return c.json({ success: true, data: await service.listAdmins() });
+  });
+
+  /**
+   * PUT /api/admin/users/:tenantId/quota-overrides — 租户配额覆盖（整体替换语义）：
+   * 提交的字段覆盖同名项，缺省/null 字段即清除；全空 = 清空回套餐默认。
+   * 生效点：LLM 预算闸 / petgen 七天额度（下个 tick / 下次提交）、推送日上限（下轮游荡）。
+   */
+  app.put('/users/:tenantId/quota-overrides', async (c) => {
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) {
+      return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
+    }
+    const tenantId = c.req.param('tenantId');
+    if (!TENANT_ID_RE.test(tenantId)) return c.json(jsonError('非法租户 id'), 400);
+
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json(jsonError('请求体须为 JSON'), 400);
+    }
+    for (const key of Object.keys(body)) {
+      if (!TENANT_QUOTA_KEYS.includes(key as TenantQuotaKey)) {
+        return c.json(jsonError(`未知配额键：${key}（可用：${TENANT_QUOTA_KEYS.join('|')}）`), 400);
+      }
+    }
+    const overrides: TenantQuotaOverrides = {};
+    for (const key of TENANT_QUOTA_KEYS) {
+      const value = body[key];
+      if (value === undefined || value === null) continue; // 缺省/null = 清除该键
+      if (typeof value !== 'number' || !isValidQuotaValue(key, value)) {
+        return c.json(jsonError(`${key} 数值非法（详见 shared/quota 边界）`), 400);
+      }
+      overrides[key] = value;
+    }
+
+    const outcome = await service.setQuotaOverrides(tenantId, Object.keys(overrides).length > 0 ? overrides : null);
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
   });
 
   /** POST /api/admin/admins — 授予管理员（管理员可授权他人） */
