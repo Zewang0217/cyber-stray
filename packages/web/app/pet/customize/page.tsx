@@ -10,7 +10,7 @@ import { BootFrame } from "@/components/strayboy/BootFrame";
  * 字段与流程对齐 #169 混合管线结论（spec Decision 5/8）。
  */
 export default function CustomizePage() {
-  const { task, quota, loading, error, submit, confirm, restart, retryQc } = usePetGen();
+  const { task, quota, loading, error, submit, confirm, restart, retryQc, refresh } = usePetGen();
 
   // 分段墨条进度：按任务状态映射阶段
   const stages: Array<{ label: string; on: boolean }> = [
@@ -36,7 +36,10 @@ export default function CustomizePage() {
         <PetAppearancePreview refreshToken={task?.completedAt ?? 0} />
 
         {error && (
-          <p className="mb-4 border-2 border-[var(--bad)] bg-[var(--panel)] p-2.5 text-[13px] text-[var(--bad)]">{error}</p>
+          <div className="mb-4 border-2 border-[var(--bad)] bg-[var(--panel)] p-2.5 text-[13px] text-[var(--bad)]">
+            <p>{error}</p>
+            <button type="button" className="mt-2 underline" onClick={() => void refresh()}>重新加载</button>
+          </div>
         )}
 
         {/* failed：显式呈现失败原因 + 重试引导（禁静默） */}
