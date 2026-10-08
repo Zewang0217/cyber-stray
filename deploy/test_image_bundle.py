@@ -138,6 +138,23 @@ class ImageBundleTest(unittest.TestCase):
         self.assertFalse((self.path / bundle.DOWNLOAD).exists())
         self.assertFalse((self.path / "artifact.zip").exists())
 
+    def test_download_bootstrap_retries_transient_failure_without_exposing_signed_url(self):
+        data = self.artifact()
+        attempts = 0
+        original = self.artifact_response(data)
+        def response(request, **kwargs):
+            nonlocal attempts
+            if request.get_method() == "HEAD":
+                attempts += 1
+                if attempts == 1:
+                    raise urllib.error.URLError("TLS EOF at https://example.blob.core.windows.net/a?sig=private")
+            return original(request, **kwargs)
+        with patch.object(bundle.urllib.request, "build_opener") as opener, patch.object(bundle.time, "sleep"):
+            opener.return_value.open.side_effect = response
+            bundle.download(self.path)
+        self.assertEqual(attempts, 2)
+        self.assertNotIn("private", bundle.network_reason(urllib.error.URLError("https://host/a?sig=private")))
+
     def test_download_uses_bounded_ranges_and_reassembles_in_byte_order(self):
         data = self.artifact()
         ranges = []
