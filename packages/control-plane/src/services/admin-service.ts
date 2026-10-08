@@ -32,6 +32,7 @@ import { parseTenantQuotaOverrides, type TenantQuotaOverrides } from '@cyber-str
 import { readTenantWanderStats } from '../infra/tenant-data-reader.js';
 import { costOf, requireModelPrice } from '../domain/pricing.js';
 import { resolveEntitlements } from '../plan/entitlements.js';
+import type { EffectiveEntitlements } from '@cyber-stray/shared/plan';
 import { planBudgetYuan } from '../scheduler/budget.js';
 
 export interface AdminServiceDeps {
@@ -39,6 +40,20 @@ export interface AdminServiceDeps {
     ControlPlaneConfig,
     'dataDir' | 'productMode' | 'adminSubs' | 'arkImageModel' | 'visionModel' | 'llmBudgetEnabled' | 'llmBudgetYuan' | 'webOrigin'
   >;
+}
+
+/** 用量报表的租户行（ledgerError 非空 = 该租户账本故障，数值不计入汇总） */
+export interface TenantUsageRow extends EffectiveEntitlements {
+  tenantId: string;
+  tenantName: string;
+  llmCostToday: number;
+  llmBudgetYuan: number | null;
+  ledgerError: string | null;
+  llmTokens: number;
+  imageCount: number;
+  visionCount: number;
+  cost: number;
+  lastActive: string | null;
 }
 
 export type AdminOutcome<T> =
@@ -171,35 +186,56 @@ export function createAdminService({ config }: AdminServiceDeps) {
       resolveEntitlements(plan, config.productMode).plan);
   }
 
-  /** 用量成本报表：summary 总览 + perTenant（含今日 LLM 水位）+ recent 最近 50 条明细 */
+  /**
+   * 用量成本报表：summary 总览 + perTenant（含今日 LLM 水位）+ recent 最近 50 条明细。
+   * 单租户账本故障（记账闩锁/脏行/未知模型单价）不炸全表：该租户行显式标记
+   * ledgerError、汇总只计健康租户——闩锁本就是等运维处理的信号，观测面必须能
+   * 看见它而不是整页 500（修复前任一租户故障即 GET /usage 500）。
+   */
   async function usageReport(from?: string, to?: string) {
     const today = localDateKey();
     const tenantRows = await listTenants(config.dataDir);
-    const perTenant = await Promise.all(
-      tenantRows.map(async (t) => {
-        const rows = await readTenantUsage(config.dataDir, t.id, from, to);
-        const agg = aggregateTenantUsage(rows);
-        const todayRows = await readTenantUsage(config.dataDir, t.id, today, today);
-        const llmCostToday = todayRows.reduce((s, row) => (row.kind === 'llm' ? s + costOf(row) : s), 0);
-        return {
+    const perTenant: TenantUsageRow[] = await Promise.all(
+      tenantRows.map(async (t): Promise<TenantUsageRow> => {
+        const base: Omit<TenantUsageRow, 'llmCostToday' | 'llmTokens' | 'imageCount' | 'visionCount' | 'cost' | 'lastActive'> = {
           tenantId: t.id,
           tenantName: t.name,
           ...resolveEntitlements(t.plan, config.productMode),
-          llmCostToday,
           llmBudgetYuan: budgetYuanFor(t.plan),
-          ...agg,
+          ledgerError: null,
         };
+        try {
+          const rows = await readTenantUsage(config.dataDir, t.id, from, to);
+          const agg = aggregateTenantUsage(rows);
+          const todayRows = await readTenantUsage(config.dataDir, t.id, today, today);
+          const llmCostToday = todayRows.reduce((s, row) => (row.kind === 'llm' ? s + costOf(row) : s), 0);
+          return { ...base, llmCostToday, ...agg };
+        } catch (error) {
+          return {
+            ...base,
+            llmCostToday: 0,
+            ledgerError: error instanceof Error ? error.message : String(error),
+            llmTokens: 0,
+            imageCount: 0,
+            visionCount: 0,
+            cost: 0,
+            lastActive: null,
+          };
+        }
       }),
     );
 
+    const healthy = perTenant.filter((p) => p.ledgerError === null);
     const allRows = (await Promise.all(
-      tenantRows.map((t) => readTenantUsage(config.dataDir, t.id, from, to)),
+      healthy.map((t) => readTenantUsage(config.dataDir, t.tenantId, from, to)),
     )).flat();
     const summary = {
-      totalCost: perTenant.reduce((s, p) => s + p.cost, 0),
-      totalLlmTokens: perTenant.reduce((s, p) => s + p.llmTokens, 0),
-      totalImages: perTenant.reduce((s, p) => s + p.imageCount, 0),
-      totalVisionQc: perTenant.reduce((s, p) => s + p.visionCount, 0),
+      totalCost: healthy.reduce((s, p) => s + p.cost, 0),
+      totalLlmTokens: healthy.reduce((s, p) => s + p.llmTokens, 0),
+      totalImages: healthy.reduce((s, p) => s + p.imageCount, 0),
+      totalVisionQc: healthy.reduce((s, p) => s + p.visionCount, 0),
+      /** 账本故障租户数（面板据此提示运维；汇总未计入这些租户） */
+      ledgerErrors: perTenant.length - healthy.length,
     };
     const recent = allRows
       .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))

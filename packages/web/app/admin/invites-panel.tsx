@@ -166,7 +166,15 @@ export default function InvitesPanel() {
                     <span className="text-[var(--ink)]">未使用</span>
                   )}
                 </td>
-                <td className="py-1.5 pr-3 text-[var(--curb)]">{inv.consumedTenantId ?? "—"}</td>
+                <td className="py-1.5 pr-3">
+                  {inv.consumedTenantId ? (
+                    <span className="font-vt323 text-[14px] text-[var(--paper)]" title={inv.consumedTenantId}>
+                      {inv.consumedTenantId.slice(0, 8)}
+                    </span>
+                  ) : (
+                    <span className="text-[var(--curb)]">—</span>
+                  )}
+                </td>
                 <td className="py-1.5">
                   {!inv.consumedAt && !inv.revokedAt ? (
                     <button
