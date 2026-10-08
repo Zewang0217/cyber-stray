@@ -33,6 +33,8 @@ export const tenants = sqliteTable('tenants', {
   deletionReason: text('deletion_reason'),
   /** 执行注销的操作者 sub（self 时 = 本人） */
   deletedBy: text('deleted_by'),
+  /** 租户级配额覆盖（JSON 文本 TenantQuotaOverrides；null = 跟随套餐默认，契约见 @cyber-stray/shared/quota） */
+  quotaOverrides: text('quota_overrides'),
   createdAt: integer('created_at').notNull().$defaultFn(now),
   updatedAt: integer('updated_at').notNull().$defaultFn(now).$onUpdate(() => Date.now()),
 });

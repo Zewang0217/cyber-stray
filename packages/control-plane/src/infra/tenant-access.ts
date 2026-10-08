@@ -47,6 +47,19 @@ export async function updateTenantPlan(dataDir: string, tenantId: string, plan: 
 }
 
 /**
+ * 写/清租户配额覆盖（JSON 文本；null = 清空回套餐默认）。键值校验在应用层
+ * （admin 路由经 shared/quota 守卫），本层只落库。
+ */
+export async function updateTenantQuotaOverrides(
+  dataDir: string,
+  tenantId: string,
+  stored: string | null,
+): Promise<void> {
+  const db = await getDb(dataDir);
+  await db.update(tenants).set({ quotaOverrides: stored }).where(eq(tenants.id, tenantId)).run();
+}
+
+/**
  * 注销租户（软删）：置注销审计字段 + 宠物置 paused（调度器现有跳过机制停探索），
  * 同一事务。条件更新防并发双注销——已注销（deleted_at 非空）返回 null。
  */

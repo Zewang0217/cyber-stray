@@ -342,6 +342,29 @@ describe('调度器', () => {
     expect(events.filter((e) => e.startsWith('budget'))).toEqual(['budget_exhausted', 'budget_resumed']);
   });
 
+  it('配额覆盖：llmBudgetYuan 覆盖优先（0 = 不限），下个 tick 生效免重启', async () => {
+    writeLlmUsage('t1', clockDateKey(), 2_000_000); // ¥4 ≥ ¥2（pro 默认上限）
+    await db.update(tenants).set({ plan: 'pro' }).where(eq(tenants.id, 't1')).run();
+    const events: string[] = [];
+    bus.subscribe('t1', (e) => events.push(e.type));
+    sched = makeScheduler({ llmBudget: { enabled: true, yuanPerPlan: { free: 0.5, pro: 2, byok: 2 } } });
+
+    // 覆盖 0 = 不限：超出套餐默认仍派发
+    await db.update(tenants).set({ quotaOverrides: '{"llmBudgetYuan":0}' })
+      .where(eq(tenants.id, 't1')).run();
+    await addPet('p1', 't1');
+    await tick();
+    expect(runner).toHaveBeenCalledOnce();
+    expect(events.filter((e) => e.startsWith('budget'))).toEqual([]);
+
+    // 覆盖收紧为 ¥1（已花 ¥4）：前推复就绪后停派 + exhausted 沿
+    await db.update(tenants).set({ quotaOverrides: '{"llmBudgetYuan":1}' })
+      .where(eq(tenants.id, 't1')).run();
+    await tick(60 * MINUTE_MS);
+    expect(runner).toHaveBeenCalledOnce();
+    expect(events.filter((e) => e.startsWith('budget'))).toEqual(['budget_exhausted']);
+  });
+
   it('预算闸：判定失败 fail-closed（停派 + budget_check_failed 去重），不影响他租户', async () => {
     // usage 路径被同名文件占用 → readdir ENOTDIR（非 ENOENT）→ 判定抛错
     mkdirSync(join(dataDir, 'tenants', 't1'), { recursive: true });

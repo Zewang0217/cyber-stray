@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { EffectiveEntitlements } from "@cyber-stray/shared/plan";
+import type { TenantQuotaOverrides } from "@cyber-stray/shared/quota";
 
 export interface UserRow extends EffectiveEntitlements {
   tenantId: string;
@@ -11,6 +12,8 @@ export interface UserRow extends EffectiveEntitlements {
   deletedAt: number | null;
   deletionMode: "self" | "admin" | null;
   deletionReason: string | null;
+  /** 租户级配额覆盖（null = 跟随套餐默认） */
+  quotaOverrides: TenantQuotaOverrides | null;
   petId: string | null;
   petName: string | null;
   petStatus: "active" | "paused" | null;
@@ -46,6 +49,7 @@ interface UseAdminReturn {
   revokeAdmin: (sub: string) => Promise<boolean>;
   deleteAccount: (tenantId: string, reason: string) => Promise<boolean>;
   batchDeleteAccounts: (tenantIds: string[], reason: string) => Promise<BatchDeletionResult[] | null>;
+  setQuotaOverrides: (tenantId: string, overrides: TenantQuotaOverrides | null) => Promise<boolean>;
 }
 
 /**
@@ -146,6 +150,13 @@ export function useAdmin(): UseAdminReturn {
       }, "注销失败"),
     [mutate],
   );
+  const setQuotaOverrides = useCallback(
+    (tenantId: string, overrides: TenantQuotaOverrides | null): Promise<boolean> =>
+      mutate(`/api/admin/users/${tenantId}/quota-overrides`, {
+        method: "PUT", body: JSON.stringify(overrides ?? {}),
+      }, "配额保存失败"),
+    [mutate],
+  );
   const batchDeleteAccounts = useCallback(
     async (tenantIds: string[], reason: string): Promise<BatchDeletionResult[] | null> => {
       try {
@@ -174,5 +185,5 @@ export function useAdmin(): UseAdminReturn {
     [refresh],
   );
 
-  return { users, admins, error, isAdmin, refresh, setPlan, setPetStatus, grantAdmin, revokeAdmin, deleteAccount, batchDeleteAccounts };
+  return { users, admins, error, isAdmin, refresh, setPlan, setPetStatus, grantAdmin, revokeAdmin, deleteAccount, batchDeleteAccounts, setQuotaOverrides };
 }
