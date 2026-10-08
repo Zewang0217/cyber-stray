@@ -44,7 +44,7 @@ describe('petgen-service 提交串行化（同租户并发竞态）', () => {
   }
 
   it('并发领养建任务 × 2：恰好一个成功、一个 busy（旧实现双插入互卡）', async () => {
-    const service = createPetGenService({ principalSub: 'alice', config: { dataDir, petGenMonthlyQuota: 2 } });
+    const service = createPetGenService({ principalSub: 'alice', config: { dataDir } });
     const spec = buildAdoptAppearanceSpec({ name: '煤球', interests: ['ai'], personality: 'curious' });
     const [a, b] = await Promise.all([
       service.submitAdoptTask('alice', spec),
@@ -56,7 +56,7 @@ describe('petgen-service 提交串行化（同租户并发竞态）', () => {
   });
 
   it('串行化不误伤不同租户：两租户并发提交各自成功', async () => {
-    const service = createPetGenService({ principalSub: 'alice', config: { dataDir, petGenMonthlyQuota: 2 } });
+    const service = createPetGenService({ principalSub: 'alice', config: { dataDir } });
     const spec = buildAdoptAppearanceSpec({ name: '煤球', interests: ['ai'], personality: 'curious' });
     await getOrCreateTenant(dataDir, 'bob');
     const [a, b] = await Promise.all([

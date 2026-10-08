@@ -189,8 +189,8 @@ export const vapidKeys = sqliteTable('vapid_keys', {
  *   generating_states；不满意改 spec → restart（回到 spec_submitted 重出概念图）。
  * - 生成素材落 data/tenants/<sub>/pet-assets/（manifest + 状态 PNG），
  *   任务工作目录 data/tenants/<sub>/pet-assets/tasks/<taskId>/ 存中间产物。
- * - 配额（建议 2 套/月，CP_PETGEN_MONTHLY_QUOTA 可配）：统计当前自然月
- *   状态=done 的任务数；失败任务不占配额。
+ * - 配额（滚动七天 1 套；管理员 RBAC 例外）：按最近 7×24h 内 status=done
+ *   的 completedAt 计数；失败任务不占配额。
  */
 export const petGenTasks = sqliteTable('pet_gen_tasks', {
   id: text('id').primaryKey(),

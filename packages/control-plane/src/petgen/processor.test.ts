@@ -23,7 +23,7 @@ import { createPetUsageRecorder, readTenantUsage } from '../infra/usage.js';
 import { petGenTasks, pets, tenants, type PetGenTask } from '../db/schema.js';
 import { createPetGenService } from '../services/petgen-service.js';
 import { PetGenProcessor } from './processor.js';
-import { petGenQuota } from './quota.js';
+import { petGenWeeklyQuota } from './quota.js';
 import type { PetStateId } from '@cyber-stray/shared/pet';
 import type {
   GenStrategy,
@@ -380,7 +380,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
     expect(Object.keys(manifest.states)).toHaveLength(9);
     expect(manifest.states['idle']).toMatchObject({ file: 'idle', frames: 1, label: '待机呼吸' });
     expect(manifest.states['welcome']?.dur).toBeGreaterThan(0);
-    const quota = await petGenQuota(db, 'alice', 2, clock);
+    const quota = await petGenWeeklyQuota(db, 'alice', false, clock);
     expect(quota.used).toBe(1);
   });
 
@@ -393,7 +393,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
     inspectMock.mockRejectedValue(new Error('provider HTTP 500'));
     await tickUntil(task.id, ['failed']);
     const generated = generateMock.mock.calls.length;
-    const service = createPetGenService({ principalSub: 'alice', config: { dataDir, productMode: 'invite_beta', petGenMonthlyQuota: 2 } });
+    const service = createPetGenService({ principalSub: 'alice', config: { dataDir, productMode: 'invite_beta' } });
     const retried = await service.retryQcTask('alice', task.id);
     expect(retried.ok).toBe(true);
     inspectMock.mockImplementation(inspect);
@@ -662,7 +662,7 @@ describe('PetGenProcessor（#94 状态机）', () => {
     expect(failed.error).toContain('质检多次不合格');
     expect(failed.error).toContain('idle');
     expect(failed.qcRetries).toBe(2);
-    const quota = await petGenQuota(db, 'alice', 2, clock);
+    const quota = await petGenWeeklyQuota(db, 'alice', false, clock);
     expect(quota.used).toBe(0);
   });
 
