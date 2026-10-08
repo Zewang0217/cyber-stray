@@ -53,6 +53,18 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
   const service = createAdminService({ config });
   const app = new Hono();
 
+  /**
+   * GET /api/admin/whoami — 登录会话的管理员自检。
+   * 与 adminSession 的 401/403 不同，这里对已登录的非管理员返回 200 admin:false：
+   * 设置页等入口只需判定「是否渲染维修口」，不该对普通用户制造 403 噪音。
+   */
+  app.get('/whoami', async (c) => {
+    const session = await resolveTenantFromRequest(c.req.raw, config.sessionSecret);
+    if (!session) return c.json(jsonError('未登录'), 401);
+    const admin = await isAdminSub(config.dataDir, session.sub, config.adminSubs);
+    return c.json({ success: true, data: { sub: session.sub, admin } });
+  });
+
   /** GET /api/admin/users — 全部用户（tenants 主表，含无宠物）+ 宠物摘要 + 统计 */
   app.get('/users', async (c) => {
     const auth = await adminSession(c.req.raw, config);
