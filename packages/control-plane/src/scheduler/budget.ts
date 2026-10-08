@@ -6,7 +6,7 @@
  * 次轮停派发，租户侧语义「宠物在睡觉」，次日（日期键文件归零）自动恢复。
  *
  * 读取复用 usage.jsonl 当日累计 + 既有单价表（costOf），不新增存储、
- * 不另建并行索引。只计 kind=llm（生图/质检另有 petGenMonthlyQuota 月配额）。
+ * 不另建并行索引。只计 kind=llm（生图/质检另有 petgen 滚动七天配额）。
  * 读失败向上抛错——闸的调用方（scheduler）fail-closed 停派，绝不把
  * 「判定不了」当「没花钱」。
  */

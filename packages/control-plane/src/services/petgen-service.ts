@@ -40,7 +40,7 @@ import { resolveEntitlements } from '../plan/entitlements.js';
 export interface PetGenServiceDeps {
   /** 经过 session 验证的用户身份；管理员权限不从 tenantId 推断。 */
   principalSub: string;
-  config: Pick<ControlPlaneConfig, 'dataDir' | 'productMode' | 'petGenMonthlyQuota'> & Partial<Pick<ControlPlaneConfig, 'adminSubs'>>;
+  config: Pick<ControlPlaneConfig, 'dataDir' | 'productMode'> & Partial<Pick<ControlPlaneConfig, 'adminSubs'>>;
 }
 
 export type PetGenOutcome<T> =
