@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { useFeedback } from "@/hooks/useFeedback";
 import { useHistory } from "@/hooks/useHistory";
-import { usePets } from "@/hooks/usePets";
 import { useTenantEvents } from "@/hooks/useTenantEvents";
 import { MailCard } from "@/components/strayboy/MailCard";
 import { PostcardDetail } from "@/components/strayboy/PostcardDetail";
@@ -45,9 +44,7 @@ function WallInner() {
   const demo = useSearchParams().get("demo") === "1";
   const live = useTenantEvents({ enabled: !demo });
   const history = useHistory({ refreshSignal: live.refreshSignal, realtimeConnected: live.connected });
-  const { pets } = usePets();
   const feedback = useFeedback();
-  const adoptedAt = pets[0]?.createdAt ?? 0;
 
   const [animateParent] = useAutoAnimate();
   // 详情模态：墙上显示标题与摘要，点开读完整正文。
@@ -112,7 +109,6 @@ function WallInner() {
           <MailCard
             key={`${card.timestamp}|${card.message}`}
             card={card}
-            adoptedAt={adoptedAt}
             seenMs={seen}
             onFeedback={onFeedback}
             onPin={onPin}
@@ -124,7 +120,6 @@ function WallInner() {
       {detail && (
         <PostcardDetail
           card={detail}
-          adoptedAt={adoptedAt}
           onFeedback={onFeedback}
           onPin={onPin}
           pending={feedback.pending || demo}
