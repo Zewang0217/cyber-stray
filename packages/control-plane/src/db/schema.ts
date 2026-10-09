@@ -63,7 +63,7 @@ export const userTenants = sqliteTable('user_tenants', {
   userTenantsPk: primaryKey({ columns: [t.userId, t.tenantId] }),
 }));
 
-/** 内测邀请（#301，#273 拍板）：一次性链接凭证，raw token 不落库（只存 sha256） */
+/** 内测邀请（#301，#273 拍板）：限人数链接凭证，raw token 不落库（只存 sha256） */
 export const invites = sqliteTable('invites', {
   /** 邀请 id（uuid） */
   id: text('id').primaryKey(),
@@ -76,10 +76,19 @@ export const invites = sqliteTable('invites', {
   createdAt: integer('created_at').notNull().$defaultFn(now),
   /** 吊销时刻；非 NULL 即不可用 */
   revokedAt: integer('revoked_at'),
-  /** 用后即焚时刻；非 NULL 即不可用 */
+  /** 首次消费时刻（保留历史兼容与归因，不再用作容量门控） */
   consumedAt: integer('consumed_at'),
-  /** 归因（invitedBy）：由此邀请建立的租户 id */
+  /** 首次消费归因；完整用户归因见 inviteRedemptions。 */
   consumedTenantId: text('consumed_tenant_id'),
+  maxUses: integer('max_uses').notNull().default(1),
+  usedCount: integer('used_count').notNull().default(0),
+});
+
+/** 一名受邀用户只占一个名额；消费先于建租户，因此 tenantId 不引用 tenants。 */
+export const inviteRedemptions = sqliteTable('invite_redemptions', {
+  tenantId: text('tenant_id').primaryKey(),
+  inviteId: text('invite_id').notNull().references(() => invites.id),
+  redeemedAt: integer('redeemed_at').notNull(),
 });
 
 // 宠物（每租户可多只；当前单用户模式 1 租户 1 宠物）

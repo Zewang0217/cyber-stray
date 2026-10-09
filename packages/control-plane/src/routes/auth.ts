@@ -66,7 +66,7 @@ export function createAuthRoutes({ config, oidc, states }: AuthDeps): Hono {
     }
 
     // 邀请门（#301，#273 拍板）：老租户直接放行；新租户必须持有效邀请
-    //（一次性：validate 通过后仍以条件更新消费，并发抢同一条只有一人成功）。
+    //（容量门控：validate 通过后仍以事务消费，防止并发超额和重复用户）。
     // 租户键 = sub；幂等；name 取 OIDC display name。
     let tenantId: string;
     if (await findUserTenantRelation(config.dataDir, user.sub, user.sub)) {
@@ -84,7 +84,7 @@ export function createAuthRoutes({ config, oidc, states }: AuthDeps): Hono {
         return c.redirect(`${config.webOrigin}/need-invite`, 302);
       }
       // 先消费后建租户（PR #303 review P0）：tenantId = sub 建行前已知，
-      // 条件更新失败（被并发抢走）时本地无任何租户行——孤儿租户绕门在
+      // 消费失败（容量耗尽或重复用户）时本地无任何租户行——孤儿租户绕门在
       // 结构上不可能；代价是消费后建租户若抛错，邀请已焚（ rare DB 错误
       // 显式 500 上抛，不兜底）。
       if (!(await consumeInvite(config.dataDir, invite.id, user.sub))) {
