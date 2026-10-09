@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { z } from "zod";
-import { CreateInviteSchema, InvitePublicSchema, MAX_INVITE_USES, inviteAvailability, type InvitePublic } from "@cyber-stray/shared/invite";
+import { CreateInviteSchema, InvitePublicSchema, InviteLinkSchema, MAX_INVITE_USES, inviteAvailability, parseInviteResponse, type InvitePublic, type InviteDataSchema } from "@cyber-stray/shared/invite";
 
 /**
  * 邀请面板（#301，维修口第三 tab）——生成 / 列表 / 吊销。
@@ -11,16 +10,11 @@ import { CreateInviteSchema, InvitePublicSchema, MAX_INVITE_USES, inviteAvailabi
  */
 
 /** 所有邀请响应在一处校验 envelope 与各操作的数据契约。 */
-async function requestInvite<T>(path: string, method: string, dataSchema: z.ZodType<T>, body?: unknown): Promise<T> {
+async function requestInvite<T>(path: string, method: string, dataSchema: InviteDataSchema<T>, body?: unknown): Promise<T> {
   const res = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
-  const schema = z.discriminatedUnion("success", [
-    z.object({ success: z.literal(true), data: dataSchema }),
-    z.object({ success: z.literal(false), error: z.string() }),
-  ]);
-  const json = schema.parse(await res.json());
-  if (!json.success) throw new Error(json.error);
+  const data = parseInviteResponse(await res.json(), dataSchema);
   if (!res.ok) throw new Error(`邀请请求失败（${res.status}）`);
-  return json.data;
+  return data;
 }
 
 export default function InvitesPanel() {
@@ -50,7 +44,7 @@ export default function InvitesPanel() {
     setBusy(true);
     setError(null);
     try {
-      const data = await requestInvite("/api/admin/invites", "POST", z.object({ link: z.string().url() }), parsed.data);
+      const data = await requestInvite("/api/admin/invites", "POST", InviteLinkSchema, parsed.data);
       setFreshLink(data.link);
       setCopied(false);
       setCopyError(null);

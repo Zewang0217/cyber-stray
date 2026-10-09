@@ -12,6 +12,19 @@ export const InvitePublicSchema = z.object({
   maxUses: capacity, usedCount: z.number().int().nonnegative(),
 });
 export type InvitePublic = z.infer<typeof InvitePublicSchema>;
+export type InviteDataSchema<T> = z.ZodType<T>;
+export const InviteLinkSchema = z.object({ link: z.string().url() });
+
+/** 邀请接口响应的唯一解析入口；失败响应保留服务端真实错误。 */
+export function parseInviteResponse<T>(value: unknown, dataSchema: InviteDataSchema<T>): T {
+  const schema = z.discriminatedUnion('success', [
+    z.object({ success: z.literal(true), data: dataSchema }),
+    z.object({ success: z.literal(false), error: z.string() }),
+  ]);
+  const response = schema.parse(value);
+  if (!response.success) throw new Error(response.error);
+  return response.data;
+}
 
 /** 同源状态派生；消费时间保留首次归因，不再代表整条邀请失效。 */
 export function inviteAvailability(invite: InvitePublic) {
