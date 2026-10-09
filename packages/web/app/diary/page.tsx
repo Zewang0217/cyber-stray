@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { BootFrame } from "@/components/strayboy/BootFrame";
+import { PostcardMarkdown } from "@/components/strayboy/PostcardMarkdown";
 import { DEMO_DIARY } from "@/lib/strayboy/demo";
 
 interface DiaryEntry {
@@ -10,6 +11,11 @@ interface DiaryEntry {
   title: string;
   content: string;
   excerpt?: string;
+}
+
+/** 正文首行 `# 标题` 与弹窗页首标题重复（CP 的 title 即取自该行），渲染前去掉这一行。 */
+function stripTitleHeading(content: string): string {
+  return content.replace(/^#\s+.+\r?\n/, "");
 }
 
 /** 显式拉取日记（无兜底；失败呈现错误）。 */
@@ -98,9 +104,9 @@ function DiaryInner() {
           >
             <span className="font-vt323 text-[20px] text-[var(--curb)]">{openEntry.date}</span>
             <h2 className="mb-3 text-[17px] font-medium text-[var(--ink)]">{openEntry.title}</h2>
-            <p className="font-noto whitespace-pre-wrap text-[14px] leading-[1.75] text-[var(--ink)]">
-              {openEntry.content}
-            </p>
+            <div className="font-noto text-[14px] leading-[1.75] text-[var(--ink)]">
+              <PostcardMarkdown text={stripTitleHeading(openEntry.content)} />
+            </div>
             <button
               type="button"
               onClick={() => setOpenEntry(null)}
