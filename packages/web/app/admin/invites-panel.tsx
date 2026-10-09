@@ -10,6 +10,19 @@ import { CreateInviteSchema, InvitePublicSchema, MAX_INVITE_USES, inviteAvailabi
  * 面板用「复制」按钮把链接交给剪贴板，刷新后不再可得。
  */
 
+/** 所有邀请响应在一处校验 envelope 与各操作的数据契约。 */
+async function requestInvite<T>(path: string, method: string, dataSchema: z.ZodType<T>, body?: unknown): Promise<T> {
+  const res = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const schema = z.discriminatedUnion("success", [
+    z.object({ success: z.literal(true), data: dataSchema }),
+    z.object({ success: z.literal(false), error: z.string() }),
+  ]);
+  const json = schema.parse(await res.json());
+  if (!json.success) throw new Error(json.error);
+  if (!res.ok) throw new Error(`邀请请求失败（${res.status}）`);
+  return json.data;
+}
+
 export default function InvitesPanel() {
   const [invites, setInvites] = useState<InvitePublic[] | null>(null);
   const [maxUses, setMaxUses] = useState("1");
@@ -23,22 +36,12 @@ export default function InvitesPanel() {
   const canCopy = typeof navigator !== "undefined" && typeof navigator.clipboard?.writeText === "function";
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/admin/invites");
-    const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.error ?? "邀请列表加载失败");
-    setInvites(InvitePublicSchema.array().parse(json.data));
+    setInvites(await requestInvite("/api/admin/invites", "GET", InvitePublicSchema.array()));
   }, []);
 
   useEffect(() => {
     void load().catch((err: unknown) => setError(err instanceof Error ? err.message : "邀请列表加载失败"));
   }, [load]);
-
-  async function mutate(path: string, method: string, body?: unknown) {
-    const res = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
-    const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.error ?? "邀请操作失败");
-    return json.data;
-  }
 
   async function generate() {
     if (busy) return;
@@ -47,8 +50,8 @@ export default function InvitesPanel() {
     setBusy(true);
     setError(null);
     try {
-      const data = await mutate("/api/admin/invites", "POST", parsed.data);
-      setFreshLink(z.object({ link: z.string().url() }).parse(data).link);
+      const data = await requestInvite("/api/admin/invites", "POST", z.object({ link: z.string().url() }), parsed.data);
+      setFreshLink(data.link);
       setCopied(false);
       setCopyError(null);
       setLabel("");
@@ -62,8 +65,8 @@ export default function InvitesPanel() {
     setBusy(true);
     setError(null);
     try {
-      await mutate(`/api/admin/invites/${id}${additionalUses === undefined ? "" : "/capacity"}`,
-        additionalUses === undefined ? "DELETE" : "POST", additionalUses === undefined ? undefined : { additionalUses });
+      await requestInvite(`/api/admin/invites/${id}${additionalUses === undefined ? "" : "/capacity"}`,
+        additionalUses === undefined ? "DELETE" : "POST", InvitePublicSchema, additionalUses === undefined ? undefined : { additionalUses });
       await load();
     } catch (err) { setError(err instanceof Error ? err.message : "更新失败"); }
     finally { setBusy(false); }
