@@ -512,4 +512,21 @@ describe('admin 路由（用户级管理 + RBAC）', () => {
     );
     expect(forbidden.status).toBe(403);
   });
+  it('管理员可创建多人链接并追加名额；拒绝非法人数及普通用户操作', async () => {
+    const create = await app.request(await authed('http://x/api/admin/invites', { method: 'POST', body: JSON.stringify({ maxUses: 5 }) }));
+    expect(create.status).toBe(200);
+    const { data } = await create.json() as { data: { id: string; maxUses: number } };
+    expect(data.maxUses).toBe(5);
+    const url = `http://x/api/admin/invites/${data.id}/capacity`;
+    const expand = await app.request(await authed(url, { method: 'POST', body: JSON.stringify({ additionalUses: 20 }) }));
+    expect(expand.status).toBe(200);
+    expect((await expand.json() as { data: { maxUses: number } }).data.maxUses).toBe(25);
+    for (const amount of [0, -1, 1.5, '2', null, 10000]) {
+      expect((await app.request(await authed(url, { method: 'POST', body: JSON.stringify({ additionalUses: amount }) }))).status).toBe(400);
+    }
+    expect((await app.request(await authed(url, { method: 'POST', body: JSON.stringify({ additionalUses: 1 }) }, { sub: 'tenant-a', tenantId: 'tenant-a' }))).status).toBe(403);
+    expect((await app.request(new Request(url, { method: 'POST', body: '{}' }))).status).toBe(401);
+    expect((await app.request(await authed('http://x/api/admin/invites', { method: 'POST', body: '{bad' }))).status).toBe(400);
+  });
+
 });

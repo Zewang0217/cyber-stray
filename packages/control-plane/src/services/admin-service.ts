@@ -67,12 +67,18 @@ export function createAdminService({ config }: AdminServiceDeps) {
   }
 
   /** 生成邀请：raw token / 完整链接只在本次响应出现一次 */
-  async function createInvite(input: { createdBy: string; label?: string }) {
+  async function createInvite(input: { createdBy: string; label?: string; maxUses?: number }) {
     const invite = await invitesRepo.createInvite(config.dataDir, input);
     return { ...invite, link: `${config.webOrigin}/?invite=${invite.token}` };
   }
 
-  /** 吊销邀请（已消费/已吊销 → 404） */
+  /** 为原链接追加可邀请人数，不恢复吊销链接。 */
+  async function expandInvite(id: string, additionalUses: number): Promise<AdminOutcome<InvitePublic>> {
+    const row = await invitesRepo.expandInvite(config.dataDir, id, additionalUses);
+    return row ? { ok: true, data: row } : { ok: false, status: 400, error: '邀请不存在、已吊销或增加后超过人数上限' };
+  }
+
+  /** 吊销邀请（已吊销 → 404） */
   async function revokeInvite(id: string): Promise<AdminOutcome<InvitePublic>> {
     const ok = await invitesRepo.revokeInvite(config.dataDir, id);
     if (!ok) return { ok: false, status: 404, error: '邀请不存在或状态不可吊销' };
@@ -288,6 +294,7 @@ export function createAdminService({ config }: AdminServiceDeps) {
     listInvites,
     createInvite,
     revokeInvite,
+    expandInvite,
   };
 }
 
