@@ -25,7 +25,6 @@ export function PetSprite({
   anim,
   scale = 3,
   hungry = false,
-  coat = "orange",
   basePath,
   className,
 }: {
@@ -33,14 +32,10 @@ export function PetSprite({
   anim: string;
   scale?: number;
   hungry?: boolean;
-  /** 毛色皮肤滤镜（delight B12，docs/design-v3/DESIGN.md §7 图鉴皮肤） */
-  coat?: "orange" | "black" | "calico";
   /** 精灵图资产根（缺省内置 /pet/strayboy；领养自定义传 /api/pet-assets） */
   basePath?: string;
   className?: string;
 }) {
-  const coatFilterCss = coat === "black" ? "brightness(0.25) saturate(0.3)"
-    : coat === "calico" ? "hue-rotate(-40deg) saturate(1.2)" : "none";
   const id = contractId(contract);
   useEffect(() => {
     const css = animationCss(contract);
@@ -63,7 +58,7 @@ export function PetSprite({
       data-hungry={hungry ? "true" : "false"}
       style={{ position: "relative", lineHeight: 0 }}
     >
-      <span className={`pixelated sbp-${id}`} style={{ ...frameStyle({ contract, anim, scale, basePath }), filter: coatFilterCss }} />
+      <span className={`pixelated sbp-${id}`} style={{ ...frameStyle({ contract, anim, scale, basePath }) }} />
       {hungry && contract.overlays && (
         <span
           aria-hidden

@@ -147,7 +147,6 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
   const [theater, setTheater] = useState<(typeof THEATER)[number] | null>(null);
   const [lvFlash, setLvFlash] = useState(false);
   const [attrCardOpen, setAttrCardOpen] = useState(false);
-  const [coat, setCoat] = useState<"orange" | "black" | "calico">("orange");
   const [attract, setAttract] = useState(false);
   const [mailman, setMailman] = useState(false);
   const patGrumpyTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -219,18 +218,6 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
       setDialog("睡饱了，出门找新鲜货！");
     }
   }, [lastEvent]);
-
-  // 毛色皮肤（delight B12）：初始读 + CoatPicker 事件刷新
-  useEffect(() => {
-    const raw = window.localStorage.getItem("sb_coat");
-    if (raw === "black" || raw === "calico") setCoat(raw);
-    const onCoat = (e: Event): void => {
-      const id = (e as CustomEvent<string>).detail;
-      if (id === "black" || id === "calico" || id === "orange") setCoat(id);
-    };
-    window.addEventListener("sb-coat", onCoat);
-    return () => window.removeEventListener("sb-coat", onCoat);
-  }, []);
 
   // 霓虹换牌（delight B13）：图鉴 No.1 更替时写入，此处短暂换招牌文案
   useEffect(() => {
@@ -392,7 +379,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
       >
         {!view.away && (
           <button type="button" aria-label={`拍拍${pet.name}`} className="relative cursor-pointer" onClick={pat}>
-            <StreetPet {...petAssets} loaded={demo || petAssets.loaded} contract={contract} anim={anim} hungry={view.hungry && (anim === "idle" || view.napping)} coat={coat} />
+            <StreetPet {...petAssets} loaded={demo || petAssets.loaded} contract={contract} anim={anim} hungry={view.hungry && (anim === "idle" || view.napping)} />
             {/* 打盹角标（#218）：非睡眠期的精力低打盹，复用 sleep 帧 + zZ 与 #91 睡眠期区分 */}
             {view.napping && anim === "sleep" && (
               <span aria-hidden className="sb-blink absolute -top-2 right-0 font-vt323 text-[13px] leading-none text-[var(--curb)]">
@@ -424,7 +411,7 @@ function StreetCornerMain({ contract, demo, pet, state, connected, lastEvent, pu
       {attract && (
         <div className="fixed inset-0 z-[75] flex flex-col items-center justify-center gap-6 bg-[var(--sky)]" onClick={() => setAttract(false)}>
           <p className="font-ps2p text-sm text-[var(--neon)] sb-blink">STREET MODE</p>
-          <StreetPet {...petAssets} loaded={demo || petAssets.loaded} contract={contract} anim="walk" coat={coat} />
+          <StreetPet {...petAssets} loaded={demo || petAssets.loaded} contract={contract} anim="walk" />
           <p className="text-[12px] text-[var(--curb)]">点按任意处回到掌机</p>
         </div>
       )}

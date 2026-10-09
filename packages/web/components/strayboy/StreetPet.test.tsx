@@ -30,7 +30,7 @@ function sheet() {
 }
 function LivePet({ refreshToken = 0 }: { refreshToken?: number }) {
   const assets = usePetManifest({ refreshToken });
-  return <StreetPet {...assets} contract={contract} anim="idle" coat="black" />;
+  return <StreetPet {...assets} contract={contract} anim="idle" />;
 }
 
 let container: HTMLDivElement;
@@ -49,8 +49,8 @@ afterEach(async () => {
 });
 
 describe('街角素材播放器', () => {
-  it.each(PET_STATE_IDS)('经典 %s 使用对应自定义 PNG 与状态时长，不套内置毛色', async (anim) => {
-    await act(async () => root.render(<StreetPet contract={contract} appearance={parsePetAppearance(classic())} loaded error={null} anim={anim} coat="black" />));
+  it.each(PET_STATE_IDS)('经典 %s 使用对应自定义 PNG 与状态时长', async (anim) => {
+    await act(async () => root.render(<StreetPet contract={contract} appearance={parsePetAppearance(classic())} loaded error={null} anim={anim} />));
     const image = container.querySelector('img')!;
     const url = new URL(image.src);
     expect(url.pathname).toBe(`/api/pet-assets/${anim}.png`);
@@ -58,7 +58,6 @@ describe('街角素材播放器', () => {
     expect(image.alt).toBe(PET_STATES[anim].label);
     expect(image.dataset.anim).toBe(anim);
     expect(image.style.animationDuration).toBe(`${PET_STATES[anim].dur}s`);
-    expect(image.style.filter).toBe('');
     expect(container.innerHTML).not.toContain('/pet/strayboy/');
   });
 
@@ -69,12 +68,11 @@ describe('街角素材播放器', () => {
     }
   });
 
-  it('sheet 延续 CSS 帧播放、缩放和拍拍映射，不套自定义毛色；坏图明确报错', async () => {
-    await act(async () => root.render(<StreetPet contract={contract} appearance={parsePetAppearance(sheet())} loaded error={null} anim="pat" coat="calico" />));
+  it('sheet 延续 CSS 帧播放、缩放和拍拍映射；坏图明确报错', async () => {
+    await act(async () => root.render(<StreetPet contract={contract} appearance={parsePetAppearance(sheet())} loaded error={null} anim="pat" />));
     const frame = container.querySelector<HTMLSpanElement>('span.pixelated')!;
     expect(frame.style.backgroundImage).toContain('/api/pet-assets/sprite.png?v=');
     expect(frame.style.width).toBe('128px');
-    expect(frame.style.filter).toBe('none');
     expect(container.querySelector('[data-anim]')?.getAttribute('data-anim')).toBe('joy');
     await act(async () => container.querySelector('img')!.dispatchEvent(new Event('error')));
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('sprite.png');
@@ -94,12 +92,11 @@ describe('街角素材播放器', () => {
     expect(container.querySelector('img')?.getAttribute('src')).toContain('00%3A01%3A00');
   });
 
-  it('只在 manifest 404 时使用内置素材，保留毛色', async () => {
+  it('只在 manifest 404 时使用内置素材', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })));
     await act(async () => root.render(<LivePet />));
     const frame = container.querySelector<HTMLSpanElement>('span.pixelated')!;
     expect(frame.style.backgroundImage).toContain('/pet/strayboy/');
-    expect(frame.style.filter).toContain('brightness');
   });
 
   it('加载期间不闪回内置猫', async () => {

@@ -84,7 +84,6 @@ describe('StreetCorner 自定义素材接线（真实 hooks / 状态机 / 播放
     expect(petImage()?.src).toContain('/sleep.png?');
   });
   it('拍拍播放经典 joy，低精力播放 sleep，预算休息仍可互动；待机画面也用自定义 walk', async () => {
-    window.localStorage.setItem('sb_coat', 'black');
     await act(async () => root.render(<StreetCorner contract={contract} />));
     expect(petImage()?.src).toContain('/api/pet-assets/idle.png?');
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="拍拍年糕"]')!.click());
@@ -101,7 +100,6 @@ describe('StreetCorner 自定义素材接线（真实 hooks / 状态机 / 播放
     const attract = Array.from(container.querySelectorAll('p')).find((p) => p.textContent === 'STREET MODE')?.parentElement;
     expect(attract?.querySelector('img')?.src).toContain('/api/pet-assets/walk.png?');
     expect(attract?.innerHTML).not.toContain('/pet/strayboy/');
-    expect(petImage()?.style.filter).toBe('');
   });
 
   it('白天预算休息仍可拍拍，作息睡眠不被叫醒', async () => {
