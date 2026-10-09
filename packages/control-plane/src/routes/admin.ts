@@ -13,6 +13,7 @@
  */
 
 import { Hono } from 'hono';
+import { CreateInviteSchema, ExpandInviteSchema } from '@cyber-stray/shared/invite';
 import type { ControlPlaneConfig } from '../config.js';
 import { validateModelId } from '../infra/app-config.js';
 import { isAdminSub } from '../infra/admin-repo.js';
@@ -295,17 +296,29 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
     if ('error' in auth) {
       return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
     }
-    let body: { label?: unknown } = {};
-    try {
-      body = (await c.req.json()) as { label?: unknown };
-    } catch {
-      // 空请求体合法（label 可省）；非 JSON 视为无 label
-    }
-    const label = typeof body.label === 'string' && body.label.trim() ? body.label.trim().slice(0, 64) : undefined;
-    return c.json({ success: true, data: await service.createInvite({ createdBy: auth.sub, label }) });
+    const body = await c.req.text();
+    let input: unknown;
+    try { input = body.trim() ? JSON.parse(body) : {}; }
+    catch { return c.json(jsonError('请求体须为 JSON'), 400); }
+    const parsed = CreateInviteSchema.safeParse(input);
+    if (!parsed.success) return c.json(jsonError('备注最多 64 字，邀请人数须为 1 至 10000 的整数'), 400);
+    return c.json({ success: true, data: await service.createInvite({ createdBy: auth.sub, ...parsed.data }) });
   });
 
-  /** DELETE /api/admin/invites/:id — 吊销邀请（已消费/已吊销 → 404） */
+  /** POST /api/admin/invites/:id/capacity — 原链接增加名额。 */
+  app.post('/invites/:id/capacity', async (c) => {
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
+    let input: unknown;
+    try { input = await c.req.json(); }
+    catch { return c.json(jsonError('请求体须为 JSON'), 400); }
+    const parsed = ExpandInviteSchema.safeParse(input);
+    if (!parsed.success) return c.json(jsonError('增加人数须为 1 至 10000 的整数'), 400);
+    const outcome = await service.expandInvite(c.req.param('id'), parsed.data.additionalUses);
+    return outcome.ok ? c.json({ success: true, data: outcome.data }) : c.json(jsonError(outcome.error), outcome.status);
+  });
+
+  /** DELETE /api/admin/invites/:id — 吊销邀请（已吊销 → 404） */
   app.delete('/invites/:id', async (c) => {
     const auth = await adminSession(c.req.raw, config);
     if ('error' in auth) {

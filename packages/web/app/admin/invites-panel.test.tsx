@@ -71,3 +71,24 @@ describe('邀请链接复制', () => {
     expect(container.querySelector<HTMLInputElement>('input[aria-label="邀请链接"]')?.value).toBe(INVITE_LINK);
   });
 });
+
+describe('邀请容量管理', () => {
+  it('已用满旧链接仍能追加人数，吊销链接不显示追加按钮', async () => {
+    const row = { id: 'old-link', label: '群推广', createdBy: 'admin', createdAt: 1, revokedAt: null, consumedAt: 2, consumedTenantId: 'user-a', maxUses: 1, usedCount: 1 };
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') row.maxUses += 20;
+      return new Response(JSON.stringify({ success: true, data: init?.method === 'POST' ? row : [row, { ...row, id: 'revoked', revokedAt: 3 }] }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await act(async () => root.render(<InvitesPanel />));
+    expect(container.textContent).toContain('已用满');
+    expect(container.textContent).toContain('已吊销');
+    expect(container.querySelectorAll('form')).toHaveLength(1);
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="增加人数 群推广"]')!;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => { setter.call(input, '20'); input.dispatchEvent(new Event('input', { bubbles: true })); });
+    await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/invites/old-link/capacity', expect.objectContaining({ method: 'POST', body: JSON.stringify({ additionalUses: 20 }) }));
+    expect(container.textContent).toContain('1 / 21 / 20');
+  });
+});

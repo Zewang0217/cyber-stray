@@ -245,4 +245,17 @@ describe('auth 路由', () => {
     expect(res.headers.get('location')).toBe('http://localhost:3000/login?deleted=1');
     expect(res.headers.get('set-cookie') ?? '').not.toMatch(/cs_session=[^;]/);
   });
+  it('多人链接可完成两个不同用户注册，第三人用满后不创建租户', async () => {
+    const invite = await createInvite(dataDir, { createdBy: 'admin-test', maxUses: 2 });
+    for (const [sub, admitted] of [['multi-a', true], ['multi-b', true], ['multi-c', false]] as const) {
+      vi.mocked(oidc.handleCallback).mockResolvedValue({ sub });
+      const login = await app.request(`/api/auth/login?invite=${invite.token}`);
+      const state = extractState(login.headers.get('location')!);
+      const callback = await app.request(`/api/auth/callback?code=mock&state=${state}`, { headers: { cookie: login.headers.get('set-cookie')!.split(';')[0]! } });
+      expect(callback.headers.get('location')).toBe(`http://localhost:3000${admitted ? '' : '/need-invite'}`);
+      const db = await getDb(dataDir);
+      expect(Boolean(await db.select().from(tenants).where(eq(tenants.id, sub)).get())).toBe(admitted);
+    }
+  });
+
 });
