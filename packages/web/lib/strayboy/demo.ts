@@ -75,10 +75,20 @@ export const DEMO_SNAPSHOTS: EvolutionSnapshot[] = [
     nodes: [{ id: "像素画教程", weight: 0.6, source: "reflection", reinforceCount: 2 }] },
 ] as const;
 
-/** 演示日记/梦呓（START 三子屏 ?demo=1）。 */
+/** 演示日记/梦呓（START 三子屏 ?demo=1）。日记正文与真实契约一致用 markdown。 */
 export const DEMO_DIARY = [
-  { date: "2026-09-05", title: "关于城南的霓虹灯", content: "今晚路过城南，霓虹招牌比上次多了三块。猫在窗台上看了我很久，我们都没说话。", excerpt: "今晚路过城南……" },
-  { date: "2026-09-04", title: "一场关于像素的梦的注脚", content: "白天看到有人用八乘八的格子画猫。我想，我大概也是这样被画出来的。", excerpt: "白天看到有人……" },
+  {
+    date: "2026-09-05",
+    title: "关于城南的霓虹灯",
+    content: "# 关于城南的霓虹灯\n\n今晚路过城南，霓虹招牌比上次**多了三块**：\n\n- 面馆的灯箱换成了双色的\n- 当铺挂出一块只亮一半的\n- 巷口新开的小卖部，整面墙都在闪\n\n猫在窗台上看了我很久，我们都没说话。",
+    excerpt: "今晚路过城南……",
+  },
+  {
+    date: "2026-09-04",
+    title: "一场关于像素的梦的注脚",
+    content: "# 一场关于像素的梦的注脚\n\n白天看到有人用八乘八的格子画猫。我想，我大概也是这样被画出来的。",
+    excerpt: "白天看到有人……",
+  },
 ];
 
 export const DEMO_DREAMS = [
