@@ -16,14 +16,13 @@ interface StreetPetProps {
   error: string | null;
   anim: string;
   hungry?: boolean;
-  coat?: "orange" | "black" | "calico";
 }
 
 /** 街角/待机演出共用选择：仅「无自定义素材」使用内置猫，加载错误必须可见。 */
-export function StreetPet({ contract, appearance, loaded, error, anim, hungry, coat }: StreetPetProps) {
+export function StreetPet({ contract, appearance, loaded, error, anim, hungry }: StreetPetProps) {
   if (error) return <AssetError message={error} />;
   if (!loaded) return <span role="status" className="text-xs text-[var(--curb)]">外观加载中…</span>;
-  if (!appearance) return <PetSprite contract={contract} anim={anim} hungry={hungry} coat={coat} />;
+  if (!appearance) return <PetSprite contract={contract} anim={anim} hungry={hungry} />;
   return <CustomPet key={`${appearance.kind}:${appearance.generatedAt}`} appearance={appearance} anim={anim} />;
 }
 
