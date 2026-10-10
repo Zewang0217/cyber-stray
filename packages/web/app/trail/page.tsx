@@ -2,22 +2,13 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { buildGraphView, buildTrailView, type GraphNode, type GraphView, type TrailEvent, type TrailSession } from "@cyber-stray/shared/trail";
+import { buildGraphView, buildTrailView, formatTrailClock, TRAIL_TOOL_LABELS, type GraphNode, type GraphView, type TrailEvent, type TrailSession } from "@cyber-stray/shared/trail";
 import { TrailMap } from "@/components/trail/TrailMap";
 import { TrailGraph } from "@/components/trail/TrailGraph";
 import { DEMO_TRAIL_MEMORY, DEMO_TRAIL_SPEAKS, DEMO_TRAIL_STEPS } from "@/lib/strayboy/demo";
 import styles from "./trail.module.css";
 
 type View = "trail" | "graph";
-
-const TOOL_NAMES: Record<string, string> = {
-  search_web: "搜索",
-  read_page: "阅读",
-  record_knowledge: "记住",
-  speak: "叼回",
-  rest: "回窝",
-  image_meme: "表情包",
-};
 
 interface TrailData {
   sessions: TrailSession[];
@@ -73,9 +64,10 @@ function TrailPageInner() {
   const { data, error } = useTrailData(demo);
 
   // 默认选最近一次游荡（数组末尾）；?session=N 可定位
-  const sessionParam = Number(params.get("session"));
-  const sessionIndex = data && Number.isInteger(sessionParam) && sessionParam >= 0 && sessionParam < data.sessions.length
-    ? sessionParam
+  const sessionParam = params.get("session");
+  const parsed = sessionParam === null ? NaN : Number(sessionParam);
+  const sessionIndex = data && Number.isInteger(parsed) && parsed >= 0 && parsed < data.sessions.length
+    ? parsed
     : (data?.sessions.length ?? 1) - 1;
   const session = data?.sessions[sessionIndex];
 
@@ -146,8 +138,8 @@ function TrailPageInner() {
                 >
                   {detail.alley}
                 </button>
-                <b className={styles.title}>{TOOL_NAMES[detail.tool] ?? detail.tool}</b>{" "}
-                <span>{detail.timestamp.slice(11, 19)}</span>
+                <b className={styles.title}>{TRAIL_TOOL_LABELS[detail.tool] ?? detail.tool}</b>{" "}
+                <span>{formatTrailClock(detail.timestamp)}</span>
                 {detail.title && <div className={styles.thought}>{detail.title}</div>}
                 {detail.thought && <div className={styles.thought}>{detail.thought}</div>}
                 {detail.spoke && <div className={styles.spoke}>{detail.spoke}</div>}

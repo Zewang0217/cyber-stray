@@ -30,8 +30,10 @@ describe('buildTrailView', () => {
     expect(s1.events.length).toBe(3); // read_feedback 被过滤
   });
 
-  test('会话元信息：日期 / 当天第几次 / 摘要', () => {
-    expect(s0.day).toBe('10-08');
+  test('会话元信息：日期 / 当天第几次 / 摘要（展示时区为东八区）', () => {
+    // fixture 是 UTC：16:00Z/17:00Z 在东八区均为次日 00:00/01:00
+    expect(s0.day).toBe('10-09');
+    expect(s0.time).toBe('00:00');
     expect(s0.dayIndex).toBe(1);
     expect(s1.dayIndex).toBe(2);
     expect(s0.summary).toEqual({ durationMin: 6, steps: 7, speaks: 1 }); // 被拦截不计入叼回数

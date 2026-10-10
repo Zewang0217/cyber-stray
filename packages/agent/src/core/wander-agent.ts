@@ -328,9 +328,10 @@ export class WanderAgent {
   private extractRecentTopics(steps: WanderStep[], existingTopics: string[]): string[] {
     const topics = new Set(existingTopics);
     for (const step of steps) {
-      // search_web 的 title = query（工具层确定性填写）；旧数据无 title 时跳过
-      if (step.tool === 'search_web' && step.title) {
-        topics.add(step.title);
+      // search_web 的 title = query（工具层确定性填写）；窗口内旧数据无 title 时回退原正则
+      if (step.tool === 'search_web') {
+        const query = step.title ?? step.thought?.match(/搜索\((?:free|premium)\):\s*(.+)/)?.[1];
+        if (query) topics.add(query);
       }
       if (step.url) {
         try { topics.add(new URL(step.url).hostname); } catch { /* ignore */ }

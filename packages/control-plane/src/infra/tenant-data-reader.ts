@@ -165,22 +165,32 @@ export async function readTenantWanderStats(
   }
 }
 
-/** 游荡足迹（wander-history.json 全部步骤）；缺失 → []；损坏/形状非法显式抛 */
-export async function readWanderFootprint(dataDir: string, tenantId: string): Promise<unknown[]> {
-  let content: string;
+/** 读租户 JSON 文件：ENOENT → null（合法空态）；损坏抛专属文案（禁兜底） */
+async function readTenantJson(
+  dataDir: string,
+  tenantId: string,
+  label: string,
+  ...segments: string[]
+): Promise<unknown | null> {
+  let raw: string;
   try {
-    content = await readFile(join(tenantDataDir(dataDir, tenantId), 'wander-history.json'), 'utf-8');
+    raw = await readFile(join(tenantDataDir(dataDir, tenantId), ...segments), 'utf-8');
   } catch (error) {
-    if (isEnoent(error)) return [];
+    if (isEnoent(error)) return null;
     throw error;
   }
-  let steps: unknown;
   try {
-    steps = JSON.parse(content);
+    return JSON.parse(raw);
   } catch (error) {
-    console.error('[footprint] wander-history.json 损坏：', error);
-    throw new Error('足迹数据损坏或不可读');
+    console.error(`[data] ${label}损坏：`, error);
+    throw new Error(`${label}损坏或不可读`);
   }
+}
+
+/** 游荡足迹（wander-history.json 全部步骤）；缺失 → []；损坏/形状非法显式抛 */
+export async function readWanderFootprint(dataDir: string, tenantId: string): Promise<unknown[]> {
+  const steps = await readTenantJson(dataDir, tenantId, '足迹数据', 'wander-history.json');
+  if (steps === null) return [];
   if (!Array.isArray(steps)) {
     throw new Error('足迹数据格式非法（须为数组）');
   }
@@ -192,20 +202,8 @@ const MemoryIndexFileSchema = z.object({ records: z.array(z.unknown()) });
 
 /** 记忆索引记录（memory/.index.json 的 records，关系图谱数据源）；缺失 → []；损坏显式抛 */
 export async function readMemoryIndexRecords(dataDir: string, tenantId: string): Promise<unknown[]> {
-  let raw: string;
-  try {
-    raw = await readFile(join(tenantDataDir(dataDir, tenantId), 'memory', '.index.json'), 'utf-8');
-  } catch (error) {
-    if (isEnoent(error)) return [];
-    throw error;
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    console.error('[trail] memory/.index.json 损坏：', error);
-    throw new Error('记忆索引数据损坏或不可读');
-  }
+  const parsed = await readTenantJson(dataDir, tenantId, '记忆索引数据', 'memory', '.index.json');
+  if (parsed === null) return [];
   const result = MemoryIndexFileSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error('记忆索引数据格式非法（须含 records 数组）');

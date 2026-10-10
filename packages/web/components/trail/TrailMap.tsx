@@ -22,7 +22,7 @@ export function TrailMap({ session, onSelect }: {
   useEffect(() => {
     if (!ref.current) return;
     const chart = echarts.init(ref.current);
-    const p = readPalette();
+    const p = readPalette(ref.current);
     const evs = session.events;
     const lanes = session.lanes;
 
@@ -76,7 +76,9 @@ export function TrailMap({ session, onSelect }: {
           labelLayout: { hideOverlap: true }, z: 3,
         },
         {
-          type: "scatter", symbolSize: 15, data: pick("read_page", "failed"),
+          // 「没进去的门」：读取失败（failed）与被安全护栏拒绝（blocked）同属虚线圆
+          type: "scatter", symbolSize: 15,
+          data: evs.map((e, i) => ({ value: y(e, i), e })).filter((d) => d.e.tool === "read_page" && d.e.status !== undefined),
           itemStyle: { color: "transparent", borderColor: p.muted, borderWidth: 1.3, borderType: "dashed" },
           label: { show: true, formatter: "✕", fontSize: 9, color: p.muted }, z: 3,
         },

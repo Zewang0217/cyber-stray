@@ -25,7 +25,7 @@ export function TrailGraph({ graph, onJump, onSelect }: {
   useEffect(() => {
     if (!ref.current) return;
     const chart = echarts.init(ref.current);
-    const p = readPalette();
+    const p = readPalette(ref.current);
 
     const nodes = graph.nodes.map((n) => {
       if (n.kind === "hub") {

@@ -30,12 +30,18 @@ describe('alleys 巷子清单', () => {
     expect(list.alleys.map((a) => a.name)).toEqual(['量子巷']);
   });
 
-  test('alias / 大小写 / 空白命中归并到主名', async () => {
+  test('大小写 / 空白命中归并到清单写法', async () => {
     await resolveAlley('AI 观察站');
     expect(await resolveAlley('ai 观察站')).toBe('AI 观察站');
     expect(await resolveAlley('  AI 观察站  ')).toBe('AI 观察站');
     const list = await loadAlleys();
     expect(list.alleys).toHaveLength(1);
+  });
+
+  test('近义异名不合并（无模糊匹配），一致性靠 prompt 复用', async () => {
+    await resolveAlley('量子巷');
+    expect(await resolveAlley('量子深巷')).toBe('量子深巷');
+    expect((await loadAlleys()).alleys).toHaveLength(2);
   });
 
   test('空值与超长名沿用 fallback', async () => {
@@ -62,7 +68,7 @@ describe('alleys 巷子清单', () => {
     await expect(loadAlleys()).rejects.toThrow();
   });
 
-  test('prompt 格式化：空清单与带 alias', async () => {
+  test('prompt 格式化：空清单与清单名列表', async () => {
     expect(formatAlleyListForPrompt({ alleys: [] })).toContain('还没有去过');
     await resolveAlley('量子巷');
     const text = formatAlleyListForPrompt(await loadAlleys());

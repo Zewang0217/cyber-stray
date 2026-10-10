@@ -40,8 +40,12 @@ export interface TrailPalette {
   line: string;
 }
 
-export function readPalette(): TrailPalette {
-  const css = getComputedStyle(document.documentElement);
+/**
+ * 从图表容器元素读 --trail-* 变量（变量声明在页面容器上，CSS 自定义属性
+ * 只向下继承——读 documentElement 会永远拿到回退值）。
+ */
+export function readPalette(el: HTMLElement): TrailPalette {
+  const css = getComputedStyle(el);
   const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
   return {
     ink: v("--trail-ink", "#2b2620"),

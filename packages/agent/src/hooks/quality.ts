@@ -42,9 +42,18 @@ async function denySpeak(
   logger.info(`[${ctx.traceId}] speak 被护栏拦截: ${reason}`);
 
   ctx.toolCtx.stepCount++;
-  const stepAlley = await applyAlley(ctx.toolCtx, recordMeta.alley);
+  // alley 解析失败绝不能影响 deny 决定——chain 对 hook 抛错会吞成放行，
+  // 安全护栏若因展示元数据失效就放行了 injection 内容
+  let stepAlley = ctx.toolCtx.currentAlley;
+  try {
+    stepAlley = await applyAlley(ctx.toolCtx, recordMeta.alley);
+  } catch (err) {
+    logger.warn('deny 留痕的巷子归一失败（不影响拦截）', { error: String(err) });
+  }
+  // 足迹步与 gated 叼回记录同一时间戳：图谱节点桥接键靠它回跳到本步
+  const stepTs = new Date().toISOString();
   pushWanderStep(ctx.toolCtx, {
-    timestamp: new Date().toISOString(),
+    timestamp: stepTs,
     tool: 'speak',
     spoke: content,
     alley: stepAlley,
@@ -59,7 +68,7 @@ async function denySpeak(
     gateReasons: recordMeta.gateReasons,
     ...(recordMeta.gated ? { gated: true } : {}),
     ...(recordMeta.planLimited ? { planLimited: true } : {}),
-  });
+  }, stepTs);
 
   // F8：speak 事件（deny 路径不经过 afterToolCall，需在此显式发）
   ctx.emit({

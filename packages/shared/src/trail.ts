@@ -7,7 +7,29 @@
  */
 
 import { z } from 'zod';
-import { WanderStepSchema } from './agent-state';
+import { WanderStepSchema, type WanderStepStatus } from './agent-state';
+
+/** 足迹工具的中文标签（web 呈现层共用，禁三处平行定义） */
+export const TRAIL_TOOL_LABELS: Record<string, string> = {
+  search_web: '搜索',
+  read_page: '阅读',
+  record_knowledge: '记住',
+  speak: '叼回',
+  rest: '回窝',
+  image_meme: '表情包',
+};
+
+/** 展示时区固定东八区（产品与主人主要时区；与 prompts/diary 的 Asia/Shanghai 一致） */
+const DISPLAY_TZ = 'Asia/Shanghai';
+const dayFmt = new Intl.DateTimeFormat('zh-CN', { timeZone: DISPLAY_TZ, month: '2-digit', day: '2-digit' });
+const timeFmt = new Intl.DateTimeFormat('zh-CN', { timeZone: DISPLAY_TZ, hour: '2-digit', minute: '2-digit', hour12: false });
+
+const clockFmt = new Intl.DateTimeFormat('zh-CN', { timeZone: DISPLAY_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+
+/** 详情面板用的时间标签（HH:mm:ss，展示时区同会话标签） */
+export function formatTrailClock(timestamp: string): string {
+  return clockFmt.format(new Date(timestamp));
+}
 
 // 输入契约（持久化数据的呈现层最小子集）
 
@@ -57,7 +79,7 @@ export interface TrailEvent {
   thought?: string;
   url?: string;
   spoke?: string;
-  status?: 'failed' | 'blocked';
+  status?: WanderStepStatus;
 }
 
 export interface TrailSession {
@@ -117,7 +139,7 @@ export function buildTrailView(rawSteps: unknown[]): TrailSession[] {
     const first = evts[0];
     const last = evts[evts.length - 1];
     if (!first || !last) throw new Error('会话不含事件');
-    const day = first.timestamp.slice(5, 10);
+    const day = dayFmt.format(new Date(first.timestamp)).replace('/', '-'); // zh-CN 用斜杠，足迹页沿用横杠风格
     const dayIndex = (dayCount.get(day) ?? 0) + 1;
     dayCount.set(day, dayIndex);
 
@@ -138,7 +160,7 @@ export function buildTrailView(rawSteps: unknown[]): TrailSession[] {
     return {
       index,
       day,
-      time: first.timestamp.slice(11, 16),
+      time: timeFmt.format(new Date(first.timestamp)),
       dayIndex,
       events: evts,
       lanes,

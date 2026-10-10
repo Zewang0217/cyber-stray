@@ -40,35 +40,25 @@ export interface AgentState {
 export const WanderStepStatusSchema = z.enum(['failed', 'blocked']);
 export type WanderStepStatus = z.infer<typeof WanderStepStatusSchema>;
 
-/** 一轮游荡中的单步记录（ReAct trace） */
-export interface WanderStep {
-  timestamp: string;
-  /** 调用的工具名 */
-  tool: string;
-  /** LLM 内心独白 */
-  thought?: string;
-  /** 访问过的 URL */
-  url?: string;
-  /** 调用 speak 时记录的内容 */
-  spoke?: string;
-  /** 所在巷子（宠物自命名，经巷子清单归一；未上报时沿用本游荡上一步） */
-  alley?: string;
-  /** 一句话站名，工具层确定性填写（搜索词 / 页面标题 / 知识标题 / 叼回标题） */
-  title?: string;
-  /** 失败 / 被护栏拦截；由工具与 hook 的确定性分支填写，呈现层不做文本猜测 */
-  status?: WanderStepStatus;
-}
-
+/** 一轮游荡中的单步记录（ReAct trace）。schema 即契约，类型由 z.infer 派生（禁镜像） */
 export const WanderStepSchema = z.object({
   timestamp: z.string(),
+  /** 调用的工具名 */
   tool: z.string(),
+  /** LLM 内心独白 */
   thought: z.string().optional(),
+  /** 访问过的 URL */
   url: z.string().optional(),
+  /** 调用 speak 时记录的内容 */
   spoke: z.string().optional(),
+  /** 所在巷子（宠物自命名，经巷子清单归一；未上报时沿用本游荡上一步） */
   alley: z.string().optional(),
+  /** 一句话站名，工具层确定性填写（搜索词 / 页面标题 / 知识标题 / 叼回标题） */
   title: z.string().optional(),
+  /** 失败 / 被护栏拦截；由工具与 hook 的确定性分支填写，呈现层不做文本猜测 */
   status: WanderStepStatusSchema.optional(),
 });
+export type WanderStep = z.infer<typeof WanderStepSchema>;
 
 /** /api/state 快照 = state.json + CP 注入的最近游荡历史（尾部最新、限条数） */
 export interface AgentStateSnapshot extends AgentState {

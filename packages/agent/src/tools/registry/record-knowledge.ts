@@ -52,7 +52,8 @@ export const recordKnowledgeToolDef: ToolDefinition = {
         });
 
         pushWanderStep(ctx, {
-          timestamp: new Date().toISOString(),
+          // 时间戳与记忆条目同源：图谱节点的桥接键靠它回跳到本步
+          timestamp: entry.timestamp,
           tool: 'record_knowledge',
           thought: `记住了: ${title}`,
           url: source_url,

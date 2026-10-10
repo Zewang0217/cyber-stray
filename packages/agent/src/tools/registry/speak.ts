@@ -4,6 +4,7 @@ import { IndependentTitleSchema } from '@cyber-stray/shared/title-overrides';
 import { consola } from '../../logger.js';
 import { getConfig } from '../../config.js';
 import { speak } from '../push/speak.js';
+import { extractUrl } from '../dedup/url-tracker.js';
 import { applyAlley, pushWanderStep, type ToolContext } from './context.js';
 import { AlleyInputSchema } from '../../memory/alleys.js';
 import type { ToolDefinition } from '../tool-manager.js';
@@ -77,12 +78,15 @@ export const speakToolDef: ToolDefinition = {
 
       logger.info(`[${ctx.traceId}] TOOL speak [type=${type} len=${content.length} pushed=${result.pushed} elapsed=${elapsed}ms]`);
 
+      const speakUrl = extractUrl(content);
       pushWanderStep(ctx, {
-        timestamp: new Date().toISOString(),
+        // 时间戳与叼回记录同源：图谱节点的桥接键靠它回跳到本步
+        timestamp: result.timestamp,
         tool: 'speak',
         spoke: content,
         alley: stepAlley,
         ...(title ? { title } : {}),
+        ...(speakUrl ? { url: speakUrl } : {}),
         thought: `[${type}] 表达了想法`,
       });
 
