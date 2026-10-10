@@ -98,4 +98,22 @@ describe('speak 工具 reason 落盘（#152）', () => {
     expect(result.success).toBe(true);
     expect(await lastRecord()).toMatchObject({ title: '这篇新论文藏着惊喜', titleSource: 'react' });
   });
+
+  test('足迹步与叼回记录同 timestamp（桥接键同源），url 投影进足迹步', async () => {
+    const ctx = makeToolCtx();
+    const tool = speakToolDef.createTool(ctx) as unknown as ExecutableTool;
+
+    const result = await tool.execute({
+      content: '喵！这篇值得一读 https://example.com/post',
+      type: 'share',
+      title: '值得一读',
+    });
+
+    expect(result.success).toBe(true);
+    const record = await lastRecord();
+    const step = ctx.wanderHistory.at(-1);
+    expect(step?.timestamp).toBe(record.timestamp);
+    expect(step?.url).toBe('https://example.com/post');
+    expect(step?.title).toBe('值得一读');
+  });
 });

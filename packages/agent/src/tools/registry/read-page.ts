@@ -2,7 +2,8 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { consola } from '../../logger.js';
 import { readPage } from '../page/reader.js';
-import { pushWanderStep, type ToolContext } from './context.js';
+import { applyAlley, pushWanderStep, type ToolContext } from './context.js';
+import { AlleyInputSchema } from '../../memory/alleys.js';
 import type { ToolDefinition } from '../tool-manager.js';
 
 const logger = consola.withTag('tool:read_page');
@@ -20,10 +21,12 @@ export const readPageToolDef: ToolDefinition = {
     description: READ_PAGE_DESCRIPTION,
     inputSchema: z.object({
       url: z.string().url().describe('要阅读的网页地址'),
+      alley: AlleyInputSchema,
     }),
-    execute: async ({ url }) => {
+    execute: async ({ url, alley }) => {
       ctx.stepCount++;
       const stepStart = Date.now();
+      const stepAlley = await applyAlley(ctx, alley);
 
       const result = await readPage(url);
       const elapsed = Date.now() - stepStart;
@@ -39,7 +42,10 @@ export const readPageToolDef: ToolDefinition = {
         timestamp: new Date().toISOString(),
         tool: 'read_page',
         url,
-        thought: result.error ? `读取失败: ${result.error}` : `读取: ${result.title}`,
+        alley: stepAlley,
+        ...(result.error
+          ? { status: 'failed' as const, thought: `读取失败: ${result.error}` }
+          : { title: result.title, thought: `读取: ${result.title}` }),
       });
 
       return result;

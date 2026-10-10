@@ -1,0 +1,124 @@
+.page {
+  /* 全量使用 design-v3 14 色宇宙 token（globals.css :root），深夜霓虹为基准主题 */
+  min-height: 100vh;
+  background: var(--sky);
+  color: var(--star);
+  font-family: var(--font-noto), system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+  padding: 22px 28px 96px;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-bottom: 6px;
+}
+
+.header h1 {
+  font-family: var(--font-fusion-pixel), var(--font-noto), monospace;
+  font-size: 19px;
+  margin: 0;
+}
+
+.viewTabs,
+.sessionTabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sessionTabs {
+  padding: 10px 0 0;
+}
+
+.viewTabs button,
+.sessionTabs button {
+  border: 2px solid var(--curb);
+  background: var(--panel);
+  color: var(--curb);
+  padding: 4px 14px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-family: var(--font-vt323), var(--font-noto), monospace;
+}
+
+.viewTabs button.on,
+.sessionTabs button.on {
+  background: var(--hi);
+  border-color: var(--hi);
+  color: var(--ink);
+}
+
+.head {
+  margin: 10px 0 12px;
+  color: var(--curb);
+  font-size: 13px;
+}
+
+.page :global(.trail-ecbox) {
+  height: 540px;
+  border: 2px solid var(--curb);
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.detail {
+  margin-top: 14px;
+  border: 2px solid var(--curb);
+  background: var(--panel);
+  padding: 14px 18px;
+  min-height: 54px;
+  color: var(--curb);
+}
+
+.detail .badge {
+  background: var(--bld-far);
+  color: var(--act);
+  padding: 1px 8px;
+  font-size: 12px;
+  margin-right: 8px;
+  border: none;
+  cursor: pointer;
+}
+
+.detail .title {
+  color: var(--star);
+}
+
+.detail .thought {
+  margin-top: 6px;
+  color: var(--star);
+}
+
+.detail .spoke {
+  margin-top: 8px;
+  white-space: pre-wrap;
+  color: var(--star);
+}
+
+.detail a {
+  color: var(--act);
+  word-break: break-all;
+  font-size: 12.5px;
+}
+
+.notice {
+  color: var(--curb);
+  font-size: 12.5px;
+  margin-top: 8px;
+}
+
+.error {
+  color: var(--bad);
+  padding: 40px 0;
+}
+
+.demoTag {
+  font-size: 11px;
+  color: var(--curb);
+  border: 1px dashed var(--curb);
+  padding: 2px 10px;
+}

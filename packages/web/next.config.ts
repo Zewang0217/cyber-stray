@@ -92,6 +92,10 @@ const nextConfig: NextConfig = {
         destination: `${controlPlaneOrigin}/api/footprint/:path*`,
       },
       {
+        source: "/api/trail/:path*",
+        destination: `${controlPlaneOrigin}/api/trail/:path*`,
+      },
+      {
         // #92：日记（睡前任务生成；列表/单篇）
         source: "/api/diary/:path*",
         destination: `${controlPlaneOrigin}/api/diary/:path*`,

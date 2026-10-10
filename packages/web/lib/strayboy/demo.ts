@@ -108,3 +108,33 @@ export const DEMO_LOG: Array<{ timestamp: string; tool: string; thought?: string
   { timestamp: new Date(stableNow - 2 * HOUR).toISOString(), tool: "speak", spokeText: "这帖子写得跟说明书似的。" },
   { timestamp: new Date(stableNow - 3 * HOUR).toISOString(), tool: "browser_visit", spokeText: "https://example.com/pixel" },
 ];
+
+/** 演示足迹（/trail ?demo=1）：两次游荡，含失败、拦截叼回、跨巷跳跃。 */
+export const DEMO_TRAIL_STEPS = [
+  { timestamp: new Date(stableNow - 50 * 60_000).toISOString(), tool: "search_web", alley: "复古掌机巷", title: "GBA 屏幕老化 修复", thought: "搜索(premium): GBA 屏幕老化 修复" },
+  { timestamp: new Date(stableNow - 49 * 60_000).toISOString(), tool: "read_page", alley: "复古掌机巷", title: "IPS 改装屏全指南", url: "https://example.com/gba-ips", thought: "读取: IPS 改装屏全指南" },
+  { timestamp: new Date(stableNow - 48 * 60_000).toISOString(), tool: "read_page", alley: "复古掌机巷", url: "https://example.com/dead-link", status: "failed", thought: "读取失败: 403 Forbidden" },
+  { timestamp: new Date(stableNow - 47 * 60_000).toISOString(), tool: "record_knowledge", alley: "复古掌机巷", title: "GBA 原装屏排线 40pin", url: "https://example.com/gba-ips", thought: "记住了: GBA 原装屏排线 40pin" },
+  { timestamp: new Date(stableNow - 46 * 60_000).toISOString(), tool: "speak", alley: "复古掌机巷", title: "掌机换屏大发现", spoke: "喵！原来 GBA 换 IPS 屏不用焊主板了，排线直插——老掌机玩家的春天。https://example.com/gba-ips", thought: "[share] 表达了想法" },
+  { timestamp: new Date(stableNow - 45 * 60_000).toISOString(), tool: "speak", alley: "复古掌机巷", title: "被拦下的安利", status: "blocked", spoke: "再安利一家改装店……", thought: "[share] 内容被护栏拦截 (URL 冷却期)" },
+  { timestamp: new Date(stableNow - 44 * 60_000).toISOString(), tool: "rest", thought: "主动结束游荡" },
+  { timestamp: new Date(stableNow - 20 * 60_000).toISOString(), tool: "search_web", alley: "像素画弄堂", title: "pixel art dithering tutorial", thought: "搜索(free): pixel art dithering tutorial" },
+  { timestamp: new Date(stableNow - 19 * 60_000).toISOString(), tool: "read_page", alley: "像素画弄堂", title: "抖动上色入门", url: "https://example.com/dithering", thought: "读取: 抖动上色入门" },
+  { timestamp: new Date(stableNow - 18 * 60_000).toISOString(), tool: "record_knowledge", alley: "像素画弄堂", title: "Bayer 抖动矩阵", url: "https://example.com/dithering", thought: "记住了: Bayer 抖动矩阵" },
+  { timestamp: new Date(stableNow - 17 * 60_000).toISOString(), tool: "speak", alley: "像素画弄堂", title: "抖动的浪漫", spoke: "原来 8bit 时代的渐变是骗眼睛的——Bayer 矩阵把两种颜色撒成胡椒面，远看就是过渡色。https://example.com/dithering", thought: "[share] 表达了想法" },
+  { timestamp: new Date(stableNow - 16 * 60_000).toISOString(), tool: "rest", thought: "主动结束游荡" },
+];
+
+/** 演示记忆索引记录（/trail ?demo=1 图谱）。 */
+export const DEMO_TRAIL_MEMORY = [
+  { id: "demo-k1", type: "knowledge", timestamp: new Date(stableNow - 47 * 60_000).toISOString(), tags: ["knowledge", "复古掌机"], summary: "GBA 原装屏排线 40pin", url: "https://example.com/gba-ips" },
+  { id: "demo-k2", type: "knowledge", timestamp: new Date(stableNow - 18 * 60_000).toISOString(), tags: ["knowledge", "像素画"], summary: "Bayer 抖动矩阵", url: "https://example.com/dithering" },
+  { id: "demo-k3", type: "knowledge", timestamp: new Date(stableNow - 3 * DAY).toISOString(), tags: ["knowledge", "复古掌机"], summary: "城南论坛的维修帖汇总（旧记忆，无链接）" },
+];
+
+/** 演示叼回记录（/trail ?demo=1 图谱）。 */
+export const DEMO_TRAIL_SPEAKS = [
+  { timestamp: new Date(stableNow - 46 * 60_000).toISOString(), title: "掌机换屏大发现", url: "https://example.com/gba-ips", matchedTopics: ["复古掌机"] },
+  { timestamp: new Date(stableNow - 45 * 60_000).toISOString(), title: "被拦下的安利", gated: true, matchedTopics: ["复古掌机"] },
+  { timestamp: new Date(stableNow - 17 * 60_000).toISOString(), title: "抖动的浪漫", url: "https://example.com/dithering", matchedTopics: ["像素画"] },
+];

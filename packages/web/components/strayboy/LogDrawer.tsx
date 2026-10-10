@@ -2,14 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { Drawer } from "vaul";
+import type { WanderStep } from "@cyber-stray/shared/agent-state";
 import { DEMO_LOG } from "@/lib/strayboy/demo";
 
-interface FootprintStep {
-  timestamp: string;
-  tool: string;
-  thought?: string;
-  url?: string;
-}
+/** 足迹步骤契约唯一真相源在 shared（WanderStep）；spokeText 为抽屉展示附加字段 */
+type FootprintStep = WanderStep;
 
 /**
  * LOG 存档抽屉（#170 足迹映射）：vaul 移动抽屉，游荡日志历史（VT323）。

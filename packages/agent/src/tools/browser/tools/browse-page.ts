@@ -8,7 +8,8 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { parsePublicHttpUrl } from '@cyber-stray/shared/outbound';
 import { consola } from '../../../logger.js';
-import { pushWanderStep, type ToolContext } from '../../registry/context.js';
+import { applyAlley, pushWanderStep, type ToolContext } from '../../registry/context.js';
+import { AlleyInputSchema } from '../../../memory/alleys.js';
 import type { ToolDefinition } from '../../tool-manager.js';
 import { getBrowserExecutor } from '../executor.js';
 import { updateBrowserContext } from '../lifecycle.js';
@@ -29,15 +30,18 @@ export const browsePageToolDef: ToolDefinition = {
       description: DESCRIPTION,
       inputSchema: z.object({
         url: z.string().describe('要访问的网页地址'),
+        alley: AlleyInputSchema,
       }),
-      execute: async ({ url }) => {
+      execute: async ({ url, alley }) => {
         ctx.stepCount++;
+        const stepAlley = await applyAlley(ctx, alley);
         try {
           parsePublicHttpUrl(url);
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
           pushWanderStep(ctx, {
-            timestamp: new Date().toISOString(), tool: 'browse_page', thought: `拒绝页面地址: ${reason}`,
+            timestamp: new Date().toISOString(), tool: 'browse_page', alley: stepAlley,
+            status: 'failed', thought: `拒绝页面地址: ${reason}`,
           });
           return { error: reason };
         }
@@ -51,6 +55,8 @@ export const browsePageToolDef: ToolDefinition = {
             timestamp: new Date().toISOString(),
             tool: 'browse_page',
             url,
+            alley: stepAlley,
+            status: 'failed',
             thought: `打开失败: ${openResult.error}`,
           });
           return { url, error: openResult.error ?? '打开页面失败' };
@@ -64,6 +70,8 @@ export const browsePageToolDef: ToolDefinition = {
             timestamp: new Date().toISOString(),
             tool: 'browse_page',
             url,
+            alley: stepAlley,
+            status: 'failed',
             thought: `读取失败: ${readResult.error}`,
           });
           return { url, error: readResult.error ?? '读取页面内容失败' };
@@ -80,6 +88,8 @@ export const browsePageToolDef: ToolDefinition = {
           timestamp: new Date().toISOString(),
           tool: 'browse_page',
           url,
+          alley: stepAlley,
+          title: title ?? url,
           thought: `浏览: ${title ?? url}`,
         });
 
