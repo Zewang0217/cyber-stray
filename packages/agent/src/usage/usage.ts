@@ -137,3 +137,16 @@ export function modelIdOf(model: unknown): string {
   }
   return 'unknown';
 }
+
+/**
+ * 从 AI SDK 结果的 providerMetadata 提取 DeepSeek 缓存命中 tokens
+ * （@ai-sdk/deepseek 映射 prompt_cache_hit_tokens → deepseek.promptCacheHitTokens）。
+ * 读不到或形态非法 → undefined（宁缺勿假，缺失时计价回退未命中上界）。
+ */
+export function cacheHitTokensFromProviderMetadata(meta: unknown): number | undefined {
+  if (typeof meta !== 'object' || meta === null) return undefined;
+  const deepseek = (meta as Record<string, unknown>)['deepseek'];
+  if (typeof deepseek !== 'object' || deepseek === null) return undefined;
+  const hit = (deepseek as Record<string, unknown>)['promptCacheHitTokens'];
+  return typeof hit === 'number' && Number.isInteger(hit) && hit >= 0 ? hit : undefined;
+}

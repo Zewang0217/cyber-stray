@@ -12,7 +12,7 @@
 import { generateText, stepCountIs, hasToolCall } from 'ai';
 import { sanitizeForLLM } from '../utils/text-sanitize.js';
 import { getDataRoot } from '../config.js';
-import { assertUsageHealthy, assertUsageReady, recordUsage, UsageAccountingError } from '../usage/usage.js';
+import { assertUsageHealthy, assertUsageReady, recordUsage, UsageAccountingError, cacheHitTokensFromProviderMetadata } from '../usage/usage.js';
 import type { Tool } from 'ai';
 import { consola } from '../logger.js';
 import { resetLLMStats, getLLMStats, recordStep } from '../llm/stats.js';
@@ -112,13 +112,14 @@ export async function wanderLoop(input: WanderLoopInput): Promise<WanderResult> 
           return {};
         },
         ...(remainingMs !== null ? { abortSignal: AbortSignal.timeout(remainingMs) } : {}),
-        async onStepFinish({ stepNumber, usage, toolCalls }) {
+        async onStepFinish({ stepNumber, usage, toolCalls, providerMetadata }) {
           // 每个已完成步骤立即落账，后续 provider 失败/整轮重试不能抹掉已花费的 token。
           await recordUsage(getDataRoot(), {
             kind: 'llm',
             model: config.llmModel,
             inputTokens: usage?.inputTokens,
             outputTokens: usage?.outputTokens,
+            inputCacheHitTokens: cacheHitTokensFromProviderMetadata(providerMetadata),
           });
           try {
             recordStep({

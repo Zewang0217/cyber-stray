@@ -24,7 +24,7 @@ import { sanitizeForLLM } from '../../utils/text-sanitize.js';
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
 import { getDataRoot } from '../../config.js';
-import { assertUsageReady, recordUsage, modelIdOf } from '../../usage/usage.js';
+import { assertUsageReady, recordUsage, modelIdOf, cacheHitTokensFromProviderMetadata } from '../../usage/usage.js';
 import { getDataPath } from '../../config.js';
 import type { PersonalityProfile } from '@cyber-stray/shared';
 import type { DiaryData } from './diary-generator.js';
@@ -125,6 +125,7 @@ export async function generateDreamNarrative(
     model: modelIdOf(model),
     inputTokens: result?.usage?.inputTokens,
     outputTokens: result?.usage?.outputTokens,
+    inputCacheHitTokens: cacheHitTokensFromProviderMetadata(result?.providerMetadata),
   });
   return result.text;
 }

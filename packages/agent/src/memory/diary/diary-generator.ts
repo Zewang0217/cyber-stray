@@ -23,7 +23,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { getDataPath, getDataRoot } from '../../config.js';
 import { loadFeedbacks } from '../feedback-store.js';
-import { assertUsageReady, recordUsage, modelIdOf } from '../../usage/usage.js';
+import { assertUsageReady, recordUsage, modelIdOf, cacheHitTokensFromProviderMetadata } from '../../usage/usage.js';
 import type { PersonalityProfile } from '@cyber-stray/shared';
 import { resolveDiaryStylePrompt } from '@cyber-stray/shared/diary';
 import type { DiaryStyleChoice } from '@cyber-stray/shared/diary';
@@ -258,6 +258,7 @@ export async function generateDiaryNarrative(
     model: modelIdOf(model),
     inputTokens: result?.usage?.inputTokens,
     outputTokens: result?.usage?.outputTokens,
+    inputCacheHitTokens: cacheHitTokensFromProviderMetadata(result?.providerMetadata),
   });
   return result.text;
 }

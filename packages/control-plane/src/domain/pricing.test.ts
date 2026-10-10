@@ -18,6 +18,8 @@ describe('costOf', () => {
   });
 
   it.each([
+    { inputTokens: 100, outputTokens: 1, inputCacheHitTokens: 101 },
+    { inputTokens: 100, inputCacheHitTokens: 50 },
     { tokens: 1000, inputTokens: 100 },
     { tokens: 1000, outputTokens: 900 },
     { inputTokens: 100 },
@@ -33,6 +35,28 @@ describe('costOf', () => {
     expect(costOf(UsageEntrySchema.parse({ ...base, inputTokens: 100, outputTokens: 900 }))).toBeCloseTo(0.0074);
     expect(costOf(UsageEntrySchema.parse({ ...base, tokens: 1000, inputTokens: 100, outputTokens: 900 }))).toBeCloseTo(0.0074);
   });
+  it('Flash 缓存命中部分按 ¥0.04/M 折算，未命中部分仍按 ¥2/M 上界', () => {
+    const row = UsageEntrySchema.parse({
+      ...base, model: 'deepseek-v4-flash',
+      inputTokens: 1_000_000, outputTokens: 500_000, inputCacheHitTokens: 800_000,
+    });
+    // 未命中 0.2M×¥2 + 命中 0.8M×¥0.04 + 输出 0.5M×¥8
+    expect(costOf(row)).toBeCloseTo(0.4 + 0.032 + 4, 6);
+  });
+
+  it('无核验缓存价的模型（deepseek-chat）带命中字段也全按未命中上界计', () => {
+    const row = UsageEntrySchema.parse({
+      ...base, model: 'deepseek-chat',
+      inputTokens: 1_000_000, outputTokens: 0, inputCacheHitTokens: 800_000,
+    });
+    expect(costOf(row)).toBeCloseTo(2, 6);
+  });
+
+  it('旧行无命中字段 → 维持原上界口径', () => {
+    const row = UsageEntrySchema.parse({ ...base, model: 'deepseek-v4-flash', inputTokens: 1_000_000, outputTokens: 0 });
+    expect(costOf(row)).toBeCloseTo(2, 6);
+  });
+
   it('LLM 按输入/输出拆分计价（DeepSeek：输入 ¥2/M 输出 ¥8/M）', () => {
     const row = {
       timestamp: '2026-08-25T00:00:00Z',

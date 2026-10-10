@@ -8,15 +8,19 @@ const entry = z.object({
   tokens: count.optional(),
   inputTokens: count.optional(),
   outputTokens: count.optional(),
+  /** 输入中缓存命中部分（DeepSeek prompt_cache_hit_tokens）；未命中 = inputTokens − 此值。旧行无此字段。 */
+  inputCacheHitTokens: count.optional(),
   images: count.optional(),
 });
 
 function hasConsistentMeasurement(value: z.infer<typeof entry>): boolean {
   if (value.kind !== 'llm') return value.images !== undefined;
-  const { tokens, inputTokens, outputTokens } = value;
+  const { tokens, inputTokens, outputTokens, inputCacheHitTokens } = value;
   // 历史记录可能只有 total；一旦出现拆分就必须完整，不能把缺失一侧按零计价。
   if (inputTokens === undefined && outputTokens === undefined) return tokens !== undefined;
   if (inputTokens === undefined || outputTokens === undefined) return false;
+  // 命中拆分是输入的子集，超出 = 计量自相矛盾，须拒绝入账。
+  if (inputCacheHitTokens !== undefined && inputCacheHitTokens > inputTokens) return false;
   return tokens === undefined || tokens === inputTokens + outputTokens;
 }
 

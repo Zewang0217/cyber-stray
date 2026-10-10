@@ -13,7 +13,7 @@ import { generateText } from 'ai';
 import { sanitizeForLLM } from '../utils/text-sanitize.js';
 import { z } from 'zod';
 import { getDataRoot } from '../config.js';
-import { assertUsageReady, recordUsage, modelIdOf } from '../usage/usage.js';
+import { assertUsageReady, recordUsage, modelIdOf, cacheHitTokensFromProviderMetadata } from '../usage/usage.js';
 import type { MemeCopy } from './types.js';
 
 /** LLM 产出 schema；scene 必须是可直接用于生图的具体无字场景。 */
@@ -82,6 +82,7 @@ export async function generateMemeCopy(
     model: modelIdOf(model),
     inputTokens: result?.usage?.inputTokens,
     outputTokens: result?.usage?.outputTokens,
+    inputCacheHitTokens: cacheHitTokensFromProviderMetadata(result?.providerMetadata),
   });
   return result.text;
 }
