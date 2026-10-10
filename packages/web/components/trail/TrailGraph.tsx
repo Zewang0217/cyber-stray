@@ -39,7 +39,7 @@ export function TrailGraph({ graph, onJump, onSelect }: {
         return {
           id: n.id, name: trunc(n.label, 12), symbolSize: 19,
           itemStyle: { color: p.card, borderColor: p.ink, borderWidth: 1.5 },
-          label: { show: true, position: "bottom" as const, fontSize: 10, color: p.muted },
+          label: { show: true, position: "bottom" as const, fontSize: 10, color: p.label },
         };
       }
       if (n.kind === "memory") {
@@ -53,7 +53,7 @@ export function TrailGraph({ graph, onJump, onSelect }: {
         id: n.id, name: trunc(n.label, 12), symbol: STAR, symbolSize: n.gated ? 20 : 26,
         itemStyle: n.gated
           ? { color: p.muted }
-          : { color: p.accent, shadowBlur: 12, shadowColor: "rgba(201,111,46,.5)" },
+          : { color: p.accent, shadowBlur: 12, shadowColor: "rgba(247,213,29,.5)" },
         label: { show: false },
       };
     });

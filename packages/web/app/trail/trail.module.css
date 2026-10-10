@@ -1,27 +1,12 @@
 .page {
-  /* 足迹视图调色板：暖纸底 + 琥珀强调（与原型同源），夜间模式整体反白 */
-  --trail-bg: #faf7f2;
-  --trail-ink: #2b2620;
-  --trail-muted: #8a8177;
-  --trail-line: #e3dcd2;
-  --trail-card: #ffffff;
-  --trail-accent: #c96f2e;
-  --trail-accent-soft: #f6e3d0;
+  /* 全量使用 design-v3 14 色宇宙 token（globals.css :root），深夜霓虹为基准主题 */
   min-height: 100vh;
-  background: var(--trail-bg);
-  color: var(--trail-ink);
-  font: 14px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--sky);
+  color: var(--star);
+  font-family: var(--font-noto), system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
   padding: 22px 28px 96px;
-}
-
-:global(html[data-theme="night"]) .page {
-  --trail-bg: #191613;
-  --trail-ink: #e8e2d8;
-  --trail-muted: #9a9084;
-  --trail-line: #35302a;
-  --trail-card: #221e1a;
-  --trail-accent: #e08a45;
-  --trail-accent-soft: #3a2c1f;
 }
 
 .header {
@@ -33,82 +18,65 @@
 }
 
 .header h1 {
+  font-family: var(--font-fusion-pixel), var(--font-noto), monospace;
   font-size: 19px;
   margin: 0;
 }
 
-.viewTabs {
-  display: flex;
-  gap: 8px;
-}
-
-.viewTabs button {
-  border: 1px solid var(--trail-line);
-  background: var(--trail-card);
-  color: var(--trail-muted);
-  border-radius: 99px !important; /* 足迹页保留圆角（主人裁决不强制直角）；压过 .sb * 的全局直角规则 */
-  padding: 4px 14px;
-  cursor: pointer;
-  font-size: 12.5px;
-}
-
-.viewTabs button.on {
-  background: var(--trail-accent);
-  border-color: var(--trail-accent);
-  color: #fff;
-}
-
+.viewTabs,
 .sessionTabs {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.sessionTabs {
   padding: 10px 0 0;
 }
 
+.viewTabs button,
 .sessionTabs button {
-  border: 1px solid var(--trail-line);
-  background: var(--trail-card);
-  color: var(--trail-muted);
-  border-radius: 99px !important; /* 足迹页保留圆角（主人裁决不强制直角）；压过 .sb * 的全局直角规则 */
+  border: 2px solid var(--curb);
+  background: var(--panel);
+  color: var(--curb);
   padding: 4px 14px;
   cursor: pointer;
   font-size: 12.5px;
+  font-family: var(--font-vt323), var(--font-noto), monospace;
 }
 
+.viewTabs button.on,
 .sessionTabs button.on {
-  background: var(--trail-accent);
-  border-color: var(--trail-accent);
-  color: #fff;
+  background: var(--hi);
+  border-color: var(--hi);
+  color: var(--ink);
 }
 
 .head {
   margin: 10px 0 12px;
-  color: var(--trail-muted);
+  color: var(--curb);
   font-size: 13px;
 }
 
 .page :global(.trail-ecbox) {
   height: 540px;
-  border: 1px solid var(--trail-line);
-  border-radius: 18px !important;
+  border: 2px solid var(--curb);
   overflow: hidden;
-  background: var(--trail-card);
+  background: var(--panel);
 }
 
 .detail {
   margin-top: 14px;
-  border: 1px solid var(--trail-line);
-  background: var(--trail-card);
-  border-radius: 14px !important;
+  border: 2px solid var(--curb);
+  background: var(--panel);
   padding: 14px 18px;
   min-height: 54px;
-  color: var(--trail-muted);
+  color: var(--curb);
 }
 
 .detail .badge {
-  background: var(--trail-accent-soft);
-  color: var(--trail-accent);
-  border-radius: 8px !important;
+  background: var(--bld-far);
+  color: var(--act);
   padding: 1px 8px;
   font-size: 12px;
   margin-right: 8px;
@@ -117,41 +85,40 @@
 }
 
 .detail .title {
-  color: var(--trail-ink);
+  color: var(--star);
 }
 
 .detail .thought {
   margin-top: 6px;
-  color: var(--trail-ink);
+  color: var(--star);
 }
 
 .detail .spoke {
   margin-top: 8px;
   white-space: pre-wrap;
-  color: var(--trail-ink);
+  color: var(--star);
 }
 
 .detail a {
-  color: var(--trail-accent);
+  color: var(--act);
   word-break: break-all;
   font-size: 12.5px;
 }
 
 .notice {
-  color: var(--trail-muted);
+  color: var(--curb);
   font-size: 12.5px;
   margin-top: 8px;
 }
 
 .error {
-  color: #b3542e;
+  color: var(--bad);
   padding: 40px 0;
 }
 
 .demoTag {
   font-size: 11px;
-  color: var(--trail-muted);
-  border: 1px dashed var(--trail-line);
-  border-radius: 99px !important; /* 足迹页保留圆角（主人裁决不强制直角）；压过 .sb * 的全局直角规则 */
+  color: var(--curb);
+  border: 1px dashed var(--curb);
   padding: 2px 10px;
 }

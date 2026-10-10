@@ -39,7 +39,7 @@ export function TrailMap({ session, onSelect }: {
       return [
         {
           coord: [Math.min(...xs) - 0.7, li - 0.44],
-          itemStyle: { color: "rgba(201,111,46,0.08)" },
+          itemStyle: { color: "rgba(59,93,201,0.10)" },
           label: { show: true, position: "insideTopLeft" as const, formatter: lane, color: p.muted, fontSize: 13 },
         },
         { coord: [Math.max(...xs) + 0.7, li + 0.44] },
@@ -72,7 +72,7 @@ export function TrailMap({ session, onSelect }: {
         {
           type: "scatter", symbolSize: 17, data: pick("read_page"),
           itemStyle: { color: p.card, borderColor: p.ink, borderWidth: 1.6 },
-          label: { show: true, position: "bottom", distance: 6, fontSize: 11, color: p.muted, formatter: (pr: unknown) => trunc(((pr as { data: { e: TrailEvent } }).data.e.title ?? ""), 11) },
+          label: { show: true, position: "bottom", distance: 6, fontSize: 11, color: p.label, formatter: (pr: unknown) => trunc(((pr as { data: { e: TrailEvent } }).data.e.title ?? ""), 11) },
           labelLayout: { hideOverlap: true }, z: 3,
         },
         {
@@ -84,8 +84,8 @@ export function TrailMap({ session, onSelect }: {
         },
         {
           type: "scatter", symbol: STAR, symbolSize: 32, data: pick("speak"),
-          itemStyle: { color: p.accent, shadowBlur: 14, shadowColor: "rgba(201,111,46,.55)" },
-          label: { show: true, position: "bottom", distance: 8, fontSize: 11, color: p.muted, formatter: (pr: unknown) => trunc(((pr as { data: { e: TrailEvent } }).data.e.title ?? ""), 11) },
+          itemStyle: { color: p.accent, shadowBlur: 14, shadowColor: "rgba(247,213,29,.55)" },
+          label: { show: true, position: "bottom", distance: 8, fontSize: 11, color: p.label, formatter: (pr: unknown) => trunc(((pr as { data: { e: TrailEvent } }).data.e.title ?? ""), 11) },
           labelLayout: { hideOverlap: true }, z: 4,
         },
         { type: "scatter", symbol: STAR, symbolSize: 28, data: pick("speak", "blocked"), itemStyle: { color: p.muted, opacity: 0.6 }, z: 4 },
@@ -97,7 +97,7 @@ export function TrailMap({ session, onSelect }: {
         {
           type: "scatter", symbolSize: 12, data: pick("image_meme"),
           itemStyle: { color: p.card, borderColor: p.muted },
-          label: { show: true, formatter: "✿", fontSize: 10, color: p.muted }, z: 3,
+          label: { show: true, formatter: "✿", fontSize: 10, color: p.label }, z: 3,
         },
       ],
     });

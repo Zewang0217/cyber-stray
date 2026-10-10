@@ -38,22 +38,25 @@ export interface TrailPalette {
   accent: string;
   accentSoft: string;
   line: string;
+  label: string;
 }
 
 /**
- * 从图表容器元素读 --trail-* 变量（变量声明在页面容器上，CSS 自定义属性
- * 只向下继承——读 documentElement 会永远拿到回退值）。
+ * 从图表容器元素读 design-v3 14 色 token（globals.css :root）。
+ * 叼回 = 窗黄（--window/--hi），枢纽 = 近景楼蓝，呼应「深夜街区」语义。
  */
 export function readPalette(el: HTMLElement): TrailPalette {
   const css = getComputedStyle(el);
   const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
   return {
-    ink: v("--trail-ink", "#2b2620"),
-    muted: v("--trail-muted", "#8a8177"),
-    card: v("--trail-card", "#ffffff"),
-    accent: v("--trail-accent", "#c96f2e"),
-    accentSoft: v("--trail-accent-soft", "#f6e3d0"),
-    line: v("--trail-line", "#e3dcd2"),
+    ink: v("--star", "#f4f4f4"),
+    muted: v("--curb", "#566c86"),
+    card: v("--panel", "#2c3136"),
+    accent: v("--hi", "#f7d51d"),
+    accentSoft: v("--bld-far", "#29366f"),
+    line: v("--street", "#333c57"),
+    // 节点标注用「星白 75%」：curb 在深底上太暗，star 全亮又抢戏（token 派生，不新造色）
+    label: "rgba(244,244,244,.75)",
   };
 }
 
