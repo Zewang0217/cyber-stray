@@ -36,7 +36,6 @@ function Stamp({ kind }: { kind: string }) {
  */
 export function MailCard({
   card,
-  adoptedAt,
   seenMs,
   onFeedback,
   onPin,
@@ -44,7 +43,6 @@ export function MailCard({
   onOpen,
 }: {
   card: SpeakHistoryItem;
-  adoptedAt: number;
   seenMs: number;
   onFeedback: (type: "like" | "dislike", card: SpeakHistoryItem) => void;
   onPin: (card: SpeakHistoryItem) => void;
@@ -52,7 +50,7 @@ export function MailCard({
   /** 点卡片标题或打开全文进详情 */
   onOpen: (card: SpeakHistoryItem) => void;
 }) {
-  const { day, hhmm } = stampLabel(card.timestamp, adoptedAt);
+  const { date, hhmm } = stampLabel(card.timestamp);
   const unread = isUnread(card.timestamp, seenMs);
   const stamp = pickStamp(card.timestamp);
   const pinTopic = card.matchedTopics?.[0];
@@ -66,7 +64,7 @@ export function MailCard({
         className="absolute left-1.5 top-6 font-mono text-[10px] leading-[1.2] tracking-widest text-[var(--curb)]"
         style={{ writingMode: "vertical-rl" }}
       >
-        {`DAY ${day} · ${hhmm}`}
+        {`${date} · ${hhmm}`}
       </span>
       {/* 右上像素邮票 */}
       <span className="absolute right-3 top-3 rotate-3">
