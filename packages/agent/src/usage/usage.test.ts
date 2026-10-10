@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { recordUsage, localDateKey, withImageUsageTracking, withVisionUsageTracking, modelIdOf, assertUsageReady } from './usage.js';
+import { recordUsage, localDateKey, withImageUsageTracking, withVisionUsageTracking, modelIdOf, assertUsageReady, cacheHitTokensFromProviderMetadata } from './usage.js';
 import type { ImageGenerator } from '../meme/types.js';
 import type { ImageGenRequest } from '../meme/ark.js';
 
@@ -140,6 +140,38 @@ describe('modelIdOf', () => {
     expect(modelIdOf({ modelId: 'deepseek-chat' })).toBe('deepseek-chat');
     expect(modelIdOf({})).toBe('unknown');
     expect(modelIdOf(null)).toBe('unknown');
+  });
+});
+
+describe('cacheHitTokensFromProviderMetadata', () => {
+  it('提取 deepseek.promptCacheHitTokens；缺失/形态非法返回 undefined', () => {
+    expect(cacheHitTokensFromProviderMetadata({ deepseek: { promptCacheHitTokens: 1234 } })).toBe(1234);
+    expect(cacheHitTokensFromProviderMetadata({})).toBeUndefined();
+    expect(cacheHitTokensFromProviderMetadata({ deepseek: {} })).toBeUndefined();
+    expect(cacheHitTokensFromProviderMetadata({ deepseek: { promptCacheHitTokens: 'many' } })).toBeUndefined();
+    expect(cacheHitTokensFromProviderMetadata({ deepseek: { promptCacheHitTokens: -1 } })).toBeUndefined();
+    expect(cacheHitTokensFromProviderMetadata(null)).toBeUndefined();
+  });
+});
+
+describe('recordUsage 缓存命中拆分', () => {
+  it('inputCacheHitTokens 随行落账；命中超出输入被计量校验拒绝', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agent-usage-cache-'));
+    try {
+      await recordUsage(dir, {
+        kind: 'llm', model: 'deepseek-v4-flash',
+        inputTokens: 10_000, outputTokens: 50, inputCacheHitTokens: 9_000,
+      });
+      const file = join(dir, 'usage', `usage-${localDateKey()}.jsonl`);
+      expect(JSON.parse(readFileSync(file, 'utf-8'))).toMatchObject({ inputCacheHitTokens: 9_000 });
+
+      await expect(recordUsage(dir, {
+        kind: 'llm', model: 'deepseek-v4-flash',
+        inputTokens: 100, outputTokens: 50, inputCacheHitTokens: 101,
+      })).rejects.toThrow('计量');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

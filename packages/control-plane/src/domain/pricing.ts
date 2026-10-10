@@ -18,7 +18,10 @@ export type { UsageRow } from '@cyber-stray/shared/usage';
 export function costOf(row: UsageRow): number {
   const price = requireModelPrice(row.model, row.kind);
   if (row.kind === 'llm') {
-    const input = (row.inputTokens ?? 0) / 1_000_000 * (price.inputPerM ?? 0);
+    // 缓存命中部分按命中价折算（行无字段或价表无核验价 → 全按未命中上界）。
+    const hit = price.inputCacheHitPerM !== undefined ? row.inputCacheHitTokens ?? 0 : 0;
+    const miss = (row.inputTokens ?? 0) - hit;
+    const input = miss / 1_000_000 * (price.inputPerM ?? 0) + hit / 1_000_000 * (price.inputCacheHitPerM ?? 0);
     const output = (row.outputTokens ?? 0) / 1_000_000 * (price.outputPerM ?? 0);
     // 旧行兼容：无 input/output 拆分 → 按 totalTokens 均价（输入价）粗估
     if (input === 0 && output === 0 && (row.tokens ?? 0) > 0) {
