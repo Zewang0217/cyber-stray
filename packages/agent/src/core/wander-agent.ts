@@ -43,7 +43,8 @@ const logger = consola.withTag('wander-agent');
 
 /** 游荡历史文件 */
 const WANDER_HISTORY_FILE = 'wander-history.json';
-const MAX_WANDER_HISTORY_ENTRIES = 100;
+/** 持久化保留窗口：约 40 次游荡（同日多次切换与图谱→足迹回跳在此窗口内有效） */
+const MAX_WANDER_HISTORY_ENTRIES = 2000;
 
 /** 兴趣回灌：已存在兴趣每次游荡的强化增量（0-1 权重域） */
 const WANDER_REINFORCE_DELTA = 0.12;
@@ -327,9 +328,9 @@ export class WanderAgent {
   private extractRecentTopics(steps: WanderStep[], existingTopics: string[]): string[] {
     const topics = new Set(existingTopics);
     for (const step of steps) {
-      if (step.tool === 'search_web' && step.thought) {
-        const match = step.thought.match(/搜索\((?:free|premium)\):\s*(.+)/);
-        if (match?.[1]) topics.add(match[1]);
+      // search_web 的 title = query（工具层确定性填写）；旧数据无 title 时跳过
+      if (step.tool === 'search_web' && step.title) {
+        topics.add(step.title);
       }
       if (step.url) {
         try { topics.add(new URL(step.url).hostname); } catch { /* ignore */ }

@@ -28,6 +28,8 @@ export interface MemoryEntry {
   accessedAt?: string;
   /** 来源可信度，未标记的旧数据视为 untrusted:web */
   provenance?: Provenance;
+  /** 来源 URL（知识类记忆；旧数据与无来源条目缺省） */
+  url?: string;
 }
 
 /** 记忆索引 */
@@ -212,6 +214,8 @@ export interface MemoryIndexRecord {
   tags: string[];
   summary: string;
   filepath: string;
+  /** 来源 URL（写入时从条目投影；旧索引数据缺省，呈现层不画来源边） */
+  url?: string;
 }
 
 /**
@@ -235,6 +239,7 @@ export const MemoryIndexRecordSchema = z.object({
   tags: z.array(z.string()),
   summary: z.string(),
   filepath: z.string(),
+  url: z.string().optional(),
 });
 
 /** Zod schema：JSON sidecar 索引顶层 */

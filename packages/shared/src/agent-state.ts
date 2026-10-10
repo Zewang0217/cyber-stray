@@ -3,6 +3,7 @@
  * CP /api/state 透传并注入最近游荡历史，web 只渲染、不再解析。
  */
 
+import { z } from 'zod';
 import type { PetMood } from './pet-stats';
 
 /** Agent 状态（state.json 全量字段） */
@@ -35,6 +36,10 @@ export interface AgentState {
   lastRest: string | null;
 }
 
+/** 游荡步骤的呈现状态；缺省 = 正常 */
+export const WanderStepStatusSchema = z.enum(['failed', 'blocked']);
+export type WanderStepStatus = z.infer<typeof WanderStepStatusSchema>;
+
 /** 一轮游荡中的单步记录（ReAct trace） */
 export interface WanderStep {
   timestamp: string;
@@ -46,7 +51,24 @@ export interface WanderStep {
   url?: string;
   /** 调用 speak 时记录的内容 */
   spoke?: string;
+  /** 所在巷子（宠物自命名，经巷子清单归一；未上报时沿用本游荡上一步） */
+  alley?: string;
+  /** 一句话站名，工具层确定性填写（搜索词 / 页面标题 / 知识标题 / 叼回标题） */
+  title?: string;
+  /** 失败 / 被护栏拦截；由工具与 hook 的确定性分支填写，呈现层不做文本猜测 */
+  status?: WanderStepStatus;
 }
+
+export const WanderStepSchema = z.object({
+  timestamp: z.string(),
+  tool: z.string(),
+  thought: z.string().optional(),
+  url: z.string().optional(),
+  spoke: z.string().optional(),
+  alley: z.string().optional(),
+  title: z.string().optional(),
+  status: WanderStepStatusSchema.optional(),
+});
 
 /** /api/state 快照 = state.json + CP 注入的最近游荡历史（尾部最新、限条数） */
 export interface AgentStateSnapshot extends AgentState {

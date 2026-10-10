@@ -2,7 +2,8 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { consola } from '../../logger.js';
 import { recordKnowledge } from '../../memory/long-term.js';
-import { pushWanderStep, type ToolContext } from './context.js';
+import { applyAlley, pushWanderStep, type ToolContext } from './context.js';
+import { AlleyInputSchema } from '../../memory/alleys.js';
 import type { ToolDefinition } from '../tool-manager.js';
 
 const logger = consola.withTag('tool:record_knowledge');
@@ -34,9 +35,11 @@ export const recordKnowledgeToolDef: ToolDefinition = {
       content: z.string().describe('知识正文，包含关键事实和理解'),
       source_url: z.string().url().describe('来源网页 URL（必填，用于回溯验证）'),
       tags: z.array(z.string()).optional().describe('分类标签，如 ["AI", "编程"]'),
+      alley: AlleyInputSchema,
     }),
-    execute: async ({ title, content, source_url, tags }) => {
+    execute: async ({ title, content, source_url, tags, alley }) => {
       ctx.stepCount++;
+      const stepAlley = await applyAlley(ctx, alley);
       logger.info(`[Step ${ctx.stepCount}] record_knowledge`, { title, source_url });
 
       try {
@@ -53,6 +56,8 @@ export const recordKnowledgeToolDef: ToolDefinition = {
           tool: 'record_knowledge',
           thought: `记住了: ${title}`,
           url: source_url,
+          alley: stepAlley,
+          title,
         });
 
         return {

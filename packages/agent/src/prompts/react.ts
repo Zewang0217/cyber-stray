@@ -6,6 +6,7 @@ import { getPersonality } from '@cyber-stray/shared';
 import { consola } from '../logger.js';
 import { getInterestGraph } from '../memory/interest-graph.js';
 import { loadCuriosityGraph } from '../memory/curiosity-interests.js';
+import { formatAlleyListForPrompt, loadAlleys } from '../memory/alleys.js';
 import { countGatePassedToday, todaySpeaksFile } from '../tools/push/push-budget.js';
 import {
   loadRecentPushedSpeaks,
@@ -50,6 +51,7 @@ function formatWanderHistory(history: WanderStep[]): string {
   return history
     .map((step, i) => {
       const parts = [`第${i + 1}步: 调用 ${step.tool}`];
+      if (step.alley) parts.push(`巷子: ${step.alley}`);
       if (step.url) parts.push(`URL: ${step.url}`);
       if (step.spoke) parts.push(`说了: "${step.spoke.slice(0, 50)}${step.spoke.length > 50 ? '...' : ''}"`);
       if (step.thought) parts.push(`内心: ${step.thought.slice(0, 80)}`);
@@ -254,6 +256,14 @@ export async function buildReactSystemPrompt(
   const { userGraph, curiosity } = await formatDualGraphSection();
   const budget = await formatBudgetSection();
   const recentSpeaks = await loadRecentPushedSpeaks();
+  let alleySection: string;
+  try {
+    alleySection = formatAlleyListForPrompt(await loadAlleys());
+  } catch (err) {
+    // 巷子清单脏数据不阻断游荡（与双图谱段同语义）；下次写入自愈
+    logger.warn('巷子清单加载失败，alley 段降级', { error: err });
+    alleySection = '（巷子清单暂时不可用）';
+  }
 
   const userLikes = userProfile.likes.length > 0
     ? userProfile.likes.slice(-5).join('、')
@@ -346,6 +356,11 @@ ${strategy ? `${formatStrategyDirective(strategy)}\n\n` : ''}**你当前的状�
 
 **你最近探索过的话题（避免重复搜索）：**
 ${state.recentTopics.length > 0 ? state.recentTopics.map((t) => `- ${t}`).join('\n') : '- 还没有探索过任何话题'}
+
+**你去过的巷子（足迹地图的主题分区）：**
+${alleySection}
+
+每次调用 \`search_web\` / \`read_page\` / \`browse_page\` / \`record_knowledge\` / \`speak\` 时带上 \`alley\` 参数，标记这一步属于哪条巷子：**优先复用上面的名字**（同义词也算同一条）；走进全新主题时自己起一个好听的新名字（≤20 字）；和上一步在同一条巷子就省略。
 
 **双图谱（推送判断与探索的共同依据）：**
 

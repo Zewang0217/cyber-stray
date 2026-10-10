@@ -131,6 +131,8 @@ export async function rebuildIndexFromMarkdown(
       const filepath = join(dir, file);
       const content = await readFile(filepath, 'utf-8');
       const parsed = parseMemoryFrontmatter(content);
+      // formatMemoryToMarkdown 写入的「链接:」行是自家格式，重建时读回 url 投影
+      const link = content.match(/^链接: (\S+)$/m)?.[1];
       records.push({
         id: file.replace(/\.md$/, ''),
         type,
@@ -140,6 +142,7 @@ export async function rebuildIndexFromMarkdown(
         tags: parsed.tags,
         summary: parsed.summary,
         filepath: `${subdir}/${file}`,
+        ...(link ? { url: link } : {}),
       });
     }
   }
@@ -219,6 +222,7 @@ export class MemoryIndex {
       tags: entry.tags,
       summary: entry.summary,
       filepath,
+      ...(entry.url ? { url: entry.url } : {}),
     };
 
     const idx = store.records.findIndex((r) => r.id === entry.id);
