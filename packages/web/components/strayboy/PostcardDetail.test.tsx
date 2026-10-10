@@ -23,7 +23,7 @@ describe('明信片阅读与反馈', () => {
     const container = document.createElement('div');
     root = createRoot(container);
     await act(async () => {
-      root.render(<PostcardDetail card={card} adoptedAt={0} onFeedback={onFeedback}
+      root.render(<PostcardDetail card={card} onFeedback={onFeedback}
         onPin={() => {}} pending={false} onClose={() => {}} />);
     });
     const link = container.querySelector('a');
@@ -48,7 +48,7 @@ describe('明信片阅读与反馈', () => {
     const container = document.createElement('div');
     root = createRoot(container);
     await act(async () => {
-      root.render(<PostcardDetail card={card} adoptedAt={0} onFeedback={() => {}}
+      root.render(<PostcardDetail card={card} onFeedback={() => {}}
         onPin={() => {}} pending={false} onClose={() => {}} />);
     });
     expect(container.querySelector('strong')?.textContent).toBe('重点');

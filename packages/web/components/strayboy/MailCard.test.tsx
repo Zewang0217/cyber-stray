@@ -25,10 +25,11 @@ describe('明信片墙卡片', () => {
     const container = document.createElement('div');
     root = createRoot(container);
     await act(async () => {
-      root.render(<MailCard card={card} adoptedAt={0} seenMs={0} onFeedback={() => {}}
+      root.render(<MailCard card={card} seenMs={0} onFeedback={() => {}}
         onPin={() => {}} pending={false} onOpen={onOpen} />);
     });
     expect(container.querySelector('h3')?.textContent).toBe(card.title);
+    expect(container.textContent).toContain('2026-10-04');
     expect(container.querySelector('strong')?.textContent).toBe('重点正文');
     expect(container.querySelector('li')?.textContent).toBe('列表项目');
     expect(container.querySelector('a[href="https://example.com/guide"]')).not.toBeNull();
@@ -51,7 +52,7 @@ describe('明信片墙卡片', () => {
     const container = document.createElement('div');
     root = createRoot(container);
     await act(async () => {
-      root.render(<MailCard card={card} adoptedAt={0} seenMs={0} onFeedback={() => {}}
+      root.render(<MailCard card={card} seenMs={0} onFeedback={() => {}}
         onPin={() => {}} pending={false} onOpen={() => {}} />);
     });
     const image = container.querySelector('img[alt="猫寄回的表情包"]');

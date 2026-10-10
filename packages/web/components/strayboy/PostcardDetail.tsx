@@ -13,14 +13,12 @@ import { PostcardMeme } from "./PostcardMeme";
  */
 export function PostcardDetail({
   card,
-  adoptedAt,
   onFeedback,
   onPin,
   pending,
   onClose,
 }: {
   card: SpeakHistoryItem;
-  adoptedAt: number;
   onFeedback: (type: "like" | "dislike", card: SpeakHistoryItem) => void;
   onPin: (card: SpeakHistoryItem) => void;
   pending: boolean;
@@ -35,7 +33,7 @@ export function PostcardDetail({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const { day, hhmm } = stampLabel(card.timestamp, adoptedAt);
+  const { date, hhmm } = stampLabel(card.timestamp);
   const pinTopic = card.matchedTopics?.[0];
   const sourceUrl = getSpeakSourceUrl(card.url);
 
@@ -57,7 +55,7 @@ export function PostcardDetail({
           className="absolute left-1.5 top-6 font-mono text-[10px] leading-[1.2] tracking-widest text-[var(--curb)]"
           style={{ writingMode: "vertical-rl" }}
         >
-          {`DAY ${day} · ${hhmm}`}
+          {`${date} · ${hhmm}`}
         </span>
         <h2 className="font-noto mb-4 min-w-0 [overflow-wrap:anywhere] text-balance pl-5 pr-10 text-[20px] font-bold leading-[1.55] text-[var(--ink)]">{card.title}</h2>
         <div className="font-noto mb-4 min-w-0 break-words pl-5 text-[15px] leading-[1.8] text-[var(--ink-soft)]">
