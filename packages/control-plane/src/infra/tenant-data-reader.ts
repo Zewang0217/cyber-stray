@@ -8,6 +8,7 @@
 
 import { readFile, readdir } from 'fs/promises';
 import { join } from 'path';
+import { z } from 'zod';
 import type { SpeakHistoryItem } from '@cyber-stray/shared/push';
 import { TitleOverridesSchema } from '@cyber-stray/shared/title-overrides';
 import { parseHistoryJsonl } from '../domain/history-view.js';
@@ -184,6 +185,32 @@ export async function readWanderFootprint(dataDir: string, tenantId: string): Pr
     throw new Error('足迹数据格式非法（须为数组）');
   }
   return steps;
+}
+
+/** 记忆索引文件的最小形状（完整记录校验在呈现层 shared/trail；此处只保证容器合法） */
+const MemoryIndexFileSchema = z.object({ records: z.array(z.unknown()) });
+
+/** 记忆索引记录（memory/.index.json 的 records，关系图谱数据源）；缺失 → []；损坏显式抛 */
+export async function readMemoryIndexRecords(dataDir: string, tenantId: string): Promise<unknown[]> {
+  let raw: string;
+  try {
+    raw = await readFile(join(tenantDataDir(dataDir, tenantId), 'memory', '.index.json'), 'utf-8');
+  } catch (error) {
+    if (isEnoent(error)) return [];
+    throw error;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    console.error('[trail] memory/.index.json 损坏：', error);
+    throw new Error('记忆索引数据损坏或不可读');
+  }
+  const result = MemoryIndexFileSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error('记忆索引数据格式非法（须含 records 数组）');
+  }
+  return result.data.records;
 }
 
 export interface DiaryEntry {
