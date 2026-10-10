@@ -14,6 +14,7 @@ const SUB_SCREENS = [
   { href: "/dream", label: "梦呓集" },
   { href: "/meme", label: "贴纸册" },
   { href: "/achievements", label: "成就墙" },
+  { href: "/trail", label: "足迹" },
 ] as const;
 
 const TABS = [
