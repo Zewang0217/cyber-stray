@@ -1,7 +1,9 @@
 /** Shared model price registry and preflight guard. CP computes costs; every paid caller validates here. */
 export interface ModelPrice {
-  /** 输入价 ¥/M token */
+  /** 输入价 ¥/M token（未命中部分） */
   inputPerM?: number;
+  /** 缓存命中输入价 ¥/M token；未登记 = 无官方核验价，命中部分仍按 inputPerM 上界计 */
+  inputCacheHitPerM?: number;
   /** 输出价 ¥/M token */
   outputPerM?: number;
   /** 每张价 ¥/张（生图/质检） */
@@ -12,10 +14,11 @@ export interface ModelPrice {
  * 官方人民币价格，核验于 2026-10-06：
  * https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
  * Flash 高峰：输入未命中 ¥2/M、缓存命中 ¥0.04/M、输出 ¥8/M；空闲均半价。
- * 账本未分缓存/峰谷，拆分用量统一按高峰未命中价估算预算上界，不冒充供应商账单。
+ * 账本行含 inputCacheHitTokens 时按命中价精确折算；缺字段（旧行）或缺核验价
+ * （如 deepseek-chat）按高峰未命中价取上界。峰谷仍不区分，空闲半价留作上界余量。
  * 官方仍接受 deepseek-v4-flash，并由 DeepSeek-V4.1-Flash 服务，按 Flash 价计费。
  */
-const DEEPSEEK_FLASH_BUDGET_PRICE: ModelPrice = { inputPerM: 2, outputPerM: 8 };
+const DEEPSEEK_FLASH_BUDGET_PRICE: ModelPrice = { inputPerM: 2, inputCacheHitPerM: 0.04, outputPerM: 8 };
 
 /** 内置成本估计表；增加模型时必须在此显式登记价格后才能调用。 */
 export const DEFAULT_PRICES: Record<string, ModelPrice> = {

@@ -11,7 +11,7 @@ import { generateText } from 'ai';
 import { z } from 'zod';
 import { loadConfig, setTenantContext } from '../config.js';
 import { deriveTitle } from '../tools/push/history-record.js';
-import { assertUsageReady, recordUsage } from '../usage/usage.js';
+import { assertUsageReady, recordUsage, cacheHitTokensFromProviderMetadata } from '../usage/usage.js';
 import { localDateKey } from '../meme/quota.js';
 import { assertTenantDataDir } from './tenant-dir.js';
 import { IndependentTitleSchema, TitleOverridesSchema } from '@cyber-stray/shared/title-overrides';
@@ -260,6 +260,7 @@ async function generateTitlesWithModel(dataDir: string, tenantId: string): Promi
     await recordUsage(dataDir, {
       kind: 'llm', model: config.llmModel,
       inputTokens: result.usage?.inputTokens, outputTokens: result.usage?.outputTokens,
+      inputCacheHitTokens: cacheHitTokensFromProviderMetadata(result.providerMetadata),
     });
     const clean = result.text.trim().replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim();
     const parsed = TitlesSchema.parse(JSON.parse(clean) as unknown);

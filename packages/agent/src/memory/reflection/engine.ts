@@ -25,7 +25,7 @@ import { sanitizeForLLM } from '../../utils/text-sanitize.js';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { consola } from '../../logger.js';
 import { getDataRoot } from '../../config.js';
-import { assertUsageReady, recordUsage } from '../../usage/usage.js';
+import { assertUsageReady, recordUsage, cacheHitTokensFromProviderMetadata } from '../../usage/usage.js';
 import { getConfig } from '../../config.js';
 import { getMemoryStore } from '../long-term/index.js';
 import { getInterestGraph } from '../interest-graph.js';
@@ -302,6 +302,7 @@ export class ReflectionEngine {
       model: cfg.llmModel,
       inputTokens: result?.usage?.inputTokens,
       outputTokens: result?.usage?.outputTokens,
+      inputCacheHitTokens: cacheHitTokensFromProviderMetadata(result?.providerMetadata),
     });
 
     return result.text.trim();
