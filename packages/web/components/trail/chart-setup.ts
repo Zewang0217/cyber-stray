@@ -4,6 +4,7 @@
  */
 
 import * as echarts from "echarts/core";
+import type { EChartsType } from "echarts/core";
 import { GraphChart, LineChart, ScatterChart } from "echarts/charts";
 import {
   DataZoomComponent,
@@ -25,6 +26,12 @@ echarts.use([
 ]);
 
 export { echarts };
+export type { EChartsType };
+
+/** 图表容器句柄：页面工具栏重置视图（全貌） */
+export interface ChartHandle {
+  fit: () => void;
+}
 
 /** 四角星（叼回） */
 export const STAR = "path://M0,-13 L3,-3 L13,0 L3,3 L0,13 L-3,3 L-13,0 L-3,-3 Z";

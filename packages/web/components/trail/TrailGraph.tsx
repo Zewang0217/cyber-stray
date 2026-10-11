@@ -1,31 +1,36 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { GraphNode, GraphView } from "@cyber-stray/shared/trail";
-import { echarts, STAR, readPalette, trunc } from "./chart-setup";
+import { echarts, STAR, readPalette, trunc, type ChartHandle, type EChartsType } from "./chart-setup";
 
 /**
  * 关系图谱（F 视图）：主题枢纽 + 页面 + 记忆 + 叼回的力导向图。
- * 点击记忆/叼回节点经 onJump 回跳对应游荡（key = timestamp+tool，
- * 禁对象引用匹配：ECharts 回调里的 data 可能是内部克隆）。
+ * 点击节点经 onSelect 上浮详情（跳回游荡由详情面板显式触发）；
+ * selectedId 高亮对应节点，支持从足迹地图跨视图定位。
  */
-export function TrailGraph({ graph, onJump, onSelect }: {
+export const TrailGraph = forwardRef<ChartHandle, {
   graph: GraphView;
-  onJump: (key: string) => void;
+  selectedId: string | null;
   onSelect: (node: GraphNode) => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const jumpRef = useRef(onJump);
+}>(function TrailGraph({ graph, selectedId, onSelect }, ref) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<EChartsType | null>(null);
   const selectRef = useRef(onSelect);
   useEffect(() => {
-    jumpRef.current = onJump;
     selectRef.current = onSelect;
-  }, [onJump, onSelect]);
+  }, [onSelect]);
+
+  useImperativeHandle(ref, () => ({
+    // roam 缩放/平移存在 series 的 zoom/center 上，回 1/null 即全貌
+    fit: () => chartRef.current?.setOption({ series: [{ zoom: 1, center: null }] }),
+  }), []);
 
   useEffect(() => {
-    if (!ref.current) return;
-    const chart = echarts.init(ref.current);
-    const p = readPalette(ref.current);
+    if (!containerRef.current) return;
+    const chart = echarts.init(containerRef.current);
+    chartRef.current = chart;
+    const p = readPalette(containerRef.current);
 
     const nodes = graph.nodes.map((n) => {
       if (n.kind === "hub") {
@@ -81,6 +86,8 @@ export function TrailGraph({ graph, onJump, onSelect }: {
         })),
         force: { repulsion: 260, edgeLength: [60, 150], gravity: 0.08, friction: 0.25 },
         emphasis: { focus: "adjacency", lineStyle: { width: 2.5 } },
+        // 邻接聚焦时其余节点保持可读（默认 blur 压得近乎不可见，图看着像空了）
+        blur: { itemStyle: { opacity: 0.35 }, lineStyle: { opacity: 0.2 } },
         lineStyle: { color: p.line, width: 1.2 },
       }],
     });
@@ -88,17 +95,27 @@ export function TrailGraph({ graph, onJump, onSelect }: {
     chart.on("click", (params) => {
       const id = (params.data as { id?: string } | undefined)?.id;
       const node = graph.nodes.find((n) => n.id === id);
-      if (!node) return;
-      selectRef.current(node);
-      if (node.key && (node.kind === "memory" || node.kind === "speak")) jumpRef.current(node.key);
+      if (node) selectRef.current(node);
     });
     const onResize = () => chart.resize();
     window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("resize", onResize);
       chart.dispose();
+      chartRef.current = null;
     };
   }, [graph]);
 
-  return <div ref={ref} className="trail-ecbox" />;
-}
+  // 跨视图定位：高亮 + 顶出 tooltip（adjacency emphasis 连带邻居）
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !selectedId) return;
+    const dataIndex = graph.nodes.findIndex((n) => n.id === selectedId);
+    if (dataIndex < 0) return;
+    chart.dispatchAction({ type: "highlight", seriesIndex: 0, dataIndex });
+    chart.dispatchAction({ type: "showTip", seriesIndex: 0, dataIndex });
+    return () => chart.dispatchAction({ type: "downplay", seriesIndex: 0 });
+  }, [selectedId, graph]);
+
+  return <div ref={containerRef} className="trail-ecbox" />;
+});
