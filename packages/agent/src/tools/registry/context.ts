@@ -1,5 +1,6 @@
 import type { AgentState, WanderStep } from '../../types.js';
 import type { BrowserContext } from '../browser/lifecycle.js';
+import { resolveAlley } from '../../memory/alleys.js';
 
 /** ctx.wanderHistory 在单次游荡循环内的最大长度 */
 const MAX_CTX_WANDER_HISTORY = 50;
@@ -29,6 +30,17 @@ export interface ToolContext {
   gateReasons?: string[];
   /** quality hook 写入：本次 speak 门控实际命中的兴趣话题（反馈归因用，未评估/失败时为 undefined） */
   matchedTopics?: string[];
+  /** 当前所在巷子（LLM 上报经 alley 清单归一；后续步骤缺省沿用） */
+  currentAlley?: string;
+}
+
+/**
+ * 归一 LLM 上报的巷子名并更新 ctx.currentAlley（各工具 execute 开头调用）。
+ * raw 为空时沿用当前巷子。
+ */
+export async function applyAlley(ctx: ToolContext, raw?: string): Promise<string | undefined> {
+  ctx.currentAlley = await resolveAlley(raw, ctx.currentAlley);
+  return ctx.currentAlley;
 }
 
 /**
@@ -36,6 +48,9 @@ export interface ToolContext {
  * 超出上限时自动丢弃最旧的记录，防止 maxWanderSteps 调大后内存堆积
  */
 export function pushWanderStep(ctx: ToolContext, step: WanderStep): void {
+  // 未显式携带巷子时沿用当前巷子——rest / read_feedback 等无 alley 入参的工具
+  // 也落在上一步的泳道里
+  if (!step.alley && ctx.currentAlley) step.alley = ctx.currentAlley;
   ctx.wanderHistory.push(step);
   if (ctx.wanderHistory.length > MAX_CTX_WANDER_HISTORY) {
     ctx.wanderHistory.splice(0, ctx.wanderHistory.length - MAX_CTX_WANDER_HISTORY);

@@ -20,7 +20,7 @@ import {
   type SpeakType,
 } from '../memory/push-gate.js';
 import { extractUrl, addVisitedUrl, isInCooldown } from '../tools/dedup/url-tracker.js';
-import { pushWanderStep } from '../tools/registry/context.js';
+import { applyAlley, pushWanderStep } from '../tools/registry/context.js';
 import { recordGatedSpeak } from '../tools/push/speak.js';
 import type { HookContext } from './types.js';
 import { consola } from '../logger.js';
@@ -37,15 +37,28 @@ async function denySpeak(
   content: string,
   type: SpeakType,
   reason: string,
-  recordMeta: { title?: string; gated?: boolean; planLimited?: boolean; gateReasons?: string[] },
+  recordMeta: { title?: string; alley?: string; gated?: boolean; planLimited?: boolean; gateReasons?: string[] },
 ): Promise<{ action: 'deny'; reason: string }> {
   logger.info(`[${ctx.traceId}] speak 被护栏拦截: ${reason}`);
 
   ctx.toolCtx.stepCount++;
+  // alley 解析失败绝不能影响 deny 决定——chain 对 hook 抛错会吞成放行，
+  // 安全护栏若因展示元数据失效就放行了 injection 内容
+  let stepAlley = ctx.toolCtx.currentAlley;
+  try {
+    stepAlley = await applyAlley(ctx.toolCtx, recordMeta.alley);
+  } catch (err) {
+    logger.warn('deny 留痕的巷子归一失败（不影响拦截）', { error: String(err) });
+  }
+  // 足迹步与 gated 叼回记录同一时间戳：图谱节点桥接键靠它回跳到本步
+  const stepTs = new Date().toISOString();
   pushWanderStep(ctx.toolCtx, {
-    timestamp: new Date().toISOString(),
+    timestamp: stepTs,
     tool: 'speak',
     spoke: content,
+    alley: stepAlley,
+    ...(recordMeta.title ? { title: recordMeta.title } : {}),
+    status: 'blocked',
     thought: `[${type}] 内容被护栏拦截 (${reason})`,
   });
 
@@ -55,7 +68,7 @@ async function denySpeak(
     gateReasons: recordMeta.gateReasons,
     ...(recordMeta.gated ? { gated: true } : {}),
     ...(recordMeta.planLimited ? { planLimited: true } : {}),
-  });
+  }, stepTs);
 
   // F8：speak 事件（deny 路径不经过 afterToolCall，需在此显式发）
   ctx.emit({
@@ -78,7 +91,7 @@ export const qualityHook = {
     const pg = { ...DEFAULT_PUSH_GATE_CONFIG, ...ctx.config.pushGate };
     if (!pg.enabled) return { action: 'allow' };
 
-    const { content, type, title } = params as { content: string; type: string; title?: string };
+    const { content, type, title, alley } = params as { content: string; type: string; title?: string; alley?: string };
 
     // 先清上一轮残留：护栏走 deny 时，不能把上个内容的归因/理由透传给本次
     ctx.toolCtx.gateReasons = undefined;
@@ -89,6 +102,7 @@ export const qualityHook = {
     if (scan.hasInjection) {
       return denySpeak(ctx, content, type as SpeakType, '检测到 prompt injection 特征', {
         title,
+        alley,
         gated: true,
         gateReasons: scan.warnings,
       });
@@ -103,6 +117,7 @@ export const qualityHook = {
         `本次游荡 speak 已达上限 ${pg.maxSpeaksPerWander} 条`,
         {
           title,
+          alley,
           planLimited: true,
           gateReasons: [`每游荡推送上限 ${pg.maxSpeaksPerWander} 条已用完`],
         },
@@ -114,6 +129,7 @@ export const qualityHook = {
     if (url && (await isInCooldown(url, ctx.config.urlCooldownDays))) {
       return denySpeak(ctx, content, type as SpeakType, 'URL 在冷却期内（已推送过）', {
         title,
+        alley,
         planLimited: true,
         gateReasons: [`URL 冷却中：${ctx.config.urlCooldownDays} 天内已推送过`],
       });

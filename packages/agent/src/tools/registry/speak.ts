@@ -4,7 +4,9 @@ import { IndependentTitleSchema } from '@cyber-stray/shared/title-overrides';
 import { consola } from '../../logger.js';
 import { getConfig } from '../../config.js';
 import { speak } from '../push/speak.js';
-import { pushWanderStep, type ToolContext } from './context.js';
+import { extractUrl } from '../dedup/url-tracker.js';
+import { applyAlley, pushWanderStep, type ToolContext } from './context.js';
+import { AlleyInputSchema } from '../../memory/alleys.js';
 import type { ToolDefinition } from '../tool-manager.js';
 
 const logger = consola.withTag('tool:speak');
@@ -47,13 +49,15 @@ export const speakToolDef: ToolDefinition = {
       reason: z.string().optional().describe(
         '一句话说明为什么这条值得推给主人（相关性/新奇/有用），会随记录落盘展示',
       ),
+      alley: AlleyInputSchema,
     }),
-    execute: async ({ content, title, memeId, type, reason }) => {
+    execute: async ({ content, title, memeId, type, reason, alley }) => {
       if ((type === 'article' || type === 'share') && !title) {
         throw new Error(`${type} 必须提供独立短标题`);
       }
       ctx.stepCount++;
       const stepStart = Date.now();
+      const stepAlley = await applyAlley(ctx, alley);
 
       // 护栏与归因在 quality hook 的 beforeToolCall 完成（ctx.gateReasons =
       // 扫描警告，ctx.matchedTopics = 命中话题）。P3 #152：reason 是 LLM
@@ -74,10 +78,15 @@ export const speakToolDef: ToolDefinition = {
 
       logger.info(`[${ctx.traceId}] TOOL speak [type=${type} len=${content.length} pushed=${result.pushed} elapsed=${elapsed}ms]`);
 
+      const speakUrl = extractUrl(content);
       pushWanderStep(ctx, {
-        timestamp: new Date().toISOString(),
+        // 时间戳与叼回记录同源：图谱节点的桥接键靠它回跳到本步
+        timestamp: result.timestamp,
         tool: 'speak',
         spoke: content,
+        alley: stepAlley,
+        ...(title ? { title } : {}),
+        ...(speakUrl ? { url: speakUrl } : {}),
         thought: `[${type}] 表达了想法`,
       });
 

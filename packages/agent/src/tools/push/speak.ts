@@ -66,9 +66,11 @@ export async function recordGatedSpeak(
   content: string,
   type: SpeakType,
   meta: SpeakRecordMeta = {},
+  /** 调用方（deny hook）已生成本步时间戳时传入，保证足迹步与叼回记录同键 */
+  timestamp = new Date().toISOString(),
 ): Promise<void> {
   await appendSpeakHistory(
-    buildSpeakRecord(content, type, false, new Date().toISOString(), {
+    buildSpeakRecord(content, type, false, timestamp, {
       ...meta,
       gated: true,
     }),

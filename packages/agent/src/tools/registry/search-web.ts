@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { consola } from '../../logger.js';
 import { getConfig } from '../../config.js';
 import { search, premiumSearch } from '../search/index.js';
-import { pushWanderStep, type ToolContext } from './context.js';
+import { applyAlley, pushWanderStep, type ToolContext } from './context.js';
+import { AlleyInputSchema } from '../../memory/alleys.js';
 import type { ToolDefinition } from '../tool-manager.js';
 
 const logger = consola.withTag('tool:search_web');
@@ -38,13 +39,15 @@ export const searchWebToolDef: ToolDefinition = {
     description: SEARCH_WEB_DESCRIPTION,
     inputSchema: z.object({
       query: z.string().describe('搜索关键词'),
+      alley: AlleyInputSchema,
       quality: z.enum(['free', 'premium']).default('free').describe(
         'free=免费搜索（百科类内容）, premium=实时/深度搜索（新闻、最新动态）',
       ),
     }),
-    execute: async ({ query, quality }) => {
+    execute: async ({ query, alley, quality }) => {
       ctx.stepCount++;
       const stepStart = Date.now();
+      const stepAlley = await applyAlley(ctx, alley);
 
       try {
         const maxResults = getConfig().maxSearchResults;
@@ -66,6 +69,8 @@ export const searchWebToolDef: ToolDefinition = {
         pushWanderStep(ctx, {
           timestamp: new Date().toISOString(),
           tool: 'search_web',
+          alley: stepAlley,
+          title: query,
           thought: `搜索(${quality}): ${query}`,
         });
 

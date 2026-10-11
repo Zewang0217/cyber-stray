@@ -26,6 +26,7 @@ import { createAdminRoutes } from './routes/admin.js';
 import { createAccountRoutes } from './routes/account.js';
 import { createEvolutionRoutes } from './routes/evolution.js';
 import { createFootprintRoutes } from './routes/footprint.js';
+import { createTrailRoutes } from './routes/trail.js';
 import { createDiaryRoutes } from './routes/diary.js';
 import { createDreamRoutes } from './routes/dream.js';
 import { createPetGenRoutes } from './routes/petgen.js';
@@ -110,6 +111,7 @@ export function createApp({ config, oidc, bus }: AppDeps): Hono {
 
   // S14：游荡足迹（每次 loop 每一步骤）
   app.route('/api/footprint', createFootprintRoutes({ config }));
+  app.route('/api/trail', createTrailRoutes({ config }));
 
   // #92：日记（睡前任务生成；列表/单篇，租户隔离）
   app.route('/api/diary', createDiaryRoutes({ config }));

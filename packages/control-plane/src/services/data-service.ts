@@ -18,6 +18,7 @@ import {
   readDreamEntry,
   readDreamList,
   readInterestHistorySnapshots,
+  readMemoryIndexRecords,
   readPushHistoryItems,
   readTenantInterestGraph,
   readTenantStateSnapshot,
@@ -148,6 +149,32 @@ export function createDataService({ config }: DataServiceDeps) {
     return { ok: true, data: sorted };
   }
 
+  /** 关系图谱数据源：记忆索引记录（全量，呈现层负责投影/过滤） */
+  async function getMemoryIndexRecords(tenantId: string): Promise<DataOutcome<unknown>> {
+    try {
+      return { ok: true, data: await readMemoryIndexRecords(config.dataDir, tenantId) };
+    } catch (error) {
+      return {
+        ok: false,
+        status: 500,
+        error: error instanceof Error ? error.message : '记忆索引数据损坏或不可读',
+      };
+    }
+  }
+
+  /** 关系图谱数据源：全部叼回记录（复用推送历史读边界，不分页） */
+  async function getAllSpeakRecords(tenantId: string): Promise<DataOutcome<unknown>> {
+    try {
+      return { ok: true, data: await readPushHistoryItems(config.dataDir, tenantId) };
+    } catch (error) {
+      return {
+        ok: false,
+        status: 500,
+        error: error instanceof Error ? error.message : '叼回记录损坏或不可读',
+      };
+    }
+  }
+
   /** 日记列表（时间倒序，含标题/摘录） */
   async function getDiaryList(tenantId: string): Promise<DataOutcome<DiaryEntry[]>> {
     try {
@@ -222,6 +249,8 @@ export function createDataService({ config }: DataServiceDeps) {
     getInterestsHistory,
     getHistory,
     getFootprint,
+    getMemoryIndexRecords,
+    getAllSpeakRecords,
     getDiaryList,
     getDiaryEntry,
     getDreamList,
