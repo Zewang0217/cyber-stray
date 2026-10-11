@@ -75,6 +75,7 @@ export async function recordKnowledge(params: {
       params.source ? `\n\n来源: ${params.source}` : ''
     }${params.url ? `\n链接: ${params.url}` : ''}`,
     importance: 0.5,
+    ...(params.url ? { url: params.url } : {}),
   });
 }
 

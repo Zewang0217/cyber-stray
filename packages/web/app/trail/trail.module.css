@@ -1,0 +1,384 @@
+/* /trail 游荡足迹：掌机工作台（design-v3 色板 + 实色落影 + 像素字纪律）。
+   字号档位固定：像素字 12/24、VT323 读数 20、正文 Noto 14、签注 12。 */
+
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 22px 28px 32px;
+  color: var(--star);
+  font-family: var(--font-noto), system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--curb);
+}
+
+.eyebrow {
+  margin: 0;
+  font-family: var(--font-ps2p), monospace;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--curb);
+}
+
+.header h1 {
+  margin: 6px 0 0;
+  font-family: var(--font-fusion-pixel), var(--font-noto), monospace;
+  font-size: 24px;
+  font-weight: 400;
+  color: var(--star);
+}
+
+.demoTag {
+  margin-left: 12px;
+  font-family: var(--font-noto), sans-serif;
+  font-size: 12px;
+  color: var(--curb);
+  border: 2px dashed var(--curb);
+  padding: 2px 10px;
+  vertical-align: 4px;
+}
+
+/* 页签语法照 AppTabBar：激活 = act 蓝底 + 底部 2px hi 黄线 */
+.viewTabs {
+  display: flex;
+  gap: 8px;
+}
+
+.viewTabs button,
+.sessionTabs button {
+  cursor: pointer;
+  background: var(--panel);
+  border: 2px solid var(--curb);
+  color: var(--curb);
+  min-height: 44px;
+  padding: 0 18px;
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 12px;
+}
+
+.viewTabs button:hover,
+.sessionTabs button:hover {
+  color: var(--star);
+  border-color: var(--star);
+}
+
+.viewTabs button.on,
+.sessionTabs button.on {
+  background: var(--act);
+  border-color: var(--act);
+  border-bottom-color: var(--hi);
+  color: var(--star);
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 18px;
+  align-items: start;
+  padding-top: 16px;
+}
+
+@media (max-width: 960px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chartCol {
+  min-width: 0;
+}
+
+.sessionBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.sessionTabs {
+  display: flex;
+  gap: 6px;
+  flex: 1 1 320px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.sessionTabs button {
+  flex: none;
+  min-height: 40px;
+  padding: 0 12px;
+  font-family: "IBM Plex Mono", var(--font-noto), monospace;
+  white-space: nowrap;
+}
+
+.stats {
+  display: flex;
+  gap: 18px;
+  margin: 0;
+}
+
+.stats > div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.stats dt {
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 12px;
+  color: var(--curb);
+}
+
+.stats dd {
+  margin: 0;
+  font-family: var(--font-vt323), monospace;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--star);
+}
+
+.chartBox {
+  position: relative;
+  border: 2px solid var(--curb);
+  background: var(--panel);
+  box-shadow: 6px 6px 0 #000;
+}
+
+.page :global(.trail-ecbox) {
+  height: clamp(340px, 62vh, 560px);
+  width: 100%;
+  overflow: hidden;
+}
+
+.fitBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  cursor: pointer;
+  background: var(--sky);
+  border: 2px solid var(--curb);
+  color: var(--curb);
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 12px;
+}
+
+.fitBtn:hover {
+  color: var(--star);
+  border-color: var(--star);
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: sticky;
+  top: 12px;
+}
+
+.detail,
+.legend,
+.stateBox {
+  border: 2px solid var(--curb);
+  background: var(--panel);
+  box-shadow: 3px 3px 0 #000;
+}
+
+.detail {
+  padding: 14px 16px;
+  min-height: 140px;
+}
+
+.detailHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolTag {
+  padding: 2px 8px;
+  background: var(--bld-far);
+  color: var(--act);
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 12px;
+}
+
+.badge {
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--bad);
+  border: 2px dashed var(--bad);
+}
+
+.badgeMuted {
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--curb);
+  border: 2px dashed var(--curb);
+}
+
+.clock {
+  margin-left: auto;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  color: var(--curb);
+}
+
+.title {
+  margin: 10px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--star);
+}
+
+.thought {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--star);
+}
+
+/* 叼回 = 宠物说话：纸底对话框 + 底部三角尾巴（宪法签名手法 6） */
+.spoke {
+  position: relative;
+  margin: 12px 0 16px;
+  padding: 10px 12px;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  color: var(--ink);
+  font-family: var(--font-noto), sans-serif;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.spoke::after {
+  content: "";
+  position: absolute;
+  bottom: -9px;
+  left: 16px;
+  width: 0;
+  height: 0;
+  border: 8px solid transparent;
+  border-top: 8px solid var(--ink);
+  border-bottom: 0;
+}
+
+.detail .link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--act);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.jump {
+  display: block;
+  margin-top: 14px;
+  min-height: 44px;
+  padding: 0 16px;
+  cursor: pointer;
+  background: var(--act);
+  border: 2px solid var(--act);
+  color: var(--star);
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 12px;
+}
+
+.jump:hover {
+  background: var(--street);
+  border-color: var(--street);
+}
+
+.emptyHint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--curb);
+}
+
+.legend {
+  padding: 12px 14px;
+}
+
+.legend h2 {
+  margin: 0 0 10px;
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--curb);
+}
+
+.legendGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--star);
+}
+
+.legendItem svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--curb);
+}
+
+.stateBox {
+  padding: 32px 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--curb);
+}
+
+.stateBoxSpaced {
+  margin-top: 24px;
+}
+
+.error {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--bad);
+}
+
+.retry {
+  min-height: 44px;
+  padding: 0 18px;
+  cursor: pointer;
+  background: var(--panel);
+  border: 2px solid var(--act);
+  color: var(--act);
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 12px;
+}
+
+.retry:hover {
+  border-color: var(--star);
+  color: var(--star);
+}

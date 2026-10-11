@@ -33,7 +33,7 @@ export const securityHook = {
       const reason = error instanceof Error ? error.message : String(error);
       ctx.toolCtx.stepCount++;
       pushWanderStep(ctx.toolCtx, {
-        timestamp: new Date().toISOString(), tool, thought: `安全护栏拒绝: ${reason}`,
+        timestamp: new Date().toISOString(), tool, status: 'blocked', thought: `安全护栏拒绝: ${reason}`,
       });
       return { action: 'deny', reason };
     }
