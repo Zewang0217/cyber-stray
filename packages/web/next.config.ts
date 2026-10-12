@@ -64,6 +64,10 @@ const nextConfig: NextConfig = {
         destination: `${controlPlaneOrigin}/api/feedback`,
       },
       {
+        source: "/api/apply/:path*",
+        destination: `${controlPlaneOrigin}/api/apply/:path*`,
+      },
+      {
         source: "/api/boost",
         destination: `${controlPlaneOrigin}/api/boost`,
       },

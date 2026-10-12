@@ -40,5 +40,5 @@ export const config = {
   // /need-invite 必须豁免——CP 在邀请校验失败时把用户 302 到这里且尚未签发
   // session cookie（见 CP routes/auth.ts 邀请门），登录墙若拦截此页会形成
   // 登录→callback→need-invite→登录 的重定向死循环
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/|login(?:/|$)|need-invite(?:/|$)).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/|login(?:/|$)|need-invite(?:/|$)|apply(?:/|$)).*)"],
 };

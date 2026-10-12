@@ -27,9 +27,9 @@ export default function NeedInvitePage() {
         <p className="mt-3 text-[13px] leading-[1.7] text-[var(--curb)]">
           受邀用户免费享有相同的 Pro 权益。已有邀请函，请从其中的专属链接重新进入。
         </p>
-        <a href="https://github.com/Zewang0217/cyber-stray/issues/new?title=申请邀请内测"
+        <a href="/apply"
           className="mt-5 block border-2 border-[var(--act)] px-3 py-2 text-center text-[14px] text-[var(--paper)]">
-          向项目维护者申请邀请
+          申请一张邀请函
         </a>
         <a href="/login" className="mt-4 block text-center text-[13px] text-[var(--act)] underline">已有账号，重新登录</a>
       </div>
