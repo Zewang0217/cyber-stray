@@ -84,6 +84,9 @@ export const TrailGraph = forwardRef<ChartHandle, {
         type: "graph",
         layout: "force",
         roam: true,
+        // roam 响应区默认取数据包围盒并随 roam 变换缩放（View.containPoint），平移/缩小后画布边缘成死区；
+        // 'global' 固定为整块画布（tree/sankey/treemap 的默认值，graph 缺省）
+        roamTrigger: "global",
         draggable: true,
         data: nodes,
         links: graph.edges.map((e) => ({
