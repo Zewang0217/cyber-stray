@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { isUnread, pickStamp, stampLabel } from "@/lib/strayboy/mail";
 import { getSpeakSourceUrl, SPEAK_TYPE_LABELS, type SpeakHistoryItem } from "@cyber-stray/shared/push";
+import { FeedbackBurst } from "./FeedbackBurst";
 import { PostcardMarkdown } from "./PostcardMarkdown";
 import { PostcardMeme } from "./PostcardMeme";
 
@@ -37,6 +39,7 @@ function Stamp({ kind }: { kind: string }) {
 export function MailCard({
   card,
   seenMs,
+  myType,
   onFeedback,
   onPin,
   pending,
@@ -44,6 +47,8 @@ export function MailCard({
 }: {
   card: SpeakHistoryItem;
   seenMs: number;
+  /** 本地已提交的反馈类型（刷新后仍记忆）；undefined = 还没按过 */
+  myType?: "like" | "dislike";
   onFeedback: (type: "like" | "dislike", card: SpeakHistoryItem) => void;
   onPin: (card: SpeakHistoryItem) => void;
   pending: boolean;
@@ -55,6 +60,19 @@ export function MailCard({
   const stamp = pickStamp(card.timestamp);
   const pinTopic = card.matchedTopics?.[0];
   const sourceUrl = getSpeakSourceUrl(card.url);
+
+  // 反馈落定的一瞬：myType 变化时播 burst，播完卸载（400ms 覆盖最长延迟位）
+  const [burst, setBurst] = useState<"like" | "dislike" | null>(null);
+  const prevType = useRef(myType);
+  useEffect(() => {
+    if (prevType.current !== myType && myType) setBurst(myType);
+    prevType.current = myType;
+  }, [myType]);
+  useEffect(() => {
+    if (!burst) return;
+    const id = setTimeout(() => setBurst(null), 450);
+    return () => clearTimeout(id);
+  }, [burst]);
 
   return (
     <article className="relative min-w-0 border-4 border-[var(--ink)] bg-[var(--paper)] p-4 pt-6 shadow-[6px_6px_0_#000]">
@@ -70,6 +88,20 @@ export function MailCard({
       <span className="absolute right-3 top-3 rotate-3">
         <Stamp kind={stamp} />
       </span>
+      {/* 反馈邮戳：落定后盖在邮票下方（sb-stamp 砸落；reduce 时定格直角） */}
+      {myType && (
+        <span
+          aria-hidden
+          className="sb-stamp absolute right-2 top-15 select-none border-[3px] border-[var(--ink)] px-1.5 py-0.5 font-ps2p text-[10px] leading-none tracking-widest text-[var(--ink)]"
+          style={{
+            transform: "rotate(-8deg)",
+            background: myType === "like" ? "var(--hi)" : "var(--curb)",
+            color: myType === "like" ? "var(--ink)" : "var(--paper)",
+          }}
+        >
+          {myType === "like" ? "已赞" : "不爱"}
+        </span>
+      )}
       {/* 未读 NEW! 黄徽章 */}
       {unread && (
         <span className="sb-blink absolute -left-2 -top-3 border-2 border-[var(--ink)] bg-[var(--hi)] px-1.5 py-0.5 font-ps2p text-xs leading-none text-[var(--ink)]">
@@ -98,24 +130,35 @@ export function MailCard({
         {sourceUrl && <a href={sourceUrl} target="_blank" rel="noopener noreferrer"
           className="font-noto text-[var(--act)] underline underline-offset-4">阅读原文 ↗</a>}
       </div>
-      <div className="flex flex-wrap items-center gap-2 pl-5">
+      <div className="relative flex flex-wrap items-center gap-2 pl-5">
+        {burst && <FeedbackBurst type={burst} />}
         <button
           type="button"
           disabled={pending || !card.messageId}
+          aria-pressed={myType === "like"}
           title={card.messageId ? "赞（归因到推送话题）" : "这张旧明信片暂不支持反馈"}
           onClick={() => onFeedback("like", card)}
-          className="border-2 border-[var(--curb)] bg-[var(--panel)] px-2 py-1 text-[12px] text-[var(--paper)]"
+          className={`border-2 px-2 py-1 text-[12px] shadow-[2px_2px_0_#000] transition-none active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:shadow-none disabled:opacity-60 ${
+            myType === "like"
+              ? "border-[var(--ink)] bg-[var(--hi)] font-bold text-[var(--ink)]"
+              : "border-[var(--curb)] bg-[var(--panel)] text-[var(--paper)]"
+          }`}
         >
-          ▲ 赞
+          {myType === "like" ? "▲ 已赞" : "▲ 赞"}
         </button>
         <button
           type="button"
           disabled={pending || !card.messageId}
+          aria-pressed={myType === "dislike"}
           title={card.messageId ? "踩" : "这张旧明信片暂不支持反馈"}
           onClick={() => onFeedback("dislike", card)}
-          className="border-2 border-[var(--curb)] bg-[var(--panel)] px-2 py-1 text-[12px] text-[var(--paper)]"
+          className={`border-2 px-2 py-1 text-[12px] shadow-[2px_2px_0_#000] transition-none active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:shadow-none disabled:opacity-60 ${
+            myType === "dislike"
+              ? "border-[var(--ink)] bg-[var(--curb)] font-bold text-[var(--paper)]"
+              : "border-[var(--curb)] bg-[var(--panel)] text-[var(--paper)]"
+          }`}
         >
-          ▼ 踩
+          {myType === "dislike" ? "▼ 已踩" : "▼ 踩"}
         </button>
         {pinTopic && (
           <button
@@ -123,7 +166,7 @@ export function MailCard({
             disabled={pending}
             title={`顶话题：${pinTopic}`}
             onClick={() => onPin(card)}
-            className="border-2 border-[var(--ink)] bg-[var(--hi)] px-2 py-1 text-[12px] text-[var(--ink)]"
+            className="border-2 border-[var(--ink)] bg-[var(--hi)] px-2 py-1 text-[12px] text-[var(--ink)] shadow-[2px_2px_0_#000] transition-none active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:shadow-none disabled:opacity-60"
           >
             ▲ {pinTopic}
           </button>

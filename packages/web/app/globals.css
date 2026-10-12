@@ -615,6 +615,46 @@ body.sb-hidden * {
   }
 }
 
+/* 点踩反馈：灰色方块下坠（与赞的爱心上飘对偶；f4 steps） */
+@keyframes sb-pip-drop {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(28px);
+    opacity: 0;
+  }
+}
+.sb-pip {
+  animation: sb-pip-drop 0.3s steps(4) forwards;
+}
+
+/* 反馈邮戳：大号砸落盖定（两帧法则 steps(2)，rotation 在 keyframes 内固定） */
+@keyframes sb-stamp-in {
+  0% {
+    transform: rotate(-8deg) scale(2.4);
+    opacity: 0;
+  }
+  100% {
+    transform: rotate(-8deg) scale(1);
+    opacity: 1;
+  }
+}
+.sb-stamp {
+  animation: sb-stamp-in 0.15s steps(2) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-pip {
+    animation: none;
+    opacity: 0;
+  }
+  .sb-stamp {
+    animation: none;
+  }
+}
+
 /* 图鉴新条目翻转亮起（motion.md §4：f12 steps） */
 @keyframes sb-flip-in {
   0% {

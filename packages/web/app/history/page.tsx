@@ -10,6 +10,7 @@ import { useTenantEvents } from "@/hooks/useTenantEvents";
 import { MailCard } from "@/components/strayboy/MailCard";
 import { PostcardDetail } from "@/components/strayboy/PostcardDetail";
 import { DAY_MS, getSeenTimestamp, markAllSeen } from "@/lib/strayboy/mail";
+import { loadWallFeedback, saveWallFeedback, type WallFeedbackMap } from "@/lib/strayboy/wall-feedback";
 import type { SpeakHistoryItem } from "@cyber-stray/shared/push";
 
 
@@ -49,6 +50,10 @@ function WallInner() {
   const [animateParent] = useAutoAnimate();
   // 详情模态：墙上显示标题与摘要，点开读完整正文。
   const [detail, setDetail] = useState<SpeakHistoryItem | null>(null);
+  // 本地已按下的反馈（messageId → 类型）：驱动按钮选中态/邮戳/动画，localStorage 持久化
+  const [myFeedback, setMyFeedback] = useState<WallFeedbackMap>(() => loadWallFeedback());
+  // 正在提交的卡片（pending 只禁这张卡，不再全墙连坐）
+  const [pendingId, setPendingId] = useState<string | null>(null);
   // demo 未读推导隔离：夹具恒视为未读（NEW! 验收项不读真实 localStorage）
   const [seenMs, setSeenMs] = useState<number>(() => getSeenTimestamp());
   const seen = demo ? 0 : seenMs;
@@ -78,9 +83,27 @@ function WallInner() {
   }, [demo, newestMs]);
 
   const onFeedback = (type: "like" | "dislike", card: SpeakHistoryItem): void => {
-    void feedback.sendFeedback(type, card.messageId ?? "").then((ok) => {
-      if (ok) toast(type === "like" ? "已记下：你喜欢这类货。" : "已记下：少送这类货。");
-      else toast("反馈没送到（网络/权限）");
+    const messageId = card.messageId;
+    if (!messageId) return;
+    // demo 通道不写真实 CP：本地直接落定，供视觉验收点赞前后差别
+    if (demo) {
+      const next = { ...myFeedback, [messageId]: type };
+      setMyFeedback(next);
+      saveWallFeedback(next);
+      toast(type === "like" ? "已记下：你喜欢这类货。" : "已记下：少送这类货。");
+      return;
+    }
+    setPendingId(messageId);
+    void feedback.sendFeedback(type, messageId).then((ok) => {
+      setPendingId(null);
+      if (!ok) {
+        toast("反馈没送到（网络/权限）");
+        return;
+      }
+      const next = { ...myFeedback, [messageId]: type };
+      setMyFeedback(next);
+      saveWallFeedback(next);
+      toast(type === "like" ? "已记下：你喜欢这类货。" : "已记下：少送这类货。");
     });
   };
   const onPin = (card: SpeakHistoryItem): void => {
@@ -110,9 +133,10 @@ function WallInner() {
             key={`${card.timestamp}|${card.message}`}
             card={card}
             seenMs={seen}
+            myType={card.messageId ? myFeedback[card.messageId] : undefined}
             onFeedback={onFeedback}
             onPin={onPin}
-            pending={feedback.pending || demo}
+            pending={!demo && feedback.pending && pendingId === card.messageId}
             onOpen={setDetail}
           />
         ))}
@@ -120,9 +144,10 @@ function WallInner() {
       {detail && (
         <PostcardDetail
           card={detail}
+          myType={detail.messageId ? myFeedback[detail.messageId] : undefined}
           onFeedback={onFeedback}
           onPin={onPin}
-          pending={feedback.pending || demo}
+          pending={!demo && feedback.pending && pendingId === detail.messageId}
           onClose={() => setDetail(null)}
         />
       )}
