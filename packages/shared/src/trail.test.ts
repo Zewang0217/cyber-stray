@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { buildTrailView, buildGraphView } from './trail';
+import { buildTrailView, buildGraphView, DEFAULT_GRAPH_PRUNE } from './trail';
 
 // 事件 fixture 派生自生产 wander-history 样本（scratch/trajectory-proto/），精简到覆盖各规则
 const STEPS = [
@@ -76,7 +76,8 @@ describe('buildGraphView', () => {
     // 无 url 无话题 → 悬空
     { timestamp: '2026-10-08T18:00:00.000Z', title: '碎碎念' },
   ];
-  const { nodes, edges } = buildGraphView(MEMORIES, SPEAKS);
+  const view = buildGraphView(MEMORIES, SPEAKS);
+  const { nodes, edges } = view;
 
   test('记忆→页面按 url 连边，页面挂主题枢纽', () => {
     expect(edges).toContainEqual({ source: 'm:k1', target: 'p:https://a.example/q1', kind: 'remembered', label: '它记住了这个页面里的东西' });
@@ -108,5 +109,51 @@ describe('buildGraphView', () => {
   test('桥接键透传：memory→record_knowledge，speak→speak', () => {
     expect(nodes.find((n) => n.id === 'm:k1')?.key).toBe('2026-10-08T16:03:00.000Z|record_knowledge');
     expect(nodes.find((n) => n.id === 's:2026-10-08T16:04:00.000Z')?.key).toBe('2026-10-08T16:04:00.000Z|speak');
+  });
+
+  test('小数据不触顶：全部保留，pruned 统计对齐', () => {
+    expect(view.pruned).toEqual({ kept: 5, total: 5 }); // 2 knowledge 记忆 + 3 叼回
+  });
+});
+
+describe('buildGraphView 剪枝（大租户限流）', () => {
+  const mem = (id: string, ts: string, topic: string) => ({
+    id, type: 'knowledge', timestamp: ts, tags: ['knowledge', topic], summary: `s-${id}`,
+    url: `https://x.example/${id}`,
+  });
+
+  test('每主题桶保最近 K 条（记忆 + 叼回同桶计数）', () => {
+    // 时间戳逐分钟递增：k0 最早、k11 最晚，最早三条在默认 K=10 下被剪掉
+    const ts = (i: number) => new Date(Date.UTC(2026, 9, 1, 0, i)).toISOString();
+    const memories = Array.from({ length: 12 }, (_, i) => mem(`k${i}`, ts(i), '量子'));
+    // 桶内已 12 条记忆，再补 1 条最晚的叼回 → 桶计 13，默认 K=10 只留最近 10 条
+    const speaks = [{ timestamp: ts(99), title: 't', url: 'https://x.example/sp', matchedTopics: ['量子'] }];
+    const view = buildGraphView(memories, speaks);
+    const keptMemories = view.nodes.filter((n) => n.id.startsWith('m:'));
+    expect(view.pruned).toEqual({ kept: 10, total: 13 });
+    expect(keptMemories.find((n) => n.id === 'm:k0')).toBeUndefined();
+    expect(keptMemories.find((n) => n.id === 'm:k1')).toBeUndefined();
+    expect(keptMemories.find((n) => n.id === 'm:k2')).toBeUndefined();
+    expect(keptMemories).toHaveLength(9); // 10 条保留 = 9 记忆 + 1 叼回
+  });
+
+  test('主题桶超上限：按桶内记录数保 top maxHubs，长尾主题整枝丢弃', () => {
+    const opts = { ...DEFAULT_GRAPH_PRUNE, maxHubs: 2 };
+    const memories = [
+      ...Array.from({ length: 3 }, (_, i) => mem(`a${i}`, `2026-10-01T0${i}:00:00.000Z`, '大主题')),
+      ...Array.from({ length: 2 }, (_, i) => mem(`b${i}`, `2026-10-01T0${i}:00:00.000Z`, '中主题')),
+      mem('c0', '2026-10-01T00:00:00.000Z', '长尾'),
+    ];
+    const view = buildGraphView(memories, [], opts);
+    const hubs = view.nodes.filter((n) => n.kind === 'hub').map((n) => n.label);
+    expect(hubs).toEqual(['大主题', '中主题']);
+    expect(view.pruned).toEqual({ kept: 5, total: 6 });
+  });
+
+  test('悬空记录（无 url 无话题叼回）按 maxLooseRecords 截断', () => {
+    const speaks = Array.from({ length: 5 }, (_, i) => ({ timestamp: `2026-10-0${i + 1}T00:00:00.000Z`, title: `t${i}` }));
+    const view = buildGraphView([], speaks, { ...DEFAULT_GRAPH_PRUNE, maxLooseRecords: 2 });
+    expect(view.nodes.filter((n) => n.kind === 'speak')).toHaveLength(2);
+    expect(view.pruned).toEqual({ kept: 2, total: 5 });
   });
 });

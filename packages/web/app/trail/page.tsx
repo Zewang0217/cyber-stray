@@ -12,6 +12,9 @@ import styles from "./trail.module.css";
 
 type View = "trail" | "graph";
 
+/** 图谱数据源的粗剪上限（CP 按时间取最近 N 条；大租户全量响应会卡传输与解析） */
+const GRAPH_FETCH_LIMIT = 800;
+
 interface TrailData {
   sessions: TrailSession[];
   graph: GraphView;
@@ -42,8 +45,8 @@ function useTrailData(demo: boolean): { data: TrailData | null; error: string | 
     (async () => {
       const [fpRes, memRes, spkRes] = await Promise.all([
         fetch("/api/footprint"),
-        fetch("/api/trail/memory"),
-        fetch("/api/trail/speaks"),
+        fetch(`/api/trail/memory?limit=${GRAPH_FETCH_LIMIT}`),
+        fetch(`/api/trail/speaks?limit=${GRAPH_FETCH_LIMIT}`),
       ]);
       for (const res of [fpRes, memRes, spkRes]) {
         if (!res.ok) throw new Error(`数据加载失败（${res.status}）`);
@@ -279,6 +282,11 @@ function TrailPageInner() {
                     <div><dt>节点</dt><dd>{data.graph.nodes.length}</dd></div>
                     <div><dt>边</dt><dd>{data.graph.edges.length}</dd></div>
                   </dl>
+                  {data.graph.pruned.kept < data.graph.pruned.total && (
+                    <span className={styles.pruneNote}>
+                      家底太大，只画了最近的 {data.graph.pruned.kept} 条（共 {data.graph.pruned.total} 条）
+                    </span>
+                  )}
                 </div>
                 <div className={styles.chartBox}>
                   <TrailGraph ref={graphRef} graph={data.graph} selectedId={graphNode?.id ?? null} onSelect={setGraphDetail} />

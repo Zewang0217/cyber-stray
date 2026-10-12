@@ -214,12 +214,92 @@ function topicOf(tags: string[], type: string): string | undefined {
 export interface GraphView {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  /** 输入剪枝统计：kept < total 时 UI 提示「只画了最近的」 */
+  pruned: { kept: number; total: number };
 }
 
-export function buildGraphView(rawMemories: unknown[], rawSpeaks: unknown[]): GraphView {
+/**
+ * 大租户剪枝选项。为什么：关系图谱用 ECharts force 布局，斥力是 O(n²)
+ * 且逐帧重绘，几千节点即卡死；按主题分桶保最近 K 条把节点压回 ~500-800
+ * （Canvas 流畅量级），同时保住主题骨架（枢纽全部在场）。
+ */
+export interface GraphPruneOptions {
+  /** 每个主题桶保留的最近记录数（记忆 + 叼回同桶计数） */
+  maxRecordsPerHub: number;
+  /** 主题桶上限；超出时按桶内记录数取最多者（长尾兴趣整枝让位） */
+  maxHubs: number;
+  /** 无主题悬空记录（无 url 无话题的叼回等）保留最近条数 */
+  maxLooseRecords: number;
+}
+
+export const DEFAULT_GRAPH_PRUNE: GraphPruneOptions = {
+  maxRecordsPerHub: 10,
+  maxHubs: 36,
+  maxLooseRecords: 12,
+};
+
+/** 记录的主题归属：undefined = 悬空（无主题可挂） */
+interface TaggedRecord<T> {
+  topic: string | undefined;
+  timestamp: string;
+  ref: T;
+}
+
+/**
+ * 按主题桶保最近记录。返回保留引用集合；桶数超限时长尾主题整桶丢弃。
+ * 输出只做「选不选」决定，不改记录顺序（建图的页面标题补全依赖原始顺序）。
+ */
+function pruneGraphRecords<T>(tagged: TaggedRecord<T>[], opts: GraphPruneOptions): Set<T> {
+  const bucketOf = new Map<string, TaggedRecord<T>[]>();
+  for (const t of tagged) {
+    const key = t.topic ?? '(loose)';
+    const bucket = bucketOf.get(key);
+    if (bucket) bucket.push(t);
+    else bucketOf.set(key, [t]);
+  }
+
+  const loose = bucketOf.get('(loose)') ?? [];
+  const topicKeys = [...bucketOf.keys()].filter((k) => k !== '(loose)');
+  let keptTopics: Set<string>;
+  if (topicKeys.length > opts.maxHubs) {
+    keptTopics = new Set(
+      topicKeys
+        .sort((a, b) => (bucketOf.get(b)!.length - bucketOf.get(a)!.length) || (a < b ? -1 : 1))
+        .slice(0, opts.maxHubs),
+    );
+  } else {
+    keptTopics = new Set(topicKeys);
+  }
+
+  const kept = new Set<T>();
+  const keepRecent = (records: TaggedRecord<T>[], limit: number) => {
+    [...records]
+      .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+      .slice(0, limit)
+      .forEach((t) => kept.add(t.ref));
+  };
+  for (const key of keptTopics) keepRecent(bucketOf.get(key)!, opts.maxRecordsPerHub);
+  keepRecent(loose, opts.maxLooseRecords);
+  return kept;
+}
+
+export function buildGraphView(
+  rawMemories: unknown[],
+  rawSpeaks: unknown[],
+  prune: GraphPruneOptions = DEFAULT_GRAPH_PRUNE,
+): GraphView {
   const memories = z.array(TrailMemoryRecordSchema).parse(rawMemories)
     .filter((m) => m.type === 'knowledge');
   const speaks = z.array(TrailSpeakRecordSchema).parse(rawSpeaks);
+  const total = memories.length + speaks.length;
+
+  type AnyRecord = TrailMemoryRecord | TrailSpeakRecord;
+  const keptRefs = pruneGraphRecords<AnyRecord>([
+    ...memories.map((m): TaggedRecord<AnyRecord> => ({ topic: topicOf(m.tags, m.type), timestamp: m.timestamp, ref: m })),
+    ...speaks.map((s): TaggedRecord<AnyRecord> => ({ topic: s.matchedTopics?.[0], timestamp: s.timestamp, ref: s })),
+  ], prune);
+  const kept = memories.filter((m) => keptRefs.has(m));
+  const keptSpeakList = speaks.filter((s) => keptRefs.has(s));
 
   const nodes = new Map<string, GraphNode>();
   const edges: GraphEdge[] = [];
@@ -253,7 +333,7 @@ export function buildGraphView(rawMemories: unknown[], rawSpeaks: unknown[]): Gr
     edges.push({ source, target, kind, label: EDGE_LABELS[kind] });
   }
 
-  for (const m of memories) {
+  for (const m of kept) {
     const topic = topicOf(m.tags, m.type);
     const mid = `m:${m.id}`;
     nodes.set(mid, {
@@ -274,7 +354,7 @@ export function buildGraphView(rawMemories: unknown[], rawSpeaks: unknown[]): Gr
     }
   }
 
-  for (const s of speaks) {
+  for (const s of keptSpeakList) {
     const sid = `s:${s.timestamp}`;
     nodes.set(sid, {
       id: sid,
@@ -296,5 +376,9 @@ export function buildGraphView(rawMemories: unknown[], rawSpeaks: unknown[]): Gr
     // 无 url 且无命中话题：悬空节点，呈现为游离点
   }
 
-  return { nodes: [...nodes.values()], edges };
+  return {
+    nodes: [...nodes.values()],
+    edges,
+    pruned: { kept: kept.length + keptSpeakList.length, total },
+  };
 }
