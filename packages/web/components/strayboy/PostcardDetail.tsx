@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { stampLabel } from "@/lib/strayboy/mail";
 import { getSpeakSourceUrl, type SpeakHistoryItem } from "@cyber-stray/shared/push";
+import { FeedbackBurst } from "./FeedbackBurst";
 import { PostcardMarkdown } from "./PostcardMarkdown";
 import { PostcardMeme } from "./PostcardMeme";
 
@@ -13,17 +14,32 @@ import { PostcardMeme } from "./PostcardMeme";
  */
 export function PostcardDetail({
   card,
+  myType,
   onFeedback,
   onPin,
   pending,
   onClose,
 }: {
   card: SpeakHistoryItem;
+  /** 本地已提交的反馈类型（与墙上卡片同源状态） */
+  myType?: "like" | "dislike";
   onFeedback: (type: "like" | "dislike", card: SpeakHistoryItem) => void;
   onPin: (card: SpeakHistoryItem) => void;
   pending: boolean;
   onClose: () => void;
 }) {
+  // 反馈落定 burst：与 MailCard 同款（详情里点赞也飘爱心）
+  const [burst, setBurst] = useState<"like" | "dislike" | null>(null);
+  const prevType = useRef(myType);
+  useEffect(() => {
+    if (prevType.current !== myType && myType) setBurst(myType);
+    prevType.current = myType;
+  }, [myType]);
+  useEffect(() => {
+    if (!burst) return;
+    const id = setTimeout(() => setBurst(null), 450);
+    return () => clearTimeout(id);
+  }, [burst]);
   // ESC 回墙上（挂 body 级监听，聚焦管理从简——弹层无表单）
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -68,24 +84,35 @@ export function PostcardDetail({
               className="text-[var(--act)] underline underline-offset-4">阅读原文 ↗</a>
           </p>
         )}
-        <div className="flex items-center gap-2 pl-5">
+        <div className="relative flex items-center gap-2 pl-5">
+          {burst && <FeedbackBurst type={burst} />}
           <button
             type="button"
             disabled={pending || !card.messageId}
+            aria-pressed={myType === "like"}
             title={card.messageId ? "赞（归因到推送话题）" : "这张旧明信片暂不支持反馈"}
             onClick={() => onFeedback("like", card)}
-            className="border-2 border-[var(--curb)] bg-[var(--panel)] px-2 py-1 text-[12px] text-[var(--paper)]"
+            className={`border-2 px-2 py-1 text-[12px] shadow-[2px_2px_0_#000] transition-none active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:shadow-none disabled:opacity-60 ${
+              myType === "like"
+                ? "border-[var(--ink)] bg-[var(--hi)] font-bold text-[var(--ink)]"
+                : "border-[var(--curb)] bg-[var(--panel)] text-[var(--paper)]"
+            }`}
           >
-            ▲ 赞
+            {myType === "like" ? "▲ 已赞" : "▲ 赞"}
           </button>
           <button
             type="button"
             disabled={pending || !card.messageId}
+            aria-pressed={myType === "dislike"}
             title={card.messageId ? "踩" : "这张旧明信片暂不支持反馈"}
             onClick={() => onFeedback("dislike", card)}
-            className="border-2 border-[var(--curb)] bg-[var(--panel)] px-2 py-1 text-[12px] text-[var(--paper)]"
+            className={`border-2 px-2 py-1 text-[12px] shadow-[2px_2px_0_#000] transition-none active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:shadow-none disabled:opacity-60 ${
+              myType === "dislike"
+                ? "border-[var(--ink)] bg-[var(--curb)] font-bold text-[var(--paper)]"
+                : "border-[var(--curb)] bg-[var(--panel)] text-[var(--paper)]"
+            }`}
           >
-            ▼ 踩
+            {myType === "dislike" ? "▼ 已踩" : "▼ 踩"}
           </button>
           {pinTopic && (
             <button

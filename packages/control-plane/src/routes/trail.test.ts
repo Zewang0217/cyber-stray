@@ -78,6 +78,25 @@ describe('trail 路由（关系图谱数据源：记忆索引 + 叼回记录）'
     expect(body.data[1]?.gated).toBe(true);
   });
 
+  it('?limit=N 只取最近 N 条（乱序写入也不影响）', async () => {
+    seedMemoryIndex('alice', [
+      { id: 'k-old', type: 'knowledge', timestamp: '2026-10-01T00:00:00.000Z', tags: ['knowledge', '旧'], summary: 'old' },
+      { id: 'k-new', type: 'knowledge', timestamp: '2026-10-08T00:00:00.000Z', tags: ['knowledge', '新'], summary: 'new' },
+      { id: 'k-mid', type: 'knowledge', timestamp: '2026-10-04T00:00:00.000Z', tags: ['knowledge', '中'], summary: 'mid' },
+    ]);
+    const res = await app.request(await authed('http://x/api/trail/memory?limit=2'));
+    expect(res.status).toBe(200);
+    const body = await res.json() as { data: { id: string }[] };
+    expect(body.data.map((r) => r.id)).toEqual(['k-mid', 'k-new']); // 时间正序的最近 2 条
+  });
+
+  it('?limit=0 / 非数字 → 400（显式拒绝，不静默吞错参）', async () => {
+    const zero = await app.request(await authed('http://x/api/trail/memory?limit=0'));
+    expect(zero.status).toBe(400);
+    const bad = await app.request(await authed('http://x/api/trail/speaks?limit=abc'));
+    expect(bad.status).toBe(400);
+  });
+
   it('无数据文件 → 200 空数组（合法空态）', async () => {
     const mem = await app.request(await authed('http://x/api/trail/memory'));
     expect(mem.status).toBe(200);

@@ -43,6 +43,35 @@ describe('明信片墙卡片', () => {
     expect(onOpen).toHaveBeenCalledWith(card);
   });
 
+  it('反馈后呈现选中态与邮戳：已赞/已踩按钮 + aria-pressed', async () => {
+    const card = {
+      title: '标题', summary: '摘要', message: '正文',
+      timestamp: '2026-10-04T12:00:00Z', messageId: 'content-217',
+    };
+    const container = document.createElement('div');
+    root = createRoot(container);
+    const rerender = async (myType?: 'like' | 'dislike') => {
+      await act(async () => {
+        root.render(<MailCard card={card} seenMs={0} myType={myType} onFeedback={() => {}}
+          onPin={() => {}} pending={false} onOpen={() => {}} />);
+      });
+    };
+    await rerender();
+    expect(container.textContent).toContain('▲ 赞');
+    expect(container.textContent).toContain('▼ 踩');
+    expect(container.querySelector('.sb-stamp')).toBeNull();
+
+    await rerender('like');
+    expect(container.textContent).toContain('▲ 已赞');
+    expect(container.querySelector('.sb-stamp')?.textContent).toBe('已赞');
+    expect(container.querySelector('button[aria-pressed="true"]')?.textContent).toContain('已赞');
+
+    await rerender('dislike');
+    expect(container.textContent).toContain('▼ 已踩');
+    expect(container.querySelector('.sb-stamp')?.textContent).toBe('不爱');
+    expect(container.querySelector('button[aria-pressed="true"]')?.textContent).toContain('已踩');
+  });
+
   it('只展示共享契约给出的表情包图片路径，加载失败时显式提示', async () => {
     const card = {
       title: '猫画了一张图', summary: '纯文本摘要', message: '正文没有远程图片',

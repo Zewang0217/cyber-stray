@@ -91,6 +91,30 @@ export const inviteRedemptions = sqliteTable('invite_redemptions', {
   redeemedAt: integer('redeemed_at').notNull(),
 });
 
+/**
+ * 公开邀请申请（不收集邮箱）：申请人持「申请号 + 查询码」凭据对取回结果。
+ * secret 只存 sha256；approved 后存 raw invite token 以支持凭据对随时换链接
+ * （取舍：单人码、用完即止、可吊销，泄露面有限——见 applications-repo 注释）。
+ */
+export const inviteApplications = sqliteTable('invite_applications', {
+  /** 内部 uuid（admin 端点寻址） */
+  id: text('id').primaryKey(),
+  /** 公开申请号（随机 12 位 hex，防枚举；用户持它 + 查询码查询） */
+  publicId: text('public_id').notNull().unique(),
+  /** sha256(查询码)；raw 查询码只在提交响应里出现一次 */
+  secretHash: text('secret_hash').notNull(),
+  nickname: text('nickname'),
+  reason: text('reason').notNull(),
+  status: text('status', { enum: ['pending', 'approved', 'rejected'] }).notNull().default('pending'),
+  createdAt: integer('created_at').notNull().$defaultFn(now),
+  decidedAt: integer('decided_at'),
+  decidedBy: text('decided_by'),
+  /** 批准时生成的邀请 id（吊销联动寻址） */
+  inviteId: text('invite_id'),
+  /** 批准时生成的邀请链接（raw token；凭据对换链接的产品基础） */
+  inviteUrl: text('invite_url'),
+});
+
 // 宠物（每租户可多只；当前单用户模式 1 租户 1 宠物）
 
 export const pets = sqliteTable('pets', {

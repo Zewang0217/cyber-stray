@@ -27,7 +27,8 @@ function appUrl(): string {
   return url.toString();
 }
 const REPO_URL = "https://github.com/Zewang0217/cyber-stray";
-const INVITE_URL = `${REPO_URL}/issues/new?title=${encodeURIComponent("申请邀请内测")}&body=${encodeURIComponent("想让街溜子探索的兴趣方向：\n\n请勿在公开 Issue 中填写邮箱、邀请码或其他隐私信息。")}`;
+/** 申请入口：站内申请页（不收集邮箱等隐私，凭申请号 + 查询码取邀请函），不再走公开 Issue */
+const INVITE_URL = `${appUrl()}apply`;
 
 export default function Home() {
   const app = appUrl();
