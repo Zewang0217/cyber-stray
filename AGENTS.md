@@ -66,7 +66,7 @@ agent 内核（`packages/agent/src/`）= 三层 + hook：
 
 ## Git
 
-- **一切改动先进 develop**：功能 / 修复 / hotfix 一律从最新 develop 切短期分支 → PR 目标 **develop**，一个 PR 对应一个逻辑单元。**develop / main 只接受 PR 合并，不直推**。
+- **一切改动先进 develop**：功能 / 修复 / hotfix 一律从最新 develop 切短期分支 → PR 目标 **develop**，一个 PR 对应一个逻辑单元。
 - **发布保留历史**：`main` 只接受 **develop** 的发布 PR，用普通 **merge commit** 合并；main / develop 之间不 squash、不 rebase。
 
 ## 文档地图
