@@ -4,6 +4,9 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { GraphNode, GraphView } from "@cyber-stray/shared/trail";
 import { echarts, STAR, readPalette, trunc, type ChartHandle, type EChartsType } from "./chart-setup";
 
+/** 节点数超过此值时不再常驻绘制页面标注（悬停 tooltip 仍可见全名） */
+const GRAPH_LABEL_LIMIT = 200;
+
 /**
  * 关系图谱（F 视图）：主题枢纽 + 页面 + 记忆 + 叼回的力导向图。
  * 点击节点经 onSelect 上浮详情（跳回游荡由详情面板显式触发）；
@@ -31,6 +34,10 @@ export const TrailGraph = forwardRef<ChartHandle, {
     const chart = echarts.init(containerRef.current);
     chartRef.current = chart;
     const p = readPalette(containerRef.current);
+    // 大图关掉页面常驻标注：逐帧文字绘制是渲染大头，悬停 tooltip 仍可见全名
+    const showPageLabels = graph.nodes.length <= GRAPH_LABEL_LIMIT;
+    // tooltip/click 高频回调用 Map 反查（find 是每次鼠标移动 O(n)）
+    const nodesById = new Map(graph.nodes.map((n) => [n.id, n]));
 
     const nodes = graph.nodes.map((n) => {
       if (n.kind === "hub") {
@@ -44,7 +51,7 @@ export const TrailGraph = forwardRef<ChartHandle, {
         return {
           id: n.id, name: trunc(n.label, 12), symbolSize: 19,
           itemStyle: { color: p.card, borderColor: p.ink, borderWidth: 1.5 },
-          label: { show: true, position: "bottom" as const, fontSize: 10, color: p.label },
+          label: { show: showPageLabels, position: "bottom" as const, fontSize: 10, color: p.label },
         };
       }
       if (n.kind === "memory") {
@@ -64,12 +71,13 @@ export const TrailGraph = forwardRef<ChartHandle, {
     });
 
     chart.setOption({
+      // force 布局收敛期逐帧重摆节点，再叠加过渡插值只会更卡（官方 webkit-dep 同款关法）
+      animation: false,
       tooltip: {
         formatter: (params: unknown) => {
           const pr = params as { dataType?: string; data?: { label?: string; source?: string } };
           if (pr.dataType === "edge") return pr.data?.label ?? "";
-          const node = graph.nodes.find((n) => n.id === (pr.data as { id?: string })?.id);
-          return node?.label ?? "";
+          return nodesById.get((pr.data as { id?: string })?.id ?? "")?.label ?? "";
         },
       },
       series: [{
@@ -84,7 +92,8 @@ export const TrailGraph = forwardRef<ChartHandle, {
           label: e.label,
           lineStyle: e.kind === "mentioned" ? { type: "dashed" as const, color: p.accent } : undefined,
         })),
-        force: { repulsion: 260, edgeLength: [60, 150], gravity: 0.08, friction: 0.25 },
+        // circular 初始分布比随机散点收敛快得多（斥力迭代次数直接减半）
+        force: { initLayout: "circular", repulsion: 260, edgeLength: [60, 150], gravity: 0.08, friction: 0.25 },
         emphasis: { focus: "adjacency", lineStyle: { width: 2.5 } },
         // 邻接聚焦时其余节点保持可读（默认 blur 压得近乎不可见，图看着像空了）
         blur: { itemStyle: { opacity: 0.35 }, lineStyle: { opacity: 0.2 } },
@@ -93,8 +102,7 @@ export const TrailGraph = forwardRef<ChartHandle, {
     });
 
     chart.on("click", (params) => {
-      const id = (params.data as { id?: string } | undefined)?.id;
-      const node = graph.nodes.find((n) => n.id === id);
+      const node = nodesById.get((params.data as { id?: string } | undefined)?.id ?? "");
       if (node) selectRef.current(node);
     });
     const onResize = () => chart.resize();

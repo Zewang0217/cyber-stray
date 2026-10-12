@@ -33,6 +33,19 @@ export interface DataServiceDeps {
 /** 数据读取没有 4xx 分支：成功带数据，失败一律 500（损坏不可读） */
 export type DataOutcome<T> = { ok: true; data: T } | { ok: false; status: 500; error: string };
 
+/** 时间戳升序比较（坏时间戳按 0 参与排序：排序容错，不中断整批读取） */
+function byTimestampAsc(a: { timestamp?: unknown }, b: { timestamp?: unknown }): number {
+  const ta = new Date(String(a.timestamp)).getTime();
+  const tb = new Date(String(b.timestamp)).getTime();
+  return (Number.isNaN(ta) ? 0 : ta) - (Number.isNaN(tb) ? 0 : tb);
+}
+
+/** 升序取尾部 = 最近 limit 条（返回仍为时间正序，下游「后到标题补全」依赖正序）；未传或未触顶则原样返回 */
+function recentTail<T extends { timestamp?: unknown }>(items: T[], limit?: number): T[] {
+  if (limit === undefined || items.length <= limit) return items;
+  return [...items].sort(byTimestampAsc).slice(-limit);
+}
+
 export interface HistoryPage {
   page: SpeakHistoryItem[];
   pagination: { total: number; offset: number; limit: number; hasMore: boolean };
@@ -141,18 +154,15 @@ export function createDataService({ config }: DataServiceDeps) {
         error: error instanceof Error ? error.message : '足迹数据损坏或不可读',
       };
     }
-    const sorted = [...steps].sort((a, b) => {
-      const ta = new Date(String((a as { timestamp?: unknown }).timestamp)).getTime();
-      const tb = new Date(String((b as { timestamp?: unknown }).timestamp)).getTime();
-      return (Number.isNaN(ta) ? 0 : ta) - (Number.isNaN(tb) ? 0 : tb);
-    });
+    const sorted = [...(steps as Array<{ timestamp?: unknown }>)].sort(byTimestampAsc);
     return { ok: true, data: sorted };
   }
 
-  /** 关系图谱数据源：记忆索引记录（全量，呈现层负责投影/过滤） */
-  async function getMemoryIndexRecords(tenantId: string): Promise<DataOutcome<unknown>> {
+  /** 关系图谱数据源：记忆索引记录（limit = 按时间取最近 N 条粗剪，防大租户响应失控；呈现层再细剪） */
+  async function getMemoryIndexRecords(tenantId: string, limit?: number): Promise<DataOutcome<unknown>> {
     try {
-      return { ok: true, data: await readMemoryIndexRecords(config.dataDir, tenantId) };
+      const records = await readMemoryIndexRecords(config.dataDir, tenantId);
+      return { ok: true, data: recentTail(records as Array<{ timestamp?: unknown }>, limit) };
     } catch (error) {
       return {
         ok: false,
@@ -162,10 +172,10 @@ export function createDataService({ config }: DataServiceDeps) {
     }
   }
 
-  /** 关系图谱数据源：全部叼回记录（复用推送历史读边界，不分页） */
-  async function getAllSpeakRecords(tenantId: string): Promise<DataOutcome<unknown>> {
+  /** 关系图谱数据源：全部叼回记录（limit 语义同上；复用推送历史读边界，不分页） */
+  async function getAllSpeakRecords(tenantId: string, limit?: number): Promise<DataOutcome<unknown>> {
     try {
-      return { ok: true, data: await readPushHistoryItems(config.dataDir, tenantId) };
+      return { ok: true, data: recentTail(await readPushHistoryItems(config.dataDir, tenantId), limit) };
     } catch (error) {
       return {
         ok: false,
