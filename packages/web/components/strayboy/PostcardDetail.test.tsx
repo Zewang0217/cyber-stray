@@ -37,6 +37,22 @@ describe('明信片阅读与反馈', () => {
     expect(onFeedback).toHaveBeenCalledWith('like', card);
   });
 
+  it('已反馈的明信片在详情里同样显示选中态', async () => {
+    const card = {
+      title: '标题', message: '正文', summary: '摘要',
+      timestamp: '2026-10-04T12:00:00Z', messageId: 'content-217',
+    };
+    const container = document.createElement('div');
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<PostcardDetail card={card} myType="like" onFeedback={() => {}}
+        onPin={() => {}} pending={false} onClose={() => {}} />);
+    });
+    expect(container.textContent).toContain('▲ 已赞');
+    expect(container.querySelector('button[aria-pressed="true"]')?.textContent).toContain('已赞');
+    expect(container.textContent).toContain('▼ 踩'); // 另一侧保持未选
+  });
+
   it('渲染安全 Markdown 链接并拒绝脚本链接、原始 HTML 与远程图片', async () => {
     const card = {
       title: '完整标题',
