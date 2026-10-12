@@ -27,6 +27,7 @@
     "./title-overrides": "./src/title-overrides.ts",
     "./trail": "./src/trail.ts",
     "./invite": "./src/invite.ts",
+    "./invite-application": "./src/invite-application.ts",
     "./quota": "./src/quota.ts"
   },
   "scripts": {

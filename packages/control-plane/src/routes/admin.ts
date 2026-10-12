@@ -28,6 +28,7 @@ import { resolveTenantFromRequest } from '../auth/request-tenant.js';
 import { TENANT_ID_RE } from '../secrets/tenant-secrets.js';
 import { createAdminService } from '../services/admin-service.js';
 import { createAccountDeletionService } from '../services/account-deletion-service.js';
+import { createInviteApplicationService } from '../services/invite-application-service.js';
 
 export interface AdminDeps {
   config: Pick<
@@ -60,6 +61,7 @@ export async function adminSession(
 export function createAdminRoutes({ config }: AdminDeps): Hono {
   const service = createAdminService({ config });
   const deletionService = createAccountDeletionService({ config });
+  const applicationService = createInviteApplicationService({ config });
   const app = new Hono();
 
   /**
@@ -325,6 +327,35 @@ export function createAdminRoutes({ config }: AdminDeps): Hono {
       return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
     }
     const outcome = await service.revokeInvite(c.req.param('id'));
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
+  });
+
+  /** GET /api/admin/applications — 公开邀请申请列表（新在前） */
+  app.get('/applications', async (c) => {
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) {
+      return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
+    }
+    return c.json({ success: true, data: await applicationService.list() });
+  });
+
+  /** POST /api/admin/applications/:id/approve — 批准：生成单人邀请并绑定申请 */
+  app.post('/applications/:id/approve', async (c) => {
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
+    const outcome = await applicationService.approve(c.req.param('id'), auth.sub);
+    return outcome.ok
+      ? c.json({ success: true, data: outcome.data })
+      : c.json(jsonError(outcome.error), outcome.status);
+  });
+
+  /** POST /api/admin/applications/:id/reject — 回绝 */
+  app.post('/applications/:id/reject', async (c) => {
+    const auth = await adminSession(c.req.raw, config);
+    if ('error' in auth) return c.json(jsonError(auth.error === 401 ? '未登录' : '无权访问'), auth.error);
+    const outcome = await applicationService.reject(c.req.param('id'), auth.sub);
     return outcome.ok
       ? c.json({ success: true, data: outcome.data })
       : c.json(jsonError(outcome.error), outcome.status);

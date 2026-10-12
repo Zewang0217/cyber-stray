@@ -19,6 +19,7 @@ import { createDataRoutes } from './routes/data.js';
 import { createPetsRoutes } from './routes/pets.js';
 import { createEventsRoutes } from './routes/events.js';
 import { createFeedbackRoutes } from './routes/feedback.js';
+import { createApplyRoutes } from './routes/invite-application.js';
 import { createPushRoutes } from './routes/push.js';
 import { createChannelsRoutes } from './routes/channels.js';
 import { createPlanRoutes } from './routes/plan.js';
@@ -78,6 +79,11 @@ export function createApp({ config, oidc, bus }: AppDeps): Hono {
   app.get('/healthz', (c) => c.json({ ok: true }));
 
   app.route('/api/auth', createAuthRoutes({ config, oidc, states: new StateStore() }));
+
+  // 公开邀请申请面（无登录态，限流在 service 层）。必须挂在下面带
+  // use('*') requireTenant 的路由组之前：那些组挂到 /api 后会对一切
+  // /api/* 未匹配路径生效，晚挂的公开路由会被拦成 401「未登录」。
+  app.route('/api/apply', createApplyRoutes({ config }));
 
   // S6：Web 只读数据面（鉴权 + 按会话租户路由）
   app.route('/api', createDataRoutes({ config }));

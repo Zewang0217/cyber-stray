@@ -5,6 +5,7 @@ import { useAdmin, type BatchDeletionResult, type UserRow } from "@/hooks/useAdm
 import type { TenantQuotaOverrides } from "@cyber-stray/shared/quota";
 import UsagePanel from "./usage-panel";
 import InvitesPanel from "./invites-panel";
+import ApplicationsPanel from "./applications-panel";
 
 /**
  * 维修口（/admin，#170 T2 最后铸）：保功能可用 + 世界底线（直角/14 色/实色影/
@@ -15,7 +16,7 @@ export default function AdminPage(): React.ReactElement {
   const { users, admins, error, isAdmin, setPlan, setPetStatus, grantAdmin, revokeAdmin, deleteAccount, batchDeleteAccounts, setQuotaOverrides } =
     useAdmin();
   const [grantSub, setGrantSub] = useState("");
-  const [tab, setTab] = useState<"users" | "usage" | "invites">("users");
+  const [tab, setTab] = useState<"users" | "usage" | "invites" | "applications">("users");
   // 注销流：勾选集 + 弹窗（单个 / 批量共用，理由必填；批量逐项回显结果）
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<
@@ -119,7 +120,7 @@ export default function AdminPage(): React.ReactElement {
 
       {/* 子面板切换：像素按钮（非游戏 tab chrome） */}
       <div className="mb-4 flex gap-2">
-        {([["users", "用户管理"], ["usage", "用量"], ["invites", "邀请"]] as const).map(([id, label]) => (
+        {([["users", "用户管理"], ["usage", "用量"], ["invites", "邀请"], ["applications", "申请"]] as const).map(([id, label]) => (
           <button
             key={id}
             type="button"
@@ -133,6 +134,7 @@ export default function AdminPage(): React.ReactElement {
 
       {tab === "usage" && <UsagePanel />}
       {tab === "invites" && <InvitesPanel />}
+      {tab === "applications" && <ApplicationsPanel />}
 
       {tab === "users" && (
         <>

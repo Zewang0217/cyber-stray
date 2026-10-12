@@ -148,6 +148,13 @@
       "when": 1791527955168,
       "tag": "0020_invite_capacity",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1791789657027,
+      "tag": "0021_invite_applications",
+      "breakpoints": true
     }
   ]
 }

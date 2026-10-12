@@ -15,6 +15,8 @@ import { Hono } from 'hono';
 import { createEventBus } from './events/bus.js';
 import { loadConfig } from './config.js';
 import { createApp, type AppDeps } from './app.js';
+import { runMigrations } from './db/migrate.js';
+import { _resetDb } from './db/client.js';
 import { initLogger, getLogFilePath, _resetLogger } from './infra/logger.js';
 import { signSession, SESSION_COOKIE } from './auth/session.js';
 import type { OidcProvider, OidcUser } from './auth/oidc.js';
@@ -109,5 +111,43 @@ describe('应用统一错误处理（#116）', () => {
     const lines = readLogLines(dataDir);
     const entry = lines.find((l) => l.message === '未捕获异常')!;
     expect((entry.data as Record<string, unknown>).tenantId).toBe('alice');
+  });
+});
+
+describe('公开路由挂载边界（/api/apply）', () => {
+  let dataDir: string;
+  let app: Hono;
+
+  beforeEach(async () => {
+    dataDir = mkdtempSync(join(tmpdir(), 'cp-app-apply-'));
+    initLogger(dataDir);
+    _resetDb();
+    await runMigrations(dataDir); // 本组真的写库（提交申请），区别于只测 onError 的上一组
+    app = createApp({
+      config: makeConfig(dataDir),
+      oidc: makeMockOidc(),
+      bus: createEventBus(),
+    });
+  });
+
+  afterEach(() => {
+    _resetDb();
+    _resetLogger();
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it('完整组装下匿名提交/查询可达——不被其它组的 use(*) requireTenant 拦成 401', async () => {
+    const res = await app.request('/api/apply', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ reason: '想让它帮我盯像素画的新内容' }),
+    });
+    // 挂载顺序回归：requireTenant 组曾把 /api/apply 拦成 401「未登录」
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { success: boolean; data?: { applicationId: string } };
+    expect(body.success).toBe(true);
+
+    const status = await app.request(`/api/apply/status?id=${body.data?.applicationId}&secret=00000000000000000000000000000000`);
+    expect(status.status).toBe(404); // 格式合法但凭据不符 → 404 而非 401
   });
 });
