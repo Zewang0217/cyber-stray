@@ -116,11 +116,12 @@ jobs:
       - name: Upload bundle to OSS
         env:
           OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
+          OSS_REGION: ${{ vars.OSS_REGION }}
           OSS_BUCKET: ${{ vars.OSS_BUCKET }}
         run: |
           set -euo pipefail
-          ossutil cp -f "$TMPDIR/bundle/images.tar.zst" "oss://$OSS_BUCKET/releases/$GITHUB_SHA/images.tar.zst" -e "$OSS_ENDPOINT"
-          ossutil cp -f "$TMPDIR/bundle/release.json" "oss://$OSS_BUCKET/releases/$GITHUB_SHA/release.json" -e "$OSS_ENDPOINT"
+          ossutil cp -f "$TMPDIR/bundle/images.tar.zst" "oss://$OSS_BUCKET/releases/$GITHUB_SHA/images.tar.zst" -e "$OSS_ENDPOINT" --region "$OSS_REGION"
+          ossutil cp -f "$TMPDIR/bundle/release.json" "oss://$OSS_BUCKET/releases/$GITHUB_SHA/release.json" -e "$OSS_ENDPOINT" --region "$OSS_REGION"
 
       - name: Deploy on server
         env:
