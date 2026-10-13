@@ -128,6 +128,11 @@ STOPPED=()
 stop_stacks() {
   echo "==> [3/4] stop stacks"
   if [ "$RESTART" = 0 ]; then echo "    (--no-restart: containers left alone)"; return; fi
+  # compose.yaml marks IMAGE_TAG as required, and stop/start interpolate it too,
+  # so export the released tag deploy.sh recorded before touching compose.
+  IMAGE_TAG=$(cat "$APP_DIR/CURRENT_TAG" 2>/dev/null || true)
+  [ -n "$IMAGE_TAG" ] || die "$APP_DIR/CURRENT_TAG missing: deploy a release before restoring"
+  export IMAGE_TAG
   compose_of "cyber-stray-$ENVIRONMENT" "$APP_DIR/compose.yaml" stop
   STOPPED+=("cyber-stray-$ENVIRONMENT" "$APP_DIR/compose.yaml")
   if [ "$WITH_ACCOUNTS" = 1 ]; then
