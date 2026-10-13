@@ -1,0 +1,1213 @@
+/**
+ * 落地页样式（官网单页并入 web）：从 packages/site/app/globals.css 逐字移植。
+ * 仅两处适配：类名改 CSS Module（web 惯例，见 app/trail/trail.module.css）；
+ * body/元素级规则收进 .page 作用域。token 全用 web globals.css 的 14 色宇宙，
+ * 同名不同值的三个 site 私有 token 按下值映射：panel-2 → --ink(#212529)、
+ * win-off → --window-off、ink-faded → --ink-soft。
+ * 主题锁定「深夜霓虹」（docs/design-v3/DESIGN.md 默认主题）：夜城即品牌本体，
+ * 不做浅色模式。纪律：一切直角 / 实色偏移阴影 / 动画只有 linear 与 steps() /
+ * 像素字体 ≥12px 且中文短串 ≤20 字 / 长文一律 Noto Sans SC。
+ */
+
+.page {
+  font-family: var(--font-noto), sans-serif;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: var(--star);
+}
+
+/* 落地页不挂游戏壳：layout 的顶栏/菜单条带 data-game-chrome，按落地页标记隐藏。
+   display:none 同时退出 tab 序与无障碍树，不存在藏在页后的可聚焦元素。footer
+   菜单条没了，layout main 为它预留的底部垫高也随之归零（营销页要满屏）。 */
+:global(body):has(.page) [data-game-chrome] {
+  display: none;
+}
+
+:global(body):has(.page) main {
+  padding-bottom: 0;
+}
+
+/* 字体工具类（宪法 §3 回退栈：缺字逐字回退，合法且必要） */
+.ps2 {
+  font-family: var(--font-ps2p), var(--font-fusion-pixel), var(--font-noto), monospace;
+}
+.dot {
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+}
+.vt {
+  font-family: var(--font-vt323), monospace;
+}
+.mono {
+  font-family: var(--font-ibm-plex-mono), monospace;
+}
+
+.wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 clamp(12px, 3vw, 32px);
+}
+
+/* 掌机顶栏（宪法 §5：铭牌 + 电源灯 + DAY 时钟；sticky 便于随时领养） */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--ink);
+  border-bottom: 3px solid #000;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.45);
+  padding: 12px clamp(12px, 3vw, 32px);
+  min-height: 60px;
+}
+.topbar .led {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  background: var(--ok);
+  box-shadow: 2px 2px 0 #000;
+  animation: blink 1s steps(1) infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+.topbar .brand {
+  color: var(--star);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+.topbar .clock {
+  font-family: var(--font-vt323), monospace;
+  font-size: 20px;
+  color: var(--curb);
+  letter-spacing: 0.08em;
+}
+.topbar nav {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.topbar nav a.navi {
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 13px;
+  color: var(--curb);
+  text-decoration: none;
+  padding: 6px 2px;
+}
+.topbar nav a.navi:hover {
+  color: var(--star);
+}
+
+/* 像素按钮（NES 立体感：实色落影，按下位移吃掉阴影） */
+.pbtn {
+  display: inline-block;
+  text-decoration: none;
+  text-align: center;
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  border: 3px solid #000;
+  padding: 10px 18px;
+  color: #fff;
+  background: var(--panel);
+  box-shadow:
+    inset -3px -3px 0 rgba(0, 0, 0, 0.35),
+    4px 4px 0 #000;
+}
+.pbtn:active {
+  transform: translate(3px, 3px);
+  box-shadow: inset -3px -3px 0 rgba(0, 0, 0, 0.35);
+}
+.blue {
+  background: var(--act);
+}
+.green {
+  background: var(--ok);
+  color: var(--ink);
+}
+.big {
+  font-size: 18px;
+  padding: 14px 30px;
+  border-width: 4px;
+  box-shadow:
+    inset -4px -4px 0 rgba(0, 0, 0, 0.35),
+    6px 6px 0 #000;
+}
+.pbtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+}
+
+/* Hero：左文案右舞台的非对称分栏 */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: clamp(20px, 3vw, 40px);
+  align-items: start;
+  padding: clamp(36px, 6vw, 72px) 0 40px;
+}
+.heroCopy {
+  padding-top: clamp(8px, 3vw, 40px);
+}
+.hero h1 {
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 36px;
+  line-height: 1.5;
+  color: var(--star);
+  letter-spacing: 0.02em;
+}
+.hero h1 .hl {
+  color: var(--hi);
+}
+.hero .sub {
+  margin-top: 18px;
+  max-width: 24em;
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--curb);
+}
+.hero .ctaRow {
+  margin-top: 30px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.hero .ctaRow > .navi {
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 13px;
+  color: var(--curb);
+  text-decoration: none;
+  padding: 6px 2px;
+}
+.hero .ctaRow > .navi:hover {
+  color: var(--star);
+}
+
+/* 街区舞台（宪法 §1：屏幕 = 像素夜城，宠物永远最先动） */
+.screen {
+  position: relative;
+  height: 320px;
+  background: var(--sky);
+  overflow: hidden;
+  container-type: inline-size;
+  border: 4px solid #000;
+  box-shadow:
+    inset -4px -4px 0 rgba(0, 0, 0, 0.4),
+    6px 6px 0 #000;
+}
+.stageName {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  background: var(--paper);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  box-shadow: 3px 3px 0 #000;
+  padding: 4px 10px;
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 12px;
+}
+.stars i {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  background: var(--star);
+}
+.moon {
+  /* 月亮放远楼之间的天空缝（left 30%）：各断点下楼顶都低于月底，不会被楼吞 */
+  position: absolute;
+  top: 22px;
+  left: 30%;
+  width: 26px;
+  height: 26px;
+  background: var(--star);
+  box-shadow: -6px 6px 0 0 var(--sky) inset;
+}
+.bld {
+  position: absolute;
+  bottom: 44px;
+}
+.bld .win {
+  position: absolute;
+  width: 7px;
+  height: 9px;
+  background: var(--window);
+}
+.bld .win.off {
+  background: var(--window-off);
+}
+.bldFar1 {
+  left: 4%;
+  width: 120px;
+  height: 150px;
+  background: var(--bld-far);
+}
+.bldFar2 {
+  left: 36%;
+  width: 90px;
+  height: 110px;
+  background: var(--bld-far);
+}
+.bldNear1 {
+  right: 6%;
+  width: 150px;
+  height: 190px;
+  background: var(--bld-near);
+}
+.neon {
+  position: absolute;
+  top: 26px;
+  right: 8%;
+  z-index: 4;
+  background: #000;
+  padding: 8px 10px;
+  border: 3px solid var(--neon);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.55);
+  font-family: var(--font-ps2p), monospace;
+  font-size: 12px;
+  color: var(--neon);
+  line-height: 1.8;
+  text-align: center;
+  animation: neonblink 1.1s steps(1) infinite;
+}
+@keyframes neonblink {
+  0%,
+  80% {
+    opacity: 1;
+  }
+  80.1% {
+    opacity: 0.45;
+  }
+  92% {
+    opacity: 0.85;
+  }
+}
+.street {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 44px;
+  background: var(--street);
+  border-top: 3px solid var(--curb);
+}
+.street::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 16px;
+  height: 3px;
+  background: repeating-linear-gradient(90deg, var(--curb) 0 18px, transparent 18px 36px);
+  opacity: 0.5;
+}
+.lamp {
+  position: absolute;
+  bottom: 44px;
+  left: 22%;
+  width: 6px;
+  height: 74px;
+  background: var(--curb);
+  z-index: 3;
+}
+.lamp::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: -9px;
+  width: 24px;
+  height: 12px;
+  background: var(--hi);
+  box-shadow: 2px 2px 0 #000;
+}
+
+/* 猫：外层管位移（linear），内层 sprite 管帧动画（steps，由 shared/sprite 注入） */
+.cat {
+  /* 脚底对齐路面：sprite groundRow=30/32，scale 3 时脚下有 6px 空档 */
+  position: absolute;
+  bottom: 38px;
+  left: 10%;
+  z-index: 4;
+  cursor: pointer;
+  line-height: 0;
+  transition: transform 1.6s linear;
+}
+.cat.out {
+  transform: translateX(72cqw);
+}
+.cat .flip {
+  display: block;
+}
+.cat.back .flip {
+  transform: scaleX(-1);
+}
+.cat.patjump {
+  animation: patjump 0.4s steps(2) 1;
+}
+@keyframes patjump {
+  50% {
+    transform: translateY(-14px);
+  }
+}
+.cat.patjump.out {
+  animation: none;
+}
+.ph {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  z-index: 6;
+  box-shadow: 2px 2px 0 #000;
+  animation: heartfly 0.5s steps(3) forwards;
+}
+@keyframes heartfly {
+  to {
+    transform: translateY(-46px);
+    opacity: 0;
+  }
+}
+
+/* HUD：等级 + 名字 + 分段墨条（宪法 §4.4：10 格分段，禁连续进度条） */
+.hud {
+  margin-top: 18px;
+  background: var(--ink);
+  border: 3px solid #000;
+  box-shadow:
+    inset -3px -3px 0 rgba(0, 0, 0, 0.4),
+    5px 5px 0 #000;
+  padding: 12px 14px;
+}
+.hud .row1 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.hud .lv {
+  font-size: 12px;
+  color: var(--hi);
+}
+.hud .petname {
+  font-size: 12px;
+  color: var(--star);
+}
+.hud .btns {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+}
+.hud .pbtn {
+  font-size: 12px;
+  padding: 8px 12px;
+}
+.meters {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+.meter .lbl {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 12px;
+  color: var(--star);
+  margin-bottom: 6px;
+}
+.meter .lbl i {
+  font-style: normal;
+  opacity: 0.75;
+}
+.segs {
+  display: flex;
+  gap: 2px;
+}
+.segs b {
+  flex: 1;
+  height: 12px;
+  border: 2px solid #000;
+  background: var(--window-off);
+}
+.segs b.f1 {
+  background: var(--bad);
+}
+.segs b.f2 {
+  background: var(--curb);
+}
+.segs b.f3 {
+  background: var(--ok);
+}
+
+/* 对话框（宪法 §4.6：纸底 + 尾巴 + <名字> 标签） */
+.dlg {
+  position: relative;
+  margin-top: 26px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 4px solid #000;
+  box-shadow: 6px 6px 0 #000;
+  padding: 16px 18px 12px;
+  min-height: 86px;
+}
+.dlg::after {
+  content: "";
+  position: absolute;
+  top: -22px;
+  left: 44px;
+  border: 10px solid transparent;
+  border-bottom: 13px solid #000;
+}
+.dlg .who {
+  display: inline-block;
+  background: var(--hi);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  padding: 2px 8px;
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.dlg .txt {
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+  min-height: 44px;
+}
+.dlg .more {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  color: var(--ink);
+  font-family: var(--font-ps2p), monospace;
+  font-size: 12px;
+  animation: blink 1s steps(1) infinite;
+}
+
+/* 游荡日志（VT323，20px+） */
+.log {
+  margin-top: 18px;
+  background: var(--ink);
+  border: 3px solid #000;
+  box-shadow:
+    inset -3px -3px 0 rgba(0, 0, 0, 0.4),
+    5px 5px 0 #000;
+  padding: 12px 14px;
+  height: 128px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+}
+.log p {
+  font-family: var(--font-vt323), monospace;
+  font-size: 20px;
+  color: var(--star);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.log p b {
+  color: var(--ok);
+  font-weight: 400;
+}
+.log p .cur {
+  color: var(--ok);
+  animation: blink 1s steps(1) infinite;
+}
+
+/* 章节公共头部：像素短标题 + 结构线（线为组织内容而画，非装饰网格） */
+.mainhead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.mainhead h2 {
+  font-family: var(--font-ps2p), var(--font-fusion-pixel), var(--font-noto), monospace;
+  font-size: 18px;
+  color: var(--star);
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+}
+.mainhead .rule {
+  flex: 1;
+  height: 3px;
+  background: var(--curb);
+  opacity: 0.4;
+}
+.mainhead .side {
+  font-family: var(--font-vt323), monospace;
+  font-size: 20px;
+  color: var(--curb);
+}
+.page section {
+  padding: clamp(40px, 7vw, 84px) 0 0;
+}
+.lede {
+  max-width: 40em;
+  color: var(--curb);
+  font-size: 15px;
+  line-height: 1.8;
+  margin-bottom: 28px;
+}
+
+/* 闭环流程：探索 → 学习 → 反思 → 进化 → 懂你 → 推送 */
+.flow {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+.node {
+  position: relative;
+  background: var(--ink);
+  border: 3px solid #000;
+  box-shadow:
+    inset -3px -3px 0 rgba(0, 0, 0, 0.4),
+    4px 4px 0 #000;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.node b {
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--star);
+}
+.node span {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--curb);
+}
+.node i {
+  width: 10px;
+  height: 10px;
+  background: var(--act);
+  box-shadow: 2px 2px 0 #000;
+}
+.node:nth-child(2) i {
+  background: var(--ok);
+}
+.node:nth-child(3) i {
+  background: var(--hi);
+}
+.node:nth-child(4) i {
+  background: var(--bad);
+}
+.node:nth-child(5) i {
+  background: var(--curb);
+}
+.node:nth-child(6) i {
+  background: var(--act);
+}
+.node:not(:last-child)::after {
+  content: "→";
+  position: absolute;
+  right: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  font-family: var(--font-vt323), monospace;
+  font-size: 22px;
+  color: var(--curb);
+}
+.loopNote {
+  margin-top: 22px;
+  border: 3px dashed var(--curb);
+  padding: 12px 16px;
+  color: var(--curb);
+  font-size: 13.5px;
+  max-width: 46em;
+}
+
+/* 功能 bento：7+5 / 4+4+4，格内自带视觉变化（夜空、纸面对白、昼夜分屏） */
+.bento {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+}
+.tile {
+  background: var(--ink);
+  border: 3px solid #000;
+  box-shadow:
+    inset -3px -3px 0 rgba(0, 0, 0, 0.4),
+    5px 5px 0 #000;
+  padding: 18px;
+  min-width: 0;
+}
+.tile h3 {
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--star);
+  margin-bottom: 8px;
+}
+.tile p {
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--curb);
+}
+.tileA {
+  grid-column: span 7;
+}
+.tileB {
+  grid-column: span 5;
+}
+.tileC,
+.tileD,
+.tileE {
+  grid-column: span 4;
+}
+
+/* 日记与梦境：夜空格（星星 box-shadow 一次画完，零 DOM） */
+.tileA {
+  background: var(--sky);
+  position: relative;
+  overflow: hidden;
+}
+.tileA::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1.5px 1.5px at 12% 22%, var(--star) 100%, transparent),
+    radial-gradient(1.5px 1.5px at 78% 16%, var(--star) 100%, transparent),
+    radial-gradient(1.5px 1.5px at 55% 34%, var(--star) 100%, transparent),
+    radial-gradient(1.5px 1.5px at 90% 46%, var(--star) 100%, transparent),
+    radial-gradient(1.5px 1.5px at 30% 52%, var(--star) 100%, transparent);
+  opacity: 0.7;
+}
+.tileA .zzz {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  font-family: var(--font-vt323), monospace;
+  font-size: 26px;
+  color: var(--curb);
+  animation: blink 1.6s steps(1) infinite;
+}
+.diaryCard {
+  position: relative;
+  margin-top: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 3px solid #000;
+  box-shadow: 4px 4px 0 #000;
+  padding: 12px 14px;
+  max-width: 34em;
+}
+.diaryCard time {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 11px;
+  color: var(--ink-soft);
+  display: block;
+  margin-bottom: 6px;
+}
+.diaryCard p {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+/* 性格与口头禅：格内对话框 */
+.dlgMini {
+  position: relative;
+  margin-top: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 3px solid #000;
+  box-shadow: 4px 4px 0 #000;
+  padding: 10px 12px;
+}
+.dlgMini .who {
+  display: inline-block;
+  background: var(--hi);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  padding: 1px 7px;
+  font-size: 11px;
+  margin-bottom: 6px;
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+}
+.dlgMini p {
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.6;
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+}
+.catchphrases {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.catchphrases span {
+  font-family: var(--font-vt323), monospace;
+  font-size: 18px;
+  color: var(--star);
+  border: 2px solid var(--curb);
+  padding: 1px 8px;
+}
+
+/* 表情包图鉴：2×3 迷你像素格（实色 + 单点像素 motif，抽象邮票语法） */
+.memeGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
+  gap: 8px;
+  margin-top: 14px;
+}
+.memeGrid i {
+  width: 44px;
+  height: 44px;
+  border: 3px solid #000;
+  box-shadow:
+    inset -3px -3px 0 rgba(0, 0, 0, 0.25),
+    3px 3px 0 #000;
+}
+.memeGrid i:nth-child(1) {
+  background: var(--act);
+  box-shadow:
+    inset -3px -3px 0 rgba(0, 0, 0, 0.25),
+    3px 3px 0 #000,
+    inset 8px 8px 0 0 var(--star);
+}
+.memeGrid i:nth-child(2) {
+  background: var(--hi);
+  box-shadow:
+    inset -3px -3px 0 rgba(0, 0, 0, 0.25),
+    3px 3px 0 #000,
+    inset 20px 10px 0 -4px var(--bad);
+}
+.memeGrid i:nth-child(3) {
+  background: var(--ok);
+  box-shadow:
+    inset -3px -3px 0 rgba(0, 0, 0, 0.25),
+    3px 3px 0 #000,
+    inset 10px 22px 0 -2px var(--sky);
+}
+.memeGrid i:nth-child(4) {
+  background: var(--bad);
+  box-shadow:
+    inset -3px -3px 0 rgba(0, 0, 0, 0.25),
+    3px 3px 0 #000,
+    inset 22px 22px 0 -6px var(--window);
+}
+.memeGrid i:nth-child(5) {
+  background: var(--bld-near);
+  box-shadow:
+    inset -3px -3px 0 rgba(0, 0, 0, 0.25),
+    3px 3px 0 #000,
+    inset 8px 20px 0 -2px var(--star);
+}
+.memeGrid i:nth-child(6) {
+  background: var(--panel);
+  box-shadow:
+    inset -3px -3px 0 rgba(0, 0, 0, 0.25),
+    3px 3px 0 #000,
+    inset 18px 8px 0 -3px var(--hi);
+}
+
+/* 双图谱：两列话题签 */
+.dual {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 14px;
+}
+.dual .col b {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  margin-bottom: 8px;
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+}
+.dual .col.you b {
+  color: var(--ok);
+}
+.dual .col.it b {
+  color: var(--act);
+}
+.dual .tags {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dual .tags span {
+  font-family: var(--font-vt323), monospace;
+  font-size: 17px;
+  color: var(--star);
+  border-left: 4px solid var(--curb);
+  padding-left: 8px;
+}
+.dual .col.you .tags span {
+  border-left-color: var(--ok);
+}
+.dual .col.it .tags span {
+  border-left-color: var(--act);
+}
+
+/* 真实作息：昼夜分屏格 */
+.tileE .daynight {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 14px;
+  border: 3px solid #000;
+  box-shadow: 4px 4px 0 #000;
+}
+.tileE .half {
+  padding: 12px 10px;
+  min-height: 84px;
+}
+.tileE .day {
+  background: #5c94fc;
+  color: var(--ink);
+}
+.tileE .night {
+  background: var(--sky);
+  color: var(--star);
+  border-left: 3px solid #000;
+}
+.tileE .half b {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  margin-bottom: 4px;
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+}
+.tileE .half span {
+  font-size: 12px;
+  line-height: 1.6;
+  display: block;
+}
+.tileE .day span {
+  color: var(--ink);
+}
+.tileE .night span {
+  color: var(--curb);
+}
+
+/* 明信片墙（宪法 §6：纸底 4px 墨描边 + 邮票 + NEW 徽章 + 时间 gutter） */
+.mails {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 52em;
+}
+.mail {
+  position: relative;
+  display: grid;
+  grid-template-columns: 64px 1fr;
+}
+.mail time {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 12px;
+  color: var(--curb);
+  text-align: left;
+  line-height: 1.5;
+  border-left: 2px solid var(--curb);
+  padding-left: 10px;
+  height: min-content;
+  padding-top: 8px;
+  opacity: 0.85;
+}
+.card {
+  position: relative;
+  background: var(--paper);
+  color: var(--ink);
+  border: 4px solid #000;
+  box-shadow:
+    inset -4px -4px 0 rgba(0, 0, 0, 0.15),
+    6px 6px 0 #000;
+  padding: 16px 18px 12px;
+  min-width: 0;
+}
+.stamp {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 40px;
+  height: 44px;
+  background: var(--act);
+  border: 3px solid var(--ink);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.25);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-ps2p), monospace;
+  font-size: 12px;
+  color: #fff;
+}
+.stamp.s2 {
+  background: var(--bad);
+}
+.stamp.s3 {
+  background: var(--ok);
+  color: var(--ink);
+}
+.newBadge {
+  position: absolute;
+  top: -11px;
+  left: 56px;
+  z-index: 2;
+  background: var(--hi);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  font-family: var(--font-ps2p), monospace;
+  font-size: 12px;
+  padding: 4px 7px;
+  animation: blink 1s steps(1) infinite;
+}
+.mail h3 {
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.6;
+  margin-bottom: 6px;
+  padding-right: 56px;
+}
+.mail p {
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+.mail .meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.tag {
+  font-family: var(--font-vt323), monospace;
+  font-size: 16px;
+  letter-spacing: 0.06em;
+  border: 2px solid var(--ink);
+  padding: 0 7px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* 内测权益：三张卡带（卡带 = 掌机世界的软件载体） */
+.carts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+.cart {
+  background: var(--ink);
+  border: 3px solid #000;
+  box-shadow:
+    inset -3px -3px 0 rgba(0, 0, 0, 0.4),
+    5px 5px 0 #000;
+  position: relative;
+}
+.cart .label {
+  border-bottom: 3px solid #000;
+  padding: 12px 16px;
+  font-family: var(--font-ps2p), var(--font-fusion-pixel), monospace;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--curb);
+  letter-spacing: 0.06em;
+}
+.cart .body {
+  padding: 18px 16px 20px;
+}
+.cart .price {
+  font-family: var(--font-ps2p), monospace;
+  font-size: 16px;
+  color: var(--star);
+  margin-bottom: 4px;
+  line-height: 1.6;
+}
+.cart .per {
+  font-family: var(--font-vt323), monospace;
+  font-size: 18px;
+  color: var(--curb);
+  margin-bottom: 14px;
+}
+.cart ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.cart li {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--curb);
+  padding-left: 18px;
+  position: relative;
+}
+.cart li::before {
+  content: "■";
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 10px;
+  line-height: 2.2;
+  color: var(--act);
+}
+.pricingNote {
+  margin-top: 24px;
+  color: var(--curb);
+  font-size: 13.5px;
+  max-width: 46em;
+}
+
+/* 领养 CTA：大对话框 */
+.adopt {
+  position: relative;
+  background: var(--paper);
+  color: var(--ink);
+  border: 4px solid #000;
+  box-shadow: 8px 8px 0 #000;
+  padding: clamp(28px, 5vw, 52px);
+  max-width: 44em;
+  margin: 0 auto;
+  text-align: center;
+}
+.adopt .who {
+  display: inline-block;
+  background: var(--hi);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  padding: 2px 10px;
+  margin-bottom: 14px;
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 13px;
+}
+.adopt h2 {
+  font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+.adopt p {
+  font-size: 14px;
+  color: var(--ink-soft);
+  margin-bottom: 24px;
+}
+.adopt .pbtn {
+  color: #fff;
+}
+
+/* 页脚：色板签名条 */
+.footer {
+  margin-top: clamp(56px, 8vw, 96px);
+  border-top: 3px solid var(--curb);
+  padding: 18px 0 34px;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-family: var(--font-vt323), monospace;
+  font-size: 18px;
+  color: var(--curb);
+  letter-spacing: 0.06em;
+}
+.footer i {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  border: 2px solid #000;
+  vertical-align: -1px;
+  margin-right: 5px;
+}
+.footer a {
+  color: var(--curb);
+  text-decoration: none;
+  border-bottom: 2px solid var(--curb);
+}
+.footer a:hover {
+  color: var(--star);
+  border-color: var(--star);
+}
+.footer .right {
+  margin-left: auto;
+}
+
+/* 减弱动效：停帧于当前帧（motion.md §5）。页签不可见的暂停由 PauseAnims
+   的 body.sb-hidden 全局规则承担，落地页不另设开关。 */
+@media (prefers-reduced-motion: reduce) {
+  .page *,
+  .page ::before,
+  .page ::after {
+    animation-play-state: paused !important;
+    transition-duration: 0s !important;
+  }
+}
+
+/* 移动端收拢（高变动布局的显式回退） */
+@media (max-width: 940px) {
+  .node:not(:last-child)::after {
+    content: none;
+  }
+  .hero {
+    grid-template-columns: 1fr;
+  }
+  .heroCopy {
+    padding-top: 0;
+  }
+  .flow {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .tileA,
+  .tileB,
+  .tileC,
+  .tileD,
+  .tileE {
+    grid-column: span 12;
+  }
+  .carts {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .topbar nav a.navi {
+    display: none;
+  }
+  .hero h1 {
+    font-size: 24px;
+  }
+  .screen {
+    height: 250px;
+  }
+  .topbar .clock {
+    display: none;
+  }
+  .topbar .brand {
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  .bldFar2 {
+    display: none;
+  }
+  .flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .mail {
+    grid-template-columns: 1fr;
+  }
+  .mail time {
+    border-left: 0;
+    padding-left: 0;
+    margin-bottom: 8px;
+  }
+  .newBadge {
+    left: 12px;
+  }
+}

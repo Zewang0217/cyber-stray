@@ -29,7 +29,7 @@ const TABS = [
  * 桌面底部居中悬浮、移动端底部通栏（demo 为准）；子屏（日记/梦呓/贴纸册）
  * 由 START 打开——子屏票（T1-7）接线，当前仅键位占位。
  */
-export function MenuBar() {
+export function MenuBar({ "data-game-chrome": gameChrome }: { "data-game-chrome"?: string }) {
   const pathname = usePathname();
   const [startOpen, setStartOpen] = useState(false);
   // #207：首次进入 START 键闪烁提示一次（useEffect 里读 localStorage，
@@ -59,6 +59,7 @@ export function MenuBar() {
   return (
     <nav
       aria-label="游戏菜单"
+      data-game-chrome={gameChrome}
       className="sb fixed inset-x-0 bottom-0 z-40 flex items-stretch gap-1 border-2 border-black bg-[var(--panel)] p-1 shadow-[0_-2px_0_rgba(0,0,0,0.4)] md:inset-x-auto md:bottom-3 md:left-1/2 md:-translate-x-1/2 md:shadow-[4px_4px_0_#000]"
     >
       {TABS.map((t) => {
