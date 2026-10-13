@@ -176,5 +176,5 @@ fi
 
 start_stacks
 echo "restored $ENVIRONMENT from $SOURCE"
-echo "verify: curl http://127.0.0.1:\${CP_PORT:-8787}/healthz"
+echo "verify: curl http://127.0.0.1:\${CP_HOST_PORT:-8787}/healthz"
 echo "roll back: restore.sh $ENVIRONMENT --from $SOURCE.old"

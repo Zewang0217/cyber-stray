@@ -26,7 +26,9 @@ services:
       - ${DATA_DIR:-./data}:/data
     ports:
       # Loopback only: the public entry is Caddy (127.0.0.1:3000 -> web).
-      - "127.0.0.1:${CP_PORT:-8787}:8787"
+      # Host-side mapping uses *_HOST_PORT so it can never collide with CP_PORT,
+      # which the application itself reads as its listen port.
+      - "127.0.0.1:${CP_HOST_PORT:-8787}:8787"
     healthcheck:
       test: [ "CMD", "bun", "-e", "fetch('http://127.0.0.1:8787/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))" ]
       interval: 10s
@@ -44,7 +46,7 @@ services:
       PORT: "3000"
       HOSTNAME: "0.0.0.0"
     ports:
-      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+      - "127.0.0.1:${WEB_HOST_PORT:-3000}:3000"
     healthcheck:
       # /login is a public page and triggers no OIDC round trip, so the web
       # healthcheck cannot depend on the identity service being reachable.

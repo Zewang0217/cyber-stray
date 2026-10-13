@@ -172,7 +172,7 @@ class DeployScriptsTest(unittest.TestCase):
             "OSS_SRV_ACCESS_KEY_SECRET=test-secret",
         ]) + "\n")
         for environment, web_port in (("prod", "3000"), ("staging", "3001")):
-            (shared / environment / ".env").write_text(f"CP_PORT=8787\nWEB_PORT={web_port}\n")
+            (shared / environment / ".env").write_text(f"CP_HOST_PORT=8787\nWEB_HOST_PORT={web_port}\n")
             (shared / environment / "compose.yaml").write_text("services: {}\n")
         (shared / "infra" / "compose.yaml").write_text("services: {}\n")
         (shared / "infra" / ".env").write_text("STAGING_AUTH_USER=ops\nSTAGING_AUTH_HASH=$2a$hash\n")
