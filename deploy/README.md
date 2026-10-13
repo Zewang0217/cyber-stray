@@ -48,7 +48,7 @@ spec #408 / [ADR-0019](../docs/adr/0019-oss-caddy-dual-env-deployment.md)。同�
 
 - **入站走 Cloudflare Tunnel**（[ADR-0020](../docs/adr/0020-cloudflare-tunnel-ingress.md)）：cloudflared 以宿主 systemd 服务主动外连 CF 边缘，TLS 在边缘终结，流量转发到本机 `http://localhost:80`（Host 头保留）。成因：京东云按 Host 做备案门禁，未备案域名的入站流量被丢弃（2026-10-13 实测）；隧道使入站端口归零、证书运维归零。
 - Caddyfile 打进 `cyber-stray-caddy` 镜像（配置随版本走）；**:80 与 :443 都直接伺服内容、不做跳转**，隧道与直连两种来路都能命中。
-- 过渡期（备案中）：`cs.caca.qzz.io` → prod web、`auth.cs.caca.qzz.io` → casdoor、`dev.cs.caca.qzz.io` → staging（Basic Auth）、`http://<公网IP>` → prod web（IP 直访）。域名侧 = Cloudflare 面板里的 Tunnel Public Hostnames（各指 `http://localhost:80`）。
+- 过渡期（备案中）：`cs.caca.qzz.io` → prod web、`csauth.caca.qzz.io` → casdoor、`csdev.caca.qzz.io` → staging（Basic Auth）、`http://<公网IP>` → prod web（IP 直访）。域名侧 = Cloudflare 面板里的 Tunnel Public Hostnames（各指 `http://localhost:80`）。
 - 切 kleinbottle.top checklist（**同一窗口原子执行**，issuer 不一致会打断 OIDC 登录）：
   1. 同隧道加 Public Hostname：`kleinbottle.top`、`auth.kleinbottle.top`（零源站改动）；
   2. Caddyfile 站点块补根域与 `auth.` 目标，发布一版；
