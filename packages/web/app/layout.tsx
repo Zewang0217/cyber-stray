@@ -60,14 +60,15 @@ export default function RootLayout({
         >
           跳到主内容
         </a>
-        <TopBar />
+        {/* data-game-chrome：落地页（未登录首页）经 CSS 隐藏游戏壳；营销页不挂掌机导航 */}
+        <TopBar data-game-chrome="" />
         <main
           id="main-content"
           className="relative flex-1 pb-16 md:pb-24"
         >
           {children}
         </main>
-        <MenuBar />
+        <MenuBar data-game-chrome="" />
         <PauseAnims />
         <Toaster
   position="top-center"
