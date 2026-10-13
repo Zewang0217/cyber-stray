@@ -65,11 +65,11 @@ cs.caca.qzz.io, http://cs.caca.qzz.io {
 	import app_entry
 }
 
-auth.cs.caca.qzz.io, http://auth.cs.caca.qzz.io {
+csauth.caca.qzz.io, http://csauth.caca.qzz.io {
 	import identity_entry
 }
 
-dev.cs.caca.qzz.io, http://dev.cs.caca.qzz.io {
+csdev.caca.qzz.io, http://csdev.caca.qzz.io {
 	import staging_entry
 }
 
