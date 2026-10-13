@@ -1,0 +1,26 @@
+# Identity service, deployed on its own lifecycle from /srv/casdoor. Never
+# rewritten by an app release: prod and staging share this one instance and one
+# account database, and only its pins here decide when it moves.
+# Run with: docker compose -p cyber-stray-casdoor up -d --pull never
+
+services:
+  casdoor:
+    image: casbin/casdoor:3.159.0
+    restart: unless-stopped
+    volumes:
+      # Directories, not single files: SQLite creates its journal next to the
+      # database, and with a single-file mount that journal lands in the
+      # container root (/ is root:755), which uid 1000 cannot write - the whole
+      # database silently turns read-only. The host directories must be
+      # chown 1000:1000.
+      - ./casdoor:/casdoor
+      - ./conf:/conf
+    ports:
+      # Loopback only: Caddy is the public entry (auth.<domain> -> 127.0.0.1:8000).
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:8000/.well-known/openid-configuration" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s

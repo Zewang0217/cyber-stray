@@ -1,0 +1,29 @@
+# Ingress stack: shared by both environments and independent of their release
+# cycle. Copied to /srv/cyber-stray/infra/compose.yaml at provision time.
+# Run with: docker compose -p cyber-stray-infra up -d --pull never
+
+services:
+  caddy:
+    image: ghcr.io/zewang0217/cyber-stray-caddy:${IMAGE_TAG:?IMAGE_TAG must be set to the 40-char release sha}
+    restart: unless-stopped
+    # Host networking: Caddy binds the host's 80/443 directly and can still reach
+    # the app stacks over 127.0.0.1:3000/3001 and Casdoor over 127.0.0.1:8000.
+    # No ports section: with host networking it would be ignored anyway.
+    network_mode: host
+    env_file:
+      - .env
+    volumes:
+      # Certificates and ACME state must survive container replacement; caddy's
+      # own directories are /data (certs) and /config (runtime config).
+      - ./caddy-data:/data
+      - ./caddy-config:/config
+    healthcheck:
+      # caddy:2-alpine declares no image healthcheck, and `up --wait` fails on a
+      # service without one - that would break every deploy of this stack. Probe
+      # Caddy's admin endpoint instead, which /healthz has no business replacing:
+      # the site blocks answer /healthz themselves, so it cannot prove Caddy is up.
+      test: [ "CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
