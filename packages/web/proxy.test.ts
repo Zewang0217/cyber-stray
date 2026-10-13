@@ -63,7 +63,7 @@ describe('proxy 登录墙（函数体：cookie 判定 + 素材直通）', () => 
     expect(res.headers.get('location')).toBe('http://localhost:3000/login');
   });
 
-  it.each(['/', '/settings', '/evolution', '/history'])('未登录 Next 预取 %s 只到登录页，不创建认证状态', (path) => {
+  it.each(['/settings', '/evolution', '/history'])('未登录 Next 预取 %s 只到登录页，不创建认证状态', (path) => {
     const request = new NextRequest(`http://localhost:3000${path}?_rsc=background`, {
       headers: { 'next-router-prefetch': '1', purpose: 'prefetch', rsc: '1' },
     });
@@ -72,6 +72,16 @@ describe('proxy 登录墙（函数体：cookie 判定 + 素材直通）', () => 
     expect(response.headers.get('location')).toBe('http://localhost:3000/login');
     expect(response.headers.has('set-cookie')).toBe(false);
     expect(matcherRe().test(new URL(response.headers.get('location')!).pathname)).toBe(false);
+  });
+
+  it('未登录根路径预取直达落地页：无重定向、无认证副作用', () => {
+    const request = new NextRequest('http://localhost:3000/?_rsc=background', {
+      headers: { 'next-router-prefetch': '1', purpose: 'prefetch', rsc: '1' },
+    });
+    const response = proxy(request);
+    expect(response.status).toBe(200);
+    expect(response.headers.has('location')).toBe(false);
+    expect(response.headers.has('set-cookie')).toBe(false);
   });
 
   it.each(['/manifest.webmanifest', '/icons/strayboy-192.png'])('无 session 后台资源 %s 也不能进入认证端点', (path) => {
@@ -83,6 +93,21 @@ describe('proxy 登录墙（函数体：cookie 判定 + 素材直通）', () => 
   it('有 session 访问受保护页 → 放行', () => {
     const res = proxy(req('/street', { cookie: `${SESSION_COOKIE}=token` }));
     expect(res.headers.get('location')).toBeNull();
+  });
+
+  it('产品根路径未登录 → 直达落地页（不重定向）', () => {
+    expect(proxy(req('/')).headers.get('location')).toBeNull();
+  });
+
+  it.each(['/settings', '/evolution'])('未登录 %s 仍被登录墙拦下', (path) => {
+    expect(new URL(proxy(req(path)).headers.get('location')!).pathname).toBe('/login');
+  });
+
+  it('根路径带邀请令牌 → 仍走登录流并透传令牌', () => {
+    const token = '0123456789abcdef'.repeat(2);
+    const destination = new URL(proxy(req(`/?invite=${token}`)).headers.get('location')!);
+    expect(destination.pathname).toBe('/login');
+    expect(destination.searchParams.get('invite')).toBe(token);
   });
 
   it('public/pet 素材直通（扁平与一层子目录；不受登录墙约束）', () => {

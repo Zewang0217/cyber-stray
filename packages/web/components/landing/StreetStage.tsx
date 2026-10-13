@@ -3,13 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { animationCss, frameStyle } from "@cyber-stray/shared/sprite";
 import type { SpriteContract } from "@cyber-stray/shared/sprite";
+import styles from "./landing.module.css";
 
 /**
  * Hero 街区舞台：产品核心闭环的实况演示（编排取自 docs/design-v3/demo.html
  * 验收基准——猫出门游荡 → 日志滚动 → 明信片寄出 → 回家）。
  * 纪律：sprite 帧动画纯 CSS steps()（shared/sprite 契约驱动，零逐帧 JS）；
- * 位移只有 linear；页签不可见时停帧（motion.md §5）；reduced-motion 关自动
- * 循环与打字机，交互按钮仍可用（即时反馈，无过渡）。
+ * 位移只有 linear；页签不可见时停帧由 PauseAnims 的 body.sb-hidden 全局规则
+ * 承担（不再像官网那样自设 anim-paused）；reduced-motion 关自动循环与打字机，
+ * 交互按钮仍可用（即时反馈，无过渡）。
  */
 
 /** 固定种子 LCG：星星/窗灯 SSR 与客户端一致，且每次访问城市长得一样 */
@@ -162,11 +164,7 @@ export function StreetStage({ contract }: { contract: SpriteContract }) {
     const onMq = () => {
       reduced.current = mq.matches;
     };
-    const onVisibility = () => {
-      document.body.classList.toggle("anim-paused", document.hidden);
-    };
     mq.addEventListener("change", onMq);
-    document.addEventListener("visibilitychange", onVisibility);
     say(HELLO_LINE);
     if (!mq.matches) later(() => wanderRef.current(true), 6000);
     // cleanup 前拷出 ref 现值（lint：cleanup 执行时 ref 可能已换指向）
@@ -174,8 +172,6 @@ export function StreetStage({ contract }: { contract: SpriteContract }) {
     const pendingType = typeTimer;
     return () => {
       mq.removeEventListener("change", onMq);
-      document.removeEventListener("visibilitychange", onVisibility);
-      document.body.classList.remove("anim-paused");
       pendingTimers.forEach(window.clearTimeout);
       if (pendingType.current !== null) window.clearInterval(pendingType.current);
     };
@@ -206,38 +202,38 @@ export function StreetStage({ contract }: { contract: SpriteContract }) {
   return (
     <div>
       <style>{animationCss(contract)}</style>
-      <div className="screen">
-        <span className="stage-name dot">年糕 的街区</span>
-        <div className="stars">
+      <div className={styles.screen}>
+        <span className={`${styles.stageName} ${styles.dot}`}>年糕 的街区</span>
+        <div className={styles.stars}>
           {stars.map((s, i) => (
             <i key={i} style={{ left: s.left, top: s.top, opacity: s.opacity }} />
           ))}
         </div>
-        <span className="moon" />
-        <div className="bld bld-far-1">
+        <span className={styles.moon} />
+        <div className={`${styles.bld} ${styles.bldFar1}`}>
           {windows.far1.map((w, i) => (
-            <span key={i} className={w.on ? "win" : "win off"} style={{ left: w.left, top: w.top }} />
+            <span key={i} className={w.on ? styles.win : `${styles.win} ${styles.off}`} style={{ left: w.left, top: w.top }} />
           ))}
         </div>
-        <div className="bld bld-far-2">
+        <div className={`${styles.bld} ${styles.bldFar2}`}>
           {windows.far2.map((w, i) => (
-            <span key={i} className={w.on ? "win" : "win off"} style={{ left: w.left, top: w.top }} />
+            <span key={i} className={w.on ? styles.win : `${styles.win} ${styles.off}`} style={{ left: w.left, top: w.top }} />
           ))}
         </div>
-        <div className="neon">
+        <div className={styles.neon}>
           CYBER
           <br />
           STRAY
         </div>
-        <div className="bld bld-near-1">
+        <div className={`${styles.bld} ${styles.bldNear1}`}>
           {windows.near1.map((w, i) => (
-            <span key={i} className={w.on ? "win" : "win off"} style={{ left: w.left, top: w.top }} />
+            <span key={i} className={w.on ? styles.win : `${styles.win} ${styles.off}`} style={{ left: w.left, top: w.top }} />
           ))}
         </div>
-        <span className="lamp" />
-        <div className="street" />
+        <span className={styles.lamp} />
+        <div className={styles.street} />
         <div
-          className={`cat${out ? " out" : ""}${back ? " back" : ""}${patjump ? " patjump" : ""}`}
+          className={`${styles.cat}${out ? ` ${styles.out}` : ""}${back ? ` ${styles.back}` : ""}${patjump ? ` ${styles.patjump}` : ""}`}
           role="button"
           tabIndex={0}
           aria-label="拍拍它"
@@ -249,45 +245,50 @@ export function StreetStage({ contract }: { contract: SpriteContract }) {
             }
           }}
         >
-          <span className="flip">
+          <span className={styles.flip}>
             <span className="pixelated" style={frameStyle({ contract, anim, scale: 3 })} />
           </span>
           {hearts.map((h) => (
-            <div key={h.id} className="ph" style={{ left: h.left, top: h.top, background: h.color }} />
+            <div key={h.id} className={styles.ph} style={{ left: h.left, top: h.top, background: h.color }} />
           ))}
         </div>
       </div>
 
-      <div className="hud">
-        <div className="row1">
-          <span className="lv ps2">LV.7</span>
-          <span className="petname dot">年糕 · 游荡者</span>
-          <span className="btns">
-            <button type="button" className="pbtn green" onClick={pat}>
+      <div className={styles.hud}>
+        <div className={styles.row1}>
+          <span className={`${styles.lv} ${styles.ps2}`}>LV.7</span>
+          <span className={`${styles.petname} ${styles.dot}`}>年糕 · 游荡者</span>
+          <span className={styles.btns}>
+            <button type="button" className={`${styles.pbtn} ${styles.green}`} onClick={pat}>
               拍拍它
             </button>
-            <button type="button" className="pbtn blue" disabled={roaming} onClick={() => wander(false)}>
+            <button
+              type="button"
+              className={`${styles.pbtn} ${styles.blue}`}
+              disabled={roaming}
+              onClick={() => wander(false)}
+            >
               {roaming ? "溜达中…" : "让它去溜达"}
             </button>
           </span>
         </div>
-        <div className="meters">
-          <div className="meter">
-            <span className="lbl">
+        <div className={styles.meters}>
+          <div className={styles.meter}>
+            <span className={styles.lbl}>
               <span>饥饿</span>
               <i>饱</i>
             </span>
             <Segments filled={7} cls="f1" />
           </div>
-          <div className="meter">
-            <span className="lbl">
+          <div className={styles.meter}>
+            <span className={styles.lbl}>
               <span>无聊</span>
               <i>{boredom > 5 ? "想出门" : "还行"}</i>
             </span>
             <Segments filled={boredom} cls="f2" />
           </div>
-          <div className="meter">
-            <span className="lbl">
+          <div className={styles.meter}>
+            <span className={styles.lbl}>
               <span>心情</span>
               <i>{mood >= 8 ? "得劲" : "一般"}</i>
             </span>
@@ -296,18 +297,18 @@ export function StreetStage({ contract }: { contract: SpriteContract }) {
         </div>
       </div>
 
-      <div className="dlg">
-        <span className="who dot">&lt;年糕&gt;</span>
-        <p className="txt" aria-live="polite">
+      <div className={styles.dlg}>
+        <span className={`${styles.who} ${styles.dot}`}>&lt;年糕&gt;</span>
+        <p className={styles.txt} aria-live="polite">
           {text}
         </p>
-        <span className="more">▼</span>
+        <span className={styles.more}>▼</span>
       </div>
 
-      <div className="log">
+      <div className={styles.log}>
         {logs.map((line, i) => (
           // 日志行含 <b> 强调（游荡战果），来源是本文件内的常量模板，非外部输入
-          <p key={i} dangerouslySetInnerHTML={{ __html: line + '<span class="cur">■</span>' }} />
+          <p key={i} dangerouslySetInnerHTML={{ __html: line + `<span class="${styles.cur}">■</span>` }} />
         ))}
       </div>
     </div>
@@ -317,9 +318,9 @@ export function StreetStage({ contract }: { contract: SpriteContract }) {
 /** HUD 分段墨条（宪法 §4.4：10 格分段，禁连续进度条） */
 function Segments({ filled, cls }: { filled: number; cls: string }) {
   return (
-    <div className="segs">
+    <div className={styles.segs}>
       {Array.from({ length: 10 }, (_, i) => (
-        <b key={i} className={i < filled ? cls : undefined} />
+        <b key={i} className={i < filled ? styles[cls] : undefined} />
       ))}
     </div>
   );

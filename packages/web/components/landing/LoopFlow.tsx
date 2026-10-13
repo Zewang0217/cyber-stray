@@ -1,3 +1,5 @@
+import styles from "./landing.module.css";
+
 const NODES = [
   { key: "探索", desc: "无聊了就出门" },
   { key: "学习", desc: "有用的记下来" },
@@ -11,25 +13,25 @@ const NODES = [
 export function LoopFlow() {
   return (
     <section id="loop">
-      <div className="wrap">
-        <div className="mainhead">
+      <div className={styles.wrap}>
+        <div className={styles.mainhead}>
           <h2>它怎么活</h2>
-          <span className="rule" />
+          <span className={styles.rule} />
         </div>
-        <p className="lede">
+        <p className={styles.lede}>
           无聊了就出门，看到东西就记下来，积累一些见闻后再反思。
           你的回应和它自己的发现，一起影响下一次去哪里逛。
         </p>
-        <div className="flow">
+        <div className={styles.flow}>
           {NODES.map((n) => (
-            <div className="node" key={n.key}>
+            <div className={styles.node} key={n.key}>
               <i />
-              <b className="dot">{n.key}</b>
+              <b className={styles.dot}>{n.key}</b>
               <span>{n.desc}</span>
             </div>
           ))}
         </div>
-        <p className="loopnote">
+        <p className={styles.loopNote}>
           内测期间，所有受邀用户都能体验这条成长路径。它有自己的探索节奏，
           你可以用赞、踩和顶话题给它一点方向。
         </p>
@@ -37,4 +39,3 @@ export function LoopFlow() {
     </section>
   );
 }
-

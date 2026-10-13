@@ -1,0 +1,57 @@
+# Shared app template: copied to /srv/cyber-stray/prod/compose.yaml and
+# /srv/cyber-stray/staging/compose.yaml at provision time. Deploys never rewrite
+# it (config ships inside the images), so the only thing that changes per release
+# is IMAGE_TAG in the deploy invocation.
+#
+# Both services are the same images in both environments; all environment
+# differences live in the sibling .env file and in the ingress site blocks.
+# Run with: docker compose -p cyber-stray-<env> up -d --pull never
+# (project name supplied by deploy.sh, so container names stay env-scoped).
+
+services:
+  control-plane:
+    image: ghcr.io/zewang0217/cyber-stray-app:${IMAGE_TAG:?IMAGE_TAG must be set to the 40-char release sha}
+    restart: unless-stopped
+    # Graceful shutdown budget (CP_SHUTDOWN_BUDGET_MS defaults to 90s): an
+    # in-flight wander must finish before the container goes away.
+    stop_grace_period: 100s
+    env_file:
+      - .env
+    environment:
+      # Data root inside the container; the bind mount below puts it back on
+      # <env>/data (control.db, tenants/, logs/) so backups are plain file copies.
+      CP_DATA_DIR: /data
+      TZ: Asia/Shanghai
+    volumes:
+      - ${DATA_DIR:-./data}:/data
+    ports:
+      # Loopback only: the public entry is Caddy (127.0.0.1:3000 -> web).
+      # Host-side mapping uses *_HOST_PORT so it can never collide with CP_PORT,
+      # which the application itself reads as its listen port.
+      - "127.0.0.1:${CP_HOST_PORT:-8787}:8787"
+    healthcheck:
+      test: [ "CMD", "bun", "-e", "fetch('http://127.0.0.1:8787/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  web:
+    image: ghcr.io/zewang0217/cyber-stray-web:${IMAGE_TAG:?IMAGE_TAG must be set to the 40-char release sha}
+    restart: unless-stopped
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    environment:
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "127.0.0.1:${WEB_HOST_PORT:-3000}:3000"
+    healthcheck:
+      # /login is a public page and triggers no OIDC round trip, so the web
+      # healthcheck cannot depend on the identity service being reachable.
+      test: [ "CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login',{redirect:'error'}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s

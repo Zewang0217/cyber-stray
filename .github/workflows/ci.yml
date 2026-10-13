@@ -1,13 +1,12 @@
 name: CI
 
-# #138 / ADR-0009：develop 是唯一集成区——push/PR 只跑质量门
-# （typecheck / test / lint + web 构建验证），不产镜像不推仓库。
-# 功能 PR（→develop）和发布 PR（develop→main，ADR-0009）均跑质量门。
+# #138 / ADR-0009：质量门（typecheck / test / lint + web 构建验证），不产镜像不推仓库。
+# PR（→develop|main）直接跑；develop/main 的 push 由 CD 以 workflow_call 复用本门，
+# 避免同一 push 跑两遍。
 on:
-  push:
-    branches: [develop]
   pull_request:
     branches: [develop, main]
+  workflow_call:
 
 jobs:
   verify:
@@ -49,12 +48,8 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Build web & site
-        env:
-          NEXT_PUBLIC_APP_URL: https://app.kleinbottle.top
-        run: |
-          pnpm -F @cyber-stray/web build
-          pnpm -F @cyber-stray/site build
+      - name: Build web
+        run: pnpm -F @cyber-stray/web build
 
       - name: Clean repository temporary directory
         if: always()

@@ -1,0 +1,6 @@
+# syntax=docker/dockerfile:1
+# Entry image: Caddy + this repo's Caddyfile, so ingress config ships with the
+# release bundle instead of being synced onto the server as files.
+# Build context is the repository root (CI: file=deploy/Dockerfile.caddy).
+FROM caddy:2-alpine
+COPY deploy/caddy/Caddyfile /etc/caddy/Caddyfile

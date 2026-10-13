@@ -1,0 +1,7 @@
+# The repository stores text as LF (AGENTS.md line-ending rule); eol=lf also
+# keeps git archive exports LF on hosts whose core.autocrlf is true.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.webp binary

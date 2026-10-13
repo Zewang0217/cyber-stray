@@ -18,8 +18,7 @@
 |---|---|
 | `packages/agent` | 宠物运行时：探索、Markdown 记忆、反思、兴趣演化、推送；Node.js / tsx |
 | `packages/control-plane` | Casdoor 登录、租户、邀请、额度、调度、API；Bun / Hono / SQLite |
-| `packages/web` | Next.js 16 伴侣端，通过 CP API 读取数据和提交明确交互 |
-| `packages/site` | Next.js 静态官网，由 nginx 提供服务 |
+| `packages/web` | Next.js 16 伴侣端 + 官网落地页入口，通过 CP API 读取数据和提交明确交互 |
 | `packages/shared` | 跨包契约、权益、事件、出站网络守卫等 |
 | `packages/slides` | Slidev 演示文稿 |
 
@@ -42,10 +41,9 @@ pnpm install --frozen-lockfile
 ```bash
 pnpm dev:cp
 pnpm dev:web
-pnpm dev:site
 ```
 
-默认端口分别为 8787、3000、3002。单机宠物与 TUI 使用 `pnpm dev:agent`；云端 worker 由 CP 调度，不需要额外启动常驻 agent。请为开发和测试使用独立数据目录。
+默认端口分别为 8787、3000。单机宠物与 TUI 使用 `pnpm dev:agent`；云端 worker 由 CP 调度，不需要额外启动常驻 agent。请为开发和测试使用独立数据目录。
 
 管理员由 `CP_ADMIN_SUBS` 指定，登录后在 `/admin` 的邀请管理中生成一次性链接；新用户通过链接完成登录和领养。注册入口与 CP 邀请校验共用同一访问边界。
 
@@ -55,7 +53,6 @@ pnpm dev:site
 pnpm typecheck
 pnpm test
 pnpm lint
-NEXT_PUBLIC_APP_URL=https://app.kleinbottle.top pnpm -F @cyber-stray/site build
 pnpm -F @cyber-stray/web build
 python3 -B -m unittest discover -s deploy -p 'test_*.py'
 ```
@@ -64,7 +61,7 @@ python3 -B -m unittest discover -s deploy -p 'test_*.py'
 
 ## 部署与设计
 
-生产为五个容器：CP、Web、官网、Casdoor、nginx。HTTPS、OIDC 域名和证书必须同步准备；发布脚本先检查配置，再更新容器。详见 [部署说明](deploy/README.md)，实际域名切换还需按 [ADR-0015](docs/adr/0015-unified-nginx-ingress.md) 的条件执行。
+同机双环境（prod / staging）+ 独立 Casdoor + Caddy 入口；镜像包经阿里云 OSS 转运，服务器装载后 `compose up --pull never`，发布零仓库文件同步。develop push 发 staging，main 合并发生产，回滚一条命令。详见 [部署说明](deploy/README.md) 与 [ADR-0019](docs/adr/0019-oss-caddy-dual-env-deployment.md)。
 
 - 产品与领域约定：[CONTEXT.md](CONTEXT.md)
 - 工程规则：[AGENTS.md](AGENTS.md)

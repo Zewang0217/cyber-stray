@@ -1,34 +1,43 @@
-name: CD Deploy
+name: CD
 
-# main 合并 = 一次生产发布（ADR-0009）：构建推送在 GitHub runner 完成，
-# 部署 = runner 导出镜像包 + Actions 产物 HTTPS 下载 + 生产校验导入 + 起容器（生产不访问 registry）。
-# 回滚：compose.yaml 的 IMAGE_TAG 占位改成旧 sha 合并 main 重发（跳过构建）。
-# 密钥（仓库不存值）：PROD_HOST / PROD_USER / PROD_SSH_PORT / PROD_SSH_KEY；
-# GHCR 推送用 GITHUB_TOKEN。fork PR 不会触达本流水线。
+# develop push → staging 发布；main 合并 = 生产发布（ADR-0009）。
+# 构建与推送在 runner 完成（GHCR 留档，ADR-0008）；镜像包经阿里云 OSS 转运
+# （releases/<sha>/images.tar.zst + release.json），服务器下载装载后由 deploy.sh
+# `compose up --pull never` 拉起——服务器不接触 GitHub / 镜像仓库，无仓库文件同步。
+# 回滚：服务器上 `sudo /srv/cyber-stray/deploy.sh <env> <旧 sha>`（OSS 保留历史版本包）。
+# Secrets：PROD_HOST / PROD_USER / PROD_SSH_PORT / PROD_SSH_KEY、
+#          OSS_CI_ACCESS_KEY_ID / OSS_CI_ACCESS_KEY_SECRET；
+# Vars：OSS_BUCKET / OSS_ENDPOINT / OSS_REGION。GHCR 推送用 GITHUB_TOKEN。fork PR 不触达本流水线。
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
+    branches: [develop, main]
 
 permissions:
   contents: read
   packages: write
-  actions: write # 创建并在发布结束后删除本次临时构建产物
 
 concurrency:
   group: deploy
   cancel-in-progress: false
 
 jobs:
+  verify:
+    name: Quality gate
+    uses: ./.github/workflows/ci.yml
+
   release:
-    name: Image build & Production deployment
+    name: Build & deploy
+    needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     env:
       TMPDIR: ${{ github.workspace }}/scratch/tmp
       TMP: ${{ github.workspace }}/scratch/tmp
       TEMP: ${{ github.workspace }}/scratch/tmp
       DOCKER_CONFIG: ${{ github.workspace }}/scratch/tmp/docker
+      # ossutil 2.x 凭据注入：优先级 命令行 > 环境变量 > 配置文件，走环境变量避免密钥进进程命令行
+      OSS_ACCESS_KEY_ID: ${{ secrets.OSS_CI_ACCESS_KEY_ID }}
+      OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_CI_ACCESS_KEY_SECRET }}
     steps:
       - name: Initialize repository temporary directory
         run: mkdir -p "$TMPDIR" "$DOCKER_CONFIG"
@@ -36,55 +45,14 @@ jobs:
       # checkout may remove the untracked scratch directory.
       - name: Prepare repository temporary directory
         run: mkdir -p "$TMPDIR" "$DOCKER_CONFIG"
-      - uses: pnpm/action-setup@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
 
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      - name: Validate deployment mode and public application URL
-        env:
-          DEPLOY_MODE: ${{ vars.DEPLOY_MODE || 'https_domains' }}
-          PUBLIC_IP: ${{ vars.PUBLIC_IP }}
-          NEXT_PUBLIC_APP_URL: ${{ vars.APP_URL }}
-        run: node deploy/check-site-url.mjs
-
-      - name: typecheck & test & lint + web/site construct
-        env:
-          NEXT_PUBLIC_APP_URL: ${{ vars.APP_URL }}
+      - name: Resolve target environment
+        id: env
         run: |
-          pnpm typecheck
-          pnpm test
-          python3 -B -m unittest discover -s deploy -p 'test_*.py'
-          pnpm lint
-          pnpm -F @cyber-stray/web build
-          pnpm -F @cyber-stray/site build
-
-      - name: Parse and publish the tag
-        id: tag
-        run: |
-          set -euo pipefail
-          compose_file="deploy/compose.yaml"
-          default_tag="$(sed -nE 's/.*IMAGE_TAG:-([^}]+)}.*/\1/p' "$compose_file" | head -1)"
-          case "$default_tag" in
-            sha)
-              echo "tag=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-              echo "build=1" >> "$GITHUB_OUTPUT"   # 常规发布：构建本次 sha 镜像
-              ;;
-            [0-9a-f]|[0-9a-f][0-9a-f]*)
-              echo "tag=$default_tag" >> "$GITHUB_OUTPUT"
-              echo "build=0" >> "$GITHUB_OUTPUT"   # 回滚：runner 拉取旧镜像后转运部署
-              ;;
-            *)
-              echo "无法解析 compose.yaml 的 IMAGE_TAG 占位（got: $default_tag）" >&2
-              exit 1
-              ;;
+          case "$GITHUB_REF" in
+            refs/heads/develop) echo "name=staging" >> "$GITHUB_OUTPUT" ;;
+            refs/heads/main) echo "name=prod" >> "$GITHUB_OUTPUT" ;;
+            *) echo "unknown release ref: $GITHUB_REF" >&2; exit 1 ;;
           esac
 
       - name: Login GHCR
@@ -94,57 +62,74 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push the application image (control plane + agent)
-        if: steps.tag.outputs.build == '1'
+      - name: Build & push application image (control plane + agent)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/Dockerfile.app
           push: true
-          tags: ghcr.io/zewang0217/cyber-stray-app:${{ steps.tag.outputs.tag }}
+          tags: ghcr.io/zewang0217/cyber-stray-app:${{ github.sha }}
 
       - name: Build & push web image
-        if: steps.tag.outputs.build == '1'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/Dockerfile.web
           push: true
-          tags: ghcr.io/zewang0217/cyber-stray-web:${{ steps.tag.outputs.tag }}
+          tags: ghcr.io/zewang0217/cyber-stray-web:${{ github.sha }}
 
-      # 官网 CTA 地址构建期烘焙：仓库 variable APP_URL（伴侣端对外地址）；
-      # 未配置时构建失败，防止把本地地址发布到官网。
-      - name: Build & push site image
-        if: steps.tag.outputs.build == '1'
+      - name: Build & push ingress image (Caddy)
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: deploy/Dockerfile.site
+          file: deploy/Dockerfile.caddy
           push: true
-          build-args: |
-            NEXT_PUBLIC_APP_URL=${{ vars.APP_URL }}
-            DEPLOY_MODE=${{ vars.DEPLOY_MODE || 'https_domains' }}
-            PUBLIC_IP=${{ vars.PUBLIC_IP }}
-          tags: ghcr.io/zewang0217/cyber-stray-site:${{ steps.tag.outputs.tag }}
+          tags: ghcr.io/zewang0217/cyber-stray-caddy:${{ github.sha }}
 
-      - name: Export checked image bundle (all Compose services)
+      - name: Pack image bundle
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR/bundle"
+          # 第三方镜像随包转运：服务器全程 --pull never，不依赖 Docker Hub 可达性
+          docker pull casbin/casdoor:3.159.0
+          docker save \
+            "ghcr.io/zewang0217/cyber-stray-app:$GITHUB_SHA" \
+            "ghcr.io/zewang0217/cyber-stray-web:$GITHUB_SHA" \
+            "ghcr.io/zewang0217/cyber-stray-caddy:$GITHUB_SHA" \
+            casbin/casdoor:3.159.0 \
+            | zstd -T0 -o "$TMPDIR/bundle/images.tar.zst"
+          # release.json 契约：tag、镜像清单、整包 sha256——deploy.sh 逐项校验，不符即失败
+          jq -n \
+            --arg tag "$GITHUB_SHA" \
+            --arg sha256 "$(sha256sum "$TMPDIR/bundle/images.tar.zst" | cut -d' ' -f1)" \
+            '{tag: $tag, images: ["ghcr.io/zewang0217/cyber-stray-app:" + $tag, "ghcr.io/zewang0217/cyber-stray-web:" + $tag, "ghcr.io/zewang0217/cyber-stray-caddy:" + $tag, "casbin/casdoor:3.159.0"], sha256: $sha256}' \
+            > "$TMPDIR/bundle/release.json"
+
+      - name: Install ossutil 2.x
+        run: |
+          set -euo pipefail
+          curl -fsSLo "$TMPDIR/ossutil.zip" https://gosspublic.alicdn.com/ossutil/v2/2.4.0/ossutil-2.4.0-linux-amd64.zip
+          echo "85edf66b2fb7238f5c7e25cab820cf29312319fe4935b7c86a6b8485eb434f3c  $TMPDIR/ossutil.zip" | sha256sum -c -
+          unzip -q -d "$TMPDIR" "$TMPDIR/ossutil.zip"
+          sudo install -m 755 "$TMPDIR"/ossutil-2.4.0-linux-amd64/ossutil /usr/local/bin/ossutil
+
+      - name: Upload bundle to OSS
         env:
-          TAG: ${{ steps.tag.outputs.tag }}
-        run: python3 -B deploy/image-bundle.py pack --tag "$TAG" --compose deploy/compose.yaml --bundle "$TMPDIR/bundle"
+          OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
+          OSS_REGION: ${{ vars.OSS_REGION }}
+          OSS_BUCKET: ${{ vars.OSS_BUCKET }}
+        run: |
+          set -euo pipefail
+          ossutil cp -f "$TMPDIR/bundle/images.tar.zst" "oss://$OSS_BUCKET/releases/$GITHUB_SHA/images.tar.zst" -e "$OSS_ENDPOINT" --region "$OSS_REGION"
+          ossutil cp -f "$TMPDIR/bundle/release.json" "oss://$OSS_BUCKET/releases/$GITHUB_SHA/release.json" -e "$OSS_ENDPOINT" --region "$OSS_REGION"
 
-      - name: Upload temporary deployment artifact
-        id: bundle-upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: deploy-images-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ env.TMPDIR }}/bundle/images.tar.gz
-            ${{ env.TMPDIR }}/bundle/release.json
-          compression-level: 0
-          retention-days: 1
-          if-no-files-found: error
-
-      - name: Sync deploy config to production
+      - name: Deploy on server
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          TARGET_ENV: ${{ steps.env.outputs.name }}
         run: |
           set -euo pipefail
           mkdir -p "$TMPDIR/ssh"
@@ -152,105 +137,11 @@ jobs:
           printf '%s\n' "$PROD_SSH_KEY" > "$TMPDIR/ssh/deploy_key"
           chmod 600 "$TMPDIR/ssh/deploy_key"
           ssh-keyscan -p "$PROD_SSH_PORT" "$PROD_HOST" > "$TMPDIR/ssh/known_hosts" 2>/dev/null
-          # 服务器属主不可预测（deploy/ 平面可写；deploy/nginx/、顶层等
-          # root 属主——#306 发布 CD 两连挂皆由此）：CI 只往 deploy/ 平面
-          # 暂存位同步，一切落位（casdoor conf / .env.example / nginx conf
-          # / acme-webroot）由 root 身份的 container-update.sh 统一完成
-          scp -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -o UserKnownHostsFile="$TMPDIR/ssh/known_hosts" -o StrictHostKeyChecking=yes \
-            -P "$PROD_SSH_PORT" -i "$TMPDIR/ssh/deploy_key" \
-            deploy/compose.yaml \
-            deploy/compose.http-ip.yaml \
-            deploy/container-update.sh \
-            deploy/check-production.py \
-            deploy/image-bundle.py \
-            deploy/compose.bootstrap.yaml \
-            deploy/nginx-bootstrap.conf \
-            deploy/backup.sh \
-            deploy/restore.sh \
-            deploy/casdoor/app.conf \
-            deploy/casdoor/app.http-ip.conf \
-            deploy/nginx/cyber-stray.conf \
-            deploy/nginx/cyber-stray.http-ip.conf \
-            "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/"
-          scp -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -o UserKnownHostsFile="$TMPDIR/ssh/known_hosts" -o StrictHostKeyChecking=yes \
-            -P "$PROD_SSH_PORT" -i "$TMPDIR/ssh/deploy_key" \
-            .env.example "${PROD_USER}@${PROD_HOST}:/opt/cyber-stray/deploy/env.example"
-          # 兜底：脚本可执行位（git 在 Windows 侧记录 644 时 scp 后不可执行）
-          ssh -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -o UserKnownHostsFile="$TMPDIR/ssh/known_hosts" -o StrictHostKeyChecking=yes \
+          ssh -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=6 \
+            -o UserKnownHostsFile="$TMPDIR/ssh/known_hosts" -o StrictHostKeyChecking=yes \
             -p "$PROD_SSH_PORT" -i "$TMPDIR/ssh/deploy_key" \
             "${PROD_USER}@${PROD_HOST}" \
-            "chmod +x /opt/cyber-stray/deploy/container-update.sh /opt/cyber-stray/deploy/backup.sh /opt/cyber-stray/deploy/restore.sh"
-        env:
-          PROD_HOST: ${{ secrets.PROD_HOST }}
-          PROD_USER: ${{ secrets.PROD_USER }}
-          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
-          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
-
-      - name: Download image bundle from Actions over HTTPS
-        timeout-minutes: 22
-        run: |
-          set -euo pipefail
-          remote_dir="/opt/cyber-stray/scratch/cd-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          python3 -B deploy/image-bundle.py link --bundle "$TMPDIR/bundle" \
-            --artifact-id "$ARTIFACT_ID" --artifact-digest "$ARTIFACT_DIGEST" --download-proxy "$CD_DOWNLOAD_PROXY"
-          ssh -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -o UserKnownHostsFile="$TMPDIR/ssh/known_hosts" -o StrictHostKeyChecking=yes \
-            -p "$PROD_SSH_PORT" -i "$TMPDIR/ssh/deploy_key" "${PROD_USER}@${PROD_HOST}" \
-            "sudo -n /opt/cyber-stray/deploy/container-update.sh --prepare-image-bundle 'cd-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}'"
-          scp -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -o UserKnownHostsFile="$TMPDIR/ssh/known_hosts" -o StrictHostKeyChecking=yes \
-            -P "$PROD_SSH_PORT" -i "$TMPDIR/ssh/deploy_key" \
-            "$TMPDIR/bundle/download.json" "${PROD_USER}@${PROD_HOST}:$remote_dir/"
-          ssh -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -o UserKnownHostsFile="$TMPDIR/ssh/known_hosts" -o StrictHostKeyChecking=yes \
-            -p "$PROD_SSH_PORT" -i "$TMPDIR/ssh/deploy_key" "${PROD_USER}@${PROD_HOST}" \
-            "TMPDIR='$remote_dir' TMP='$remote_dir' TEMP='$remote_dir' python3 -B /opt/cyber-stray/deploy/image-bundle.py download --bundle '$remote_dir'"
-        env:
-          PROD_HOST: ${{ secrets.PROD_HOST }}
-          PROD_USER: ${{ secrets.PROD_USER }}
-          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ARTIFACT_ID: ${{ steps.bundle-upload.outputs.artifact-id }}
-          ARTIFACT_DIGEST: ${{ steps.bundle-upload.outputs.artifact-digest }}
-          CD_DOWNLOAD_PROXY: ${{ vars.CD_DOWNLOAD_PROXY }}
-
-      - name: Deployment (verify + load + start without pull + health check + image cleanup)
-        run: |
-          set -euo pipefail
-          case "$DEPLOY_MODE" in https_domains|http_ip) ;; *) exit 2 ;; esac
-          if [[ -n "$PUBLIC_IP" && ! "$PUBLIC_IP" =~ ^[0-9.]+$ ]]; then exit 2; fi
-          if [[ ! "$TAG" =~ ^[0-9a-f]{7,64}$ ]]; then exit 2; fi
-          remote_dir="/opt/cyber-stray/scratch/cd-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          ssh -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -o UserKnownHostsFile="$TMPDIR/ssh/known_hosts" -o StrictHostKeyChecking=yes \
-            -p "$PROD_SSH_PORT" -i "$TMPDIR/ssh/deploy_key" \
-            "${PROD_USER}@${PROD_HOST}" \
-            "sudo -n /opt/cyber-stray/deploy/container-update.sh --tag '$TAG' --mode '$DEPLOY_MODE' --public-ip '$PUBLIC_IP' --image-bundle '$remote_dir'"
-        env:
-          PROD_HOST: ${{ secrets.PROD_HOST }}
-          PROD_USER: ${{ secrets.PROD_USER }}
-          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
-          TAG: ${{ steps.tag.outputs.tag }}
-          DEPLOY_MODE: ${{ vars.DEPLOY_MODE || 'https_domains' }}
-          PUBLIC_IP: ${{ vars.PUBLIC_IP }}
-
-      - name: Clean production transfer directory
-        if: always()
-        env:
-          PROD_HOST: ${{ secrets.PROD_HOST }}
-          PROD_USER: ${{ secrets.PROD_USER }}
-          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
-        run: |
-          set -euo pipefail
-          # No key means deployment never reached SSH preparation.
-          [ -f "$TMPDIR/ssh/deploy_key" ] || exit 0
-          remote_dir="/opt/cyber-stray/scratch/cd-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          ssh -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -o UserKnownHostsFile="$TMPDIR/ssh/known_hosts" -o StrictHostKeyChecking=yes \
-            -p "$PROD_SSH_PORT" -i "$TMPDIR/ssh/deploy_key" "${PROD_USER}@${PROD_HOST}" \
-            "sudo -n /opt/cyber-stray/deploy/container-update.sh --clean-image-bundle 'cd-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}'"
-
-      - name: Delete temporary deployment artifact
-        if: always() && steps.bundle-upload.outputs.artifact-id != ''
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ARTIFACT_ID: ${{ steps.bundle-upload.outputs.artifact-id }}
-        run: gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID"
+            "sudo -n /srv/cyber-stray/deploy.sh '$TARGET_ENV' '$GITHUB_SHA'"
 
       - name: Clean repository temporary directory
         if: always()

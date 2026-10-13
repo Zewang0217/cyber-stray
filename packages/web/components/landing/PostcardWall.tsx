@@ -1,3 +1,5 @@
+import styles from "./landing.module.css";
+
 const MAILs = [
   {
     day: "DAY 12",
@@ -32,29 +34,31 @@ const MAILs = [
 export function PostcardWall() {
   return (
     <section id="wall">
-      <div className="wrap">
-        <div className="mainhead">
+      <div className={styles.wrap}>
+        <div className={styles.mainhead}>
           <h2>MAIL</h2>
-          <span className="rule" />
-          <span className="side">1 NEW</span>
+          <span className={styles.rule} />
+          <span className={styles.side}>1 NEW</span>
         </div>
-        <p className="lede">下面钉着它寄回来的几张。语气就是它平时说话的样子。</p>
-        <div className="mails">
+        <p className={styles.lede}>下面钉着它寄回来的几张。语气就是它平时说话的样子。</p>
+        <div className={styles.mails}>
           {MAILs.map((m) => (
-            <article className="mail" key={m.title}>
-              <time className="mono">
+            <article className={styles.mail} key={m.title}>
+              <time className={styles.mono}>
                 {m.day}
                 <br />
                 {m.time}
               </time>
-              <div className="card">
-                {m.isNew && <span className="newbadge">NEW!</span>}
-                <span className={`stamp ${m.stamp.cls}`}>{m.stamp.label}</span>
+              <div className={styles.card}>
+                {m.isNew && <span className={styles.newBadge}>NEW!</span>}
+                <span className={`${styles.stamp} ${m.stamp.cls ? styles[m.stamp.cls] : ""}`}>
+                  {m.stamp.label}
+                </span>
                 <h3>{m.title}</h3>
                 <p>{m.body}</p>
-                <div className="meta">
+                <div className={styles.meta}>
                   {m.tags.map((t) => (
-                    <span className="tag" key={t}>
+                    <span className={styles.tag} key={t}>
                       {t}
                     </span>
                   ))}
