@@ -64,15 +64,16 @@ ENV_FILE=$APP_DIR/.env
 DATA_DIR=$APP_DIR/data
 CURRENT_TAG_FILE=$APP_DIR/CURRENT_TAG
 [ -f "$COMPOSE_FILE" ] || die "$COMPOSE_FILE missing: provision the environment before deploying"
-[ -f "$ENV_FILE" ] || die "$ENV_FILE missing: the environment's CP_PORT/WEB_PORT live there"
+[ -f "$ENV_FILE" ] || die "$ENV_FILE missing: the environment's CP_HOST_PORT/WEB_HOST_PORT live there"
 
 # Env files are KEY=VALUE with no shell semantics, so read the two values instead
-# of sourcing them.
+# of sourcing them. Host-side ports only: CP_PORT inside the app is its listen
+# port and must stay untouched by per-environment mapping.
 env_key() { awk -F= -v k="$1" '$1 == k { print $2; exit }' "$2"; }
-CP_PORT=$(env_key CP_PORT "$ENV_FILE"); CP_PORT=${CP_PORT:-8787}
-WEB_PORT=$(env_key WEB_PORT "$ENV_FILE"); WEB_PORT=${WEB_PORT:-3000}
-[[ $CP_PORT =~ ^[0-9]+$ ]] || die "CP_PORT in $ENV_FILE is not a port number: '$CP_PORT'"
-[[ $WEB_PORT =~ ^[0-9]+$ ]] || die "WEB_PORT in $ENV_FILE is not a port number: '$WEB_PORT'"
+CP_HOST_PORT=$(env_key CP_HOST_PORT "$ENV_FILE"); CP_HOST_PORT=${CP_HOST_PORT:-8787}
+WEB_HOST_PORT=$(env_key WEB_HOST_PORT "$ENV_FILE"); WEB_HOST_PORT=${WEB_HOST_PORT:-3000}
+[[ $CP_HOST_PORT =~ ^[0-9]+$ ]] || die "CP_HOST_PORT in $ENV_FILE is not a port number: '$CP_HOST_PORT'"
+[[ $WEB_HOST_PORT =~ ^[0-9]+$ ]] || die "WEB_HOST_PORT in $ENV_FILE is not a port number: '$WEB_HOST_PORT'"
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -131,8 +132,8 @@ compose "cyber-stray-$ENVIRONMENT" "$APP_DIR" compose.yaml
 
 step "[6/7] smoke test"
 smoke() { curl -fsS --max-time 10 "$1" >/dev/null || die "smoke test failed: $1"; }
-smoke "http://127.0.0.1:$WEB_PORT/login"
-smoke "http://127.0.0.1:$CP_PORT/healthz"
+smoke "http://127.0.0.1:$WEB_HOST_PORT/login"
+smoke "http://127.0.0.1:$CP_HOST_PORT/healthz"
 # Ingress answers /healthz itself, so this proves Caddy is up and serving the
 # site blocks - independent of which environment was just rolled out.
 smoke "http://127.0.0.1/healthz"
