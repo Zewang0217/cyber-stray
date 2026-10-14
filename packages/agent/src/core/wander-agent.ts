@@ -269,13 +269,13 @@ export class WanderAgent {
       totalWanders: state.totalWanders + 1,
       totalSteps: state.totalSteps + result.steps,
       totalPushes: state.totalPushes + ctx.spokeTimes,
-      recentTopics: this.extractRecentTopics(ctx.wanderHistory, state.recentTopics),
+      recentTopics: extractRecentTopics(ctx.wanderHistory, state.recentTopics),
       consecutiveFailures: result.endReason === 'error' ? state.consecutiveFailures + 1 : 0,
     });
 
     // 兴趣回灌：本次游荡学到的话题 → 图谱强化/新增，persist 触发兴趣快照
     // （S13 evolution 数据源；失败不阻断游荡结果）
-    await this.reinforceInterestGraph(this.extractRecentTopics(ctx.wanderHistory, []));
+    await this.reinforceInterestGraph(extractRecentTopics(ctx.wanderHistory, []));
 
     return this.computeStatsReport(state, result.steps);
   }
@@ -302,9 +302,13 @@ export class WanderAgent {
   /** 兴趣回灌：已存在节点强化，新话题加入图谱（来源 reflection） */
   private async reinforceInterestGraph(topics: string[]): Promise<void> {
     // 收集面含 URL/长 query（访问过的页面地址等）——准入校验在 addInterest 会逐条
-    // warn，先在此过滤掉非话题形态，免每游荡必刷噪音（#176 守卫仍在咽喉兜底）
+    // warn，先在此过滤掉非话题形态，免每游荡必刷噪音（#176 守卫仍在咽喉兜底）。
+    // 全部被滤掉时必须留痕：候选恒空 = 图谱断粮（#422，曾静默 return 无人知晓）
     const plausible = topics.filter((t) => isPlausibleTopic(t));
-    if (plausible.length === 0) return;
+    if (plausible.length === 0) {
+      logger.warn('兴趣回灌候选全部未过话题准入，图谱本次无变化', { candidates: topics.length });
+      return;
+    }
     topics = plausible;
     try {
       const graph = getInterestGraph();
@@ -324,22 +328,6 @@ export class WanderAgent {
     }
   }
 
-  /** 从游荡步骤中提取话题关键词，用于去重提示 */
-  private extractRecentTopics(steps: WanderStep[], existingTopics: string[]): string[] {
-    const topics = new Set(existingTopics);
-    for (const step of steps) {
-      // search_web 的 title = query（工具层确定性填写）；窗口内旧数据无 title 时回退原正则
-      if (step.tool === 'search_web') {
-        const query = step.title ?? step.thought?.match(/搜索\((?:free|premium)\):\s*(.+)/)?.[1];
-        if (query) topics.add(query);
-      }
-      if (step.url) {
-        try { topics.add(new URL(step.url).hostname); } catch { /* ignore */ }
-      }
-    }
-    return [...topics].slice(-10);
-  }
-
   /** 将本次游荡步骤追加到游荡历史日志文件（原子写，日记 worker 并发读不看到截断） */
   private async appendWanderHistory(steps: WanderStep[]): Promise<void> {
     const fullPath = getDataPath(WANDER_HISTORY_FILE);
@@ -354,4 +342,31 @@ export class WanderAgent {
     }
     await atomicWriteJson(fullPath, history);
   }
+}
+
+/**
+ * 从游荡步骤中提取话题关键词（去重提示 + 兴趣回灌共用；纯函数可直测）。
+ *
+ * 候选来源：search_web 的 query（title）、record_knowledge 的话题（title）、
+ * 访问 URL 的主机名。其中 record_knowledge 的 title 是模型概括的干净话题，
+ * 是 #176 话题准入（≤4 英文词/≤40 字符/拒绝域名）下唯一稳定通过的喂料（#422）。
+ */
+export function extractRecentTopics(steps: WanderStep[], existingTopics: string[]): string[] {
+  const topics = new Set(existingTopics);
+  for (const step of steps) {
+    // search_web 的 title = query（工具层确定性填写）；窗口内旧数据无 title 时回退原正则
+    if (step.tool === 'search_web') {
+      const query = step.title ?? step.thought?.match(/搜索\((?:free|premium)\):\s*(.+)/)?.[1];
+      if (query) topics.add(query);
+    }
+    // record_knowledge 旧数据无 title 时回退 thought 前缀「记住了: xxx」
+    if (step.tool === 'record_knowledge') {
+      const recorded = step.title ?? step.thought?.match(/^记住了: ?(.+)$/m)?.[1];
+      if (recorded) topics.add(recorded);
+    }
+    if (step.url) {
+      try { topics.add(new URL(step.url).hostname); } catch { /* ignore */ }
+    }
+  }
+  return [...topics].slice(-10);
 }

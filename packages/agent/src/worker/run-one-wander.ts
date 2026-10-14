@@ -16,6 +16,7 @@ import { loadConfig, setTenantContext, type TenantContext } from '../config.js';
 import { loadState } from '../agent/state.js';
 import { WanderAgent } from '../core/wander-agent.js';
 import { getReflectionScheduler } from '../memory/reflection/index.js';
+import { initFileLogger } from '../logger/file-writer.js';
 import { initializeTenantBrowserPolicy } from '../tools/browser/lifecycle.js';
 import { assertUsageHealthy } from '../usage/usage.js';
 import type { AgentSecrets, PlanExecutionArgs, WanderResult } from '../types.js';
@@ -67,6 +68,9 @@ export async function runOneWander(options: RunOneWanderOptions): Promise<Wander
 
   setTenantContext(ctx);
   try {
+    // 租户上下文就绪后先落日志目录：consola 的 stdout/stderr 是 nullStream，
+    // 文件 logger 不初始化则引擎/回灌的全部 warn、error 都进黑洞（#422 教训）
+    initFileLogger();
     await initializeTenantBrowserPolicy();
     const timeoutMs = options.planArgs?.llmTimeoutMs;
     const deadlineMs = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;

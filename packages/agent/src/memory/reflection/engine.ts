@@ -59,6 +59,13 @@ const MATERIAL_TYPE_LABELS: Partial<Record<MemoryType, string>> = {
   interaction: '自己说过的话',
 };
 
+/**
+ * 反思输出 token 上限（含推理模型的 reasoning tokens）。
+ * 实测 v4-flash 一次反思 reasoning ~1.7k + 正文 ~1.5k，3000 必截断（#422）；
+ * 8000 给 5 条洞察留足余量，超出按截断丢弃并报错，不静默。
+ */
+const REFLECTION_MAX_OUTPUT_TOKENS = 8000;
+
 /** 反思用的 system prompt */
 function buildReflectionSystemPrompt(): string {
   return `你是一只赛博街溜子的"反思大脑"。你的任务是阅读宠物在互联网上游荡时记录下来的**原始素材**，从中发现规律、趋势和洞察。
@@ -68,9 +75,24 @@ function buildReflectionSystemPrompt(): string {
 - **网上读到的内容**：外部信息，反映宠物接触了什么，适合用来发现话题趋势
 - **自己说过的话**：宠物自己的输出，不能作为"主人喜欢"的证据，只能反映它在关注什么
 
-你需要输出 JSON 格式的反思结果，包含：
-- insights[]: 洞察列表，每条包含 title（标题）、content（内容）、sourceIds（引用的观察 ID 列表，至少 1 条）、newInterests（发现的新兴趣）、existingInterestUpdates（对已有兴趣的调整）
-- summary: 本次反思的一句话摘要
+你需要输出严格符合以下结构的 JSON（字段名必须一字不差，不要改名）：
+
+{
+  "insights": [
+    {
+      "title": "洞察标题（≤100 字符）",
+      "content": "洞察内容（≤500 字符）",
+      "sourceIds": ["引用的素材 ID，至少 1 条，必须原样复制素材列表里的 ID"],
+      "newInterests": [
+        { "topic": "新兴趣话题（≤30 字符，短语不是句子）", "weight": 0.3, "reasoning": "提出依据（≤200 字符）" }
+      ],
+      "existingInterestUpdates": [
+        { "topic": "已有兴趣话题（必须从下方已有兴趣清单里选）", "delta": 0.1, "reasoning": "调整依据（≤200 字符）" }
+      ]
+    }
+  ],
+  "summary": "本次反思的一句话摘要（≤300 字符）"
+}
 
 **重要原则：**
 1. 只从给定的观察中推导，不要凭空编造
@@ -79,12 +101,17 @@ function buildReflectionSystemPrompt(): string {
 4. 新兴趣的权重不要超过 0.5，控制在谨慎水平
 5. 兴趣调整幅度要小（delta -0.1 到 +0.2）
 6. 如果观察不足以得出任何洞察，返回空 insights 数组
+7. newInterests / existingInterestUpdates 可以为空数组，但字段名和结构不能变
 
-**输出格式：纯 JSON，不要 markdown 代码块包裹**`;
+**输出格式：纯 JSON，不要 markdown 代码块包裹，不要输出任何 JSON 以外的文字**`;
 }
 
-/** 反思用的 user prompt */
-function buildReflectionUserPrompt(materials: MemoryEntry[], maxInsights: number): string {
+/** 反思用的 user prompt（currentInterests = 图谱当前 top 兴趣，供 existingInterestUpdates 对齐真实节点） */
+function buildReflectionUserPrompt(
+  materials: MemoryEntry[],
+  maxInsights: number,
+  currentInterests: string[],
+): string {
   const formatted = materials.map((mat, i) => {
     const domain = extractDomain(mat);
     return `[${i + 1}] ID: ${mat.id}
@@ -95,9 +122,16 @@ function buildReflectionUserPrompt(materials: MemoryEntry[], maxInsights: number
    内容: ${mat.content.substring(0, 300)}`;
   }).join('\n\n---\n\n');
 
+  const interestList = currentInterests.length > 0
+    ? currentInterests.map((t, i) => `${i + 1}. ${t}`).join('\n')
+    : '（图谱当前为空）';
+
   return `以下是宠物最近记录下的 ${materials.length} 条原始素材：
 
 ${formatted}
+
+宠物当前的已有兴趣清单（existingInterestUpdates 的 topic 只能从这里选，清单外的会被丢弃）：
+${interestList}
 
 请基于以上素材，输出最多 ${maxInsights} 条洞察。如果素材不够形成有意义洞察，返回空数组。
 
@@ -282,7 +316,15 @@ export class ReflectionEngine {
 
     const provider = createDeepSeek({ apiKey });
     const systemPrompt = buildReflectionSystemPrompt();
-    const userPrompt = buildReflectionUserPrompt(materials, this.cfg.maxInsights);
+    // 已有兴趣清单注入：existingInterestUpdates 的 topic 必须对齐真实图谱节点，
+    // 否则 updateInterestGraph 会静默跳过清单外话题（#422）。
+    let currentInterests: string[] = [];
+    try {
+      currentInterests = getInterestGraph().getTopInterests(10, 0.05);
+    } catch (err) {
+      logger.warn('读取兴趣图谱 top 兴趣失败，反思 prompt 不含已有兴趣清单', { error: String(err) });
+    }
+    const userPrompt = buildReflectionUserPrompt(materials, this.cfg.maxInsights, currentInterests);
 
     logger.debug('发起反思 LLM 调用', { materialCount: materials.length });
 
@@ -292,7 +334,9 @@ export class ReflectionEngine {
       temperature: 0.4, // 反思需要一致性高于创造性
       system: sanitizeForLLM(systemPrompt),
       prompt: sanitizeForLLM(userPrompt),
-      maxOutputTokens: 3000,
+      // 推理模型（deepseek-v4-flash 等）的 reasoning tokens 计入同一上限；
+      // 3000 会在正文写到一半时截断 JSON，导致 parse 失败被当「零洞察」静默丢弃（#422）。
+      maxOutputTokens: REFLECTION_MAX_OUTPUT_TOKENS,
       abortSignal,
     });
 
