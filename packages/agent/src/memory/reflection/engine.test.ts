@@ -127,6 +127,25 @@ describe('ReflectionEngine', () => {
     await expect(engine.reflect()).rejects.toThrow();
   });
 
+  // #422：推理模型 reasoning 计入 output 上限，3000 会把 JSON 截成非法文本；
+  // 且 prompt 未规定字段名时模型会输出 name/interest/reason，Zod 全丢。
+  test('调用契约：输出上限 8000，prompt 含字段规格与已有兴趣清单', async () => {
+    for (const id of ['obs-1', 'obs-2', 'obs-3']) await store.saveMemory(makeObservation({ id }));
+    let captured: Record<string, unknown> = {};
+    mockGenerateText(async (opts) => {
+      captured = opts;
+      return { text: JSON.stringify({ insights: [], summary: '' }) };
+    });
+    await engine.reflect();
+    expect(captured.maxOutputTokens).toBe(8000);
+    const system = String(captured.system);
+    expect(system).toContain('"topic"');
+    expect(system).toContain('"reasoning"');
+    expect(system).toContain('existingInterestUpdates');
+    const prompt = String(captured.prompt);
+    expect(prompt).toContain('已有兴趣清单');
+  });
+
   test('应该过滤掉 provenance=self:reflection 的洞察', async () => {
     await store.saveMemory(makeObservation({ id: 'obs-1', summary: 'web 观察 1', provenance: 'untrusted:web' }));
     await store.saveMemory(makeObservation({ id: 'obs-2', summary: 'web 观察 2', provenance: 'untrusted:web' }));
