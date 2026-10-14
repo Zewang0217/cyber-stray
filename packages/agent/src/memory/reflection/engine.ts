@@ -317,10 +317,15 @@ export class ReflectionEngine {
     const provider = createDeepSeek({ apiKey });
     const systemPrompt = buildReflectionSystemPrompt();
     // 已有兴趣清单注入：existingInterestUpdates 的 topic 必须对齐真实图谱节点，
-    // 否则 updateInterestGraph 会静默跳过清单外话题（#422）。
+    // 否则 updateInterestGraph 会静默跳过清单外话题（#422）。与 updateInterestGraph
+    // 同款防御：单例未加载时先 load，避免空读把「有图谱」误报成「图谱为空」。
     let currentInterests: string[] = [];
     try {
-      currentInterests = getInterestGraph().getTopInterests(10, 0.05);
+      const graph = getInterestGraph();
+      if (!graph.isInitialized() && graph.getNodeCount() === 0) {
+        await graph.load();
+      }
+      currentInterests = graph.getTopInterests(10, 0.05);
     } catch (err) {
       logger.warn('读取兴趣图谱 top 兴趣失败，反思 prompt 不含已有兴趣清单', { error: String(err) });
     }

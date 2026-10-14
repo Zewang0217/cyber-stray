@@ -303,10 +303,13 @@ export class WanderAgent {
   private async reinforceInterestGraph(topics: string[]): Promise<void> {
     // 收集面含 URL/长 query（访问过的页面地址等）——准入校验在 addInterest 会逐条
     // warn，先在此过滤掉非话题形态，免每游荡必刷噪音（#176 守卫仍在咽喉兜底）。
-    // 全部被滤掉时必须留痕：候选恒空 = 图谱断粮（#422，曾静默 return 无人知晓）
+    // 区分两种「无变化」：零候选（纯 speak/rest 游荡，正常）不打扰；
+    // 有候选但全被拒（图谱断粮信号）必须 warn 留痕（#422，曾静默 return 无人知晓）
     const plausible = topics.filter((t) => isPlausibleTopic(t));
     if (plausible.length === 0) {
-      logger.warn('兴趣回灌候选全部未过话题准入，图谱本次无变化', { candidates: topics.length });
+      if (topics.length > 0) {
+        logger.warn('兴趣回灌候选全部未过话题准入，图谱本次无变化', { candidates: topics.length });
+      }
       return;
     }
     topics = plausible;
@@ -349,7 +352,8 @@ export class WanderAgent {
  *
  * 候选来源：search_web 的 query（title）、record_knowledge 的话题（title）、
  * 访问 URL 的主机名。其中 record_knowledge 的 title 是模型概括的干净话题，
- * 是 #176 话题准入（≤4 英文词/≤40 字符/拒绝域名）下唯一稳定通过的喂料（#422）。
+ * 在 #176 话题准入（≤4 英文词/≤40 字符/拒绝域名）下对中文标题稳定通过（英文长标题
+ * 仍会被拒，靠上面的断粮 warn 兜住可见性）。
  */
 export function extractRecentTopics(steps: WanderStep[], existingTopics: string[]): string[] {
   const topics = new Set(existingTopics);
