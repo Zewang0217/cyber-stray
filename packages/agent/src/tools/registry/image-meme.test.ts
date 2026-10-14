@@ -1,7 +1,8 @@
 /**
- * image_meme 工具测试（#96）
+ * image_meme 工具测试（#96 / #423）
  *
  * 工具契约：注入 fake 管线依赖 + fake 文案 runner，验证：
+ * - 心情概率门：未命中软跳过（不碰管线）；心情档位决定概率
  * - 成功路径：recorded → 返回 ok:true + imageUrl
  * - 质检不过：rejected → ok:false + 原因
  * - 配额超限：skipped → ok:false + 配额原因
@@ -36,7 +37,7 @@ async function runTool(
   return exec(input, { toolCallId: 'test-call', messages: [] });
 }
 
-function makeCtx(): ToolContext {
+function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
   return {
     state: makeState(),
     traceId: 'trace-1',
@@ -48,6 +49,7 @@ function makeCtx(): ToolContext {
     endReason: 'max_steps',
     startTime: Date.now(),
     searchQueries: [],
+    ...overrides,
   };
 }
 
@@ -85,9 +87,11 @@ describe('image_meme 工具', () => {
       version: 2, spec: { specText: '蓝色小狗，白耳朵' },
     }));
     writeFileSync(join(dir, 'pet-assets', 'adopt-reference.jpg'), Buffer.from('REFERENCE'));
+    // rng 恒 0 = 概率门必过（0 >= p 为假），管线路径测试不受随机影响
     setImageMemeToolDeps({
       buildDeps: () => makeDeps({ dataDir: dir }),
       buildCopy: () => COPY_GEN,
+      rng: () => 0,
     });
   });
 
@@ -95,6 +99,39 @@ describe('image_meme 工具', () => {
     setImageMemeToolDeps({});
     delete process.env.DATA_DIR;
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('#423 心情概率门未命中 → 软跳过，不触管线不耗配额', async () => {
+    let pipelineTouched = false;
+    setImageMemeToolDeps({
+      buildDeps: () => {
+        pipelineTouched = true;
+        return makeDeps({ dataDir: dir });
+      },
+      buildCopy: () => COPY_GEN,
+      rng: () => 0.99, // curious p=0.3，0.99 必未命中
+    });
+    const ctx = makeCtx();
+    const tool = imageMemeToolDef.createTool(ctx);
+    const result = (await runTool(tool, { topic: '量子计算' })) as { ok: boolean; reason?: string };
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/心情/);
+    expect(pipelineTouched).toBe(false);
+    // 软跳过也留游荡痕迹（可观测）
+    expect(ctx.wanderHistory.some((s) => s.tool === 'image_meme' && s.thought?.includes('[gated]'))).toBe(true);
+  });
+
+  it('#423 心情档位映射：excited 概率高于 emo（档位表约束）', async () => {
+    // deps 必须在 createTool 前设好——工具创建时捕获依赖快照
+    setImageMemeToolDeps({ buildDeps: () => makeDeps({ dataDir: dir }), buildCopy: () => COPY_GEN, rng: () => 0.5 });
+    // emo p=0.1：rng=0.5 未命中
+    const emoTool = imageMemeToolDef.createTool(makeCtx({ state: makeState({ mood: 'emo' }) }));
+    let result = (await runTool(emoTool, { topic: '量子计算' })) as { ok: boolean; reason?: string };
+    expect(result.ok).toBe(false);
+    // excited p=0.6：同一 rng 命中，走完整管线
+    const excitedTool = imageMemeToolDef.createTool(makeCtx({ state: makeState({ mood: 'excited' }) }));
+    result = (await runTool(excitedTool, { topic: '量子计算' })) as { ok: boolean; reason?: string };
+    expect(result.ok).toBe(true);
   });
 
   it('租户专属形象成功 → ok:true + imageUrl', async () => {
@@ -113,6 +150,7 @@ describe('image_meme 工具', () => {
 
   it('质检不过 → ok:false + 原因（不进图鉴）', async () => {
     setImageMemeToolDeps({
+      rng: () => 0,
       buildDeps: () =>
         makeDeps({
           dataDir: dir,
@@ -137,6 +175,7 @@ describe('image_meme 工具', () => {
       ]),
     );
     setImageMemeToolDeps({
+      rng: () => 0,
       buildDeps: () => makeDeps({ dataDir: dir, dailyLimit: 3 }),
       buildCopy: () => COPY_GEN,
     });
@@ -157,6 +196,7 @@ describe('image_meme 工具', () => {
 
   it('生图失败 → ok:false', async () => {
     setImageMemeToolDeps({
+      rng: () => 0,
       buildDeps: () =>
         makeDeps({
           dataDir: dir,

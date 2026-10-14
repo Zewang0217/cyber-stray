@@ -268,7 +268,9 @@ describe('runDiaryWorker 端到端', () => {
     expect(getTenantContext()).toBeNull();
   });
 
-  it('#96 没有已交付宠物形象时跳过表情包，不画通用角色', async () => {
+  // #423：表情包改由游荡中 image_meme 工具心情概率门触发，日记不再生成
+  // 表情包——这里守住「日记本体不受影响」的回归面。
+  it('#423 日记不再触发表情包：结果无 meme 字段，LLM 只调 2 次', async () => {
     await seedTodayData(dataDir, '2026-08-20');
     mockNarratives(['日记正文', '梦境正文']);
     const result = await runDiaryWorker({
@@ -277,27 +279,10 @@ describe('runDiaryWorker 端到端', () => {
       petName: '小七',
       date: '2026-08-20',
       personality: 'curious',
-      memeEnabled: true,
     });
-    // 日记与梦境仍成功落盘
+    expect('meme' in result).toBe(false);
     expect(result.file).toBe(join(dataDir, 'diary', '2026-08-20.md'));
     expect(result.dreamFile).toBe(join(dataDir, 'diary', 'dreams', '2026-08-20.md'));
-    expect(generateText).toHaveBeenCalledTimes(2);
-    expect(result.meme?.status).toBe('skipped');
-    expect(result.meme?.reason).toMatch(/没有已交付/);
-  });
-
-  it('#96 memeEnabled=false（默认）→ 不触发表情包（只 2 次 generateText）', async () => {
-    await seedTodayData(dataDir, '2026-08-20');
-    mockNarratives(['日记正文', '梦境正文']);
-    const result = await runDiaryWorker({
-      tenantId: 'a',
-      dataDir,
-      petName: '小七',
-      date: '2026-08-20',
-      personality: 'curious',
-    });
-    expect(result.meme).toBeUndefined();
     expect(generateText).toHaveBeenCalledTimes(2);
   });
 });

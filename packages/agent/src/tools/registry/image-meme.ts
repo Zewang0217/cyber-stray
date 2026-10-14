@@ -1,9 +1,11 @@
 /**
- * image_meme 工具（#96）—— 宠物自主生成表情包
+ * image_meme 工具（#96 / #423）—— 宠物游荡中自主生成表情包
  *
- * 工具契约：LLM 判断"话题适合做表情包"时调用，传入话题。工具内部：LLM 出文案 → 画面生图 → 程序
- * 叠加文字 → 质检 → 收录（过质检才进图鉴）。生图/视觉/LLM 全部可 mock
- * （真实依赖走 meme/factory.ts，测试直接注入 fake 走 runMemePipeline）。
+ * 工具契约：LLM 判断"话题适合做表情包"时调用，传入话题。工具内部先过
+ * **心情概率门**（心情越好越想画；未命中不耗配额、不产生任何付费调用，
+ * 直接软跳过），命中后：LLM 出文案 → 画面生图 → 程序叠加文字 → 质检 →
+ * 收录（过质检才进图鉴）。生图/视觉/LLM/随机源全部可 mock（真实依赖走
+ * meme/factory.ts，测试直接注入 fake 走 runMemePipeline）。
  *
  * 只用当前租户已交付的宠物 manifest 角色参考图；无定制形象则显式跳过。
  *
@@ -14,6 +16,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { getMemeImageUrl } from '@cyber-stray/shared/push';
+import type { PetMood } from '@cyber-stray/shared/pet-stats';
 import { consola } from '../../logger.js';
 import { getConfig, getDataPath } from '../../config.js';
 import { createDeepSeek } from '@ai-sdk/deepseek';
@@ -36,14 +39,31 @@ const IMAGE_MEME_DESCRIPTION = `用你当前已交付的宠物形象作为参考
 - 想给有趣内容配图时先调用本工具，再把返回的 id 作为 speak 的 memeId
 - 想给今天的日记/游荡配一张梗图
 
-**注意：** 只画当前租户的宠物，不生成通用角色或 SVG 宠物。没有已交付形象时不要调用；每日配额默认 3 张，质检不合格不会进图鉴。`;
+**注意：** 只画当前租户的宠物，不生成通用角色或 SVG 宠物。没有已交付形象时不要调用；画不画看心情——心情好时更容易成，被拒绝就换个话题别纠缠；每日配额默认 3 张，质检不合格不会进图鉴。`;
 
-/** 工具执行上下文：真实依赖 + 文案 runner（可注入 fake 测试） */
+/**
+ * 心情 → 生成概率（#423：游荡中小概率触发，心情好概率更高）。
+ * 档位对齐 strategy 的 speakInclination 映射：excited/playful 高、
+ * curious/grumpy 中、lazy/emo 低。按每天 ~1-3 次调用估算，期望产出
+ * 0.5-2 张/天，配额 3 张/天仍是硬顶。
+ */
+const MEME_PROBABILITY_BY_MOOD: Record<PetMood, number> = {
+  excited: 0.6,
+  playful: 0.5,
+  curious: 0.3,
+  grumpy: 0.25,
+  lazy: 0.12,
+  emo: 0.1,
+};
+
+/** 工具执行上下文：真实依赖 + 文案 runner + 随机源（可注入 fake 测试） */
 export interface ImageMemeToolDeps {
   /** 组装管线依赖（缺省用真实 factory；测试注入） */
   buildDeps?: (dataDir: string) => MemePipelineDeps;
   /** 组装文案 runner（缺省用真实 model；测试注入 fake） */
   buildCopy?: (ctx: ToolContext) => MemeCopyGenerator;
+  /** [0,1) 随机数源（缺省 Math.random；测试注入确定性序列） */
+  rng?: () => number;
 }
 
 /** 模块级可覆盖依赖（测试注入 fake；生产用真实实现） */
@@ -89,6 +109,28 @@ export const imageMemeToolDef: ToolDefinition = {
       execute: async ({ topic }, options) => {
         ctx.stepCount++;
         const stepStart = Date.now();
+        // 心情概率门（#423）：未命中即软跳过——不查参考图、不碰管线，
+        // 不耗每日配额、不产生任何付费调用
+        const rng = deps.rng ?? Math.random;
+        const mood = ctx.state.mood;
+        const probability = MEME_PROBABILITY_BY_MOOD[mood];
+        if (probability === undefined) {
+          return { ok: false, reason: `未知心情，跳过表情包生成：${String(mood)}` };
+        }
+        if (rng() >= probability) {
+          logger.info(
+            `[${ctx.traceId}] TOOL image_meme [mood=${mood} p=${probability} gated]`,
+          );
+          pushWanderStep(ctx, {
+            timestamp: new Date().toISOString(),
+            tool: 'image_meme',
+            thought: `[gated] 心情不够好（${mood}），没给「${topic}」画表情包`,
+          });
+          return {
+            ok: false,
+            reason: `现在没什么画表情包的心情（心情：${mood}），这次先不画了`,
+          };
+        }
         const dataDir = getDataPath('');
         const reference = await preparePetMemeReference(dataDir, options.abortSignal);
         if (!reference) {

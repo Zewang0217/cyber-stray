@@ -80,7 +80,6 @@ const scheduler = new Scheduler({
     },
     alertWebhookUrl: config.opsAlertWebhookUrl,
   },
-  memeEnabled: config.memeEnabled,
 });
 scheduler.start(config.schedulerIntervalMs);
 

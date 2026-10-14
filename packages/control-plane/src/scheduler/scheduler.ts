@@ -159,8 +159,6 @@ export interface SchedulerDeps {
   diaryRunner: DiaryRunner;
   now: () => number;
   config: SchedulerConfig;
-  /** 是否日记写完触发表情包生成（#96；缺省 true） */
-  memeEnabled?: boolean;
 }
 
 /** 失败重试租约（内存；进程重启清零，重试上限由 DB 冷却兜底） */
@@ -188,8 +186,6 @@ export class Scheduler {
   private readonly diaryClaimedThisTick = new Set<string>();
   /** #92 日记：每宠上次 tick 是否睡眠中（跨 tick 记忆，检测睡眠开始） */
   private readonly wasSleeping = new Map<string, boolean>();
-  /** #96 表情包：日记写完是否触发生成（缺省 true） */
-  private readonly memeEnabled: boolean;
   /** ADR-0013：数值未迁移已告警过的宠物（进程内去抖） */
   private readonly unmigratedWarned = new Set<string>();
   /** #265 预算闸：预算耗尽停派中的宠物（转变沿发 exhausted/resumed 事件） */
@@ -203,9 +199,7 @@ export class Scheduler {
   private timer?: ReturnType<typeof setInterval>;
   private activeTick?: Promise<void>;
 
-  constructor(private readonly deps: SchedulerDeps) {
-    this.memeEnabled = deps.memeEnabled ?? true;
-  }
+  constructor(private readonly deps: SchedulerDeps) {}
 
   /** 周期启动（intervalMs = 0 不启动，测试/关闭用）。tick 错误 log-and-continue。 */
   start(intervalMs: number): void {
@@ -502,7 +496,6 @@ export class Scheduler {
           personality: pet.personality as PersonalityId,
           diaryStyle,
           pushEnabled: Boolean(pet.diaryPushEnabled),
-          memeEnabled: this.memeEnabled,
         });
         if (result.exitCode === USAGE_ACCOUNTING_FAILURE_EXIT_CODE) {
           await this.pauseForAccountingFailure(petId, tenantId);
