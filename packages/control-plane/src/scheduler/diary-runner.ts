@@ -90,8 +90,6 @@ export interface DiaryJob {
   diaryStyle: DiaryStyleChoice;
   /** 是否推送日记（Web Push） */
   pushEnabled: boolean;
-  /** 是否日记写完触发表情包生成（#96） */
-  memeEnabled: boolean;
 }
 
 /** 结果：ok = 完成或跳过（exit 0） */
@@ -136,7 +134,6 @@ export function createDiaryRunner(deps: DiaryRunnerDeps): DiaryRunner {
         job.diaryStyle,
       ];
       if (job.pushEnabled) args.push('--push-enabled', 'true');
-      if (job.memeEnabled) args.push('--meme-enabled', 'true');
       if (secretsPath) args.push('--secrets-file', secretsPath);
       const logFile = workerLogPath(deps.dataDir, 'diary', job.tenantId);
       const { exitCode } = await spawnFn(command, args, { timeoutMs: deps.timeoutMs, logFile });

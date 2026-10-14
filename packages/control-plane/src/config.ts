@@ -58,8 +58,6 @@ export interface ControlPlaneConfig {
   adoptLlmModel: string;
   /** 生成任务处理器 tick 间隔 ms（0 = 关闭；#94） */
   petGenIntervalMs: number;
-  /** 是否日记写完触发表情包生成（#96；env CP_MEME_ENABLED，缺省 true） */
-  memeEnabled: boolean;
   /** 优雅停机收口预算 ms（#138：60–90s；compose stop_grace_period 需覆盖） */
   shutdownBudgetMs: number;
   /** 每租户每日 LLM 预算闸总开关（#265；env CP_LLM_BUDGET_ENABLED，缺省 true） */
@@ -142,7 +140,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ControlPlaneCo
     adoptLlmModel: env.CP_ADOPT_LLM_MODEL ?? 'deepseek-chat',
     petGenIntervalMs: Number(env.CP_PETGEN_INTERVAL_MS ?? 5_000),
     shutdownBudgetMs: Number(env.CP_SHUTDOWN_BUDGET_MS ?? 90_000),
-    memeEnabled: env.CP_MEME_ENABLED !== 'false',
     llmBudgetEnabled: env.CP_LLM_BUDGET_ENABLED !== 'false',
     llmBudgetYuan: {
       free: llmBudgetFreeYuan,
