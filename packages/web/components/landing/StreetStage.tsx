@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SpriteContract } from "@cyber-stray/shared/sprite";
+import Image from "next/image";
 import { HeartBurst } from "@/components/strayboy/HeartBurst";
-import { PetSprite } from "@/components/strayboy/PetSprite";
 import { PixelStage } from "@/components/strayboy/PixelStage";
 import styles from "./landing.module.css";
 
@@ -14,20 +13,21 @@ const PAT_LINES = [
 ];
 const ROAM_LINE = "出去转转，无聊值高得爪痒。抓到好货就钉你墙上！";
 const BACK_LINE = "回来了！爪子跑酸了，明信片已寄出，往下翻查收。";
-const HELLO_LINE = "你来了？这条街现在归我逛。点一下，看我出门找点新鲜的。";
+const HELLO_LINE = "我是小溜。这条街现在归我逛。点一下，看我出门找点新鲜的。";
 const WANDER = { log1: 1500, log2: 2600, home: 5200, land: 6700, again: 14000 };
 const TYPE_MS = 33;
+type PetAnim = "idle" | "walk" | "joy";
 
-export function StreetStage({ contract }: { contract: SpriteContract }) {
-  const [anim, setAnim] = useState("idle");
+export function StreetStage() {
+  const [anim, setAnim] = useState<PetAnim>("idle");
   const [out, setOut] = useState(false);
   const [patjump, setPatjump] = useState(false);
   const [roaming, setRoaming] = useState(false);
   const [text, setText] = useState("");
   const [hearts, setHearts] = useState(0);
   const [logs, setLogs] = useState<string[]>([
-    "[22:31] 进食完成 · 精力+2",
-    '[22:17] 兴趣「像素游戏」关注度 <b>↑</b>',
+    "[13:54] 记住「数据中心的外部性」",
+    '[13:53] 兴趣「主权算力」关注度 <b>↑</b>',
   ]);
   const [mood, setMood] = useState(8);
   const [boredom, setBoredom] = useState(7);
@@ -74,11 +74,11 @@ export function StreetStage({ contract }: { contract: SpriteContract }) {
     setAnim("walk");
     setOut(true);
     say(ROAM_LINE);
-    later(() => pushLog('[22:44] 出门 → DDG「像素 独立游戏」→ <b>抓到2条</b>'), WANDER.log1);
-    later(() => pushLog("[22:45] 嗅到新鲜货 · 重复率 0.12 → <b>寄明信片</b>"), WANDER.log2);
+    later(() => pushLog('[13:55] 出门 → NVIDIA Blog → <b>抓到3条</b>'), WANDER.log1);
+    later(() => pushLog("[13:56] 嗅到新鲜货 · 重复率 0.12 → <b>寄明信片</b>"), WANDER.log2);
     later(() => {
       setOut(false);
-      pushLog("[22:46] 无聊 72→31 · 回家趴下");
+      pushLog("[13:57] 无聊 72→31 · 回家趴下");
     }, WANDER.home);
     later(() => {
       setAnim("idle");
@@ -99,7 +99,7 @@ export function StreetStage({ contract }: { contract: SpriteContract }) {
       say("它正溜达呢，回来再拍。");
       return;
     }
-    setAnim("pat");
+    setAnim("joy");
     setPatjump(true);
     setHearts((value) => value + 1);
     later(() => {
@@ -130,7 +130,7 @@ export function StreetStage({ contract }: { contract: SpriteContract }) {
   return (
     <div className={styles.stage}>
       <div className={styles.stageLabel}>
-        <span className={styles.mono}>INTERACTIVE STREET</span>
+        <span className={styles.mono}>XIAOLIU · INTERACTIVE</span>
         <span className={styles.vt}>POWER <i aria-hidden="true" /></span>
       </div>
       <div className={styles.sceneFrame}>
@@ -139,10 +139,11 @@ export function StreetStage({ contract }: { contract: SpriteContract }) {
             <button
               type="button"
               className={`${styles.cat}${patjump ? ` ${styles.patjump}` : ""}`}
-              aria-label="拍拍年糕"
+              aria-label="拍拍小溜"
               onClick={pat}
             >
-              <PetSprite contract={contract} anim={anim} scale={3} />
+              <Image src={`/pet/showcase/${anim}.png`} alt={`小溜${anim === "joy" ? "开心" : anim === "walk" ? "游荡" : "待机"}`}
+                width={256} height={256} unoptimized priority className={styles.petPortrait} />
             </button>
           )}
           {hearts > 0 && <HeartBurst key={hearts} />}
@@ -151,8 +152,8 @@ export function StreetStage({ contract }: { contract: SpriteContract }) {
 
       <div className={styles.hud}>
         <div className={styles.row1}>
-          <span className={`${styles.lv} ${styles.ps2}`}>LV.7</span>
-          <span className={`${styles.petname} ${styles.dot}`}>年糕 · {mood >= 8 ? "得劲" : "一般"}</span>
+          <span className={`${styles.lv} ${styles.ps2}`}>LV.48</span>
+          <span className={`${styles.petname} ${styles.dot}`}>小溜 · {mood >= 8 ? "兴奋" : "平静"}</span>
           <span className={styles.btns}>
             <button type="button" className={`${styles.pbtn} ${styles.green}`} onClick={pat}>拍拍它</button>
             <button type="button" className={`${styles.pbtn} ${styles.blue}`} disabled={roaming} onClick={() => wander(false)}>
@@ -163,13 +164,13 @@ export function StreetStage({ contract }: { contract: SpriteContract }) {
         <div className={styles.meters}>
           <div className={styles.meter}><span className={styles.lbl}><span>精力</span><i>充足</i></span><Segments filled={8} cls="f1" /></div>
           <div className={styles.meter}><span className={styles.lbl}><span>无聊</span><i>{boredom > 5 ? "想出门" : "还行"}</i></span><Segments filled={boredom} cls="f2" /></div>
-          <div className={styles.meter}><span className={styles.lbl}><span>脾气</span><i>好说话</i></span><Segments filled={2} cls="f3" /></div>
+          <div className={styles.meter}><span className={styles.lbl}><span>脾气</span><i>有点坏</i></span><Segments filled={2} cls="f3" /></div>
         </div>
       </div>
 
       <div className={styles.stageLower}>
         <div className={styles.dlg}>
-          <span className={`${styles.who} ${styles.dot}`}>&lt;年糕&gt;</span>
+          <span className={`${styles.who} ${styles.dot}`}>&lt;小溜&gt;</span>
           <p className={styles.txt} aria-live="polite">{text}</p>
           <span className={styles.more} aria-hidden="true">▼</span>
         </div>

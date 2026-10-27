@@ -15,7 +15,7 @@ export function LoopFlow() {
       <div className={styles.wrap}>
         <div className={styles.sectionGrid}>
           <div className={styles.sectionIntro}>
-            <span className={`${styles.sectionIndex} ${styles.mono}`}>01 / CURIOSITY LOOP</span>
+            <span className={`${styles.sectionIndex} ${styles.mono}`}>02 / CURIOSITY LOOP</span>
             <h2 id="loop-title" className={styles.dot}>它不是复读机，<br />兴趣真的会变。</h2>
           </div>
           <p className={styles.lede}>
