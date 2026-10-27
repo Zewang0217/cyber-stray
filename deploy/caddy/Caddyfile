@@ -2,19 +2,10 @@
 # release never syncs config files onto the server; only the release tag changes.
 # Runs with network_mode: host, so every upstream below is reached over loopback.
 
-# Cloudflare stands in front of these domains (orange cloud): visitor TLS ends at
-# Cloudflare's edge, which then pulls the origin over http:// or https://.
-# Serving real content on :80 is therefore mandatory - Caddy's automatic
-# HTTP-to-HTTPS redirect would answer a Flexible-mode origin pull with a 308 and
-# the site would be unreachable. Redirects are disabled globally below and every
-# proxied domain is bound on both ports; ACME still runs and still renews.
-# Cloudflare's SSL mode is an ops choice and is deliberately not encoded here:
-# Flexible works as-is, Full works through the automatic HTTPS below, and Full
-# (strict) additionally wants a Cloudflare Origin CA certificate in Caddy's store.
-
-{
-	auto_https disable_redirects
-}
+# Direct entry with real certificates: the three hostnames resolve to the server's
+# public IP, Caddy terminates TLS itself and obtains/renews certificates over ACME
+# (:80 must stay reachable for the HTTP challenge). Plain HTTP answers with
+# Caddy's automatic redirect to HTTPS.
 
 # Product entry: the companion app, which serves the landing page to anonymous
 # visitors and the home page to signed-in ones.
@@ -58,34 +49,14 @@
 	}
 }
 
-# Temporary domains. Both ports in one block: :443 from automatic HTTPS, :80 for
-# Cloudflare's origin pull. These names go away once kleinbottle.top is filed and
-# its DNS is ready; the blocks at the bottom replace them unchanged.
-cs.caca.qzz.io, http://cs.caca.qzz.io {
+kleinbottle.top {
 	import app_entry
 }
 
-csauth.caca.qzz.io, http://csauth.caca.qzz.io {
+auth.kleinbottle.top {
 	import identity_entry
 }
 
-csdev.caca.qzz.io, http://csdev.caca.qzz.io {
+csdev.kleinbottle.top {
 	import staging_entry
 }
-
-# Bare-IP access for the filing window. Plain HTTP on purpose: no certificate
-# exists for an IP literal, and Cloudflare is not in the path.
-http://117.72.100.212 {
-	import app_entry
-}
-
-# Post-filing target state: uncomment both blocks and delete the caca.qzz.io
-# blocks above once kleinbottle.top resolves here. The apex serves the
-# GitHub-style product entry (landing page when anonymous, home when signed in).
-# kleinbottle.top, http://kleinbottle.top {
-# 	import app_entry
-# }
-#
-# auth.kleinbottle.top, http://auth.kleinbottle.top {
-# 	import identity_entry
-# }
