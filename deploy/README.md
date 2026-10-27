@@ -46,16 +46,17 @@ spec #408 / [ADR-0019](../docs/adr/0019-oss-caddy-dual-env-deployment.md)。同�
 
 ## 入口与域名
 
-- **入站走 Cloudflare Tunnel**（[ADR-0020](../docs/adr/0020-cloudflare-tunnel-ingress.md)）：cloudflared 以宿主 systemd 服务主动外连 CF 边缘，TLS 在边缘终结，流量转发到本机 `http://localhost:80`（Host 头保留）。成因：京东云按 Host 做备案门禁，未备案域名的入站流量被丢弃（2026-10-13 实测）；隧道使入站端口归零、证书运维归零。
-- Caddyfile 打进 `cyber-stray-caddy` 镜像（配置随版本走）；**:80 与 :443 都直接伺服内容、不做跳转**，隧道与直连两种来路都能命中。
-- 过渡期（备案中）：`cs.caca.qzz.io` → prod web、`csauth.caca.qzz.io` → casdoor、`csdev.caca.qzz.io` → staging（Basic Auth）、`http://<公网IP>` → prod web（IP 直访）。域名侧 = Cloudflare 面板里的 Tunnel Public Hostnames（各指 `http://localhost:80`）。
-- 切 kleinbottle.top checklist（**同一窗口原子执行**，issuer 不一致会打断 OIDC 登录）：
-  1. 同隧道加 Public Hostname：`kleinbottle.top`、`auth.kleinbottle.top`（零源站改动）；
-  2. Caddyfile 站点块补根域与 `auth.` 目标，发布一版；
-  3. `/srv/casdoor/conf/app.conf` 的 `origin` 切 `https://auth.kleinbottle.top`，重启 casdoor；
-  4. casdoor 管理界面：两个应用的 redirectUris 补新域名；
-  5. prod / staging 的 `.env`：`CASDOOR_ISSUER` / `CASDOOR_REDIRECT_URI` / `CP_WEB_ORIGIN` 同步改，重启对应栈；
-  6. DNS 切换到 CF（沿用隧道）；若届时改走直连 + 真证书，回退 ADR-0019 的直连方案并关隧道。
+- **入站直连 + 真证书**：三个主机名的 A 记录指向服务器公网 IP，Caddy（host 网络，:80/:443）自行 ACME 签发并续期证书，:80 自动跳转 :443。Caddyfile 打进 `cyber-stray-caddy` 镜像（配置随版本走）。
+- 站点：`kleinbottle.top` → prod web（GitHub 式产品入口：匿名落地页、登录后主页）、`auth.kleinbottle.top` → casdoor、`csdev.kleinbottle.top` → staging（Basic Auth）。IP 直访不再伺服内容。
+- 备案窗口期曾以 `*.caca.qzz.io`（Cloudflare Tunnel，[ADR-0020](../docs/adr/0020-cloudflare-tunnel-ingress.md)）+ IP 直访过渡；kleinbottle.top 于 2026-10-27 备案通过，按 ADR-0020 后果条款切回直连，隧道与临时域名同窗下线。
+- 切换 checklist（**同一窗口执行**，issuer 不一致会打断 OIDC 登录）：
+  1. 京东云安全组放行 :443 入站（:80 保持，ACME HTTP-01 要用）；
+  2. DNS 加三条 A 记录：`kleinbottle.top` / `auth.kleinbottle.top` / `csdev.kleinbottle.top` → `117.72.100.212`，**不开 CDN 代理**（直连是前提；隐藏源站 IP 的诉求已随隧道方案放弃）；
+  3. 发布一版（新 Caddyfile 随镜像走，Caddy 启动即对三个主机名签发证书）；发布完成旧 `*.caca.qzz.io` 入口即失效，进入切换窗口；
+  4. `/srv/casdoor/conf/app.conf` 的 `origin` 切 `https://auth.kleinbottle.top`，重启 casdoor；
+  5. casdoor 管理界面：prod / staging 两个应用的 redirectUris 换成 `https://kleinbottle.top/api/auth/callback` / `https://csdev.kleinbottle.top/api/auth/callback`；
+  6. prod / staging 的 `.env`：`CASDOOR_ISSUER=https://auth.kleinbottle.top`，`CASDOOR_REDIRECT_URI` / `CP_WEB_ORIGIN` 换对应新域名，重启两栈；
+  7. 冒烟通过后拆过渡设施：`docker rm -f cyber-stray-tunnel`（隧道容器，独立 `docker run` 非 compose），Cloudflare 面板删隧道与 Public Hostnames，qzz.io 解析下掉。
 
 ## 供给 runbook（一次性）
 
@@ -63,13 +64,13 @@ spec #408 / [ADR-0019](../docs/adr/0019-oss-caddy-dual-env-deployment.md)。同�
 2. 服务器装 ossutil 2.x、zstd、sqlite3。
 3. 四处 `.env` 就位（值见 `.env.local` 交接单）；staging Basic Auth 哈希生成入 `infra/.env`。
 4. compose 文件拷入；casdoor `conf/app.conf` 拷入；`/srv/casdoor/casdoor` chown 1000:1000（casdoor 容器 uid，目录挂载否则 SQLite 只读）。
-5. 入口隧道：装 cloudflared（官方包）并以 token 装 systemd 服务（`cloudflared service install <token>`）；token 保管在 root-only 文件；隧道 Public Hostnames 在 CF 面板配置（各指 `http://localhost:80`）。
+5. 入口隧道（过渡期设施，2026-10-27 随域名切换下线，见「入口与域名」）：以 `docker run` 常驻容器 `cyber-stray-tunnel` 跑 cloudflared（host 网络，`tunnel --no-autoupdate run --token …`）；隧道与 Public Hostnames 在 Cloudflare 面板配置（各指 `http://localhost:80`）。
 6. 挂夜间备份 cron（`backup.sh`）。
 7. 数据迁移：停旧栈 → 迁 `.env` 与用户数据（`data/`、casdoor db）→ 起新栈（spec #408 实施拆分①，短暂停机窗口）。
 
 ## 排障
 
-- 健康：`docker compose -p cyber-stray-<env> ps`；入口冒烟 `curl -sI -H 'Host: cs.caca.qzz.io' http://127.0.0.1/healthz`。
-- 域名入口不通：先 `systemctl status cloudflared`（隧道断线自动重连，服务挂由 systemd 拉起）；再在服务器回环按 Host 冒烟区分「隧道问题」与「caddy 问题」。
+- 健康：`docker compose -p cyber-stray-<env> ps`；入口冒烟 `curl -skI -H 'Host: kleinbottle.top' https://127.0.0.1/healthz`。
+- 域名入口不通：先在服务器回环按 Host 冒烟（上）区分「入口配置」与「网络路径」；证书签发 / 续期看 caddy 日志（ACME），网络路径查安全组 :80/:443 与 DNS 解析。
 - 发布失败保留现场：按 `deploy.sh` 输出定位失败步；先回滚旧版本号恢复服务再排障。
 - staging 无法访问：先确认 Basic Auth 凭据与 `infra/.env` 是否随最近一次配置变更重启过。
