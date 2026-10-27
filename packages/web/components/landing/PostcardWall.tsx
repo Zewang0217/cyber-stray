@@ -2,67 +2,46 @@ import styles from "./landing.module.css";
 
 const MAILs = [
   {
-    day: "DAY 12",
-    time: "22:38",
-    stamp: { cls: "s3", label: "NYA" },
-    isNew: true,
-    title: "有猫在深夜偷偷运行了一台复古掌机，还写了一篇教程",
-    body: "文内有完整的 Aseprite 像素管线。你的兴趣「独立开发」关注度 +5。这货手速可以。",
+    day: "DAY 12", time: "22:38", stamp: { cls: "s3", label: "NYA" }, isNew: true,
+    title: "深夜掌机与像素教程",
+    body: "文内有完整的 Aseprite 像素管线。你最近常看独立开发，这条应该对你的胃口。",
     tags: ["TAVILY", "独立开发"],
   },
   {
-    day: "DAY 12",
-    time: "20:07",
-    stamp: { cls: "", label: "★" },
-    isNew: false,
-    title: "科学实锤：猫能听懂自己的名字，只是假装听不见",
+    day: "DAY 12", time: "20:07", stamp: { cls: "", label: "★" }, isNew: false,
+    title: "猫听得懂，只是不想理",
     body: "新研究覆盖 78 只猫。听懂率 94%，回应率只有 11%。这不是 bug，是性格。",
     tags: ["DDG", "科学"],
   },
   {
-    day: "DAY 11",
-    time: "23:15",
-    stamp: { cls: "s2", label: "♥" },
-    isNew: false,
+    day: "DAY 11", time: "23:15", stamp: { cls: "s2", label: "♥" }, isNew: false,
     title: "1996 年的戴尔官网被扒出来了",
-    body: "黑色边框、彩色丝带卡、手剪 GIF 小贴纸。互联网的青铜时代，多少有点亲切是吧。",
+    body: "黑色边框、彩色丝带卡、手剪 GIF 小贴纸。互联网的青铜时代，多少有点亲切。",
     tags: ["TAVILY", "怀旧"],
   },
 ];
 
-/** 明信片墙：推送内容从城里寄回来（宪法 §6 纸底 + 邮票 + NEW 徽章）。样例文案即产品真实语气 */
 export function PostcardWall() {
   return (
-    <section id="wall">
+    <section id="wall" aria-labelledby="wall-title">
       <div className={styles.wrap}>
-        <div className={styles.mainhead}>
-          <h2>MAIL</h2>
-          <span className={styles.rule} />
-          <span className={styles.side}>1 NEW</span>
+        <div className={styles.sectionGrid}>
+          <div className={styles.sectionIntro}>
+            <span className={`${styles.sectionIndex} ${styles.mono}`}>03 / INCOMING MAIL</span>
+            <h2 id="wall-title" className={styles.dot}>不是信息流，<br />是它寄回来的信。</h2>
+          </div>
+          <p className={styles.lede}>没有无限下拉。它觉得值得才寄来；你的赞、踩和顶话题，会影响下一次出发。</p>
         </div>
-        <p className={styles.lede}>下面钉着它寄回来的几张。语气就是它平时说话的样子。</p>
         <div className={styles.mails}>
-          {MAILs.map((m) => (
-            <article className={styles.mail} key={m.title}>
-              <time className={styles.mono}>
-                {m.day}
-                <br />
-                {m.time}
-              </time>
+          {MAILs.map((mail) => (
+            <article className={styles.mail} key={mail.title}>
+              <time className={styles.mono}>{mail.day}<br />{mail.time}</time>
               <div className={styles.card}>
-                {m.isNew && <span className={styles.newBadge}>NEW!</span>}
-                <span className={`${styles.stamp} ${m.stamp.cls ? styles[m.stamp.cls] : ""}`}>
-                  {m.stamp.label}
-                </span>
-                <h3>{m.title}</h3>
-                <p>{m.body}</p>
-                <div className={styles.meta}>
-                  {m.tags.map((t) => (
-                    <span className={styles.tag} key={t}>
-                      {t}
-                    </span>
-                  ))}
-                </div>
+                {mail.isNew && <span className={styles.newBadge}>NEW!</span>}
+                <span className={`${styles.stamp} ${mail.stamp.cls ? styles[mail.stamp.cls] : ""}`}>{mail.stamp.label}</span>
+                <h3>{mail.title}</h3>
+                <p>{mail.body}</p>
+                <div className={styles.meta}>{mail.tags.map((tag) => <span className={styles.tag} key={tag}>{tag}</span>)}</div>
               </div>
             </article>
           ))}
