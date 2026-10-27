@@ -6,7 +6,7 @@ export function FeatureBento() {
       <div className={styles.wrap}>
         <div className={styles.sectionGrid}>
           <div className={styles.sectionIntro}>
-            <span className={`${styles.sectionIndex} ${styles.mono}`}>02 / LIFE BETWEEN PUSHES</span>
+            <span className={`${styles.sectionIndex} ${styles.mono}`}>03 / LIFE BETWEEN PUSHES</span>
             <h2 id="features-title" className={styles.dot}>不推送的时候，<br />它也在生活。</h2>
           </div>
           <p className={styles.lede}>不是一张等你戳的电子贴纸。它有性格、有记忆，也有不给你看的新鲜事。</p>
@@ -28,17 +28,10 @@ export function FeatureBento() {
             <h3 className={styles.dot}>性格与口头禅</h3>
             <p>性格在领养时选择，口头禅由你决定。它用自己的语气说话，也会从你的反馈里慢慢调整表达。</p>
             <div className={styles.dlgMini}>
-              <span className={styles.who}>&lt;年糕&gt;</span>
+              <span className={styles.who}>&lt;小溜&gt;</span>
               <p>呼噜呼噜……手劲不错，准许再拍两下。</p>
             </div>
             <div className={styles.catchphrases}><span>喵一下。</span><span>还行吧？</span><span>有货了。</span></div>
-          </article>
-
-          <article className={`${styles.tile} ${styles.tileC}`}>
-            <span className={`${styles.tileLabel} ${styles.mono}`}>MEMEDEX</span>
-            <h3 className={styles.dot}>自己做表情包</h3>
-            <p>游荡时遇上合适的话题和心情，它可能顺手做一张。过质检的进图鉴，带话题和心情标签，看上就下载。</p>
-            <div className={styles.memeGrid} aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
           </article>
 
           <article className={`${styles.tile} ${styles.tileD}`}>

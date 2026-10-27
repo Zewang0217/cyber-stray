@@ -63,20 +63,10 @@
 .big { padding: 15px 24px; border-width: 4px; box-shadow: inset -4px -4px 0 rgba(0, 0, 0, .35), 6px 6px 0 #000; }
 .page a:focus-visible, .page button:focus-visible { outline: 3px solid var(--hi); outline-offset: 4px; }
 
-.heroSection { position: relative; border-bottom: 2px solid var(--bld-far); }
-.heroSignals {
-  position: absolute;
-  right: -20px;
-  bottom: 28px;
-  margin: 0;
-  color: var(--bld-far);
-  font-family: var(--font-ibm-plex-mono), monospace;
-  font-size: 14px;
-  line-height: 1.8;
-  opacity: .65;
-  pointer-events: none;
-  animation: signal-shift 8s steps(2) infinite;
-}
+.heroSection { position: relative; overflow: hidden; border-bottom: 2px solid var(--bld-far); }
+.heroSection > .wrap { position: relative; z-index: 1; }
+.ocean { position: absolute; inset: 0; display: block; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
+.oceanCaption { position: absolute; left: clamp(20px, 4vw, 56px); bottom: 20px; z-index: 1; color: var(--curb); font-size: 10px; letter-spacing: .1em; }
 .hero { position: relative; display: grid; grid-template-columns: minmax(300px, .78fr) minmax(0, 1.22fr); gap: clamp(36px, 5vw, 72px); align-items: center; padding: clamp(56px, 7vw, 96px) 0 clamp(72px, 8vw, 112px); }
 .heroCopy { position: relative; z-index: 1; }
 .eyebrow { margin: 0 0 24px; color: var(--ok); font-size: 12px; letter-spacing: .12em; }
@@ -95,7 +85,8 @@
 .stageLabel i { width: 7px; height: 7px; background: var(--ok); animation: blink 1s steps(1) infinite; }
 .sceneFrame { border: 4px solid #000; background: var(--sky); box-shadow: 8px 8px 0 #000; }
 .sceneFrame > section { height: auto; aspect-ratio: 3 / 2; border: 0; box-shadow: none; }
-.cat { position: relative; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.cat { position: relative; padding: 0; border: 0; background: transparent; cursor: pointer; line-height: 0; }
+.petPortrait { width: 128px; height: 128px; object-fit: contain; image-rendering: pixelated; animation: pet-breathe 1.6s steps(2) infinite; }
 .patjump { animation: patjump .4s steps(2) 1; }
 
 .hud { margin-top: 18px; padding: 14px; border: 3px solid #000; background: var(--panel); box-shadow: inset -3px -3px 0 rgba(0, 0, 0, .35), 5px 5px 0 #000; }
@@ -131,6 +122,26 @@
 .sectionIntro h2, .inviteIntro h2 { margin: 0; color: var(--star); font-size: 36px; font-weight: 400; letter-spacing: -.02em; line-height: 1.5; }
 .lede { max-width: 42em; margin: 0; color: var(--paper); font-size: 15px; line-height: 1.9; opacity: .72; text-wrap: pretty; }
 
+.memeGallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; padding: 0 24px 64px; }
+.memeCard { margin: 0; border: 4px solid #000; background: var(--panel); box-shadow: 8px 8px 0 #000; }
+.memeCard:nth-child(2) { transform: translateY(32px); }
+.memeCard:nth-child(3) { transform: translateY(64px); }
+.memeImage { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border-bottom: 4px solid #000; image-rendering: pixelated; }
+.memeCard figcaption { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; color: var(--paper); font-size: 12px; }
+.memeCard time { color: var(--curb); font-size: 10px; white-space: nowrap; }
+.trailPanel { margin-top: 72px; border: 2px solid var(--curb); background: var(--panel); box-shadow: 8px 8px 0 #000; }
+.trailHead { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding: 24px; border-bottom: 2px solid var(--curb); }
+.trailHead h3 { margin: 0; color: var(--star); font-size: 24px; font-weight: 400; }
+.trailHead .tileLabel { margin-bottom: 10px; }
+.trailNote { max-width: 240px; color: var(--curb); font-size: 12px; text-align: right; }
+.trailChart { overflow-x: auto; }
+.trailChart :global(.trail-ecbox) { width: 100%; height: 400px; }
+.trailLoading { display: grid; place-items: center; height: 400px; color: var(--curb); font-size: 13px; }
+.trailDetail { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; min-height: 92px; padding: 18px 24px; border-top: 2px solid var(--curb); }
+.trailDetail > span { width: 150px; flex: none; color: var(--act); font-size: 11px; }
+.trailDetail strong { color: var(--star); font-size: 14px; font-weight: 600; }
+.trailDetail p { width: 100%; margin: 0; color: var(--paper); font-size: 13px; opacity: .7; }
+
 .loopBody { width: 58.333%; margin-left: auto; }
 .flow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 28px; margin: 0; padding: 0; list-style: none; }
 .node { display: flex; gap: 16px; min-width: 0; padding: 20px 0; border-top: 2px solid var(--curb); }
@@ -144,9 +155,8 @@
 .tile { min-width: 0; padding: 26px; border: 3px solid #000; background: var(--panel); box-shadow: inset -3px -3px 0 rgba(0, 0, 0, .25), 6px 6px 0 #000; }
 .tileA { position: relative; grid-column: span 7; overflow: hidden; background: var(--sky); }
 .tileB { grid-column: span 5; }
-.tileC { grid-column: span 5; }
-.tileD { grid-column: span 7; }
-.tileE { display: grid; grid-column: span 12; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+.tileD { grid-column: span 5; }
+.tileE { display: grid; grid-column: span 7; grid-template-columns: 1fr; gap: 24px; align-items: center; }
 .tileLabel { display: block; margin-bottom: 14px; color: var(--curb); font-size: 10px; letter-spacing: .1em; }
 .tile h3 { margin: 0 0 10px; color: var(--star); font-size: 24px; font-weight: 400; line-height: 1.45; }
 .tile p { margin: 0; color: var(--paper); font-size: 14px; line-height: 1.8; opacity: .72; }
@@ -158,13 +168,6 @@
 .dlgMini p { margin-top: 8px; color: var(--ink); font-size: 13px; opacity: 1; }
 .catchphrases { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
 .catchphrases span { padding: 2px 8px; border: 2px solid var(--curb); color: var(--star); font-family: var(--font-vt323), monospace; font-size: 18px; }
-.memeGrid { display: grid; grid-template-columns: repeat(6, 44px); gap: 10px; margin-top: 24px; }
-.memeGrid i { width: 44px; height: 44px; border: 3px solid #000; background: var(--act); box-shadow: inset -3px -3px 0 rgba(0, 0, 0, .25), 3px 3px 0 #000; }
-.memeGrid i:nth-child(2) { background: var(--hi); box-shadow: inset 12px 12px 0 var(--bad), 3px 3px 0 #000; }
-.memeGrid i:nth-child(3) { background: var(--ok); box-shadow: inset -10px -10px 0 var(--sky), 3px 3px 0 #000; }
-.memeGrid i:nth-child(4) { background: var(--bad); box-shadow: inset 12px -12px 0 var(--window), 3px 3px 0 #000; }
-.memeGrid i:nth-child(5) { background: var(--bld-near); box-shadow: inset -12px 12px 0 var(--star), 3px 3px 0 #000; }
-.memeGrid i:nth-child(6) { background: var(--paper); box-shadow: inset 12px 12px 0 var(--act), 3px 3px 0 #000; }
 .dual { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
 .col b { display: block; margin-bottom: 10px; font-family: var(--font-fusion-pixel), var(--font-noto), sans-serif; font-size: 12px; font-weight: 400; }
 .you b { color: var(--ok); }
@@ -222,7 +225,7 @@
 
 @keyframes blink { 50% { opacity: .25; } }
 @keyframes patjump { 50% { transform: translateY(-14px); } }
-@keyframes signal-shift { 50% { transform: translateY(-12px); opacity: .4; } }
+@keyframes pet-breathe { 50% { transform: translateY(-2px); } }
 
 @media (prefers-reduced-motion: reduce) {
   :global(html):has(.page) { scroll-behavior: auto; }
@@ -234,15 +237,14 @@
   .heroCopy { max-width: 720px; }
   .sub { max-width: 42em; }
   .stage { width: min(100%, 840px); margin: 0 auto; }
-  .heroSignals { right: 0; bottom: 20px; }
-  .memeGrid { grid-template-columns: repeat(3, 44px); }
+  .memeGallery { gap: 20px; padding-inline: 0; }
 }
 
 @media (max-width: 860px) {
   .sectionGrid { grid-template-columns: 1fr; gap: 24px; align-items: start; }
   .loopBody { width: 100%; }
-  .tileA, .tileB, .tileC, .tileD { grid-column: span 12; }
-  .memeGrid { grid-template-columns: repeat(6, 44px); }
+  .tileA, .tileB, .tileD, .tileE { grid-column: span 12; }
+  .trailChart :global(.trail-ecbox), .trailLoading { height: 360px; }
   .mail:nth-child(1) { grid-column: 1 / span 8; }
   .mail:nth-child(2) { grid-column: 8 / span 5; margin-top: 48px; }
   .mail:nth-child(3) { grid-column: 2 / span 8; }
@@ -257,13 +259,20 @@
   .brandLink { gap: 10px; }
   .hero { padding-top: 48px; }
   .hero h1 { font-size: 36px; }
-  .heroSignals { display: none; }
+  .oceanCaption { display: none; }
+  .petPortrait { width: 112px; height: 112px; }
+  .memeGallery { grid-template-columns: 1fr; gap: 28px; padding: 0 12px; }
+  .memeCard:nth-child(2), .memeCard:nth-child(3) { transform: none; }
+  .trailPanel { margin-top: 40px; }
+  .trailHead { align-items: flex-start; flex-direction: column; }
+  .trailNote { text-align: left; }
+  .trailChart :global(.trail-ecbox), .trailLoading { height: 340px; }
+  .trailChart :global(.trail-ecbox) { min-width: 640px; }
   .stageLower { grid-template-columns: 1fr; }
   .sceneFrame > section { height: 290px; aspect-ratio: auto; }
   .sectionIntro h2, .inviteIntro h2 { font-size: 24px; }
   .flow { grid-template-columns: 1fr; }
   .tileE { grid-template-columns: 1fr; gap: 24px; }
-  .memeGrid { grid-template-columns: repeat(3, 44px); }
   .mail:nth-child(1), .mail:nth-child(2), .mail:nth-child(3) { grid-column: 1 / -1; margin-top: 0; }
   .adopt { grid-template-columns: 1fr; gap: 20px; }
   .adoptCat { font-size: 12px; }
@@ -287,7 +296,8 @@
   .meters { gap: 7px; }
   .lbl i { display: none; }
   .tile, .card { padding: 20px; }
-  .memeGrid { gap: 8px; }
+  .trailDetail { padding: 16px; }
+  .trailDetail > span { width: 100%; }
   .dual { gap: 16px; }
   .daynight { grid-template-columns: 1fr; }
   .night { border-top: 3px solid #000; border-left: 0; }

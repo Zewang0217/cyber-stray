@@ -7,7 +7,7 @@ export function InviteBenefits() {
       <div className={styles.wrap}>
         <div className={styles.invitePanel}>
           <div className={styles.inviteIntro}>
-            <span className={`${styles.sectionIndex} ${styles.mono}`}>04 / BETA CARTRIDGE</span>
+            <span className={`${styles.sectionIndex} ${styles.mono}`}>05 / BETA CARTRIDGE</span>
             <h2 id="invite-title" className={styles.dot}>一张邀请函，<br />完整体验。</h2>
             <p>目前是邀请内测。所有受邀用户免费享有相同的 Pro 权益，无需订阅。</p>
             <a className={`${styles.pbtn} ${styles.blue}`} href="/apply">申请我的邀请函</a>

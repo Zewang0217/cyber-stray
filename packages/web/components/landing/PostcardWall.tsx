@@ -27,7 +27,7 @@ export function PostcardWall() {
       <div className={styles.wrap}>
         <div className={styles.sectionGrid}>
           <div className={styles.sectionIntro}>
-            <span className={`${styles.sectionIndex} ${styles.mono}`}>03 / INCOMING MAIL</span>
+            <span className={`${styles.sectionIndex} ${styles.mono}`}>04 / INCOMING MAIL</span>
             <h2 id="wall-title" className={styles.dot}>不是信息流，<br />是它寄回来的信。</h2>
           </div>
           <p className={styles.lede}>没有无限下拉。它觉得值得才寄来；你的赞、踩和顶话题，会影响下一次出发。</p>

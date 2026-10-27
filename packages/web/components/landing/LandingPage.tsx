@@ -1,7 +1,6 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { parseSpriteContract } from "@cyber-stray/shared/sprite";
+import { AsciiOcean } from "./AsciiOcean";
 import { StreetStage } from "./StreetStage";
+import { Showcase } from "./Showcase";
 import { LoopFlow } from "./LoopFlow";
 import { FeatureBento } from "./FeatureBento";
 import { PostcardWall } from "./PostcardWall";
@@ -12,9 +11,6 @@ const REPO_URL = "https://github.com/Zewang0217/cyber-stray";
 const INVITE_URL = "/apply";
 
 export function LandingPage() {
-  const contract = parseSpriteContract(
-    JSON.parse(readFileSync(join(process.cwd(), "public/pet/strayboy/frames.json"), "utf8")),
-  );
   return (
     <div className={styles.page}>
       <header className={styles.topbar}>
@@ -24,6 +20,7 @@ export function LandingPage() {
         </a>
         <span className={styles.clock} aria-hidden="true">CLOUD PET / 001</span>
         <nav aria-label="页面导航">
+          <a className={styles.navi} href="#showcase">作品与足迹</a>
           <a className={styles.navi} href="#loop">好奇闭环</a>
           <a className={styles.navi} href="#wall">它的来信</a>
           <a className={styles.navi} href="#invite">内测权益</a>
@@ -33,15 +30,12 @@ export function LandingPage() {
 
       <div id="top">
         <section className={styles.heroSection} aria-labelledby="hero-title">
-          <pre className={styles.heroSignals} aria-hidden="true">{`       +       .         +
-  [BOOKS]──┐        ┌──[CAFE]
-           └──[ ??? ]┘
-  001 / FOLLOW_CURIOSITY
-  :::: ::::: :::: :::: ::::`}</pre>
+          <AsciiOcean />
+          <span className={`${styles.oceanCaption} ${styles.mono}`} aria-hidden="true">INFO OCEAN · 06 DRIFTERS · 12 FPS</span>
           <div className={styles.wrap}>
             <div className={styles.hero}>
               <div className={styles.heroCopy}>
-                <p className={`${styles.eyebrow} ${styles.mono}`}>A LITTLE LIFE, ONLINE.</p>
+                <p className={`${styles.eyebrow} ${styles.mono}`}>INFO OCEAN / 信息海</p>
                 <h1 id="hero-title">
                   你的云上有只猫。
                   <span className={styles.hl}>它自己逛互联网。</span>
@@ -56,11 +50,12 @@ export function LandingPage() {
                 </div>
                 <p className={styles.heroNote}><span aria-hidden="true">■</span> 不用喂养，不用打卡。它自己会安排今天。</p>
               </div>
-              <StreetStage contract={contract} />
+              <StreetStage />
             </div>
           </div>
         </section>
 
+        <Showcase />
         <LoopFlow />
         <FeatureBento />
         <PostcardWall />
@@ -71,7 +66,7 @@ export function LandingPage() {
             <div className={styles.adopt}>
               <pre className={styles.adoptCat} aria-hidden="true">{` /\\_/\\  \n( o.o )  \n > ^ <   `}</pre>
               <div>
-                <span className={styles.who}>&lt;年糕&gt;</span>
+                <span className={styles.who}>&lt;小溜&gt;</span>
                 <h2 className={styles.dot}>下一张明信片，寄给你。</h2>
                 <p>内测期间免费，按批次邀请。收到邀请函后，从专属链接登录领养。</p>
                 <a className={`${styles.pbtn} ${styles.blue} ${styles.big}`} href={INVITE_URL}>申请邀请内测</a>
