@@ -1,94 +1,76 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { parseSpriteContract } from "@cyber-stray/shared/sprite";
+import { AsciiOcean } from "./AsciiOcean";
 import { StreetStage } from "./StreetStage";
+import { Showcase } from "./Showcase";
 import { LoopFlow } from "./LoopFlow";
 import { FeatureBento } from "./FeatureBento";
 import { PostcardWall } from "./PostcardWall";
 import { InviteBenefits } from "./InviteBenefits";
 import styles from "./landing.module.css";
 
-/**
- * 官网落地页（并入 web 后的未登录首页）：掌机顶栏 + Hero 街区舞台 + 闭环 +
- * 功能 + 明信片墙 + 内测权益 + 邀请 CTA。内容/文案/视觉逐字沿用 packages/site
- * 单页；帧表契约构建期读盘校验（同街角页模式），交互体全部下沉 StreetStage
- * 一个 client 岛。
- *
- * CTA 一律同源相对链接（官网包构建期 NEXT_PUBLIC_APP_URL 注入与其 URL 守卫随
- * 官网退役删除，产品入口不再跨源）。
- */
 const REPO_URL = "https://github.com/Zewang0217/cyber-stray";
-/** 申请入口：站内申请页（不收集邮箱等隐私，凭申请号 + 查询码取邀请函） */
 const INVITE_URL = "/apply";
 
 export function LandingPage() {
-  const contract = parseSpriteContract(
-    JSON.parse(readFileSync(join(process.cwd(), "public/pet/strayboy/frames.json"), "utf8")),
-  );
   return (
     <div className={styles.page}>
       <header className={styles.topbar}>
-        <span className={styles.led} aria-hidden="true" />
-        <span className={`${styles.brand} ${styles.ps2}`}>STRAY-BOY</span>
-        <span className={styles.clock} aria-hidden="true">
-          DAY 12 · 22:41
-        </span>
+        <a className={styles.brandLink} href="#top" aria-label="回到首页顶部">
+          <span className={styles.led} aria-hidden="true" />
+          <span className={`${styles.brand} ${styles.ps2}`}>STRAY-BOY</span>
+        </a>
+        <span className={styles.clock} aria-hidden="true">CLOUD PET / 001</span>
         <nav aria-label="页面导航">
-          <a className={styles.navi} href="#loop">
-            它怎么活
-          </a>
-          <a className={styles.navi} href="#wall">
-            明信片墙
-          </a>
-          <a className={styles.navi} href="#invite">
-            内测权益
-          </a>
-          <a className={`${styles.pbtn} ${styles.blue}`} href={INVITE_URL}>
-            申请邀请
-          </a>
+          <a className={styles.navi} href="#showcase">作品与足迹</a>
+          <a className={styles.navi} href="#loop">好奇闭环</a>
+          <a className={styles.navi} href="#wall">它的来信</a>
+          <a className={styles.navi} href="#invite">内测权益</a>
+          <a className={`${styles.pbtn} ${styles.blue}`} href={INVITE_URL}>申请邀请</a>
         </nav>
       </header>
 
-      {/* 布局已提供 <main id="main-content">：此处不再套 main 地标，避免重复 id */}
-      <div>
-        <div className={styles.wrap}>
-          <div className={styles.hero}>
-            <div className={styles.heroCopy}>
-              <h1>
-                在云上养一只猫，
-                <br />
-                <span className={styles.hl}>它自己</span>逛互联网。
-              </h1>
-              <p className={styles.sub}>
-                它自己选路线，自己记看到的东西，喜好慢慢自己长。遇上它觉得你会喜欢的，就寄成明信片回来。
-              </p>
-              <div className={styles.ctaRow}>
-                <a className={`${styles.pbtn} ${styles.blue} ${styles.big}`} href={INVITE_URL}>
-                  申请邀请内测
-                </a>
-                <a className={styles.navi} href="/login">
-                  已有账号，进入街区
-                </a>
+      <div id="top">
+        <section className={styles.heroSection} aria-labelledby="hero-title">
+          <AsciiOcean />
+          <span className={`${styles.oceanCaption} ${styles.mono}`} aria-hidden="true">INFO OCEAN · 06 DRIFTERS · 12 FPS</span>
+          <div className={styles.wrap}>
+            <div className={styles.hero}>
+              <div className={styles.heroCopy}>
+                <p className={`${styles.eyebrow} ${styles.mono}`}>INFO OCEAN / 信息海</p>
+                <h1 id="hero-title">
+                  你的云上有只猫。
+                  <span className={styles.hl}>它自己逛互联网。</span>
+                </h1>
+                <p className={styles.sub}>
+                  它有自己的好奇心、作息和脾气。出门探索，记住见闻，慢慢长出新的兴趣；
+                  遇到你会喜欢的，就主动寄一张明信片回来。
+                </p>
+                <div className={styles.ctaRow}>
+                  <a className={`${styles.pbtn} ${styles.blue} ${styles.big}`} href={INVITE_URL}>申请邀请内测</a>
+                  <a className={styles.textLink} href="/login">已有账号，回到街区 <span aria-hidden="true">→</span></a>
+                </div>
+                <p className={styles.heroNote}><span aria-hidden="true">■</span> 不用喂养，不用打卡。它自己会安排今天。</p>
               </div>
+              <StreetStage />
             </div>
-            <StreetStage contract={contract} />
           </div>
-        </div>
+        </section>
 
+        <Showcase />
         <LoopFlow />
         <FeatureBento />
         <PostcardWall />
         <InviteBenefits />
 
-        <section id="adopt">
+        <section id="adopt" className={styles.adoptSection}>
           <div className={styles.wrap}>
             <div className={styles.adopt}>
-              <span className={styles.who}>&lt;年糕&gt;</span>
-              <h2 className={styles.dot}>墙上给你留了位置。</h2>
-              <p>内测期间免费，按批次邀请。收到邀请函后，从专属链接登录领养。</p>
-              <a className={`${styles.pbtn} ${styles.blue} ${styles.big}`} href={INVITE_URL}>
-                申请邀请内测
-              </a>
+              <pre className={styles.adoptCat} aria-hidden="true">{` /\\_/\\  \n( o.o )  \n > ^ <   `}</pre>
+              <div>
+                <span className={styles.who}>&lt;小溜&gt;</span>
+                <h2 className={styles.dot}>下一张明信片，寄给你。</h2>
+                <p>内测期间免费，按批次邀请。收到邀请函后，从专属链接登录领养。</p>
+                <a className={`${styles.pbtn} ${styles.blue} ${styles.big}`} href={INVITE_URL}>申请邀请内测</a>
+              </div>
             </div>
           </div>
         </section>
@@ -96,28 +78,13 @@ export function LandingPage() {
 
       <div className={styles.wrap}>
         <footer className={styles.footer}>
-          <span>
-            <i style={{ background: "#1A1C2C" }} />
-            SKY
-          </span>
-          <span>
-            <i style={{ background: "#F8F5F5" }} />
-            PAPER
-          </span>
-          <span>
-            <i style={{ background: "#209CEE" }} />
-            ACT
-          </span>
-          <span>
-            <i style={{ background: "#F7D51D" }} />
-            HI
-          </span>
-          <span>
-            <i style={{ background: "#FF004D" }} />
-            NEON ×1
-          </span>
-          <a href={REPO_URL}>GitHub</a>
-          <span className={styles.right}>RADIUS 0 · 实色偏移阴影 · STEPS ONLY · 14色宇宙</span>
+          <span className={styles.ps2}>STRAY-BOY</span>
+          <span>云端活着，像素里见面。</span>
+          <nav aria-label="页脚导航">
+            <a href={REPO_URL}>GitHub</a>
+            <a href="/login">登录</a>
+          </nav>
+          <span className={styles.right}>RADIUS 0 / STEPS ONLY</span>
         </footer>
       </div>
     </div>
